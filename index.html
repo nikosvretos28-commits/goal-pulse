@@ -1061,29 +1061,32 @@ async async function showDetails(btn){
   const renderLiveDetails=()=>{
    const live=liveMetricsCache.get(String(liveEvent.id));
    const teams=Array.isArray(live?.teams)?live.teams:[];
-   const h=teams.find(t=>String(t.homeAway||'').toLowerCase()==='home')||teams[0]||{};
-   const a=teams.find(t=>String(t.homeAway||'').toLowerCase()==='away')||teams[1]||{};
-   const val=(team,key)=>team[key]===undefined||team[key]===null||team[key]===''?'—':String(team[key]);
-   const rows=[['Σουτ','shots'],['Σουτ στην εστία','shotsOnTarget'],['Σουτ εκτός εστίας','shotsOffTarget'],['Μπλοκαρισμένα σουτ','blockedShots'],['Κόρνερ','corners'],['Κατοχή (%)','possession'],['Επικίνδυνες επιθέσεις','dangerousAttacks'],['Expected Goals (xG)','xG']].map(([label,key])=>'<div class="stat-row"><span>'+esc(val(h,key))+'</span><strong>'+esc(label)+'</strong><span class="stat-divider">—</span><span>'+esc(val(a,key))+'</span></div>').join('');
+   const h=teams.find(t=>String(t.homeAway||'').toLowerCase()==='home')||teams.find(t=>sameTeam(t.team,liveEvent.home.name))||teams[0]||{};
+   const a=teams.find(t=>String(t.homeAway||'').toLowerCase()==='away')||teams.find(t=>sameTeam(t.team,liveEvent.away.name))||teams.find(t=>t!==h)||{};
+   const val=(team,key)=>team[key]===undefined||team[key]===null||team[key]===''||!Number.isFinite(Number(team[key]))?'—':String(Number.isInteger(Number(team[key]))?Number(team[key]):Number(Number(team[key]).toFixed(2)));
+   const metrics=[['Σουτ','shots'],['Σουτ στην εστία','shotsOnTarget'],['Σουτ εκτός εστίας','shotsOffTarget'],['Μπλοκαρισμένα σουτ','blockedShots'],['Κόρνερ','corners'],['Κατοχή (%)','possession'],['Επικίνδυνες επιθέσεις','dangerousAttacks'],['Expected Goals (xG)','xG']];
+   const rows=metrics.filter(([,key])=>h[key]!=null||a[key]!=null).map(([label,key])=>'<div class="stat-row"><span>'+esc(val(h,key))+'</span><strong>'+esc(label)+'</strong><span class="stat-divider">—</span><span>'+esc(val(a,key))+'</span></div>').join('');
    const trail=signalTrails.get(String(liveEvent.id))||[];
    const delta=(minutes,key)=>{
     const base=[...trail].reverse().find(item=>Date.now()-item.at>=minutes*60000);
-    if(base&&base.values?.length>=2&&h[key]!=null&&a[key]!=null){
-     const homePrev=base.values.find(v=>String(v.homeAway||'').toLowerCase()==='home')||base.values[0];
-     const awayPrev=base.values.find(v=>String(v.homeAway||'').toLowerCase()==='away')||base.values[1];
-     if(homePrev?.[key]!=null&&awayPrev?.[key]!=null)return Math.max(0,Number(h[key])-Number(homePrev[key]))+' — '+Math.max(0,Number(a[key])-Number(awayPrev[key]));
+    if(base&&Array.isArray(base.values)&&base.values.length>=2&&h[key]!=null&&a[key]!=null){
+     const hp=base.values.find(v=>String(v.homeAway||'').toLowerCase()==='home')||base.values[0];
+     const ap=base.values.find(v=>String(v.homeAway||'').toLowerCase()==='away')||base.values[1];
+     if(hp?.[key]!=null&&ap?.[key]!=null)return Math.max(0,Number(h[key])-Number(hp[key]))+' — '+Math.max(0,Number(a[key])-Number(ap[key]));
     }
-    const trend=minutes===10?live?.trend?.window10m:live?.trend?.window5m;
-    if(trend?.available&&Array.isArray(trend.teams)&&trend.teams.length>=2){
-     const homeTrend=trend.teams.find(t=>String(t.homeAway||'').toLowerCase()==='home')||trend.teams[0];
-     const awayTrend=trend.teams.find(t=>String(t.homeAway||'').toLowerCase()==='away')||trend.teams[1];
-     if(homeTrend?.[key]!=null&&awayTrend?.[key]!=null)return Math.max(0,Number(homeTrend[key]))+' — '+Math.max(0,Number(awayTrend[key]));
+    const w=minutes===10?live?.trend?.window10m:live?.trend?.window5m;
+    if(w?.available&&Array.isArray(w.teams)&&w.teams.length>=2){
+     const ht=w.teams.find(t=>sameTeam(t.team,liveEvent.home.name))||w.teams[0],at=w.teams.find(t=>sameTeam(t.team,liveEvent.away.name))||w.teams[1];
+     if(ht?.[key]!=null&&at?.[key]!=null)return Math.max(0,Number(ht[key]))+' — '+Math.max(0,Number(at[key]));
     }
     return '—';
    };
    const score='<div class="analysis-grid"><div class="analysis-stat"><small>Σκορ τώρα</small><strong>'+esc(liveEvent.home.score==null?'–':liveEvent.home.score)+'–'+esc(liveEvent.away.score==null?'–':liveEvent.away.score)+'</strong></div><div class="analysis-stat"><small>Λεπτό αγώνα</small><strong>'+esc(live?.minute||liveEvent.clock||'LIVE')+'</strong></div></div>';
-   const deltas='<h3 class="detail-heading">⏱️ Μεταβολή σουτ</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Περίοδος</span><span>'+esc(liveEvent.away.name)+'</span></div>'+['5','10'].map(n=>{const pair=delta(Number(n),'shots').split(' — ');return '<div class="stat-row"><span>'+esc(pair[0]||'—')+'</span><strong>Τελευταία '+n+'′</strong><span class="stat-divider">—</span><span>'+esc(pair[1]||'—')+'</span></div>'}).join('')+'</div>';
-   content.innerHTML=score+'<h3 class="detail-heading">📊 Πραγματικά live στατιστικά</h3>'+(live?.statsAvailable?'<div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Στατιστικό</span><span>'+esc(liveEvent.away.name)+'</span></div>'+rows+'</div>':'<p class="analysis-note">Η πηγή δεν επέστρεψε ακόμη στατιστικά για αυτόν τον αγώνα. Τα πεδία δεν συμπληρώνονται με εκτιμήσεις.</p>')+deltas+'<p class="analysis-note">Τα στατιστικά ενημερώνονται αυτόματα. Το xG εμφανίζεται μόνο εφόσον το παρέχει η πηγή.</p>';
+   const deltaRows=['shots','shotsOnTarget','corners'].map((key,i)=>{const label=['Σουτ','Σουτ στην εστία','Κόρνερ'][i];return '<div class="stat-row"><span>'+esc(delta(5,key))+'</span><strong>'+label+'</strong><span class="stat-divider">—</span><span>'+esc(delta(10,key))+'</span></div>'}).join('');
+   const trend=live?.trend;
+   const trendText=[['Τελευταία 5′',trend?.window5m],['Τελευταία 10′',trend?.window10m]].filter(([,w])=>w?.available).map(([label,w])=>label+(w.sampleMinutes?' (δείγμα '+w.sampleMinutes+'′)':'')).join(' · ');
+   content.innerHTML=score+'<h3 class="detail-heading">📊 Live στατιστικά αγώνα</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Στατιστικό</span><span>'+esc(liveEvent.away.name)+'</span></div>'+(rows||'<p class="analysis-note">Η πηγή δεν επέστρεψε ακόμη αναλυτικά στατιστικά για αυτόν τον αγώνα. Δεν συμπληρώνουμε ελλείψεις με μηδενικά.</p>')+'</div><h3 class="detail-heading">⏱️ Μεταβολές στα τελευταία λεπτά</h3><div class="stat-table"><div class="stat-table-head"><span>Μεταβολή 5′</span><span>Στατιστικό</span><span>Μεταβολή 10′</span></div>'+deltaRows+'</div><p class="analysis-note">'+(trendText?'Ιστορικό μετρήσεων: '+esc(trendText)+'.':'Οι μεταβολές εμφανίζονται όταν υπάρχει επαρκές ιστορικό μετρήσεων.')+' Το xG εμφανίζεται μόνο αν το παρέχει η πηγή.</p><button class="mini-btn" type="button" id="refreshLiveDetail">↻ Ανανέωση live στατιστικών</button>';
+   const refresh=document.getElementById('refreshLiveDetail');if(refresh)refresh.onclick=()=>refreshLive();
   };
   content.innerHTML='<p class="analysis-note">Φόρτωση πραγματικών live στατιστικών…</p>';
   modal.classList.add('open');
