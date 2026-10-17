@@ -2,7 +2,8 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
-const { Pool } = require("pg");
+let Pool = null;
+try { ({ Pool } = require("pg")); } catch {}
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -22,7 +23,7 @@ const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
 const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
-const analyticsPool = process.env.DATABASE_URL ? new Pool({
+const analyticsPool = process.env.DATABASE_URL && Pool ? new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
   max: 3,
