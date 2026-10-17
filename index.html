@@ -221,7 +221,7 @@ document.getElementById('nextDate').addEventListener('click',()=>shiftMatchDate(
 document.getElementById('todayDate').addEventListener('click',()=>{selectedMatchDate=localISODate();dateInput.value=selectedMatchDate;loadScores()});
 document.getElementById('refreshScores').addEventListener('click',loadScores);
 const signalThreshold=document.getElementById('signalThreshold'),signalThresholdLabel=document.getElementById('signalThresholdLabel'),signalMarket=document.getElementById('signalMarket'),signalResults=document.getElementById('signalResults'),signalStatus=document.getElementById('signalStatus');
-let signalBusy=false, signalSnapshots=new Map(), signalLastAlertAt=new Map(), signalAlertHistory=[];
+let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalAlertHistory=[];try{signalAlertHistory=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]').slice(0,100)}catch{}
 signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/10');
 document.getElementById('enableNotifications').addEventListener('click',async()=>{
  if(!('Notification' in window)){signalStatus.textContent='Οι ειδοποιήσεις browser δεν υποστηρίζονται σε αυτή τη συσκευή.';return}
@@ -248,24 +248,28 @@ async function runSignalCheck(){
    available++;
    const key=m.id||m.home.name+'-'+m.away.name;
    const values=live.teams.map(t=>({shots:t.shots,shotsOnTarget:t.shotsOnTarget,corners:t.corners}));
-   const previous=signalSnapshots.get(key);
+   const trail=signalTrails.get(key)||[];
+   trail.push({values,at:now});
+   while(trail.length&&now-trail[0].at>10*60*1000)trail.shift();
+   signalTrails.set(key,trail);
    signalSnapshots.set(key,{values,at:now});
-   if(!previous||now-previous.at>180000)continue;
+   const baseline=[...trail].reverse().find(item=>now-item.at>=4*60*1000);
+   if(!baseline)continue;
    let points=0,reasons=[];
    values.forEach((v,i)=>{
-    const p=previous.values[i]||{};
+    const p=baseline.values[i]||{};
     const ds=v.shots==null||p.shots==null?0:Math.max(0,v.shots-p.shots);
     const dt=v.shotsOnTarget==null||p.shotsOnTarget==null?0:Math.max(0,v.shotsOnTarget-p.shotsOnTarget);
     const dc=v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners);
-    if(dt>0){points+=4*dt;reasons.push('νέο σουτ στην εστία')}
-    if(ds>0){points+=Math.min(2,ds);reasons.push('αύξηση τελικών')}
-    if(dc>0){points+=2*dc;reasons.push('νέο κόρνερ')}
+    if(dt>0){points+=4*dt;reasons.push(dt+' νέο/α σουτ στην εστία')}
+    if(ds>0){points+=Math.min(2*ds,6);reasons.push(ds+' νέες τελικές')}
+    if(dc>0){points+=2*dc;reasons.push(dc+' νέα κόρνερ')}
    });
    const sensitivity=Number(signalThreshold.value),last=signalLastAlertAt.get(key)||0;
    if(points>=sensitivity&&reasons.length&&now-last>8*60*1000){
     const reason=[...new Set(reasons)].join(' · ');
     const alert={home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})};
-    signalAlertHistory.unshift(alert);signalAlertHistory=signalAlertHistory.slice(0,30);signalLastAlertAt.set(key,now);newAlerts++;
+    signalAlertHistory.unshift(alert);signalAlertHistory=signalAlertHistory.slice(0,100);signalLastAlertAt.set(key,now);newAlerts++;try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · Έξαρση πίεσης',{body:m.home.name+' – '+m.away.name+' · '+reason,tag:'goal-pulse-'+key})}catch{}}
    }
   }
@@ -328,5 +332,6 @@ async function showDetails(btn){
 }
 loadScores();
 setInterval(loadScores,60000);
+setInterval(runSignalCheck,30000);
 </script>
 </body></html>
