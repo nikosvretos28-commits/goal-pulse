@@ -972,6 +972,7 @@ async function runSignalCheck(){
    }
   }
   renderHighActivityMatches();
+  renderTopAiAlerts();
   showSignalHistory();
   signalStatus.textContent=available?('Live stats διαθέσιμα σε '+available+' αγώνες · έλεγχος '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+(newAlerts?' · νέα σήματα: '+newAlerts:'')):(liveMatches.length?'Υπάρχουν '+liveMatches.length+' live αγώνες, αλλά δεν επιστράφηκαν live σουτ/κόρνερ.':'Δεν υπάρχουν live αγώνες για έλεγχο αυτή τη στιγμή.');
  }catch(err){signalStatus.textContent='Live scanner: '+(err.message||'προσωρινό σφάλμα');if(!signalAlertHistory.length)signalResults.innerHTML='<p>Δεν υπάρχουν ακόμη διαθέσιμα live στατιστικά. Δεν δημιουργούμε σήματα όταν λείπουν δεδομένα.</p>'}
