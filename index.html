@@ -310,6 +310,9 @@ header nav a{padding:9px 0;font-size:11px}
  .product-nav a{flex:0 0 auto;white-space:nowrap;padding:8px 10px}
 }
 
+
+/* Six-column live rows keep both club crests visible on small screens */
+@media(max-width:560px){.top-live .live-row{grid-template-columns:22px minmax(0,1fr) auto minmax(0,1fr) 22px 36px;gap:4px;padding:9px 6px}.top-live .live-row .crest img{width:19px;height:19px}.top-live .live-row .minute{font-size:9px;padding:4px 2px}}
 </style>
 </head>
 <body>
