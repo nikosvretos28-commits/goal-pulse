@@ -176,7 +176,8 @@ async function loadScores(){
  if(feedStatus)feedStatus.textContent='Ενημέρωση σκορ…';
  let scoreboardJson={successfulFeeds:0,feeds:[]};
  try{
-  const scoreboardRes=await fetch(ANALYTICS_API+'/api/scoreboard?date='+selectedMatchDate.replace(/-/g,''));
+  const scoreboardRes=await fetch(ANALYTICS_API+'/api/scoreboard?date='+selectedMatchDate.replace(/-/g,''),{signal:AbortSignal.timeout(18000)});
+  if(!scoreboardRes.ok)throw new Error('Scoreboard request failed: '+scoreboardRes.status);
   scoreboardJson=await scoreboardRes.json();
  }catch(err){scoreboardJson={successfulFeeds:0,feeds:[]}}
  successfulFeeds=Number(scoreboardJson.successfulFeeds)||0;
