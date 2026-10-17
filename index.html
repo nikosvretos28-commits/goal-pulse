@@ -323,7 +323,7 @@ function cardFor(m){
 }
 function render(){
  const q=document.getElementById('matchSearch').value.trim().toLowerCase();
- const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='finished'&&m.state==='post')||(active==='signals'&&m.state==='in'&&liveMetricsCache.has(String(m.id)))||(active==='favorites'&&favoriteMatchIds.has(String(m.id))))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
+ const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='finished'&&m.state==='post')||(active==='signals'&&m.state==='in'&&liveMetricsCache.get(String(m.id))?.statsAvailable)||(active==='favorites'&&favoriteMatchIds.has(String(m.id))))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
  const list=document.getElementById('matchList');
  if(!allMatches.length){list.innerHTML='<div class="empty-state" style="padding:24px;text-align:center"><div style="font-size:28px;margin-bottom:8px">⚽</div><strong style="display:block;margin-bottom:6px">Δεν βρέθηκαν αγώνες</strong><p class="subtle" style="margin:0 0 14px">'+(successfulFeeds?'Δεν υπάρχουν προγραμματισμένοι αγώνες στις επιλεγμένες διοργανώσεις αυτή τη στιγμή.':'Η σύνδεση με τις πηγές σκορ δεν είναι διαθέσιμη προσωρινά.')+'</p><button class="mini-btn" type="button" onclick="loadScores()">↻ Δοκίμασε ξανά</button></div>';}
  else if(active==='signals'&&!filtered.length){list.innerHTML='<p class="subtle" style="padding:20px">Δεν υπάρχουν αυτή τη στιγμή αγώνες με διαθέσιμα πραγματικά live στατιστικά. Πάτησε «Έλεγχος live πίεσης» στην ενότητα AI Alerts για νέο έλεγχο.</p>';}
@@ -415,7 +415,7 @@ function updateIntervalStats(match,trail,current,now){
  const delta=(minutes)=>{
   const base=[...trail].reverse().find(item=>now-item.at>=minutes*60000);
   if(!base)return 'Δ'+minutes+'′ συλλογή δεδομένων';
-  const calc=(key,i)=>{const a=Number(current[i]?.[key]),b=Number(base.values[i]?.[key]);return Number.isFinite(a)&&Number.isFinite(b)?Math.max(0,a-b):null};
+  const calc=(key,i)=>{const av=current[i]?.[key],bv=base.values[i]?.[key];if(av===null||av===undefined||bv===null||bv===undefined||av===''||bv==='')return null;const a=Number(av),b=Number(bv);return Number.isFinite(a)&&Number.isFinite(b)?Math.max(0,a-b):null};
   const pair=key=>{const a=calc(key,0),b=calc(key,1);return a===null||b===null?'—':a+'–'+b};
   return 'Δ'+minutes+'′ Σουτ '+pair('shots')+' · Στην εστία '+pair('shotsOnTarget')+' · Κόρνερ '+pair('corners');
  };
