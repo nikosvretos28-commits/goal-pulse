@@ -492,6 +492,7 @@ header nav a{padding:9px 0;font-size:11px}
  .live-inline-stat b{font-size:13px}
 }
 
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -556,7 +557,7 @@ const LEAGUES=[
  ['uefa.europa','Europa League','Europe','🏆'],
  ['uefa.europa.conf','Conference League','Europe','🏆']
 ];
-let active='all', allMatches=[], successfulFeeds=0, loadingScores=false;
+let active='all', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null;
 const readFavorites=()=>{try{return new Set(JSON.parse(localStorage.getItem('goalPulseFavorites')||'[]').map(String))}catch{return new Set()}};
 let favoriteMatchIds=readFavorites();
 function setMatchFilter(filter){active=filter;document.querySelectorAll('.filter').forEach(x=>{const selected=x.dataset.filter===filter;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',selected?'true':'false')});document.querySelectorAll('[data-menu-filter]').forEach(x=>x.classList.toggle('selected',x.dataset.menuFilter===filter));render()}
@@ -621,7 +622,7 @@ async function loadScores(){
  });
  const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  const feedsSucceeded=successfulFeeds;
- if(feedsSucceeded>0)allMatches=freshMatches;
+ if(feedsSucceeded>0){allMatches=freshMatches;lastSuccessfulScoreUpdate=new Date();}
  render();
  runSignalCheck();
  const live=allMatches.filter(m=>m.state==='in').slice(0,6);
@@ -630,7 +631,7 @@ async function loadScores(){
   box.innerHTML=live.length?live.map(liveMatchLine).join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
  }
 
- if(feedStatus)feedStatus.textContent=feedsSucceeded?`${feedsSucceeded}/${LEAGUES.length} πηγές · ${new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})}`:(allMatches.length?'Πρόβλημα σύνδεσης · τελευταία δεδομένα':'API προσωρινά μη διαθέσιμο');const topCount=document.getElementById('liveCountTop');if(topCount)topCount.textContent=allMatches.filter(m=>m.state==='in').length+' LIVE ΑΓΩΝΕΣ';const updated=document.getElementById('topUpdated');if(updated)updated.textContent='Ενημέρωση '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'});
+ if(feedStatus)feedStatus.textContent=feedsSucceeded?`${feedsSucceeded}/${LEAGUES.length} πηγές · ${new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})}`:(allMatches.length?'Πρόβλημα σύνδεσης · τελευταία δεδομένα':'API προσωρινά μη διαθέσιμο');const topCount=document.getElementById('liveCountTop');if(topCount)topCount.textContent=allMatches.filter(m=>m.state==='in').length+' LIVE ΑΓΩΝΕΣ';const updated=document.getElementById('topUpdated');if(updated)updated.textContent=lastSuccessfulScoreUpdate?(feedsSucceeded?'Τελευταία επιτυχής ενημέρωση ':'Τελευταία επιτυχής ενημέρωση ')+lastSuccessfulScoreUpdate.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'Αναμονή επιβεβαιωμένων δεδομένων';
  if(refreshButton){refreshButton.disabled=false;refreshButton.textContent='↻ Ανανέωση'}
  loadingScores=false;
 }
