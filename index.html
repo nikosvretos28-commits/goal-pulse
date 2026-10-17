@@ -794,12 +794,42 @@ function renderTopAiAlerts(){
 }
 
 function showSignalHistory(){
-  const now=new Date(),yesterday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);
-  const filtered=signalAlertHistory.filter(a=>{const d=new Date(Number(a.createdAt));return !Number.isNaN(d.getTime())&&d.getFullYear()===yesterday.getFullYear()&&d.getMonth()===yesterday.getMonth()&&d.getDate()===yesterday.getDate()});
-  document.getElementById('aiCount').textContent=filtered.filter(a=>a.level!=='VIP').length;document.getElementById('vipCount').textContent=filtered.filter(a=>a.level==='VIP').length;document.getElementById('historyCount').textContent=filtered.length;const judged=filtered.filter(a=>(!a.level||a.level==='AI')&&!a.manualOutcome&&a.outcome&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));const hits=judged.filter(a=>String(a.outcome).startsWith('Επιβεβαιώθηκε')).length;document.getElementById('hitRate').textContent=judged.length?Math.round(hits/judged.length*100)+'% ('+hits+'/'+judged.length+')':'—';document.getElementById('manualCount').textContent=filtered.filter(a=>(!a.level||a.level==='AI')&&a.manualOutcome&&a.outcome&&a.outcome!=='εκκρεμεί').length;document.getElementById('pendingCount').textContent=filtered.filter(a=>a.outcome==='εκκρεμεί').length;
-  if(!filtered.length){signalResults.innerHTML='<p>Δεν υπάρχουν δημόσια AI Alerts για την προηγούμενη ημέρα. Το δημόσιο ιστορικό εμφανίζει μόνο τη χθεσινή ημερομηνία.</p>';return}
-  signalResults.innerHTML=filtered.slice(0,50).map(a=>{const i=signalAlertHistory.indexOf(a);return '<div class="signal-row"><div><strong>⚡ '+esc(a.level||'AI')+' · '+esc(a.home)+' – '+esc(a.away)+'</strong><div class="signal-muted">'+esc(a.league)+' · '+esc(a.minute)+' · '+esc(a.market||'ένταση')+' · '+esc(a.reason)+'<br><span>Αξιολόγηση: '+esc(a.outcome||'εκκρεμεί')+'</span></div><div style="display:flex;gap:5px;margin-top:6px"><button class="mini-btn" data-outcome="hit" data-alert="'+i+'">Επιβεβαιώθηκε</button><button class="mini-btn" data-outcome="miss" data-alert="'+i+'">Δεν επιβεβαιώθηκε</button></div></div><span class="signal-score">'+esc(new Date(a.createdAt).toLocaleDateString('el-GR'))+' '+esc(a.time||'')+'</span></div>'}).join('')+(filtered.length>50?'<p class="signal-muted">Εμφανίζονται τα πρώτα 50 από '+filtered.length+' alerts αυτής της περιόδου.</p>':'')+'<p class="signal-muted">Ο scanner αναλύει μεταβολές στα διαθέσιμα live στατιστικά· δεν είναι εκπαιδευμένο μοντέλο και δεν εγγυάται γκολ ή κόρνερ. Το δημόσιο ιστορικό περιορίζεται στην προηγούμενη ημέρα. Η συνδρομητική πρόσβαση σε παλαιότερο ιστορικό απαιτεί ξεχωριστό έλεγχο λογαριασμού.</p>';
- }
+  const period=document.getElementById('signalHistoryPeriod')?.value||'today';
+  const now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+  const yesterdayStart=todayStart-86400000;
+  const filtered=signalAlertHistory.filter(a=>{
+    const t=Number(a.createdAt);if(!Number.isFinite(t))return false;
+    if(period==='today')return t>=todayStart;
+    if(period==='yesterday')return t>=yesterdayStart&&t<todayStart;
+    if(period==='7days')return t>=todayStart-6*86400000;
+    if(period==='30days')return t>=todayStart-29*86400000;
+    return true;
+  }).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
+  const ai=filtered.filter(a=>a.level!=='VIP'),vip=filtered.filter(a=>a.level==='VIP');
+  const resolved=ai.filter(a=>!a.manualOutcome&&a.outcome&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
+  const rate=list=>{const done=list.filter(a=>!a.manualOutcome&&a.outcome&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));const hits=done.filter(a=>String(a.outcome).startsWith('Επιβεβαιώθηκε')).length;return done.length?Math.round(hits/done.length*100)+'% ('+hits+'/'+done.length+')':'— (0/0)'};
+  const hits=resolved.filter(a=>String(a.outcome).startsWith('Επιβεβαιώθηκε')).length;
+  document.getElementById('aiCount').textContent=ai.length;
+  document.getElementById('vipCount').textContent=vip.length;
+  document.getElementById('historyCount').textContent=filtered.length;
+  document.getElementById('hitRate').textContent=resolved.length?Math.round(hits/resolved.length*100)+'% ('+hits+'/'+resolved.length+')':'— (0/0)';
+  document.getElementById('goalHitRate').textContent=rate(ai.filter(a=>a.market==='πιθανό γκολ'));
+  document.getElementById('cornerHitRate').textContent=rate(ai.filter(a=>a.market==='πιθανό κόρνερ'));
+  document.getElementById('manualCount').textContent=ai.filter(a=>a.manualOutcome&&a.outcome&&a.outcome!=='εκκρεμεί').length;
+  document.getElementById('pendingCount').textContent=ai.filter(a=>a.outcome==='εκκρεμεί').length;
+  const labels={today:'σήμερα',yesterday:'χθες', '7days':'τις τελευταίες 7 ημέρες','30days':'τις τελευταίες 30 ημέρες',all:'σε όλο το τοπικό ιστορικό'};
+  if(!filtered.length){signalResults.innerHTML='<p>Δεν υπάρχουν αποθηκευμένα alerts για '+esc(labels[period]||'αυτή την περίοδο')+'. Ο scanner θα καταγράφει νέες ενδείξεις όταν υπάρχουν αρκετά live δεδομένα.</p><p class="signal-muted">Το ιστορικό αποθηκεύεται τοπικά σε αυτή τη συσκευή/browser και δεν συγχρονίζεται ακόμη μεταξύ συσκευών.</p>';return}
+  const groups=new Map();
+  filtered.forEach(a=>{const d=new Date(Number(a.createdAt)),key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');if(!groups.has(key))groups.set(key,[]);groups.get(key).push(a)});
+  const dayHtml=[...groups.entries()].map(([key,items])=>{
+    const [yy,mm,dd]=key.split('-').map(Number),heading=new Date(yy,mm-1,dd).toLocaleDateString('el-GR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+    return '<h4 class="detail-heading" style="margin:18px 0 8px">📅 '+esc(heading)+' · '+items.length+' alerts</h4>'+items.map(a=>{
+      const i=signalAlertHistory.indexOf(a),isVip=a.level==='VIP',market=a.market||'ένταση';
+      return '<div class="signal-row"><div><strong>'+(isVip?'◆':'⚡')+' '+esc(a.level||'AI')+' · '+esc(a.home||'')+' – '+esc(a.away||'')+'</strong><div class="signal-muted">'+esc(a.league||'')+' · '+esc(a.minute||'LIVE')+' · '+esc(market)+' · '+esc(a.reason||'')+'<br><span>Επαλήθευση: '+esc(a.outcome||'εκκρεμεί')+(a.evaluationWindowMinutes?' · παράθυρο '+esc(a.evaluationWindowMinutes)+'′':'')+'</span></div>'+(a.outcome==='εκκρεμεί'?'<div style="display:flex;gap:5px;margin-top:6px"><button class="mini-btn" data-outcome="hit" data-alert="'+i+'">Επιβεβαιώθηκε χειροκίνητα</button><button class="mini-btn" data-outcome="miss" data-alert="'+i+'">Δεν επιβεβαιώθηκε χειροκίνητα</button></div>':'')+'</div><span class="signal-score">'+esc(new Date(Number(a.createdAt)).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}))+'</span></div>';
+    }).join('');
+  }).join('');
+  signalResults.innerHTML=dayHtml+'<p class="signal-muted">Τα ποσοστά είναι πραγματικά αποτελέσματα των alerts που έχουν αξιολογηθεί αυτόματα στο επιλεγμένο τοπικό ιστορικό, όχι εκτίμηση μελλοντικής πιθανότητας. Γκολ: επιβεβαιώνεται αν σημειωθεί γκολ στο παράθυρο μετά το alert. Κόρνερ: επιβεβαιώνεται αν αυξηθεί ο συνολικός αριθμός κόρνερ στο ίδιο παράθυρο και τα live στατιστικά είναι διαθέσιμα. Οι εκκρεμείς και οι χειροκίνητες αξιολογήσεις δεν μπαίνουν στα αυτόματα ποσοστά. Το ιστορικό μένει σε αυτή τη συσκευή/browser μέχρι να ενεργοποιηθεί ασφαλής μόνιμη αποθήκευση στον server.</p>';
+}
 function updateIntervalStats(match,trail,current,now){
  const article=[...document.querySelectorAll('.match')].find(el=>el.dataset.eventId===String(match.id));
  const strip=article&&article.querySelector('.live-stat-strip');
