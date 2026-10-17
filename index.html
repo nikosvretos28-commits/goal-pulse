@@ -57,7 +57,7 @@ nav{display:flex;gap:24px;color:#c5d6e7;font-weight:650}nav a{color:inherit;text
 <aside class="right-stack">
 <section class="panel pressure"><div class="pressure-head"><h3>💚 Live Pressure Wave</h3><span class="subtle">LIVE DATA REQUIRED</span></div>
 <div style="margin-top:14px"><strong>Πραγματική ανάλυση πίεσης</strong><p class="subtle">Θα εμφανίζεται όταν συνδεθούν αξιόπιστα λεπτομερή live στατιστικά. Δεν εμφανίζουμε ψεύτικο γράφημα ή κατασκευασμένα δεδομένα.</p></div></section>
-<section class="panel" id="leagues"><div class="panel-head"><h2>🏆 Top Leagues</h2><span class="subtle">6 διοργανώσεις</span></div><div class="league-list"><div class="league-item"><span class="flag">🏴</span><span class="name">Premier League<small>England</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇪🇸</span><span class="name">La Liga<small>Spain</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇮🇹</span><span class="name">Serie A<small>Italy</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇩🇪</span><span class="name">Bundesliga<small>Germany</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇫🇷</span><span class="name">Ligue 1<small>France</small></span><span class="live-tag">LEAGUE</span></div></div></section>
+<section class="panel" id="leagues"><div class="panel-head"><h2>🏆 Top Leagues</h2><span class="subtle">6 διοργανώσεις</span></div><div class="league-list"><div class="league-item"><span class="flag">🏴</span><span class="name">Premier League<small>England</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇪🇸</span><span class="name">La Liga<small>Spain</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇮🇹</span><span class="name">Serie A<small>Italy</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇩🇪</span><span class="name">Bundesliga<small>Germany</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇫🇷</span><span class="name">Ligue 1<small>France</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">⭐</span><span class="name">Champions League<small>Europe</small></span><span class="live-tag">LEAGUE</span></div></div></section>
 <section class="panel insight" id="insights"><h3>✦ Pulse Intelligence</h3><p>Η επόμενη έκδοση μπορεί να συνδυάσει ζωντανά στατιστικά, ρυθμό αγώνα και ιστορικά δεδομένα.</p><div class="insight-card"><div class="insight-label">AI INSIGHTS · CONCEPT</div><strong>Ανάλυση αγώνα σε πραγματικό χρόνο</strong><p style="margin:7px 0 0">Απαιτείται σύνδεση σε πραγματική πηγή δεδομένων και επαληθευμένο μοντέλο.</p></div></section>
 </aside>
 </div>
@@ -107,7 +107,12 @@ async function loadScores(){
     const comp=(e.competitions||[])[0]||{}, teams=comp.competitors||[];
     const h=teams.find(t=>t.homeAway==='home')||teams[0]||{}, a=teams.find(t=>t.homeAway==='away')||teams[1]||{};
     const st=(comp.status&&comp.status.type)||e.status&&e.status.type||{};
-    return {league:l[1],flag:l[3],state:st.state||'pre',clock:(comp.status&&comp.status.displayClock)||st.shortDetail||e.date||'',date:st.shortDetail||'',home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score}};
+    const state=st.state||'pre';
+    const kickoff=e.date?new Date(e.date):null;
+    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
+    const clock=state==='in'?((comp.status&&comp.status.displayClock)||st.shortDetail||'LIVE'):state==='post'?'FT':validKickoff?kickoff.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'ΠΡΟΣΕΧΗΣ';
+    const date=validKickoff?kickoff.toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit'}):'';
+    return {league:l[1],flag:l[3],state,clock,date,home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score}};
    });
   }catch(err){return []}
  }));
