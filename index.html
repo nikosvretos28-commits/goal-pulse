@@ -530,6 +530,25 @@ header nav a{padding:9px 0;font-size:11px}
  .goal-flash::before{font-size:12px;padding:7px 6px;letter-spacing:1px}
 }
 @media(min-width:561px) and (max-width:850px){.team{font-size:14px}.match-score{font-size:24px}}
+
+/* Readable team names: prioritize the teams over decorative spacing */
+.live-match-line .live-row .teamname{font-size:13px;font-weight:850;line-height:1.2;color:#f4f8ff;letter-spacing:0;white-space:normal;text-overflow:clip;overflow-wrap:anywhere}
+.live-match-line .live-row .score{font-size:16px;font-weight:1000}
+.live-match-line .live-row .minute{font-size:10px;font-weight:850}
+@media(max-width:850px){
+ .live-match-line .live-row{grid-template-columns:14px minmax(0,1fr) 34px minmax(0,1fr) 14px 30px;gap:3px}
+ .live-match-line .live-row .teamname{font-size:11px;line-height:1.12;white-space:normal;overflow-wrap:anywhere}
+ .live-match-line .live-row .score{font-size:13px}
+ .live-match-line .live-row .minute{font-size:9px}
+}
+@media(max-width:560px){
+ .live-match-line .live-row{grid-template-columns:11px minmax(0,1fr) 30px minmax(0,1fr) 11px 25px;gap:2px;padding:8px 3px}
+ .live-match-line .live-row .teamname{font-size:10px;line-height:1.1;white-space:normal;overflow-wrap:anywhere;letter-spacing:-.1px}
+ .live-match-line .live-row .score{font-size:12px}
+ .live-match-line .live-row .minute{font-size:8px}
+ .live-match-line .live-row .crest img{width:13px;height:13px}
+}
+
 </style>
 </head>
 <body>
