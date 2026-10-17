@@ -48,7 +48,7 @@ nav{display:flex;gap:24px;color:#c5d6e7;font-weight:650}nav a{color:inherit;text
 </section>
 
 <div class="filters" id="matches">
-<button class="filter active" data-filter="all">Όλοι</button><button class="filter" data-filter="live">● Live</button><button class="filter" data-filter="upcoming">Προσεχείς</button><button class="filter" data-filter="signals">AI signals</button>
+<button class="filter active" data-filter="all">Όλοι</button><button class="filter" data-filter="live">● Live</button><button class="filter" data-filter="upcoming">Προσεχείς</button><button class="filter" data-filter="finished">Ολοκληρωμένοι</button>
 <input class="search" id="matchSearch" placeholder="⌕  Αναζήτηση ομάδας ή πρωταθλήματος…" aria-label="Αναζήτηση αγώνα">
 </div>
 <div class="main-grid">
@@ -86,7 +86,7 @@ function cardFor(m){
 }
 function render(){
  const q=document.getElementById('matchSearch').value.trim().toLowerCase();
- const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='signals'&&false))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
+ const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='finished'&&m.state==='post'))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
  const list=document.getElementById('matchList');
  if(!allMatches.length){list.innerHTML='<p class="subtle" style="padding:20px">Δεν υπάρχουν διαθέσιμα δεδομένα αυτή τη στιγμή. Δοκίμασε ξανά σε λίγο.</p>';}
  else if(active==='signals'){list.innerHTML='<p class="subtle" style="padding:20px">Τα AI signals δεν είναι ενεργά ακόμη. Χρειάζονται πραγματικά live στατιστικά και επαληθευμένο μοντέλο· δεν εμφανίζουμε κατασκευασμένες προβλέψεις.</p>';}
