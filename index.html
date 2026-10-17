@@ -576,9 +576,9 @@ function updateIntervalStats(match,trail,current,now){
  node.textContent=delta(5)+'  |  '+delta(10);
 }
 
-function liveMatchLine(m){
+function liveMatchLine(m,highActivity=false){
  const recentAlert=signalAlertHistory.find(a=>String(a.eventId)===String(m.id)&&a.market==="πιθανό γκολ"&&a.createdAt&&Date.now()-a.createdAt<8*60*1000);
- const alertHtml=recentAlert?'<span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>':"";
+ const alertHtml=recentAlert?'<span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>':(highActivity?'<span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>':"");
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams[0]||{},away=teams[1]||{};
@@ -598,10 +598,36 @@ function liveMatchLine(m){
 }
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
- const now=Date.now();const recent=signalAlertHistory.filter(a=>a.market==="πιθανό γκολ"&&a.createdAt&&now-a.createdAt<8*60*1000);
- const ids=[...new Set(recent.map(a=>String(a.eventId)))];
- const matches=ids.map(id=>allMatches.find(m=>String(m.id)===id&&m.state==="in")).filter(Boolean).slice(0,5);
- box.innerHTML=matches.length?matches.map(m=>liveMatchLine(m)).join(''):'<div class="subtle" style="padding:10px">Δεν υπάρχει αυτή τη στιγμή αγώνας με αρκετά στοιχεία για προειδοποίηση πιθανού γκολ.</div>';
+ const now=Date.now();
+ const scoreMatch=m=>{
+  const stats=liveMetricsCache.get(String(m.id));
+  if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
+  const teams=stats.teams;
+  const trail=signalTrails.get(String(m.id))||[];
+  const baseline=[...trail].reverse().find(item=>now-item.at>=5*60*1000);
+  let recentShots=0,recentOnTarget=0,recentCorners=0;
+  if(baseline&&Array.isArray(baseline.values)){
+   teams.forEach((team,i)=>{
+    const prev=baseline.values[i]||{};
+    for(const [key,field] of [['shots','shots'],['shotsOnTarget','shotsOnTarget'],['corners','corners']]){
+     if(team[key]!=null&&prev[field]!=null){
+      const d=Math.max(0,Number(team[key])-Number(prev[field]));
+      if(key==='shots')recentShots+=d;
+      if(key==='shotsOnTarget')recentOnTarget+=d;
+      if(key==='corners')recentCorners+=d;
+     }
+    }
+   });
+  }
+  const totalShots=teams.reduce((n,t)=>n+Number(t.shots||0),0);
+  const totalOnTarget=teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0);
+  const score=recentShots+recentOnTarget*2+recentCorners*2;
+  const active=score>=3||(totalShots>=10&&totalOnTarget>=4);
+  return active?{match:m,score,recentShots,recentOnTarget,recentCorners,totalShots,totalOnTarget,hasRecentBaseline:!!baseline}:null;
+ };
+ const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
+  .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots).slice(0,5);
+ box.innerHTML=ranked.length?ranked.map(x=>liveMatchLine(x.match,true)).join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίζεται ακόμη υψηλή δραστηριότητα από τα διαθέσιμα live στατιστικά. Η λίστα ενημερώνεται αυτόματα.</div>';
 }
 async function runSignalCheck(){
  if(signalBusy)return;
@@ -662,6 +688,7 @@ async function runSignalCheck(){
     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · '+(vip?'VIP Alert':'AI Alert'),{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-'+key})}catch{}}
    }
   }
+  renderHighActivityMatches();
   showSignalHistory();
   signalStatus.textContent=available?('Live stats διαθέσιμα σε '+available+' αγώνες · έλεγχος '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+(newAlerts?' · νέα σήματα: '+newAlerts:'')):(liveMatches.length?'Υπάρχουν '+liveMatches.length+' live αγώνες, αλλά δεν επιστράφηκαν live σουτ/κόρνερ.':'Δεν υπάρχουν live αγώνες για έλεγχο αυτή τη στιγμή.');
  }catch(err){signalStatus.textContent='Live scanner: '+(err.message||'προσωρινό σφάλμα');if(!signalAlertHistory.length)signalResults.innerHTML='<p>Δεν υπάρχουν ακόμη διαθέσιμα live στατιστικά. Δεν δημιουργούμε σήματα όταν λείπουν δεδομένα.</p>'}
