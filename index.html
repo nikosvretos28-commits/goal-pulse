@@ -635,6 +635,7 @@ header nav a{padding:9px 0;font-size:11px}
  <div class="top-ai-alerts-head"><div><h2 id="topVipAlertsTitle">◆ VIP ALERTS · PREMIUM ΠΡΟΤΑΣΕΙΣ</h2><p>Ειδικές ενδείξεις υψηλότερου επιπέδου από τα live στατιστικά.</p></div><span class="pulse-status" id="topVipAlertCount">0 VIP</span></div>
  <div class="top-ai-alert-list" id="topVipAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων VIP ενδείξεων…</div></div>
  <p class="top-ai-alert-privacy">Το περιεχόμενο VIP προορίζεται για συνδρομητές. Οι μη συνδρομητές δεν βλέπουν ανάλυση με το πάτημα.</p>
+ <div class="notification-optin"><button type="button" id="enableVipPushNotifications" class="login">🔔 Ενεργοποίηση ειδοποιήσεων</button><span id="vipPushNotificationStatus" class="subtle">Ειδοποιήσεις VIP σε αυτή τη συσκευή</span></div>
 </section>
 
 
@@ -1210,6 +1211,21 @@ if(enablePushButton)enablePushButton.addEventListener('click',async()=>{
    await goalPulseServiceWorkerRegistration.showNotification('Goal Pulse · Ειδοποιήσεις ενεργές',{body:'Η συσκευή επέτρεψε τις ειδοποιήσεις. Για ειδοποιήσεις όταν το site είναι κλειστό απαιτείται ακόμη σύνδεση Push server.' ,icon:'/favicon.ico',tag:'goal-pulse-test'});
   }else{new Notification('Goal Pulse · Ειδοποιήσεις ενεργές',{body:'Η άδεια ειδοποιήσεων ενεργοποιήθηκε.'})}
   status.textContent='Η άδεια δόθηκε σε αυτή τη συσκευή. Η αποστολή push στο παρασκήνιο θα ενεργοποιηθεί με τον server.';
+ }catch(e){status.textContent='Δεν ήταν δυνατή η ενεργοποίηση. Έλεγξε τις ρυθμίσεις ειδοποιήσεων του browser.'}
+});
+
+const enableVipPushButton=document.getElementById('enableVipPushNotifications');
+if(enableVipPushButton)enableVipPushButton.addEventListener('click',async()=>{
+ const status=document.getElementById('vipPushNotificationStatus');
+ if(!('Notification' in window)){status.textContent='Ο browser δεν υποστηρίζει ειδοποιήσεις.';return}
+ try{
+  const permission=await Notification.requestPermission();
+  if(permission!=='granted'){status.textContent=permission==='denied'?'Οι ειδοποιήσεις έχουν μπλοκαριστεί από τον browser.':'Δεν δόθηκε άδεια ειδοποιήσεων.';return}
+  if('serviceWorker' in navigator){
+   goalPulseServiceWorkerRegistration=goalPulseServiceWorkerRegistration||await navigator.serviceWorker.register('/sw.js');
+   await goalPulseServiceWorkerRegistration.showNotification('Goal Pulse · VIP ειδοποιήσεις ενεργές',{body:'Η άδεια ειδοποιήσεων VIP ενεργοποιήθηκε σε αυτή τη συσκευή. Για ειδοποιήσεις όταν το site είναι κλειστό απαιτείται ακόμη σύνδεση Push server.',icon:'/favicon.ico',tag:'goal-pulse-vip-test'});
+  }else{new Notification('Goal Pulse · VIP ειδοποιήσεις ενεργές',{body:'Η άδεια ειδοποιήσεων ενεργοποιήθηκε.'})}
+  status.textContent='Οι ειδοποιήσεις VIP έχουν άδεια σε αυτή τη συσκευή. Η αποστολή push στο παρασκήνιο απαιτεί ακόμη σύνδεση Push server.';
  }catch(e){status.textContent='Δεν ήταν δυνατή η ενεργοποίηση. Έλεγξε τις ρυθμίσεις ειδοποιήσεων του browser.'}
 });
 
