@@ -74,6 +74,19 @@ button:active{transform:scale(.98)}
 }
 @media(max-width:900px){nav{display:none}.hero{grid-template-columns:1fr}.hero-main{min-height:270px}.side-live{display:none}.main-grid{grid-template-columns:1fr}.right-stack{grid-template-columns:repeat(2,minmax(0,1fr))}.right-stack .panel:last-child{grid-column:1/-1}.bottom-strip{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.wrap{padding:0 12px}header{height:70px}.brand{min-width:0}.brand svg{width:43px}.brand-name{font-size:20px}.live-badge{display:none}.hero-main{padding:24px 20px;min-height:290px}.hero-ball{right:-18px;top:24%;font-size:75px;opacity:.35}.hero h1{font-size:38px}.search{max-width:none;flex-basis:100%;order:2}.filters{gap:6px}.filter{padding:8px 12px}.right-stack{grid-template-columns:1fr}.right-stack .panel:last-child{grid-column:auto}.bottom-strip{gap:8px}.feature{padding:11px}.live-row{grid-template-columns:25px 1fr auto 1fr 34px;padding:10px 9px;font-size:10px}.team{gap:5px}.teams{grid-template-columns:minmax(0,1fr) 57px minmax(0,1fr)}.team-logo{font-size:19px}.match{padding:10px}.match-bottom{align-items:flex-start;flex-direction:column}}
+
+/* Live Score+ app-like home layout inspired by modern football dashboards */
+.scoreboard-top{margin:14px 0 0;border:1px solid #173b55;border-radius:16px;background:linear-gradient(145deg,#0b1c2e,#081523);overflow:hidden}
+.scoreboard-title{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:20px 22px;border-bottom:1px solid #173449}
+.scoreboard-title h1{font-size:clamp(27px,3.5vw,40px);letter-spacing:-1.5px;margin:5px 0;color:#f4f8ff}.scoreboard-title h1 span{color:var(--green)}.scoreboard-title p{margin:0;color:var(--muted);font-size:12px}
+.scoreboard-status{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--green);font-size:11px;font-weight:850;border:1px solid #17563f;background:#0a2925;border-radius:30px;padding:9px 12px;white-space:nowrap}.scoreboard-status small{color:var(--muted);font-size:10px;font-weight:600}
+.top-live-head{display:flex;justify-content:space-between;align-items:center;padding:11px 17px;background:#0d2235;border-bottom:1px solid #173449}.top-live-head strong{font-size:12px;color:#ff758b}.top-live #liveRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.top-live .live-row{min-width:0;border-right:1px solid #132d41;padding:10px 14px}
+.product-nav{position:sticky;top:0;z-index:20;display:flex;gap:5px;overflow-x:auto;padding:8px;margin:12px 0;background:#081725ed;border:1px solid #17374d;border-radius:12px;backdrop-filter:blur(12px)}
+.product-nav a{white-space:nowrap;text-decoration:none;color:#a9bfd0;font-size:11px;font-weight:800;padding:10px 13px;border-radius:8px;border:1px solid transparent}.product-nav a:hover,.product-nav a.selected{background:#103329;color:var(--green);border-color:#1a644a}
+.filters{margin-top:10px}.main-grid{grid-template-columns:minmax(0,2fr) minmax(280px,.72fr)}.main-grid>.panel{min-width:0}
+@media(max-width:850px){.top-live #liveRows{grid-template-columns:1fr}.scoreboard-title{padding:16px}.scoreboard-status{max-width:150px;white-space:normal}.main-grid{grid-template-columns:1fr}.product-nav{top:0}}
+@media(max-width:560px){.scoreboard-title{align-items:flex-start;gap:8px}.scoreboard-title h1{font-size:29px}.scoreboard-status{font-size:9px;padding:7px}.product-nav{margin:8px 0}.product-nav a{padding:9px 10px}.top-live .live-row{grid-template-columns:24px minmax(0,1fr) auto minmax(0,1fr) 34px;padding:9px 8px}}
 </style>
 </head>
 <body>
@@ -87,16 +100,15 @@ button:active{transform:scale(.98)}
 </svg>
 <span class="brand-name">GOAL<span>PULSE</span></span>
 </a>
-<nav><a href="#live">Live</a><a href="#matches">Matches</a><a href="#leagues">Leagues</a><a href="#insights">AI Insights</a></nav>
-<div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE CENTER</span><button class="login" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Explore matches ↗</button></div>
+<nav><a href="#matches">Live Score+</a><a href="#pulseAlertsTitle">AI Alerts</a><a href="#leagues">Διοργανώσεις</a></nav>
+<div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span><button class="login" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Live Score ↗</button></div>
 </header>
 
-<section class="hero">
-<div class="hero-main"><div class="hero-copy"><div class="eyebrow">● LIVE SCORES &nbsp; • &nbsp; MATCH INTELLIGENCE</div><h1>FEEL THE GAME.<span>LIVE THE PULSE.</span></h1><p>Live-score εμπειρία νέας γενιάς. Αποτελέσματα, στατιστικά και εικόνα αγώνα σε ένα premium περιβάλλον.</p><button class="primary" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Δες τους αγώνες <span>→</span></button></div><div class="hero-ball" aria-hidden="true">⚽</div></div>
-<aside class="side-live" id="live"><div class="panel-head"><h2>🔴 Live τώρα</h2><span class="subtle">LIVE SCORE FEED</span></div>
-<div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div>
-</aside>
+<section class="scoreboard-top">
+ <div class="scoreboard-title"><div><div class="eyebrow">GOAL PULSE · LIVE FOOTBALL CENTRE</div><h1>Live Score <span>+</span></h1><p>Όλοι οι διαθέσιμοι αγώνες και τα live δεδομένα σε μία οθόνη.</p></div><div class="scoreboard-status"><span class="pulse-dot"></span><span id="liveCountTop">LIVE CENTER</span><small id="topUpdated">Αυτόματη ενημέρωση</small></div></div>
+ <div class="top-live" id="live"><div class="top-live-head"><strong>● Live τώρα</strong><span class="subtle">Ζωντανά σκορ</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
 </section>
+<nav class="product-nav" aria-label="Κύριες ενότητες"><a class="selected" href="#matches">⚽ Live Score+</a><a href="#pulseAlertsTitle">✦ AI Alerts</a><a href="#pulseAlertsTitle" onclick="setTimeout(()=>{document.getElementById('signalMarket').value='goal'},0)">◆ VIP Alerts</a><a href="#pulseAlertsTitle">☷ Personal Scanners</a><a href="#pulseAlertsTitle" onclick="document.getElementById('showSignalHistory').click()">◷ Today / History</a></nav>
 
 <div class="filters" id="matches">
 <div class="date-controls" aria-label="Επιλογή ημερομηνίας αγώνων"><button class="mini-btn date-step" id="prevDate" type="button" aria-label="Προηγούμενη ημέρα">‹</button><label class="date-label" for="matchDate">Ημερομηνία <input id="matchDate" type="date" aria-label="Ημερομηνία αγώνων"></label><button class="mini-btn date-step" id="nextDate" type="button" aria-label="Επόμενη ημέρα">›</button><button class="mini-btn" id="todayDate" type="button">Σήμερα</button></div>
@@ -200,12 +212,12 @@ async function loadScores(){
  if(feedsSucceeded>0)allMatches=freshMatches;
  render();
  runSignalCheck();
- const live=allMatches.filter(m=>m.state==='in').slice(0,4);
+ const live=allMatches.filter(m=>m.state==='in').slice(0,6);
  const box=document.getElementById('liveRows');
  if(box){
   box.innerHTML=live.length?live.map(m=>'<div class="live-row"><span class="crest">⚽</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></div>').join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
  }
- if(feedStatus)feedStatus.textContent=feedsSucceeded?`${feedsSucceeded}/${LEAGUES.length} πηγές · ${new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})}`:(allMatches.length?'Πρόβλημα σύνδεσης · τελευταία δεδομένα':'API προσωρινά μη διαθέσιμο');
+ if(feedStatus)feedStatus.textContent=feedsSucceeded?`${feedsSucceeded}/${LEAGUES.length} πηγές · ${new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})}`:(allMatches.length?'Πρόβλημα σύνδεσης · τελευταία δεδομένα':'API προσωρινά μη διαθέσιμο');const topCount=document.getElementById('liveCountTop');if(topCount)topCount.textContent=allMatches.filter(m=>m.state==='in').length+' LIVE ΑΓΩΝΕΣ';const updated=document.getElementById('topUpdated');if(updated)updated.textContent='Ενημέρωση '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'});
  if(refreshButton){refreshButton.disabled=false;refreshButton.textContent='↻ Ανανέωση'}
  loadingScores=false;
 }
