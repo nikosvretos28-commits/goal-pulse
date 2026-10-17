@@ -139,6 +139,8 @@ document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{
 document.getElementById('matchSearch').addEventListener('input',render);
 document.getElementById('refreshScores').addEventListener('click',loadScores);
 function closeAnalysis(){document.getElementById('analysisModal').classList.remove('open')}
+document.getElementById('analysisModal').addEventListener('click',event=>{if(event.target.id==='analysisModal')closeAnalysis()});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAnalysis()});
 function normTeam(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|afc|sc|ac|club|de|the)\b/g,'').replace(/[^a-z0-9]/g,'')}
 function sameTeam(a,b){const x=normTeam(a),y=normTeam(b);return !!x&&!!y&&(x===y||(x.length>=5&&y.length>=5&&(x.includes(y)||y.includes(x))))}
 function findStat(stats,key){const periods=stats?.data?.periods||[];const ordered=[...periods.filter(p=>String(p.period||'').toLowerCase()==='all'),...periods.filter(p=>String(p.period||'').toLowerCase()!=='all')];for(const p of ordered){for(const g of (p.groups||[])){for(const item of (g.items||[])){if(item.key===key)return item}}}return null}
