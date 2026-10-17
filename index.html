@@ -641,7 +641,29 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams[0]||{},away=teams[1]||{};
- const pair=key=>home[key]==null||away[key]==null?'—':String(home[key])+'–'+String(away[key]);
+ const metric=(team,key)=>{
+  const aliases={
+   shots:['shots','totalShots','total_shots','total_attempts','totalAttempts'],
+   shotsOnTarget:['shotsOnTarget','shots_on_target','shots_on_goal','shotsOnGoal','onTargetShots'],
+   shotsOffTarget:['shotsOffTarget','shots_off_target','shots_off_goal','shotsOffGoal','offTargetShots'],
+   blockedShots:['blockedShots','blocked_shots','shotsBlocked','shots_blocked']
+  };
+  for(const name of (aliases[key]||[key])){const v=team?.[name];if(v!==undefined&&v!==null&&String(v).trim()!==''&&Number.isFinite(Number(v)))return {value:Number(v),estimated:false}}
+  if(key==='shotsOffTarget'){
+   const total=metric(team,'shots'),on=metric(team,'shotsOnTarget'),blocked=metric(team,'blockedShots');
+   if(total&&on){
+    const value=Math.max(0,total.value-on.value-(blocked?blocked.value:0));
+    return {value,estimated:!blocked};
+   }
+  }
+  return null;
+ };
+ const pair=key=>{
+  const a=metric(home,key),b=metric(away,key);
+  if(!a||!b)return '—';
+  const fmt=v=>String(Number.isInteger(v.value)?v.value:Number(v.value.toFixed(2)))+(v.estimated?'≈':'');
+  return fmt(a)+'–'+fmt(b);
+ };
  const trail=signalTrails.get(String(m.id))||[],now=Date.now();
  const delta=(minutes,key)=>{
   const base=[...trail].reverse().find(item=>now-item.at>=minutes*60000);
