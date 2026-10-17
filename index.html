@@ -110,7 +110,7 @@ button:active{transform:scale(.98)}
 <section class="panel pressure"><div class="pressure-head"><h3>💚 Live Pressure Wave</h3><span class="subtle">LIVE DATA REQUIRED</span></div>
 <div style="margin-top:14px"><strong>Πραγματική ανάλυση πίεσης</strong><p class="subtle">Η πραγματική Pressure Wave εμφανίζεται μέσα στην ανάλυση ολοκληρωμένων αγώνων, όταν ο πάροχος διαθέτει δεδομένα. Δεν παρουσιάζουμε εκτιμήσεις ως πραγματικά live στοιχεία.</p></div></section>
 <section class="panel" id="leagues"><div class="panel-head"><h2>🏆 Διοργανώσεις</h2><span class="subtle">18 διοργανώσεις</span></div><div class="league-list"><div class="league-item"><span class="flag">🏴</span><span class="name">Premier League<small>England</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇪🇸</span><span class="name">La Liga<small>Spain</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇮🇹</span><span class="name">Serie A<small>Italy</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇩🇪</span><span class="name">Bundesliga<small>Germany</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇫🇷</span><span class="name">Ligue 1<small>France</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇵🇹</span><span class="name">Primeira Liga<small>Portugal</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇳🇱</span><span class="name">Eredivisie<small>Netherlands</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇬🇷</span><span class="name">Super League Greece<small>Greece</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🏴</span><span class="name">Scottish Premiership<small>Scotland</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇹🇷</span><span class="name">Süper Lig<small>Türkiye</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇧🇷</span><span class="name">Brasileirão<small>Brazil</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇦🇷</span><span class="name">Liga Profesional<small>Argentina</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇺🇸</span><span class="name">MLS<small>USA</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇲🇽</span><span class="name">Liga MX<small>Mexico</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇦🇺</span><span class="name">A-League<small>Australia</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">⭐</span><span class="name">Champions League<small>Europe</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🏆</span><span class="name">Europa League<small>Europe</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🏆</span><span class="name">Conference League<small>Europe</small></span><span class="live-tag">LEAGUE</span></div></div></section>
-<section class="pulse-alerts" aria-labelledby="pulseAlertsTitle"><div class="pulse-alerts-head"><div><div class="insight-label">GOAL PULSE · MATCH INTELLIGENCE</div><h3 id="pulseAlertsTitle">✦ Pulse Watch</h3><p>Εντοπισμός αγώνων που αξίζουν προσοχή, με βάση την εξέλιξη του σκορ και το λεπτό.</p></div><span class="pulse-status">EARLY ACCESS</span></div><div class="pulse-alert-grid"><label>Ελάχιστος δείκτης αγώνα <output id="signalThresholdLabel">20/35</output><input id="signalThreshold" type="range" min="0" max="35" step="5" value="20"></label><label>Στόχος<select id="signalMarket"><option value="goal">Γκολ / έντονη δράση</option><option value="pressure">Πίεση / επιθέσεις</option></select></label></div><button type="button" class="mini-btn" id="runSignalCheck">Αναζήτηση σημάτων αγώνα</button><div id="signalResults" class="signal-results" aria-live="polite"><p>Επίλεξε το είδος δράσης που σε ενδιαφέρει και αναζήτησε αγώνες σε εξέλιξη.</p></div></section><section class="panel insight" id="insights"><h3>✦ Pulse Intelligence</h3><p>Μια καθαρή εικόνα του αγώνα μέσα από το σκορ, τα διαθέσιμα στατιστικά και τα σημαντικά συμβάντα.</p><div class="insight-card"><div class="insight-label">MATCH INTELLIGENCE</div><strong>Στατιστική ανάλυση αγώνα</strong><p style="margin:7px 0 0">Τα xG και Pressure Wave εξαρτώνται από τη διαθεσιμότητα των δεδομένων μετά τη λήξη.</p></div></section>
+<section class="pulse-alerts" aria-labelledby="pulseAlertsTitle"><div class="pulse-alerts-head"><div><div class="insight-label">GOAL PULSE · MATCH INTELLIGENCE</div><h3 id="pulseAlertsTitle">✦ Pulse Watch</h3><p>Εντοπισμός αγώνων που αξίζουν προσοχή, με βάση την εξέλιξη του σκορ και το λεπτό.</p></div><span class="pulse-status">EARLY ACCESS</span></div><div class="pulse-alert-grid"><label>Ευαισθησία σήματος <output id="signalThresholdLabel">3/10</output><input id="signalThreshold" type="range" min="1" max="10" step="1" value="3"></label><label>Στόχος<select id="signalMarket"><option value="goal">Ένταση πριν από πιθανό γκολ</option><option value="pressure">Επιθετική πίεση</option></select></label></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button type="button" class="mini-btn" id="runSignalCheck">Έλεγχος live πίεσης</button><button type="button" class="mini-btn" id="enableNotifications">Ενεργοποίηση ειδοποιήσεων</button></div><div id="signalResults" class="signal-results" aria-live="polite"><p>Ο scanner ελέγχει τα διαθέσιμα live σουτ, σουτ στην εστία και κόρνερ. Οι ειδοποιήσεις ενεργοποιούνται όταν καταγράφεται νέα ένταση.</p></div><div class="subtle" id="signalStatus" role="status" aria-live="polite">Αναμονή πρώτου ελέγχου live στατιστικών…</div></section><section class="panel insight" id="insights"><h3>✦ Pulse Intelligence</h3><p>Μια καθαρή εικόνα του αγώνα μέσα από το σκορ, τα διαθέσιμα στατιστικά και τα σημαντικά συμβάντα.</p><div class="insight-card"><div class="insight-label">MATCH INTELLIGENCE</div><strong>Στατιστική ανάλυση αγώνα</strong><p style="margin:7px 0 0">Τα xG και Pressure Wave εξαρτώνται από τη διαθεσιμότητα των δεδομένων μετά τη λήξη.</p></div></section>
 </aside>
 </div>
 <div class="bottom-strip"><div class="feature"><span class="feature-icon">⚡</span><div><strong>Live updates</strong><small>Σχεδιασμός για real-time σκορ</small></div></div><div class="feature"><span class="feature-icon">✦</span><div><strong>AI insights</strong><small>Σκορ και στατιστική εικόνα αγώνα</small></div></div><div class="feature"><span class="feature-icon">📊</span><div><strong>Detailed stats</strong><small>xG, κατοχή, σουτ, κόρνερ</small></div></div><div class="feature"><span class="feature-icon">🌐</span><div><strong>All leagues</strong><small>Δυνατότητα επέκτασης διοργανώσεων</small></div></div></div>
@@ -192,7 +192,7 @@ async function loadScores(){
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
    const clock=state==='in'?((comp.status&&comp.status.displayClock)||st.shortDetail||'LIVE'):state==='post'?'FT':validKickoff?kickoff.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'ΠΡΟΣΕΧΗΣ';
    const date=validKickoff?kickoff.toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit'}):'';
-   return {league:l[1],flag:l[3],state,clock,date,dateISO:validKickoff?e.date.slice(0,10):'',home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score}};
+   return {id:String(e.id||''),leagueCode:l[0],league:l[1],flag:l[3],state,clock,date,dateISO:validKickoff?e.date.slice(0,10):'',home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score}};
   });
  });
  const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
@@ -220,25 +220,59 @@ document.getElementById('prevDate').addEventListener('click',()=>shiftMatchDate(
 document.getElementById('nextDate').addEventListener('click',()=>shiftMatchDate(1));
 document.getElementById('todayDate').addEventListener('click',()=>{selectedMatchDate=localISODate();dateInput.value=selectedMatchDate;loadScores()});
 document.getElementById('refreshScores').addEventListener('click',loadScores);
-const signalThreshold=document.getElementById('signalThreshold'),signalThresholdLabel=document.getElementById('signalThresholdLabel'),signalMarket=document.getElementById('signalMarket'),signalResults=document.getElementById('signalResults');
-signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/35');
-function runSignalCheck(){
- const threshold=Number(signalThreshold.value),market=signalMarket.value;
- if(!successfulFeeds){signalResults.innerHTML='<p>Η τελευταία ενημέρωση σκορ δεν είναι διαθέσιμη. Δεν χρησιμοποιούμε παλιά δεδομένα για νέα σήματα. Δοκίμασε ξανά σε λίγο.</p>';return}
- const liveMatches=allMatches.filter(m=>m.state==='in');
- if(!liveMatches.length){signalResults.innerHTML='<p>Δεν εντοπίζονται live αγώνες από την τρέχουσα πηγή. Δοκίμασε ξανά όταν υπάρχουν πραγματικά live δεδομένα.</p>';return}
- const rows=liveMatches.map(m=>{
-  const minute=Number.parseInt(String(m.clock||'').match(/\d+/)?.[0]||'0',10);
-  const home=Number(m.home.score),away=Number(m.away.score),scoreKnown=Number.isFinite(home)&&Number.isFinite(away);
-  const total=scoreKnown?home+away:0;let score=0,notes=[];
-  if(minute>=15&&minute<=80){score+=20;notes.push('εντός βασικού χρονικού παραθύρου')}
-  if(scoreKnown&&total===0&&minute>=20){score+=15;notes.push('χωρίς γκολ μέχρι τώρα')}
-  if(scoreKnown&&total>=1&&total<=3){score+=10;notes.push('το σκορ αφήνει περιθώριο αλλαγής')}
-  if(market==='pressure'){notes.push('λείπουν επιβεβαιωμένα live δεδομένα επιθέσεων/σουτ');score=Math.min(score,35)}else{notes.push('λείπουν xG και στατιστικά ανά λεπτό');score=Math.min(score,35)}
-  return {m,score,notes};
- }).filter(x=>x.score>=threshold).sort((a,b)=>b.score-a.score);
- if(!rows.length){signalResults.innerHTML='<p>Κανένα σήμα δεν περνά το επιλεγμένο όριο. Αυτό δεν σημαίνει ότι αποκλείεται να συμβεί γκολ.</p>';return}
- signalResults.innerHTML=rows.map(x=>'<div class="signal-row"><div><strong>'+esc(x.m.home.name)+' – '+esc(x.m.away.name)+'</strong><div class="signal-muted">'+esc(x.m.league)+' · '+esc(x.m.clock)+'<br>'+esc(x.notes.join(' · '))+'</div></div><span class="signal-score">'+x.score+'/35</span></div>').join('')+'<p>Ο δείκτης 0–35 ταξινομεί μόνο το διαθέσιμο πλαίσιο του αγώνα· δεν αποτελεί ποσοστό πιθανότητας.</p>';
+const signalThreshold=document.getElementById('signalThreshold'),signalThresholdLabel=document.getElementById('signalThresholdLabel'),signalMarket=document.getElementById('signalMarket'),signalResults=document.getElementById('signalResults'),signalStatus=document.getElementById('signalStatus');
+let signalBusy=false, signalSnapshots=new Map(), signalLastAlertAt=new Map(), signalAlertHistory=[];
+signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/10');
+document.getElementById('enableNotifications').addEventListener('click',async()=>{
+ if(!('Notification' in window)){signalStatus.textContent='Οι ειδοποιήσεις browser δεν υποστηρίζονται σε αυτή τη συσκευή.';return}
+ try{const p=await Notification.requestPermission();signalStatus.textContent=p==='granted'?'Οι ειδοποιήσεις browser ενεργοποιήθηκαν. Άφησε τη σελίδα ανοιχτή για live παρακολούθηση.':p==='denied'?'Οι ειδοποιήσεις έχουν μπλοκαριστεί από τον browser.':'Δεν δόθηκε άδεια για ειδοποιήσεις.'}catch{signalStatus.textContent='Δεν ήταν δυνατή η ενεργοποίηση ειδοποιήσεων.'}
+});
+function showSignalHistory(){
+ if(!signalAlertHistory.length){signalResults.innerHTML='<p>Δεν έχει καταγραφεί ακόμη έξαρση πίεσης. Ο έλεγχος συνεχίζεται όσο η σελίδα είναι ανοιχτή.</p>';return}
+ signalResults.innerHTML=signalAlertHistory.slice(0,8).map(a=>'<div class="signal-row"><div><strong>⚡ '+esc(a.home)+' – '+esc(a.away)+'</strong><div class="signal-muted">'+esc(a.league)+' · '+esc(a.minute)+' · '+esc(a.reason)+'<br><span>Σήμα έντασης — όχι εγγύηση γκολ</span></div></div><span class="signal-score">'+esc(a.time)+'</span></div>').join('')+'<p class="signal-muted">Τα σήματα βασίζονται σε μεταβολές live στατιστικών, όχι σε εκπαιδευμένο μοντέλο πρόβλεψης.</p>';
+}
+async function runSignalCheck(){
+ if(signalBusy)return;
+ signalBusy=true;
+ try{
+  const date=selectedMatchDate.replace(/-/g,'');
+  const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
+  const liveMatches=allMatches.filter(m=>m.state==='in');
+  let available=0,newAlerts=0;
+  const now=Date.now();
+  for(const m of liveMatches){
+   const live=(data.matches||[]).find(x=>x.eventId===m.id);
+   if(!live||!live.statsAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
+   available++;
+   const key=m.id||m.home.name+'-'+m.away.name;
+   const values=live.teams.map(t=>({shots:t.shots,shotsOnTarget:t.shotsOnTarget,corners:t.corners}));
+   const previous=signalSnapshots.get(key);
+   signalSnapshots.set(key,{values,at:now});
+   if(!previous||now-previous.at>180000)continue;
+   let points=0,reasons=[];
+   values.forEach((v,i)=>{
+    const p=previous.values[i]||{};
+    const ds=v.shots==null||p.shots==null?0:Math.max(0,v.shots-p.shots);
+    const dt=v.shotsOnTarget==null||p.shotsOnTarget==null?0:Math.max(0,v.shotsOnTarget-p.shotsOnTarget);
+    const dc=v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners);
+    if(dt>0){points+=4*dt;reasons.push('νέο σουτ στην εστία')}
+    if(ds>0){points+=Math.min(2,ds);reasons.push('αύξηση τελικών')}
+    if(dc>0){points+=2*dc;reasons.push('νέο κόρνερ')}
+   });
+   const sensitivity=Number(signalThreshold.value),last=signalLastAlertAt.get(key)||0;
+   if(points>=sensitivity&&reasons.length&&now-last>8*60*1000){
+    const reason=[...new Set(reasons)].join(' · ');
+    const alert={home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})};
+    signalAlertHistory.unshift(alert);signalAlertHistory=signalAlertHistory.slice(0,30);signalLastAlertAt.set(key,now);newAlerts++;
+    if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · Έξαρση πίεσης',{body:m.home.name+' – '+m.away.name+' · '+reason,tag:'goal-pulse-'+key})}catch{}}
+   }
+  }
+  showSignalHistory();
+  signalStatus.textContent=available?('Live stats διαθέσιμα σε '+available+' αγώνες · έλεγχος '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+(newAlerts?' · νέα σήματα: '+newAlerts:'')):(liveMatches.length?'Υπάρχουν '+liveMatches.length+' live αγώνες, αλλά δεν επιστράφηκαν live σουτ/κόρνερ.':'Δεν υπάρχουν live αγώνες για έλεγχο αυτή τη στιγμή.');
+ }catch(err){signalStatus.textContent='Live scanner: '+(err.message||'προσωρινό σφάλμα');if(!signalAlertHistory.length)signalResults.innerHTML='<p>Δεν υπάρχουν ακόμη διαθέσιμα live στατιστικά. Δεν δημιουργούμε σήματα όταν λείπουν δεδομένα.</p>'}
+ finally{signalBusy=false}
 }
 document.getElementById('runSignalCheck').addEventListener('click',runSignalCheck);
 signalMarket.addEventListener('change',runSignalCheck);
