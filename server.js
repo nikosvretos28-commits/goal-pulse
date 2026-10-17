@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
+const { Pool } = require("pg");
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
@@ -21,6 +22,110 @@ const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
 const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
+const analyticsPool = process.env.DATABASE_URL ? new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
+  max: 3,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000
+}) : null;
+let analyticsDbInit = null;
+let analyticsDbWarningLogged = false;
+
+async function ensureAnalyticsDb() {
+  if (!analyticsPool) return false;
+  if (!analyticsDbInit) {
+    analyticsDbInit = analyticsPool.query(`
+      CREATE TABLE IF NOT EXISTS live_stat_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        match_date TEXT NOT NULL,
+        team_name TEXT NOT NULL,
+        observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        shots DOUBLE PRECISION,
+        shots_on_target DOUBLE PRECISION,
+        corners DOUBLE PRECISION,
+        minute TEXT
+      );
+      CREATE INDEX IF NOT EXISTS live_stat_snapshots_event_team_time_idx
+        ON live_stat_snapshots (event_id, team_name, observed_at DESC);
+      CREATE INDEX IF NOT EXISTS live_stat_snapshots_time_idx
+        ON live_stat_snapshots (observed_at DESC);
+    `).then(() => true).catch(error => {
+      analyticsDbInit = null;
+      if (!analyticsDbWarningLogged) {
+        console.error("Goal Pulse analytics database unavailable; using in-memory fallback:", error.message);
+        analyticsDbWarningLogged = true;
+      }
+      return false;
+    });
+  }
+  return analyticsDbInit;
+}
+
+async function persistRollingTrends(matches, date) {
+  if (!analyticsPool || !await ensureAnalyticsDb()) return false;
+  try {
+    const snapshots = [];
+    for (const match of matches) for (const team of match.teams || []) {
+      if (team.team) snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, String(match.minute || "")]);
+    }
+    if (!snapshots.length) return true;
+    const values = [];
+    const tuples = snapshots.map((row, index) => {
+      const n = index * 7;
+      values.push(...row);
+      return `(${n+1}, ${n+2}, ${n+3}, NOW(), ${n+4}, ${n+5}, ${n+6}, ${n+7})`;
+    });
+    await analyticsPool.query(
+      `INSERT INTO live_stat_snapshots
+       (event_id, match_date, team_name, observed_at, shots, shots_on_target, corners, minute)
+       VALUES ${tuples.join(", ")}`, values
+    );
+    const eventIds = [...new Set(matches.map(match => String(match.eventId)).filter(Boolean))];
+    const baselines = {};
+    for (const minutes of [5, 10]) {
+      const result = await analyticsPool.query(
+        `SELECT DISTINCT ON (event_id, team_name)
+           event_id, team_name, observed_at, shots, shots_on_target, corners
+         FROM live_stat_snapshots
+         WHERE event_id = ANY($1::text[])
+           AND observed_at <= NOW() - ($2::interval)
+           AND observed_at >= NOW() - INTERVAL '11 minutes'
+         ORDER BY event_id, team_name, observed_at DESC`,
+        [eventIds, minutes + " minutes"]
+      );
+      baselines[minutes] = result.rows;
+    }
+    for (const match of matches) {
+      const makeWindow = minutes => {
+        const teams = (match.teams || []).map(team => {
+          const previous = baselines[minutes].find(row =>
+            row.event_id === String(match.eventId) &&
+            String(row.team_name).trim().toLowerCase() === String(team.team || "").trim().toLowerCase()
+          );
+          const delta = key => {
+            const current = team[key];
+            const old = previous?.[key];
+            if (!previous || current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
+            return Math.max(0, Number(current) - Number(old));
+          };
+          return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shots_on_target"), corners: delta("corners") };
+        });
+        return { available: teams.some(team => team.shots != null || team.shotsOnTarget != null || team.corners != null), sampleMinutes: minutes, teams };
+      };
+      match.trend = { source: "PostgreSQL-persisted cumulative-stat deltas", window5m: makeWindow(5), window10m: makeWindow(10) };
+    }
+    return true;
+  } catch (error) {
+    if (!analyticsDbWarningLogged) {
+      console.error("Goal Pulse persistent trend storage failed; using in-memory fallback:", error.message);
+      analyticsDbWarningLogged = true;
+    }
+    return false;
+  }
+}
+
 
 
 function addRollingTrends(matches) {
@@ -143,7 +248,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== "GET") return send(res, 405, { error: "Method not allowed" });
 
   if (url.pathname === "/api/health") {
-    return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY) });
+    return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY), persistentAnalyticsConfigured: Boolean(analyticsPool) });
   }
 
 
@@ -255,8 +360,9 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
-      addRollingTrends(matches);
-      const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory: "in-memory; resets on service restart" };
+      const persisted = await persistRollingTrends(matches, date);
+      if (!persisted) addRollingTrends(matches);
+      const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory: persisted ? "postgresql; retained across service restarts" : "in-memory fallback; resets on service restart" };
       cache.set(cacheKey, { at: Date.now(), body });
       return send(res, 200, body);
     }
