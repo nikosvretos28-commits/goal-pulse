@@ -345,9 +345,11 @@ const server = http.createServer(async (req, res) => {
                 shots: get("totalshots", "shots", "shotsattempted"),
                 shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
                 shotsOffTarget: get("shotsofftarget", "shotsOffGoal", "offtargetshots", "shotswide"),
+                blockedShots: get("blockedshots", "shotsblocked"),
                 corners: get("woncorners", "cornerkicks", "corners"),
                 possession: get("possessionpct", "possession"),
-                dangerousAttacks: get("dangerousattacks")
+                dangerousAttacks: get("dangerousattacks"),
+                xG: get("expectedgoals", "xg", "expectedgoalsfor")
               };
             });
             matches.push({
@@ -355,7 +357,7 @@ const server = http.createServer(async (req, res) => {
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
-              statsAvailable: teams.length > 0 && values.some(v => v.shots !== null || v.shotsOnTarget !== null || v.corners !== null),
+              statsAvailable: teams.length > 0 && values.some(v => Object.values(v).some(value => value !== null && value !== "")),
               teams: values
             });
           } catch {}
