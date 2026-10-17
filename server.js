@@ -183,6 +183,7 @@ const server = http.createServer(async (req, res) => {
                 team: team.team?.displayName || team.team?.name || "",
                 shots: get("totalshots", "shots", "shotsattempted"),
                 shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
+                shotsOffTarget: get("shotsofftarget", "shotsOffGoal", "offtargetshots", "shotswide"),
                 corners: get("woncorners", "cornerkicks", "corners"),
                 possession: get("possessionpct", "possession"),
                 dangerousAttacks: get("dangerousattacks")
