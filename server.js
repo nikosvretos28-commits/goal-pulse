@@ -46,8 +46,12 @@ async function ensureAnalyticsDb() {
         shots DOUBLE PRECISION,
         shots_on_target DOUBLE PRECISION,
         corners DOUBLE PRECISION,
+        attacks DOUBLE PRECISION,
+        dangerous_attacks DOUBLE PRECISION,
         minute TEXT
       );
+      ALTER TABLE live_stat_snapshots ADD COLUMN IF NOT EXISTS attacks DOUBLE PRECISION;
+      ALTER TABLE live_stat_snapshots ADD COLUMN IF NOT EXISTS dangerous_attacks DOUBLE PRECISION;
       CREATE INDEX IF NOT EXISTS live_stat_snapshots_event_team_time_idx
         ON live_stat_snapshots (event_id, team_name, observed_at DESC);
       CREATE INDEX IF NOT EXISTS live_stat_snapshots_time_idx
@@ -69,18 +73,18 @@ async function persistRollingTrends(matches, date) {
   try {
     const snapshots = [];
     for (const match of matches) for (const team of match.teams || []) {
-      if (team.team) snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, String(match.minute || "")]);
+      if (team.team) snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
     }
     if (!snapshots.length) return true;
     const values = [];
     const tuples = snapshots.map((row, index) => {
-      const n = index * 7;
+      const n = index * 9;
       values.push(...row);
-      return `(${n+1}, ${n+2}, ${n+3}, NOW(), ${n+4}, ${n+5}, ${n+6}, ${n+7})`;
+      return `(${n+1}, ${n+2}, ${n+3}, NOW(), ${n+4}, ${n+5}, ${n+6}, ${n+7}, ${n+8}, ${n+9})`;
     });
     await analyticsPool.query(
       `INSERT INTO live_stat_snapshots
-       (event_id, match_date, team_name, observed_at, shots, shots_on_target, corners, minute)
+       (event_id, match_date, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks, minute)
        VALUES ${tuples.join(", ")}`, values
     );
     const eventIds = [...new Set(matches.map(match => String(match.eventId)).filter(Boolean))];
@@ -88,7 +92,7 @@ async function persistRollingTrends(matches, date) {
     for (const minutes of [5, 10]) {
       const result = await analyticsPool.query(
         `SELECT DISTINCT ON (event_id, team_name)
-           event_id, team_name, observed_at, shots, shots_on_target, corners
+           event_id, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks
          FROM live_stat_snapshots
          WHERE event_id = ANY($1::text[])
            AND observed_at <= NOW() - ($2::interval)
@@ -111,7 +115,7 @@ async function persistRollingTrends(matches, date) {
             if (!previous || current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
             return Math.max(0, Number(current) - Number(old));
           };
-          return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shots_on_target"), corners: delta("corners") };
+          return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shots_on_target"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerous_attacks") };
         });
         return { available: teams.some(team => team.shots != null || team.shotsOnTarget != null || team.corners != null), sampleMinutes: minutes, teams };
       };
@@ -142,7 +146,9 @@ function addRollingTrends(matches) {
         team: String(team.team || "").trim().toLowerCase(),
         shots: team.shots,
         shotsOnTarget: team.shotsOnTarget,
-        corners: team.corners
+        corners: team.corners,
+        attacks: team.attacks,
+        dangerousAttacks: team.dangerousAttacks
       }))
     };
     if (!last || now - last.at >= 12000) history.push(snapshot);
@@ -156,16 +162,16 @@ function addRollingTrends(matches) {
       const deltas = match.teams.map((team, index) => {
         const name = String(team.team || "").trim().toLowerCase();
         const previous = baseline.teams.find(item => item.team && item.team === name) || baseline.teams[index];
-        if (!previous) return { team: team.team, shots: null, shotsOnTarget: null, corners: null };
+        if (!previous) return { team: team.team, shots: null, shotsOnTarget: null, corners: null, attacks: null, dangerousAttacks: null };
         const delta = key => {
           const current = team[key];
           const old = previous[key];
           if (current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
           return Math.max(0, Number(current) - Number(old));
         };
-        return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners") };
+        return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerousAttacks") };
       });
-      const available = deltas.some(item => item.shots != null || item.shotsOnTarget != null || item.corners != null);
+      const available = deltas.some(item => item.shots != null || item.shotsOnTarget != null || item.corners != null || item.attacks != null || item.dangerousAttacks != null);
       return { available, sampleMinutes: Math.round((now - baseline.at) / 60000 * 10) / 10, teams: deltas };
     };
     match.trend = {
@@ -347,6 +353,8 @@ const server = http.createServer(async (req, res) => {
                 shotsOffTarget: get("shotsofftarget", "shotsOffGoal", "offtargetshots", "shotswide"),
                 blockedShots: get("blockedshots", "shotsblocked"),
                 corners: get("woncorners", "cornerkicks", "corners"),
+                attacks: get("attacks", "totalattacks", "attacksfor", "totalattacksfor"),
+                dangerousAttacks: get("dangerousattacks", "dangerousattacksfor", "dangerousattackscreated"),
                 possession: get("possessionpct", "possession"),
                 dangerousAttacks: get("dangerousattacks"),
                 xG: get("expectedgoals", "xg", "expectedgoalsfor")
@@ -357,7 +365,7 @@ const server = http.createServer(async (req, res) => {
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
-              statsAvailable: teams.length > 0 && values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "blockedShots", "corners", "possession", "dangerousAttacks", "xG"].some(key => v[key] !== null)),
+              statsAvailable: teams.length > 0 && values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "blockedShots", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
               teams: values
             });
           } catch {}
