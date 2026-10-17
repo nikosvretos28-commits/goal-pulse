@@ -1050,7 +1050,42 @@ function sameTeam(a,b){const x=normTeam(a),y=normTeam(b);return !!x&&!!y&&(x===y
 function findStat(stats,key){const periods=stats?.data?.periods||[];const ordered=[...periods.filter(p=>String(p.period||'').toLowerCase()==='all'),...periods.filter(p=>String(p.period||'').toLowerCase()!=='all')];for(const p of ordered){for(const g of (p.groups||[])){for(const item of (g.items||[])){if(item.key===key)return item}}}return null}
 function usableMetric(v){if(v===undefined||v===null||String(v).trim()==='')return false;return Number.isFinite(Number(v))}
 async function showDetails(btn){
- const card=btn.closest('.match');const liveEvent=allMatches.find(m=>m.home.name===card?.dataset.home&&m.away.name===card?.dataset.away&&m.state==='in');if(liveEvent){const live=liveMetricsCache.get(String(liveEvent.id));if(live&&live.statsAvailable){const modal=document.getElementById('analysisModal'),content=document.getElementById('analysisContent');document.getElementById('analysisTitle').textContent=liveEvent.home.name+' — '+liveEvent.away.name;document.getElementById('analysisSubtitle').textContent='LIVE · '+(live.minute||liveEvent.clock||'σε εξέλιξη');const t=live.teams||[],h=t[0]||{},a=t[1]||{},fmtLive=v=>v==null?'—':String(v);const rows=[['Σουτ','shots'],['Σουτ στην εστία','shotsOnTarget'],['Κόρνερ','corners'],['Κατοχή (%)','possession'],['Επικίνδυνες επιθέσεις','dangerousAttacks']].map(([label,k])=>'<div class="stat-row"><span>'+esc(fmtLive(h[k]))+'</span><strong>'+esc(label)+'</strong><span class="stat-divider">—</span><strong>'+esc(fmtLive(a[k]))+'</strong></div>').join('');content.innerHTML='<div class="analysis-grid"><div class="analysis-stat"><small>Σκορ τώρα</small><strong>'+esc(liveEvent.home.score==null?'–':liveEvent.home.score)+'–'+esc(liveEvent.away.score==null?'–':liveEvent.away.score)+'</strong></div><div class="analysis-stat"><small>Λεπτό</small><strong>'+esc(live.minute||liveEvent.clock||'LIVE')+'</strong></div></div><h3 class="detail-heading">📊 Live στατιστικά</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Στατιστικό</span><span>'+esc(liveEvent.away.name)+'</span></div>'+rows+'</div><p class="analysis-note">Τα στατιστικά εμφανίζονται μόνο όταν επιστρέφονται από την πηγή. Το Goal Pulse δεν εφευρίσκει τιμές που λείπουν.</p>';modal.classList.add('open');return;}}
+ const card=btn.closest('.match');
+ const liveEvent=allMatches.find(m=>m.home.name===card?.dataset.home&&m.away.name===card?.dataset.away&&m.state==='in');
+ if(liveEvent){
+  const live=liveMetricsCache.get(String(liveEvent.id));
+  const modal=document.getElementById('analysisModal'),content=document.getElementById('analysisContent');
+  document.getElementById('analysisTitle').textContent=liveEvent.home.name+' — '+liveEvent.away.name;
+  document.getElementById('analysisSubtitle').textContent='LIVE · '+(live?.minute||liveEvent.clock||'σε εξέλιξη');
+  modal.classList.add('open');
+  if(!live||!Array.isArray(live.teams)||live.teams.length<2){
+   content.innerHTML='<p class="analysis-note">Τα live στατιστικά δεν έχουν επιστραφεί ακόμη από την πηγή. Θα εμφανιστούν στην επόμενη ενημέρωση· δεν εμφανίζουμε επινοημένες τιμές.</p>';
+   return;
+  }
+  const teams=live.teams;
+  const home=teams.find(t=>String(t.homeAway||'').toLowerCase()==='home')||teams.find(t=>sameTeam(t.team,live.home))||teams[0]||{};
+  const away=teams.find(t=>String(t.homeAway||'').toLowerCase()==='away')||teams.find(t=>sameTeam(t.team,live.away))||teams.find(t=>t!==home)||teams[1]||{};
+  const fmt=v=>v===null||v===undefined||String(v).trim()===''||!Number.isFinite(Number(v))?'—':String(Number.isInteger(Number(v))?Number(v):Number(Number(v).toFixed(2)));
+  const stat=(label,key,suffix='')=>'<div class="stat-row"><span>'+esc(fmt(home[key])==='—'?'—':fmt(home[key])+suffix)+'</span><strong>'+esc(label)+'</strong><span class="stat-divider">—</span><span>'+esc(fmt(away[key])==='—'?'—':fmt(away[key])+suffix)+'</span></div>';
+  const alias=(team,keys)=>{for(const k of keys){if(team[k]!==undefined&&team[k]!==null&&String(team[k]).trim()!==''&&Number.isFinite(Number(team[k])))return Number(team[k])}return null};
+  const shotsOff=(team)=>{const direct=alias(team,['shotsOffTarget','shots_off_target','shotsOffGoal','offTargetShots']);if(direct!==null)return direct;const total=alias(team,['shots','totalShots']),on=alias(team,['shotsOnTarget','shotsOnGoal']);return total!==null&&on!==null?Math.max(0,total-on):null};
+  const trail=signalTrails.get(String(liveEvent.id))||[];
+  const delta=(minutes,key)=>{
+   const base=[...trail].reverse().find(item=>Date.now()-item.at>=minutes*60000);
+   if(!base||!Array.isArray(base.values))return '—';
+   const homeIndex=teams.indexOf(home),awayIndex=teams.indexOf(away),hv=base.values[homeIndex]?.[key],av=base.values[awayIndex]?.[key],hn=alias(home,[key]),an=alias(away,[key]);
+   if(hn===null||an===null||hv===null||hv===undefined||av===null||av===undefined)return '—';
+   return Math.max(0,hn-Number(hv))+'–'+Math.max(0,an-Number(av));
+  };
+  const summary='<div class="analysis-grid"><div class="analysis-stat"><small>Σκορ τώρα</small><strong>'+esc(liveEvent.home.score==null?'–':liveEvent.home.score)+'–'+esc(liveEvent.away.score==null?'–':liveEvent.away.score)+'</strong></div><div class="analysis-stat"><small>Λεπτό</small><strong>'+esc(live.minute||liveEvent.clock||'LIVE')+'</strong></div></div>';
+  const rows=[
+   stat('Σουτ','shots'),stat('Σουτ στην εστία','shotsOnTarget'),'<div class="stat-row"><span>'+esc(fmt(shotsOff(home)))+'</span><strong>Σουτ εκτός εστίας</strong><span class="stat-divider">—</span><span>'+esc(fmt(shotsOff(away)))+'</span></div>',
+   stat('Κόρνερ','corners'),stat('Κατοχή','possession','%'),stat('Επικίνδυνες επιθέσεις','dangerousAttacks'),stat('xG','xG')
+  ].join('');
+  const recent='<h3 class="detail-heading">⏱ Πρόσφατη δραστηριότητα</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Νέα στατιστικά</span><span>'+esc(liveEvent.away.name)+'</span></div>'+[['Τελευταία 5′','shots'],['Τελευταία 10′','shots']].map(([label,key],idx)=>{const mins=idx===0?5:10;return '<div class="stat-row"><span>'+esc(delta(mins,key))+'</span><strong>'+label+' · σουτ</strong><span class="stat-divider">—</span><span>ανά ομάδα</span></div>'}).join('')+'</div>';
+  content.innerHTML=summary+'<h3 class="detail-heading">📊 Live στατιστικά</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Στατιστικό</span><span>'+esc(liveEvent.away.name)+'</span></div>'+rows+'</div>'+recent+'<p class="analysis-note">Τα δεδομένα ανανεώνονται αυτόματα. «—» σημαίνει ότι η πηγή δεν παρείχε αυτή τη μέτρηση. Οι μεταβολές 5′/10′ εμφανίζονται όταν υπάρχει αρκετό ιστορικό συλλογής.</p>';
+  return;
+ }
  const article=btn.closest('.match'),home=article.dataset.home||'',away=article.dataset.away||'',date=article.dataset.matchDate||'';
  const modal=document.getElementById('analysisModal'),content=document.getElementById('analysisContent');
  document.getElementById('analysisTitle').textContent=home+' — '+away;
