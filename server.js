@@ -45,7 +45,19 @@ async function pitchGet(apiPath) {
   return body;
 }
 
+const ALLOWED_ORIGINS = new Set([
+  "https://goal-pulse.onrender.com",
+  "https://goal-pulse-live-2026-2.onrender.com"
+]);
 const server = http.createServer(async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  }
+  if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
   const url = new URL(req.url, "http://localhost");
   if (req.method !== "GET") return send(res, 405, { error: "Method not allowed" });
 
