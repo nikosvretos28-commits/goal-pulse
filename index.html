@@ -937,25 +937,28 @@ async function runSignalCheck(){
    signalSnapshots.set(key,{values,at:now});
    const baseline=[...trail].reverse().find(item=>now-item.at>=Math.min(4,Number(signalWindow.value))*60*1000);
    if(!baseline)continue;
-   let points=0,reasons=[];
+   let goalPoints=0,pressurePoints=0,reasons=[],totalShotsAdded=0,shotsOnTargetAdded=0,cornersAdded=0;
    values.forEach((v,i)=>{
     const p=baseline.values[i]||{};
     const ds=v.shots==null||p.shots==null?0:Math.max(0,v.shots-p.shots);
     const dt=v.shotsOnTarget==null||p.shotsOnTarget==null?0:Math.max(0,v.shotsOnTarget-p.shotsOnTarget);
     const dc=v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners);
-    if(dt>0){points+=4*dt;reasons.push(dt+' νέο/α σουτ στην εστία')}
-    if(ds>0){points+=Math.min(2*ds,6);reasons.push(ds+' νέες τελικές')}
-    if(dc>0){points+=2*dc;reasons.push(dc+' νέα κόρνερ')}
+    totalShotsAdded+=ds;shotsOnTargetAdded+=dt;cornersAdded+=dc;
+    if(dt>0){goalPoints+=4*dt;pressurePoints+=4*dt;reasons.push(dt+' νέο/α σουτ στην εστία')}
+    if(ds>0){goalPoints+=Math.min(ds,4);pressurePoints+=Math.min(2*ds,6);reasons.push(ds+' νέες τελικές')}
+    if(dc>0){pressurePoints+=2*dc;reasons.push(dc+' νέα κόρνερ')}
    });
    const sensitivity=Number(signalThreshold.value),last=signalLastAlertAt.get(key)||0;
    const selectedMarket=signalMarket.value;
-   const cornerPoints=values.reduce((sum,v,i)=>{const p=baseline.values[i]||{};return sum+(v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners))*2},0);
-   const goalEvidence=values.some((v,i)=>{const p=baseline.values[i]||{};return v.shotsOnTarget!=null&&p.shotsOnTarget!=null&&v.shotsOnTarget>p.shotsOnTarget});
-   const marketPoints=selectedMarket==='corner'?cornerPoints:points;
-   const hasMarketEvidence=selectedMarket==='corner'?cornerPoints>0:(selectedMarket==='goal'?goalEvidence:reasons.length>0);
-   if(marketPoints>=sensitivity&&hasMarketEvidence&&now-last>8*60*1000){
+   const cornerPoints=cornersAdded*2;
+   const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
+   const cornerEvidence=cornersAdded>=2||(cornersAdded>=1&&totalShotsAdded>=2);
+   const evidenceKinds=(totalShotsAdded>0?1:0)+(shotsOnTargetAdded>0?1:0)+(cornersAdded>0?1:0);
+   const marketPoints=selectedMarket==='corner'?cornerPoints:selectedMarket==='goal'?goalPoints:pressurePoints;
+   const hasMarketEvidence=selectedMarket==='corner'?cornerEvidence:(selectedMarket==='goal'?goalEvidence:evidenceKinds>=2);
+   if(marketPoints>=Math.max(sensitivity,selectedMarket==='goal'?5:selectedMarket==='corner'?4:5)&&hasMarketEvidence&&now-last>8*60*1000){
     const reason=[...new Set(reasons)].join(' · ')||'αύξηση κόρνερ';
-    const vip=vipAlertsToggle.checked&&marketPoints>=Math.max(7,sensitivity+4)&&goalEvidence&&cornerPoints>0;
+    const vip=vipAlertsToggle.checked&&marketPoints>=Math.max(9,sensitivity+5)&&goalEvidence&&cornersAdded>=1&&evidenceKinds>=3;
     const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,market:selectedMarket==='goal'?'πιθανό γκολ':selectedMarket==='corner'?'πιθανό κόρνερ':'ένταση',time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,outcome:'εκκρεμεί'};
     const alert={...base,level:'AI'};signalAlertHistory.unshift(alert);
     if(vip){signalAlertHistory.unshift({...base,level:'VIP'});newAlerts++}
