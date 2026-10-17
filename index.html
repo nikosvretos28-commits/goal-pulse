@@ -259,6 +259,57 @@ header nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}header nav a{f
 .match{scroll-margin-top:90px}
 @media(max-width:520px){.live-row{grid-template-columns:24px minmax(0,1fr) auto minmax(0,1fr) 24px 38px;gap:4px;padding:10px 7px;font-size:11px}.live-row .crest img{width:20px;height:20px}.live-row .score{font-size:13px}.live-row .minute{font-size:9px;padding:4px 3px}}
 
+
+/* MyGoal247-inspired match-centre layout in Goal Pulse colours */
+header{gap:14px;border-bottom-color:#1b354a}
+header nav{gap:clamp(8px,1.15vw,18px)}
+header nav a{padding:9px 0;font-size:11px}
+.scoreboard-top{position:relative}
+.scoreboard-title{align-items:center}
+.scoreboard-title h1{font-weight:950;letter-spacing:-.8px}
+.scoreboard-title h1 span{color:var(--green)}
+.scoreboard-status{border:1px solid #1b4b59;background:#0a202e}
+.top-live{border:1px solid #1c394e;box-shadow:0 8px 26px #0002}
+.top-live-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1c394e}
+.product-nav{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);box-shadow:0 5px 18px #0002}
+.product-nav a{transition:background .16s,color .16s}
+.product-nav a:hover,.product-nav a.selected{background:#102d3b;color:var(--green)}
+.filters{gap:7px}
+.filter{transition:background .16s,border-color .16s,color .16s}
+.main-grid{gap:14px}
+.panel{border-color:#1a354a;box-shadow:0 8px 24px #0002}
+.panel-head{border-bottom:1px solid #1a354a}
+.league-head{border-bottom-color:#1a354a}
+.match{position:relative;border-bottom:1px solid #1a2d40;transition:background .16s}
+.match[data-status="live"]{border-left:2px solid var(--green);padding-left:8px}
+.match[data-status="upcoming"] .match-score small{color:var(--muted)}
+.match[data-status="finished"] .match-score small{color:#7d93a7}
+.match[data-favorite="yes"]{background:linear-gradient(90deg,#00f5660b,transparent 45%)}
+.match .team-logo img{width:23px;height:23px;object-fit:contain;vertical-align:middle}
+.match .match-score{font-variant-numeric:tabular-nums}
+.match .match-score small{letter-spacing:.7px}
+.match .match-bottom{border-top:1px solid #142a3d;padding-top:7px;margin-top:8px}
+.match .favorite-toggle{font-size:17px}
+.match .mini-btn{transition:border-color .15s,background .15s}
+.match .mini-btn:hover{border-color:var(--cyan)}
+.league-item,[data-league-filter]{transition:background .16s,border-color .16s,color .16s}
+[data-league-filter][aria-pressed="true"]{border-color:var(--green);color:var(--green);background:#0d3027}
+@media(max-width:1050px){header nav{display:none}.product-nav{top:0}}
+@media(max-width:560px){
+ .wrap{padding:0 6px}
+ .scoreboard-title{gap:8px}
+ .scoreboard-title p{font-size:11px}
+ .top-live{border-radius:5px}
+ .main-grid{gap:8px}
+ .panel{box-shadow:none}
+ .match[data-status="live"]{padding-left:6px}
+ .match .team-logo img{width:19px;height:19px}
+ .match .match-bottom{align-items:center}
+ .product-nav{overflow-x:auto;flex-wrap:nowrap;justify-content:flex-start;scrollbar-width:none}
+ .product-nav::-webkit-scrollbar{display:none}
+ .product-nav a{flex:0 0 auto;white-space:nowrap;padding:8px 10px}
+}
+
 </style>
 </head>
 <body>
