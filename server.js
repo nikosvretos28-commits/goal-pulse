@@ -174,7 +174,8 @@ const server = http.createServer(async (req, res) => {
             const values = teams.map(team => {
               const stats = team.statistics || [];
               const get = (...names) => {
-                const found = stats.find(s => names.includes(String(s.name || s.abbreviation || "").toLowerCase().replace(/[^a-z]/g, "")));
+                const normalizedNames = names.map(name => String(name).toLowerCase().replace(/[^a-z]/g, ""));
+                const found = stats.find(s => normalizedNames.includes(String(s.name || s.abbreviation || "").toLowerCase().replace(/[^a-z]/g, "")));
                 if (!found) return null;
                 const n = Number(String(found.displayValue ?? found.value ?? "").replace("%", ""));
                 return Number.isFinite(n) ? n : null;
