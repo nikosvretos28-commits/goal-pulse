@@ -315,7 +315,7 @@ const server = http.createServer(async (req, res) => {
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
         .filter(event => (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
         .map(event => ({ event, leagueCode: feed.code })));
-      const work = liveEvents.slice(0, 24);
+      const work = liveEvents.slice(0, 36);
       let cursor = 0;
       const matches = [];
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
@@ -341,6 +341,7 @@ const server = http.createServer(async (req, res) => {
               };
               return {
                 team: team.team?.displayName || team.team?.name || "",
+                homeAway: team.homeAway || team.team?.homeAway || "",
                 shots: get("totalshots", "shots", "shotsattempted"),
                 shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
                 shotsOffTarget: get("shotsofftarget", "shotsOffGoal", "offtargetshots", "shotswide"),
