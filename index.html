@@ -935,7 +935,7 @@ async function runSignalCheck(){
    signalTrails.set(key,trail);
     updateIntervalStats(m,trail,values,now);
    signalSnapshots.set(key,{values,at:now});
-   const baseline=[...trail].reverse().find(item=>now-item.at>=Math.min(4,Number(signalWindow.value))*60*1000);
+   const baseline=[...trail].reverse().find(item=>now-item.at>=Number(signalWindow.value)*60*1000);
    if(!baseline)continue;
    let goalPoints=0,pressurePoints=0,reasons=[],totalShotsAdded=0,shotsOnTargetAdded=0,cornersAdded=0;
    values.forEach((v,i)=>{
