@@ -588,6 +588,12 @@ header nav a{padding:9px 0;font-size:11px}
 .top-ai-alert-card .alert-card-match{font-size:15px;font-weight:900;line-height:1.25;margin:8px 0 5px;overflow-wrap:anywhere}
 .top-ai-alert-card .alert-card-market{font-size:12px;color:#d9fbe9;font-weight:800}
 .top-ai-alert-card .alert-card-reason{font-size:11px;color:var(--muted);margin-top:5px}
+/* VIP cards get a clear green premium banner, matching the live-alert highlight */
+.top-vip-alerts{border-color:#00b85a;box-shadow:0 10px 30px #0003,0 0 0 1px #00f56618}
+.top-vip-alerts .top-ai-alert-card{border-color:#167344;background:linear-gradient(180deg,#0b281d 0,#071522 44%)}
+.top-vip-alerts .top-ai-alert-card .alert-card-kicker{display:flex;align-items:center;background:linear-gradient(90deg,#00f566,#b5ff38);color:#06130d;padding:7px 10px;margin:-12px -12px 9px;border-radius:11px 11px 5px 5px;font-size:10px;font-weight:1000;letter-spacing:.7px}
+.top-vip-alerts .top-ai-alert-card .alert-card-market{color:#8dffb8}
+.top-vip-alerts .top-ai-alert-card:hover,.top-vip-alerts .top-ai-alert-card:focus-visible{border-color:#00f566;box-shadow:0 0 0 2px #00f56655}
 .top-ai-alert-empty{padding:12px;border:1px dashed #28516a;border-radius:10px;color:var(--muted);font-size:12px}
 .top-ai-alert-privacy{font-size:10px;color:var(--muted);margin:10px 0 0}
 @media(max-width:560px){.top-ai-alerts{padding:12px;margin:10px 0 14px}.top-ai-alerts-head h2{font-size:16px}.top-ai-alert-card .alert-card-match{font-size:14px}}
