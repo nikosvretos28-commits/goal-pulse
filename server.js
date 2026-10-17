@@ -72,7 +72,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, await pitchGet("/v1/date/" + date));
     }
 
-    const matchRoute = url.pathname.match(/^\/api\/pitch\/matches\/(m_[A-Za-z0-9]{6})\/(stats|momentum|shots)$/);
+    const matchRoute = url.pathname.match(/^\/api\/pitch\/matches\/(m_[A-Za-z0-9]{6})\/(stats|momentum|shots|events)$/);
     if (matchRoute) {
       const [, id, endpoint] = matchRoute;
       return send(res, 200, await pitchGet("/v1/matches/" + id + "/" + endpoint));
