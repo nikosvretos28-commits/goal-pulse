@@ -181,6 +181,10 @@ header{height:64px;border-bottom:1px solid #253849}
 .match{display:block;margin:0;border:0;border-bottom:1px solid #1d3042;border-radius:0;padding:9px 8px;background:#0a1623;box-shadow:none}
 .match:nth-child(even){background:#0c1927}
 .match:hover{background:#102437;border-color:#2c5669;transform:none}
+.match[data-favorite="yes"]{border-left:2px solid var(--green)}
+.favorite-toggle{min-width:29px;color:var(--green);font-size:16px;padding:3px 7px}
+header nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}header nav a{font-size:11px;color:#a9bfd0;text-decoration:none;font-weight:750;white-space:nowrap}header nav a:hover,header nav a.selected{color:var(--green)}
+@media(max-width:1050px){header nav{display:none}}
 .match-meta{align-items:center;margin-bottom:7px;font-size:9px}
 .match-live{color:#ff6a83}
 .teams{grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr);gap:9px}
@@ -252,7 +256,7 @@ header{height:64px;border-bottom:1px solid #253849}
 </svg>
 <span class="brand-name">GOAL<span>PULSE</span></span>
 </a>
-<nav><a href="#matches">Live Score+</a><a href="#pulseAlertsTitle">AI Alerts</a><a href="#leagues">Διοργανώσεις</a></nav>
+<nav aria-label="Κύριο μενού"><a href="#matches" data-menu-filter="all">Live Score+</a><a href="#matches" data-menu-filter="live">Live</a><a href="#matches" data-menu-filter="finished">Αποτελέσματα</a><a href="#matches" data-menu-filter="upcoming">Πρόγραμμα</a><a href="#matches" data-menu-filter="favorites">★ Αγαπημένα</a><a href="#insights">Στατιστικά</a><a href="#pulseAlertsTitle">AI Alerts</a><a href="#leagues">Διοργανώσεις</a></nav>
 <div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span><button class="login" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Live Score ↗</button></div>
 </header>
 
@@ -260,7 +264,7 @@ header{height:64px;border-bottom:1px solid #253849}
  <div class="scoreboard-title"><div><div class="eyebrow">GOAL PULSE · LIVE FOOTBALL CENTRE</div><h1>Live Score <span>+</span></h1><p>Όλοι οι διαθέσιμοι αγώνες και τα live δεδομένα σε μία οθόνη.</p></div><div class="scoreboard-status"><span class="pulse-dot"></span><span id="liveCountTop">LIVE CENTER</span><small id="topUpdated">Αυτόματη ενημέρωση</small></div></div>
  <div class="top-live" id="live"><div class="top-live-head"><strong>● Live τώρα</strong><span class="subtle">Ζωντανά σκορ</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
 </section>
-<nav class="product-nav" aria-label="Κύριες ενότητες"><a class="selected" href="#matches">⚽ Live Score+</a><a href="#pulseAlertsTitle">✦ AI Alerts</a><a href="#pulseAlertsTitle" onclick="setTimeout(()=>{document.getElementById('signalMarket').value='goal'},0)">◆ VIP Alerts</a><a href="#pulseAlertsTitle">☷ Personal Scanners</a><a href="#pulseAlertsTitle" onclick="document.getElementById('showSignalHistory').click()">◷ Today / History</a></nav>
+<nav class="product-nav" aria-label="Κύριες ενότητες"><a class="selected" href="#matches" data-menu-filter="all">⚽ Όλοι οι αγώνες</a><a href="#matches" data-menu-filter="live">● Live</a><a href="#matches" data-menu-filter="upcoming">Πρόγραμμα</a><a href="#matches" data-menu-filter="finished">Αποτελέσματα</a><a href="#matches" data-menu-filter="favorites">★ Αγαπημένα</a><a href="#insights">📊 Στατιστικά</a><a href="#pulseAlertsTitle">✦ AI Alerts</a><a href="#pulseAlertsTitle" onclick="setTimeout(()=>{document.getElementById('signalMarket').value='goal'},0)">◆ VIP Alerts</a><a href="#pulseAlertsTitle">☷ Personal Scanners</a><a href="#pulseAlertsTitle" onclick="document.getElementById('showSignalHistory').click()">◷ Today / History</a><a href="#leagues">🏆 Διοργανώσεις</a></nav>
 
 <div class="filters" id="matches">
 <div class="date-controls" aria-label="Επιλογή ημερομηνίας αγώνων"><button class="mini-btn date-step" id="prevDate" type="button" aria-label="Προηγούμενη ημέρα">‹</button><label class="date-label" for="matchDate">Ημερομηνία <input id="matchDate" type="date" aria-label="Ημερομηνία αγώνων"></label><button class="mini-btn date-step" id="nextDate" type="button" aria-label="Επόμενη ημέρα">›</button><button class="mini-btn" id="todayDate" type="button">Σήμερα</button></div>
@@ -304,6 +308,9 @@ const LEAGUES=[
  ['uefa.europa.conf','Conference League','Europe','🏆']
 ];
 let active='all', allMatches=[], successfulFeeds=0, loadingScores=false;
+const readFavorites=()=>{try{return new Set(JSON.parse(localStorage.getItem('goalPulseFavorites')||'[]').map(String))}catch{return new Set()}};
+let favoriteMatchIds=readFavorites();
+function setMatchFilter(filter){active=filter;document.querySelectorAll('.filter').forEach(x=>{const selected=x.dataset.filter===filter;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',selected?'true':'false')});document.querySelectorAll('[data-menu-filter]').forEach(x=>x.classList.toggle('selected',x.dataset.menuFilter===filter));render()}
 const localISODate=(date=new Date())=>{const d=new Date(date.getTime()-date.getTimezoneOffset()*60000);return d.toISOString().slice(0,10)};
 let selectedMatchDate=localISODate();
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -312,11 +319,11 @@ function cardFor(m){
  const state=m.state, c=m.league, home=m.home, away=m.away;
  const scoreHome=home.score==null?'–':home.score, scoreAway=away.score==null?'–':away.score;
  const label=state==='in'?'● LIVE · '+(m.clock||'Σε εξέλιξη'):state==='post'?'ΟΛΟΚΛΗΡΩΘΗΚΕ':(m.clock||'ΠΡΟΣΕΧΗΣ');
- return '<article class="match" data-status="'+(state==='in'?'live':state==='pre'?'upcoming':'finished')+'" data-match-date="'+esc(m.dateISO||'')+'" data-home="'+esc(home.name)+'" data-away="'+esc(away.name)+'" data-signal="no" data-search="'+esc((c+' '+home.name+' '+away.name).toLowerCase())+'"><div class="match-meta"><span>'+esc(c.toUpperCase())+'</span><span class="'+(state==='in'?'match-live':'')+'">'+esc(label)+'</span></div><div class="teams"><div class="team"><span class="team-logo">⚽</span>'+esc(home.name)+'</div><div class="match-score">'+esc(scoreHome)+' – '+esc(scoreAway)+'<small>'+(state==='in'?'LIVE':state==='post'?'FT':'PRE-MATCH')+'</small></div><div class="team away">'+esc(away.name)+'<span class="team-logo">⚽</span></div></div><div class="match-bottom"><span class="subtle">'+esc(m.league+' · '+(m.date||''))+'</span><button class="mini-btn" type="button" onclick="showDetails(this)">Ανάλυση αγώνα ↗</button></div></article>';
+ return '<article class="match" data-event-id="'+esc(m.id)+'" data-favorite="'+(favoriteMatchIds.has(String(m.id))?'yes':'no')+'" data-status="'+(state==='in'?'live':state==='pre'?'upcoming':'finished')+'" data-match-date="'+esc(m.dateISO||'')+'" data-home="'+esc(home.name)+'" data-away="'+esc(away.name)+'" data-signal="no" data-search="'+esc((c+' '+home.name+' '+away.name).toLowerCase())+'"><div class="match-meta"><span>'+esc(c.toUpperCase())+'</span><span class="'+(state==='in'?'match-live':'')+'">'+esc(label)+'</span></div><div class="teams"><div class="team"><span class="team-logo">⚽</span>'+esc(home.name)+'</div><div class="match-score">'+esc(scoreHome)+' – '+esc(scoreAway)+'<small>'+(state==='in'?'LIVE':state==='post'?'FT':'PRE-MATCH')+'</small></div><div class="team away">'+esc(away.name)+'<span class="team-logo">⚽</span></div></div><div class="match-bottom"><span class="subtle">'+esc(m.league+' · '+(m.date||''))+'</span><div style="display:flex;gap:5px"><button class="mini-btn favorite-toggle" type="button" data-favorite-id="'+esc(m.id)+'" aria-label="'+(favoriteMatchIds.has(String(m.id))?'Αφαίρεση από αγαπημένα':'Προσθήκη στα αγαπημένα')+'">'+(favoriteMatchIds.has(String(m.id))?'★':'☆')+'</button><button class="mini-btn" type="button" onclick="showDetails(this)">Ανάλυση αγώνα ↗</button></div></div></article>';
 }
 function render(){
  const q=document.getElementById('matchSearch').value.trim().toLowerCase();
- const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='finished'&&m.state==='post')||(active==='signals'&&m.state==='in'&&liveMetricsCache.has(String(m.id))))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
+ const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='finished'&&m.state==='post')||(active==='signals'&&m.state==='in'&&liveMetricsCache.has(String(m.id)))||(active==='favorites'&&favoriteMatchIds.has(String(m.id))))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
  const list=document.getElementById('matchList');
  if(!allMatches.length){list.innerHTML='<div class="empty-state" style="padding:24px;text-align:center"><div style="font-size:28px;margin-bottom:8px">⚽</div><strong style="display:block;margin-bottom:6px">Δεν βρέθηκαν αγώνες</strong><p class="subtle" style="margin:0 0 14px">'+(successfulFeeds?'Δεν υπάρχουν προγραμματισμένοι αγώνες στις επιλεγμένες διοργανώσεις αυτή τη στιγμή.':'Η σύνδεση με τις πηγές σκορ δεν είναι διαθέσιμη προσωρινά.')+'</p><button class="mini-btn" type="button" onclick="loadScores()">↻ Δοκίμασε ξανά</button></div>';}
  else if(active==='signals'){list.innerHTML='<p class="subtle" style="padding:20px">Τα AI signals δεν είναι ενεργά ακόμη. Χρειάζονται πραγματικά live στατιστικά και επαληθευμένο μοντέλο· δεν εμφανίζουμε κατασκευασμένες προβλέψεις.</p>';}
@@ -373,7 +380,9 @@ async function loadScores(){
  if(refreshButton){refreshButton.disabled=false;refreshButton.textContent='↻ Ανανέωση'}
  loadingScores=false;
 }
-document.querySelectorAll('.filter').forEach(b=>{b.setAttribute('aria-pressed',b.classList.contains('active')?'true':'false');b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-pressed','false')});b.classList.add('active');b.setAttribute('aria-pressed','true');active=b.dataset.filter;render()})});
+document.querySelectorAll('.filter').forEach(b=>{b.setAttribute('aria-pressed',b.classList.contains('active')?'true':'false');b.addEventListener('click',()=>setMatchFilter(b.dataset.filter))});
+document.querySelectorAll('[data-menu-filter]').forEach(a=>a.addEventListener('click',()=>{const filter=a.dataset.menuFilter;if(filter)setMatchFilter(filter)}));
+document.getElementById('matchList').addEventListener('click',event=>{const button=event.target.closest('[data-favorite-id]');if(!button)return;const id=String(button.dataset.favoriteId);if(favoriteMatchIds.has(id))favoriteMatchIds.delete(id);else favoriteMatchIds.add(id);try{localStorage.setItem('goalPulseFavorites',JSON.stringify([...favoriteMatchIds]))}catch{};render()});
 document.getElementById('matchSearch').addEventListener('input',render);
 document.querySelectorAll('.league-item').forEach(item=>{const leagueName=item.querySelector('.name')?.childNodes[0]?.textContent?.trim()||'';item.setAttribute('role','button');item.setAttribute('tabindex','0');item.setAttribute('aria-label','Δες αγώνες: '+leagueName);const chooseLeague=()=>{document.getElementById('matchSearch').value=leagueName;active='all';document.querySelectorAll('.filter').forEach(x=>{const selected=x.dataset.filter==='all';x.classList.toggle('active',selected);x.setAttribute('aria-pressed',selected?'true':'false')});render();document.getElementById('matches').scrollIntoView({behavior:'smooth',block:'start'})};item.addEventListener('click',chooseLeague);item.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();chooseLeague()}})});
 const dateInput=document.getElementById('matchDate');
