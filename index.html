@@ -535,6 +535,9 @@ header nav a{padding:9px 0;font-size:11px}
 .live-match-line.goal-flash-row{position:relative;z-index:3;outline:2px solid #00f566;outline-offset:-2px;background:linear-gradient(90deg,#063b2a,#0b382f 35%,#173b46 65%,#063b2a)!important;animation:goalPulseFullBar .72s ease-in-out 0s 7;box-shadow:0 0 22px 5px #00f566aa!important}
 .live-match-line.goal-flash-row::before{content:"⚽  GOAL • ΓΚΟΛ!  ⚽";position:absolute;z-index:8;left:0;right:0;top:0;text-align:center;padding:5px 4px;background:linear-gradient(90deg,#00f566,#d9ff38,#00f566);color:#06130d;font-size:11px;font-weight:1000;letter-spacing:1px;pointer-events:none;animation:goalBanner .72s ease-in-out 0s 7}
 .live-match-line.goal-flash-row .live-row{padding-top:28px}
+/* Let the live stats use their actual number of available fields; hide unavailable xG */
+.live-inline-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
+@media(max-width:850px){.live-inline-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}}
 /* Main fixture cards: improve hierarchy and tap/read comfort */
 .match .team{font-size:16px;font-weight:850;line-height:1.25}
 .match .match-score{font-size:28px;font-weight:1000}
@@ -805,7 +808,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
   return Math.max(0,Number(a)-Number(x))+'–'+Math.max(0,Number(b)-Number(y));
  };
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
- const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',pair('shots'),'shot')+statCell('ΕΝΤΟΣ',pair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',pair('shotsOffTarget'),'shot')+statCell('xG',pair('xG'),'xg')+'</div>';
+ const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',pair('shots'),'shot')+statCell('ΕΝΤΟΣ',pair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',pair('shotsOffTarget'),'shot')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',pair('xG'),'xg'):'')+'</div>';
  return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="crest">'+teamBadge(m.home)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="crest">'+teamBadge(m.away)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></button>'+alertHtml+'</div>'+statsHtml+'</div>';
 }
 function renderHighActivityMatches(){
