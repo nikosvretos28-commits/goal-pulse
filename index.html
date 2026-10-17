@@ -1061,7 +1061,7 @@ async function showDetails(btn){
   const renderLiveDetails=()=>{
    const live=liveMetricsCache.get(String(liveEvent.id));
    const rawTeams=Array.isArray(live?.teams)?live.teams:[];
-   const norm=n=>String(n||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+   const norm=n=>String(n||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
    const rank=t=>{const n=norm(t.team),hn=norm(liveEvent.home.name),an=norm(liveEvent.away.name);if(String(t.homeAway||'').toLowerCase()==='home'||(n&&hn&&(n===hn||n.includes(hn)||hn.includes(n))))return 0;if(String(t.homeAway||'').toLowerCase()==='away'||(n&&an&&(n===an||n.includes(an)||an.includes(n))))return 1;return 2};
    const teams=[...rawTeams].sort((x,y)=>rank(x)-rank(y));
    const h=teams[0]||{},a=teams[1]||{};
