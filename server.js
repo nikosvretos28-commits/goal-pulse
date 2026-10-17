@@ -145,7 +145,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/live-metrics") {
       const date = url.searchParams.get("date") || "";
-      if (!/^\\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
+      if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
       const cacheKey = "live-metrics:" + date;
       const cachedMetrics = cache.get(cacheKey);
       if (cachedMetrics && Date.now() - cachedMetrics.at < 15000) return send(res, 200, cachedMetrics.body);
