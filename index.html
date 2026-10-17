@@ -772,7 +772,7 @@ function updateIntervalStats(match,trail,current,now){
 function liveMatchLine(m,highActivity=false,activityLevel=0){
  const recentAlert=signalAlertHistory.find(a=>String(a.eventId)===String(m.id)&&a.market==="πιθανό γκολ"&&a.createdAt&&Date.now()-a.createdAt<8*60*1000);
  const waveLevel=Math.max(0,Math.min(100,Number(activityLevel)||0));
- const waveColor=waveLevel>=65?'#ef4444':waveLevel>=35?'#f97316':'#22c55e';
+ const waveColor=waveLevel>=65?'#ef4444':waveLevel>=35?'#f97316':'#38bdf8';
  const waveAmplitude=3+(waveLevel/100)*13;
  const wavePoints=Array.from({length:35},(_,i)=>{
   const x=i*140/34;
