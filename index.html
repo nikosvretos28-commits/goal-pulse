@@ -435,11 +435,13 @@ header nav a{padding:9px 0;font-size:11px}
 /* High-activity live waveform: intensity colors and animated bars */
 .activity-alert-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 7px 6px;min-width:0}
 .activity-alert-row .goal-now-alert{margin:0;flex:0 0 auto}
-.activity-wave{display:inline-flex;align-items:center;justify-content:center;gap:2px;height:28px;min-width:74px;padding:3px 5px;border:1px solid color-mix(in srgb,var(--wave-color) 48%,transparent);border-radius:6px;background:color-mix(in srgb,var(--wave-color) 9%,#0b1220);color:var(--wave-color);overflow:hidden;box-shadow:0 0 calc(var(--wave-level)*.08px) color-mix(in srgb,var(--wave-color) 30%,transparent)}
-.activity-wave i{display:block;width:3px;height:var(--bar-height);max-height:22px;border-radius:3px;background:var(--wave-color);opacity:.95;transform-origin:center;animation:activityWavePulse .72s ease-in-out infinite alternate;animation-delay:var(--bar-delay)}
-@keyframes activityWavePulse{from{transform:scaleY(.42);opacity:.58}to{transform:scaleY(1);opacity:1}}
-@media(prefers-reduced-motion:reduce){.activity-wave i{animation:none;transform:none}}
-@media(max-width:560px){.activity-alert-row{gap:5px;padding:0 3px 5px}.activity-wave{height:23px;min-width:62px;gap:1.5px;padding:2px 4px}.activity-wave i{width:2.5px;max-height:18px}.activity-alert-row .goal-now-alert{font-size:7px;padding:3px 4px}}
+.activity-wave{position:relative;display:inline-flex;align-items:center;justify-content:center;height:30px;width:96px;min-width:74px;padding:2px 4px;border:1px solid color-mix(in srgb,var(--wave-color) 48%,transparent);border-radius:5px;background:linear-gradient(180deg,color-mix(in srgb,var(--wave-color) 11%,#0b1220),#08111d);color:var(--wave-color);overflow:hidden;box-shadow:0 0 calc(var(--wave-level)*.08px) color-mix(in srgb,var(--wave-color) 30%,transparent)}
+.activity-ecg{position:relative;z-index:1;display:block;width:100%;height:100%;overflow:visible}
+.ecg-trace{fill:none;stroke:var(--wave-color);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;stroke-dasharray:220;stroke-dashoffset:0;filter:drop-shadow(0 0 2px var(--wave-color));animation:ecgSweep 1.8s linear infinite}
+.ecg-glow{position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,transparent 65%,color-mix(in srgb,var(--wave-color) 20%,transparent) 100%);pointer-events:none}
+@keyframes ecgSweep{0%{stroke-dashoffset:35;opacity:.72}50%{opacity:1}100%{stroke-dashoffset:-35;opacity:.82}}
+@media(prefers-reduced-motion:reduce){.ecg-trace{animation:none}}
+@media(max-width:560px){.activity-alert-row{gap:5px;padding:0 3px 5px}.activity-wave{height:25px;width:76px;min-width:62px;padding:2px 3px}.activity-alert-row .goal-now-alert{font-size:7px;padding:3px 4px}}
 </style>
 </head>
 <body>
@@ -632,8 +634,9 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const recentAlert=signalAlertHistory.find(a=>String(a.eventId)===String(m.id)&&a.market==="πιθανό γκολ"&&a.createdAt&&Date.now()-a.createdAt<8*60*1000);
  const waveLevel=Math.max(0,Math.min(100,Number(activityLevel)||0));
  const waveColor=waveLevel>=65?'#ef4444':waveLevel>=35?'#f97316':'#facc15';
- const waveBars=[8,14,22,12,28,17,10,24,32,16,26,11,20,30,13,23];
- const waveHtml='<span class="activity-wave" style="--wave-color:'+waveColor+';--wave-level:'+waveLevel+'%" role="img" aria-label="Ένταση επιθετικής δραστηριότητας '+waveLevel+' στα 100" title="Δείκτης επιθετικής δραστηριότητας: '+waveLevel+'/100">'+waveBars.map((h,i)=>'<i style="--bar-height:'+Math.max(5,Math.round(h*(0.65+waveLevel/160)))+'px;--bar-delay:'+(-i*0.075)+'s"></i>').join('')+'</span>';
+ const ecgPoints='0,19 7,19 11,17 15,21 20,19 27,19 32,18 37,19 42,4 47,33 52,11 57,20 64,19 72,19 78,17 83,21 88,19 95,19 101,18 106,19 111,6 116,31 121,12 126,20 134,19 140,19';
+ const ecgHtml='<svg class="activity-ecg" viewBox="0 0 140 38" preserveAspectRatio="none" aria-hidden="true"><polyline class="ecg-trace" points="'+ecgPoints+'"/></svg>';
+ const waveHtml='<span class="activity-wave" style="--wave-color:'+waveColor+';--wave-level:'+waveLevel+'%" role="img" aria-label="Ένταση επιθετικής δραστηριότητας '+waveLevel+' στα 100" title="Δείκτης επιθετικής δραστηριότητας: '+waveLevel+'/100">'+ecgHtml+'<span class="ecg-glow"></span></span>';
  const alertHtml=recentAlert?'<div class="activity-alert-row"><span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>'+waveHtml+'</div>':(highActivity?'<div class="activity-alert-row"><span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>'+waveHtml+'</div>':"");
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
