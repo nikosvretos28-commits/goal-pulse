@@ -140,6 +140,7 @@ const LEAGUES=[
  ['uefa.europa.conf','Conference League','Europe','🏆']
 ];
 let active='all', allMatches=[], successfulFeeds=0, loadingScores=false;
+  runSignalCheck();
 const localISODate=(date=new Date())=>{const d=new Date(date.getTime()-date.getTimezoneOffset()*60000);return d.toISOString().slice(0,10)};
 let selectedMatchDate=localISODate();
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -221,7 +222,7 @@ document.getElementById('todayDate').addEventListener('click',()=>{selectedMatch
 document.getElementById('refreshScores').addEventListener('click',loadScores);
 const signalThreshold=document.getElementById('signalThreshold'),signalThresholdLabel=document.getElementById('signalThresholdLabel'),signalMarket=document.getElementById('signalMarket'),signalResults=document.getElementById('signalResults');
 signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/35');
-document.getElementById('runSignalCheck').addEventListener('click',()=>{
+function runSignalCheck(){
  const threshold=Number(signalThreshold.value),market=signalMarket.value;
  if(!successfulFeeds){signalResults.innerHTML='<p>Η τελευταία ενημέρωση σκορ δεν είναι διαθέσιμη. Δεν χρησιμοποιούμε παλιά δεδομένα για νέα σήματα. Δοκίμασε ξανά σε λίγο.</p>';return}
  const liveMatches=allMatches.filter(m=>m.state==='in');
@@ -238,7 +239,10 @@ document.getElementById('runSignalCheck').addEventListener('click',()=>{
  }).filter(x=>x.score>=threshold).sort((a,b)=>b.score-a.score);
  if(!rows.length){signalResults.innerHTML='<p>Κανένα σήμα δεν περνά το επιλεγμένο όριο. Αυτό δεν σημαίνει ότι αποκλείεται να συμβεί γκολ.</p>';return}
  signalResults.innerHTML=rows.map(x=>'<div class="signal-row"><div><strong>'+esc(x.m.home.name)+' – '+esc(x.m.away.name)+'</strong><div class="signal-muted">'+esc(x.m.league)+' · '+esc(x.m.clock)+'<br>'+esc(x.notes.join(' · '))+'</div></div><span class="signal-score">'+x.score+'/35</span></div>').join('')+'<p>Ο δείκτης 0–35 ταξινομεί μόνο το διαθέσιμο πλαίσιο του αγώνα· δεν αποτελεί ποσοστό πιθανότητας.</p>';
-});
+}
+document.getElementById('runSignalCheck').addEventListener('click',runSignalCheck);
+signalMarket.addEventListener('change',runSignalCheck);
+signalThreshold.addEventListener('change',runSignalCheck);
 function closeAnalysis(){document.getElementById('analysisModal').classList.remove('open')}
 document.getElementById('analysisModal').addEventListener('click',event=>{if(event.target.id==='analysisModal')closeAnalysis()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAnalysis()});
