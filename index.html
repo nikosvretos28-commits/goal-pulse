@@ -935,14 +935,17 @@ async function runSignalCheck(){
    signalTrails.set(key,trail);
     updateIntervalStats(m,trail,values,now);
    signalSnapshots.set(key,{values,at:now});
-   const baseline=[...trail].reverse().find(item=>now-item.at>=Number(signalWindow.value)*60*1000);
-   if(!baseline)continue;
+   const windowMinutes=Number(signalWindow.value);
+   const baseline=[...trail].reverse().find(item=>now-item.at>=windowMinutes*60*1000);
+   const serverTrend=windowMinutes===10?live.trend?.window10m:windowMinutes===5?live.trend?.window5m:null;
+   if(!baseline&&!serverTrend?.available)continue;
    let goalPoints=0,pressurePoints=0,reasons=[],totalShotsAdded=0,shotsOnTargetAdded=0,cornersAdded=0;
    values.forEach((v,i)=>{
-    const p=baseline.values[i]||{};
-    const ds=v.shots==null||p.shots==null?0:Math.max(0,v.shots-p.shots);
-    const dt=v.shotsOnTarget==null||p.shotsOnTarget==null?0:Math.max(0,v.shotsOnTarget-p.shotsOnTarget);
-    const dc=v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners);
+    const p=baseline?.values[i]||{};
+    const serverDelta=serverTrend?.teams?.find(t=>String(t.team||'').trim().toLowerCase()===String(live.teams[i]?.team||'').trim().toLowerCase())||serverTrend?.teams?.[i]||{};
+    const ds=baseline?(v.shots==null||p.shots==null?0:Math.max(0,v.shots-p.shots)):(serverDelta.shots==null?0:Number(serverDelta.shots));
+    const dt=baseline?(v.shotsOnTarget==null||p.shotsOnTarget==null?0:Math.max(0,v.shotsOnTarget-p.shotsOnTarget)):(serverDelta.shotsOnTarget==null?0:Number(serverDelta.shotsOnTarget));
+    const dc=baseline?(v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners)):(serverDelta.corners==null?0:Number(serverDelta.corners));
     totalShotsAdded+=ds;shotsOnTargetAdded+=dt;cornersAdded+=dc;
     if(dt>0){goalPoints+=4*dt;pressurePoints+=4*dt;reasons.push(dt+' νέο/α σουτ στην εστία')}
     if(ds>0){goalPoints+=Math.min(ds,4);pressurePoints+=Math.min(2*ds,6);reasons.push(ds+' νέες τελικές')}
