@@ -8,6 +8,16 @@ const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
 const cache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const SCOREBOARD_TTL_MS = 45 * 1000;
+const SCOREBOARD_STALE_TTL_MS = 15 * 1000;
+const SCOREBOARD_LEAGUES = [
+  "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "por.1",
+  "ned.1", "sco.1", "gre.1", "tur.1", "bra.1", "arg.1",
+  "usa.1", "mex.1", "aus.1", "uefa.champions", "uefa.europa",
+  "uefa.europa.conf"
+];
+const scoreboardCache = new Map();
+
 
 function send(res, status, body, type = "application/json; charset=utf-8") {
   res.writeHead(status, {
@@ -65,7 +75,40 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY) });
   }
 
+
   try {
+    if (url.pathname === "/api/scoreboard") {
+      const date = url.searchParams.get("date") || "";
+      if (!/^\\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
+      const cached = scoreboardCache.get(date);
+      if (cached && Date.now() - cached.at < SCOREBOARD_TTL_MS) {
+        res.setHeader("X-Goal-Pulse-Cache", "HIT");
+        return send(res, 200, cached.body);
+      }
+      const feeds = await Promise.all(SCOREBOARD_LEAGUES.map(async code => {
+        try {
+          const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
+            headers: { "Accept": "application/json" },
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return { code, events: [], ok: false };
+          const body = await response.json();
+          return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
+        } catch {
+          return { code, events: [], ok: false };
+        }
+      }));
+      const successfulFeeds = feeds.filter(feed => feed.ok).length;
+      const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: feeds.map(({code,events,ok}) => ({code,events,ok})) };
+      if (successfulFeeds > 0) scoreboardCache.set(date, { at: Date.now(), body });
+      else if (cached && Date.now() - cached.at < SCOREBOARD_TTL_MS + SCOREBOARD_STALE_TTL_MS) {
+        res.setHeader("X-Goal-Pulse-Cache", "STALE");
+        return send(res, 200, cached.body);
+      }
+      res.setHeader("X-Goal-Pulse-Cache", "MISS");
+      return send(res, successfulFeeds > 0 ? 200 : 502, body);
+    }
+
     if (url.pathname === "/api/pitch/date") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return send(res, 400, { error: "date must be YYYY-MM-DD" });
