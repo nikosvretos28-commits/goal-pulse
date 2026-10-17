@@ -7,6 +7,7 @@ const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
 const cache = new Map();
+const pitchInflight = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const SCOREBOARD_TTL_MS = 45 * 1000;
 const SCOREBOARD_STALE_TTL_MS = 15 * 1000;
@@ -39,21 +40,37 @@ async function pitchGet(apiPath) {
   }
   const cached = cache.get(apiPath);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.body;
-  const response = await fetch(API_BASE + apiPath, {
-    headers: { "X-API-KEY": key, "Accept": "application/json" },
-    signal: AbortSignal.timeout(12000)
-  });
-  const raw = await response.text();
-  let body;
-  try { body = JSON.parse(raw); } catch { body = { error: { message: "Invalid response from football data provider" } }; }
-  if (!response.ok) {
-    const error = new Error(body?.error?.message || "Football data provider error");
-    error.status = response.status;
-    error.code = body?.error?.code;
-    throw error;
+
+  let sharedRequest = pitchInflight.get(apiPath);
+  if (!sharedRequest) {
+    sharedRequest = (async () => {
+      const response = await fetch(API_BASE + apiPath, {
+        headers: { "X-API-KEY": key, "Accept": "application/json" },
+        signal: AbortSignal.timeout(12000)
+      });
+      const raw = await response.text();
+      let body;
+      try { body = JSON.parse(raw); } catch { body = { error: { message: "Invalid response from football data provider" } }; }
+      if (!response.ok) {
+        const error = new Error(body?.error?.message || "Football data provider error");
+        error.status = response.status;
+        error.code = body?.error?.code;
+        throw error;
+      }
+      cache.set(apiPath, { at: Date.now(), body });
+      if (cache.size > 200) {
+        const oldestKey = cache.keys().next().value;
+        if (oldestKey !== undefined) cache.delete(oldestKey);
+      }
+      return body;
+    })();
+    pitchInflight.set(apiPath, sharedRequest);
   }
-  cache.set(apiPath, { at: Date.now(), body });
-  return body;
+  try {
+    return await sharedRequest;
+  } finally {
+    if (pitchInflight.get(apiPath) === sharedRequest) pitchInflight.delete(apiPath);
+  }
 }
 
 const ALLOWED_ORIGINS = new Set([
