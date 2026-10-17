@@ -431,6 +431,15 @@ header nav a{padding:9px 0;font-size:11px}
  .live-inline-stat b{font-size:10px}
 }
 
+
+/* High-activity live waveform: intensity colors and animated bars */
+.activity-alert-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 7px 6px;min-width:0}
+.activity-alert-row .goal-now-alert{margin:0;flex:0 0 auto}
+.activity-wave{display:inline-flex;align-items:center;justify-content:center;gap:2px;height:28px;min-width:74px;padding:3px 5px;border:1px solid color-mix(in srgb,var(--wave-color) 48%,transparent);border-radius:6px;background:color-mix(in srgb,var(--wave-color) 9%,#0b1220);color:var(--wave-color);overflow:hidden;box-shadow:0 0 calc(var(--wave-level)*.08px) color-mix(in srgb,var(--wave-color) 30%,transparent)}
+.activity-wave i{display:block;width:3px;height:var(--bar-height);max-height:22px;border-radius:3px;background:var(--wave-color);opacity:.95;transform-origin:center;animation:activityWavePulse .72s ease-in-out infinite alternate;animation-delay:var(--bar-delay)}
+@keyframes activityWavePulse{from{transform:scaleY(.42);opacity:.58}to{transform:scaleY(1);opacity:1}}
+@media(prefers-reduced-motion:reduce){.activity-wave i{animation:none;transform:none}}
+@media(max-width:560px){.activity-alert-row{gap:5px;padding:0 3px 5px}.activity-wave{height:23px;min-width:62px;gap:1.5px;padding:2px 4px}.activity-wave i{width:2.5px;max-height:18px}.activity-alert-row .goal-now-alert{font-size:7px;padding:3px 4px}}
 </style>
 </head>
 <body>
@@ -619,9 +628,13 @@ function updateIntervalStats(match,trail,current,now){
  node.textContent=delta(5)+'  |  '+delta(10);
 }
 
-function liveMatchLine(m,highActivity=false){
+function liveMatchLine(m,highActivity=false,activityLevel=0){
  const recentAlert=signalAlertHistory.find(a=>String(a.eventId)===String(m.id)&&a.market==="πιθανό γκολ"&&a.createdAt&&Date.now()-a.createdAt<8*60*1000);
- const alertHtml=recentAlert?'<span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>':(highActivity?'<span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>':"");
+ const waveLevel=Math.max(0,Math.min(100,Number(activityLevel)||0));
+ const waveColor=waveLevel>=65?'#ef4444':waveLevel>=35?'#f97316':'#facc15';
+ const waveBars=[8,14,22,12,28,17,10,24,32,16,26,11,20,30,13,23];
+ const waveHtml='<span class="activity-wave" style="--wave-color:'+waveColor+';--wave-level:'+waveLevel+'%" role="img" aria-label="Ένταση επιθετικής δραστηριότητας '+waveLevel+' στα 100" title="Δείκτης επιθετικής δραστηριότητας: '+waveLevel+'/100">'+waveBars.map((h,i)=>'<i style="--bar-height:'+Math.max(5,Math.round(h*(0.65+waveLevel/160)))+'px;--bar-delay:'+(-i*0.075)+'s"></i>').join('')+'</span>';
+ const alertHtml=recentAlert?'<div class="activity-alert-row"><span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>'+waveHtml+'</div>':(highActivity?'<div class="activity-alert-row"><span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>'+waveHtml+'</div>':"");
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams[0]||{},away=teams[1]||{};
@@ -665,12 +678,13 @@ function renderHighActivityMatches(){
   const totalShots=teams.reduce((n,t)=>n+Number(t.shots||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0);
   const score=recentShots+recentOnTarget*2+recentCorners*2;
+  const intensity=Math.max(0,Math.min(100,Math.round(recentShots*10+recentOnTarget*20+recentCorners*10+Math.min(totalShots,12)*2+Math.min(totalOnTarget,6)*4)));
   const active=score>=3||(totalShots>=10&&totalOnTarget>=4);
-  return active?{match:m,score,recentShots,recentOnTarget,recentCorners,totalShots,totalOnTarget,hasRecentBaseline:!!baseline}:null;
+  return active?{match:m,score,intensity,recentShots,recentOnTarget,recentCorners,totalShots,totalOnTarget,hasRecentBaseline:!!baseline}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots).slice(0,5);
- box.innerHTML=ranked.length?ranked.map(x=>liveMatchLine(x.match,true)).join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίζεται ακόμη υψηλή δραστηριότητα από τα διαθέσιμα live στατιστικά. Η λίστα ενημερώνεται αυτόματα.</div>';
+ box.innerHTML=ranked.length?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίζεται ακόμη υψηλή δραστηριότητα από τα διαθέσιμα live στατιστικά. Η λίστα ενημερώνεται αυτόματα.</div>';
 }
 async function runSignalCheck(){
  if(signalBusy)return;
