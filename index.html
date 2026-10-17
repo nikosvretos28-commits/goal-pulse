@@ -87,6 +87,70 @@ button:active{transform:scale(.98)}
 .filters{margin-top:10px}.main-grid{grid-template-columns:minmax(0,2fr) minmax(280px,.72fr)}.main-grid>.panel{min-width:0}
 @media(max-width:850px){.top-live #liveRows{grid-template-columns:1fr}.scoreboard-title{padding:16px}.scoreboard-status{max-width:150px;white-space:normal}.main-grid{grid-template-columns:1fr}.product-nav{top:0}}
 @media(max-width:560px){.scoreboard-title{align-items:flex-start;gap:8px}.scoreboard-title h1{font-size:29px}.scoreboard-status{font-size:9px;padding:7px}.product-nav{margin:8px 0}.product-nav a{padding:9px 10px}.top-live .live-row{grid-template-columns:24px minmax(0,1fr) auto minmax(0,1fr) 34px;padding:9px 8px}}
+
+/* Mobile live-centre layout based on supplied MyGoal247 screenshot, retaining Goal Pulse colors */
+.scoreboard-top{margin:0 0 10px;border:0;border-radius:0;background:transparent;overflow:visible}
+.scoreboard-title{padding:12px 4px;border-bottom:1px solid var(--line)}
+.scoreboard-title h1{font-size:26px;margin:3px 0}.scoreboard-title p{display:none}
+.scoreboard-status{font-size:10px;padding:6px 9px}
+.top-live{margin-top:8px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.top-live-head{padding:8px 10px;background:#0e2236}
+.top-live #liveRows{display:block}
+.top-live .live-row{display:grid;grid-template-columns:22px minmax(0,1fr) 42px minmax(0,1fr) 38px;gap:5px;padding:9px 8px;font-size:11px;border-bottom:1px solid var(--line)}
+.top-live .teamname:last-of-type{text-align:left}
+.product-nav{position:sticky;top:0;z-index:20;margin:8px 0;padding:5px;gap:4px;border-radius:8px;background:#06101ef2;border-color:var(--line)}
+.product-nav a{flex:1;text-align:center;padding:8px 6px;font-size:10px;white-space:nowrap}
+.filters{margin:10px 0;padding:8px;background:#0b1a2b;border:1px solid var(--line);border-radius:8px}
+.main-grid{grid-template-columns:minmax(0,1fr) minmax(260px,.72fr);gap:10px}
+.main-grid>.panel{border-radius:8px}
+.panel-head{padding:11px 12px}
+.league-block{padding:0 7px 7px}
+.league-head{padding:8px 6px;font-size:12px}
+.match{border-radius:5px;margin-bottom:3px;padding:9px 8px;background:#0b1a2b;border-color:#173b55}
+.match:hover{transform:none}
+.match-meta{margin-bottom:6px}
+.teams{grid-template-columns:minmax(0,1fr) 45px minmax(0,1fr);gap:5px}
+.team{font-size:12px;gap:5px}.team-logo{font-size:16px}
+.match-score{font-size:18px}
+.stats{gap:4px;margin-top:7px}.stat{padding:4px 5px;font-size:9px}
+.match-bottom{margin-top:7px;padding-top:6px}
+.right-stack{gap:9px}
+.bottom-strip{margin-top:10px}
+@media(max-width:850px){
+ .wrap{padding:0 8px}
+ header{height:58px;gap:8px}
+ .brand{min-width:0;gap:6px}.brand svg{width:36px;height:35px}.brand-name{font-size:18px}
+ header nav{display:none}.header-actions{gap:5px}.live-badge{display:none}.login{padding:8px 10px;font-size:11px}
+ .scoreboard-title{padding:8px 2px}.scoreboard-title h1{font-size:22px}
+ .scoreboard-status{max-width:125px;gap:4px;white-space:normal}
+ .top-live #liveRows{display:block}
+ .main-grid{grid-template-columns:minmax(0,1fr)}
+ .right-stack{grid-template-columns:minmax(0,1fr)}
+ .right-stack .panel:last-child{grid-column:auto}
+ .filters{gap:5px}.date-label{padding:6px 7px}.date-label input{min-width:100px;max-width:118px}
+ .filter{padding:7px 10px;font-size:11px}
+ .search{flex-basis:100%;order:2;max-width:none;margin-left:0}
+ .league-country{font-size:9px}
+ .match{padding:9px 7px}
+ .teams{grid-template-columns:minmax(0,1fr) 42px minmax(0,1fr)}
+ .team{font-size:11px}.team-logo{display:none}
+ .match-score{font-size:17px}
+ .bottom-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+ .wrap{padding:0 5px}
+ .product-nav{position:fixed;top:auto;bottom:0;left:0;right:0;margin:0;border-radius:0;border-width:1px 0 0;padding:5px 2px calc(5px + env(safe-area-inset-bottom));background:#06101ef5;backdrop-filter:blur(12px)}
+ .product-nav a{font-size:9px;padding:7px 1px;white-space:normal;line-height:1.2}
+ body{padding-bottom:52px}
+ .top-live .live-row{grid-template-columns:20px minmax(0,1fr) 38px minmax(0,1fr) 35px;padding:8px 6px;font-size:10px}
+ .scoreboard-status small{display:none}
+ .filters{padding:6px}.filter{padding:7px 9px}
+ .teams{grid-template-columns:minmax(0,1fr) 36px minmax(0,1fr);gap:3px}
+ .team{font-size:10px}.match-score{font-size:16px}
+ .stat{font-size:9px}
+ .panel-head h2{font-size:14px}
+}
+
 </style>
 </head>
 <body>
