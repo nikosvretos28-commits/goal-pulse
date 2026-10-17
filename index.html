@@ -1052,7 +1052,7 @@ function usableMetric(v){if(v===undefined||v===null||String(v).trim()==='')retur
 async async function showDetails(btn){
  const card=btn.closest('.match');
  const home=card?.dataset.home||'',away=card?.dataset.away||'';
- const liveEvent=allMatches.find(m=>m.home.name===home&&m.away.name===away&&m.state==='in');
+ const liveEvent=allMatches.find(m=>sameTeam(m.home.name,home)&&sameTeam(m.away.name,away)&&m.state==='in');
  const modal=document.getElementById('analysisModal'),content=document.getElementById('analysisContent');
  const title=document.getElementById('analysisTitle'),subtitle=document.getElementById('analysisSubtitle');
  if(liveEvent){
@@ -1087,7 +1087,23 @@ async async function showDetails(btn){
    const trend=live?.trend;
    const trendText=[['Τελευταία 5′',trend?.window5m],['Τελευταία 10′',trend?.window10m]].filter(([,w])=>w?.available).map(([label,w])=>label+(w.sampleMinutes?' (δείγμα '+w.sampleMinutes+'′)':'')).join(' · ');
    content.innerHTML=score+'<h3 class="detail-heading">📊 Live στατιστικά αγώνα</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Στατιστικό</span><span>'+esc(liveEvent.away.name)+'</span></div>'+(rows||'<p class="analysis-note">Η πηγή δεν επέστρεψε ακόμη αναλυτικά στατιστικά για αυτόν τον αγώνα. Δεν συμπληρώνουμε ελλείψεις με μηδενικά.</p>')+'</div><h3 class="detail-heading">⏱️ Μεταβολές στα τελευταία λεπτά</h3><div class="stat-table"><div class="stat-table-head"><span>Μεταβολή 5′</span><span>Στατιστικό</span><span>Μεταβολή 10′</span></div>'+deltaRows+'</div><p class="analysis-note">'+(trendText?'Ιστορικό μετρήσεων: '+esc(trendText)+'.':'Οι μεταβολές εμφανίζονται όταν υπάρχει επαρκές ιστορικό μετρήσεων.')+' Το xG εμφανίζεται μόνο αν το παρέχει η πηγή.</p><button class="mini-btn" type="button" id="refreshLiveDetail">↻ Ανανέωση live στατιστικών</button>';
-   const refresh=document.getElementById('refreshLiveDetail');if(refresh)refresh.onclick=()=>refreshLive();
+   const refresh=document.getElementById('refreshLiveDetail');
+   if(refresh)refresh.onclick=async()=>{
+    refresh.disabled=true;refresh.textContent='↻ Ενημέρωση…';
+    try{
+     const date=(selectedMatchDate||new Date().toISOString().slice(0,10)).replace(/-/g,'');
+     const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
+     const data=await response.json();
+     if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
+     liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));
+     renderLiveDetails();
+    }catch{
+     const note=document.createElement('p');note.className='analysis-note';note.textContent='Δεν ήταν δυνατή η ανανέωση τώρα. Δοκίμασε ξανά σε λίγο.';content.appendChild(note);
+    }finally{
+     const current=document.getElementById('refreshLiveDetail');
+     if(current){current.disabled=false;current.textContent='↻ Ανανέωση live στατιστικών';}
+    }
+   };
   };
   content.innerHTML='<p class="analysis-note">Φόρτωση πραγματικών live στατιστικών…</p>';
   modal.classList.add('open');
