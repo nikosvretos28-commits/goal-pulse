@@ -535,6 +535,20 @@ header nav a{padding:9px 0;font-size:11px}
 .live-match-line.goal-flash-row{position:relative;z-index:3;outline:2px solid #00f566;outline-offset:-2px;background:linear-gradient(90deg,#063b2a,#0b382f 35%,#173b46 65%,#063b2a)!important;animation:goalPulseFullBar .72s ease-in-out 0s 7;box-shadow:0 0 22px 5px #00f566aa!important}
 .live-match-line.goal-flash-row::before{content:"⚽  GOAL • ΓΚΟΛ!  ⚽";position:absolute;z-index:8;left:0;right:0;top:0;text-align:center;padding:5px 4px;background:linear-gradient(90deg,#00f566,#d9ff38,#00f566);color:#06130d;font-size:11px;font-weight:1000;letter-spacing:1px;pointer-events:none;animation:goalBanner .72s ease-in-out 0s 7}
 .live-match-line.goal-flash-row .live-row{padding-top:28px}
+/* Main fixture cards: improve hierarchy and tap/read comfort */
+.match .team{font-size:16px;font-weight:850;line-height:1.25}
+.match .match-score{font-size:28px;font-weight:1000}
+.match .match-meta{font-size:13px}
+.match .stat{font-size:13px}
+.match .stat b{font-size:14px}
+@media(max-width:560px){
+ .match .team{font-size:14px;line-height:1.2}
+ .match .match-score{font-size:24px}
+ .match .match-meta{font-size:12px}
+ .match .match-bottom .subtle{font-size:12px}
+ .match .stat{font-size:12px;padding:7px 6px}
+ .match .stat b{font-size:13px}
+}
 /* Readable team names: prioritize the teams over decorative spacing */
 .live-match-line .live-row .teamname{font-size:13px;font-weight:850;line-height:1.2;color:#f4f8ff;letter-spacing:0;white-space:normal;text-overflow:clip;overflow-wrap:anywhere}
 .live-match-line .live-row .score{font-size:16px;font-weight:1000}
