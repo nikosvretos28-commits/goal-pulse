@@ -850,7 +850,10 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
    shots:['shots','totalShots','total_shots','total_attempts','totalAttempts'],
    shotsOnTarget:['shotsOnTarget','shots_on_target','shots_on_goal','shotsOnGoal','onTargetShots'],
    shotsOffTarget:['shotsOffTarget','shots_off_target','shots_off_goal','shotsOffGoal','offTargetShots'],
-   blockedShots:['blockedShots','blocked_shots','shotsBlocked','shots_blocked']
+   blockedShots:['blockedShots','blocked_shots','shotsBlocked','shots_blocked'],
+   corners:['corners','cornerKicks','wonCorners'],
+   possession:['possession','possessionPct','possessionPercentage'],
+   xG:['xG','xg','expectedGoals']
   };
   for(const name of (aliases[key]||[key])){const v=team?.[name];if(v!==undefined&&v!==null&&String(v).trim()!==''&&Number.isFinite(Number(v)))return {value:Number(v),estimated:false}}
   if(key==='shotsOffTarget'){
@@ -871,14 +874,22 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const trail=signalTrails.get(String(m.id))||[],now=Date.now();
  const delta=(minutes,key)=>{
   const base=[...trail].reverse().find(item=>now-item.at>=minutes*60000);
-  if(!base)return '—';
-  const values=base.values||[];
-  const a=teams[0]?.[key],b=teams[1]?.[key],x=values[0]?.[key],y=values[1]?.[key];
-  if(a==null||b==null||x==null||y==null)return '—';
-  return Math.max(0,Number(a)-Number(x))+'–'+Math.max(0,Number(b)-Number(y));
+  if(base){
+   const values=base.values||[],a=teams[0]?.[key],b=teams[1]?.[key],x=values[0]?.[key],y=values[1]?.[key];
+   if(a!=null&&b!=null&&x!=null&&y!=null)return Math.max(0,Number(a)-Number(x))+'–'+Math.max(0,Number(b)-Number(y));
+  }
+  const trend=minutes===10?stats?.trend?.window10m:stats?.trend?.window5m;
+  if(trend?.available&&Array.isArray(trend.teams)&&trend.teams.length>=2){
+   const find=(team)=>trend.teams.find(t=>String(t.team||'').trim().toLowerCase()===String(team.team||'').trim().toLowerCase());
+   const a=find(teams[0]),b=find(teams[1]);
+   const x=a?.[key],y=b?.[key];
+   if(x!=null&&y!=null)return Math.max(0,Number(x))+'–'+Math.max(0,Number(y))+(trend.sampleMinutes&&Math.abs(trend.sampleMinutes-minutes)>1?'*':'');
+  }
+  return '—';
  };
+ const fmtPair=(key)=>pair(key);
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
- const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',pair('shots'),'shot')+statCell('ΕΝΤΟΣ',pair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',pair('shotsOffTarget'),'shot')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',pair('xG'),'xg'):'')+'</div>';
+ const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',fmtPair('shots'),'shot')+statCell('ΕΝΤΟΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',fmtPair('shotsOffTarget'),'shot')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
  return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="crest">'+teamBadge(m.home)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="crest">'+teamBadge(m.away)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></button>'+alertHtml+'</div>'+statsHtml+'</div>';
 }
 function renderHighActivityMatches(){
