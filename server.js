@@ -19,7 +19,60 @@ const SCOREBOARD_LEAGUES = [
 ];
 const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
+const liveHistory = new Map();
+const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
 
+
+function addRollingTrends(matches) {
+  const now = Date.now();
+  for (const match of matches) {
+    const id = String(match.eventId || "");
+    if (!id || !Array.isArray(match.teams) || match.teams.length < 2) continue;
+    let history = liveHistory.get(id) || [];
+    const last = history[history.length - 1];
+    const snapshot = {
+      at: now,
+      teams: match.teams.map(team => ({
+        team: String(team.team || "").trim().toLowerCase(),
+        shots: team.shots,
+        shotsOnTarget: team.shotsOnTarget,
+        corners: team.corners
+      }))
+    };
+    if (!last || now - last.at >= 12000) history.push(snapshot);
+    history = history.filter(item => now - item.at <= LIVE_HISTORY_TTL_MS);
+    liveHistory.set(id, history);
+
+    const makeWindow = minutes => {
+      const targetAge = minutes * 60 * 1000;
+      const baseline = [...history].reverse().find(item => now - item.at >= targetAge);
+      if (!baseline || !last) return { available: false, sampleMinutes: null, teams: [] };
+      const deltas = match.teams.map((team, index) => {
+        const name = String(team.team || "").trim().toLowerCase();
+        const previous = baseline.teams.find(item => item.team && item.team === name) || baseline.teams[index];
+        if (!previous) return { team: team.team, shots: null, shotsOnTarget: null, corners: null };
+        const delta = key => {
+          const current = team[key];
+          const old = previous[key];
+          if (current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
+          return Math.max(0, Number(current) - Number(old));
+        };
+        return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners") };
+      });
+      const available = deltas.some(item => item.shots != null || item.shotsOnTarget != null || item.corners != null);
+      return { available, sampleMinutes: Math.round((now - baseline.at) / 60000 * 10) / 10, teams: deltas };
+    };
+    match.trend = {
+      source: "server-observed cumulative-stat deltas",
+      window5m: makeWindow(5),
+      window10m: makeWindow(10)
+    };
+  }
+  if (liveHistory.size > 500) {
+    const oldest = [...liveHistory.entries()].sort((a, b) => (a[1].at(-1)?.at || 0) - (b[1].at(-1)?.at || 0)).slice(0, liveHistory.size - 500);
+    for (const [id] of oldest) liveHistory.delete(id);
+  }
+}
 
 function send(res, status, body, type = "application/json; charset=utf-8") {
   res.writeHead(status, {
@@ -202,7 +255,8 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
-      const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString() };
+      addRollingTrends(matches);
+      const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory: "in-memory; resets on service restart" };
       cache.set(cacheKey, { at: Date.now(), body });
       return send(res, 200, body);
     }
