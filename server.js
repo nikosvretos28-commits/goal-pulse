@@ -175,7 +175,7 @@ const server = http.createServer(async (req, res) => {
               const stats = team.statistics || [];
               const get = (...names) => {
                 const normalizedNames = names.map(name => String(name).toLowerCase().replace(/[^a-z]/g, ""));
-                const found = stats.find(s => normalizedNames.includes(String(s.name || s.abbreviation || "").toLowerCase().replace(/[^a-z]/g, "")));
+                const found = stats.find(stat => { const statNames = [stat.name, stat.abbreviation].filter(Boolean).map(value => String(value).toLowerCase().replace(/[^a-z]/g, "")); return normalizedNames.some(name => statNames.includes(name)); });
                 if (!found) return null;
                 const n = Number(String(found.displayValue ?? found.value ?? "").replace("%", ""));
                 return Number.isFinite(n) ? n : null;
