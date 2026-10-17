@@ -140,7 +140,6 @@ const LEAGUES=[
  ['uefa.europa.conf','Conference League','Europe','🏆']
 ];
 let active='all', allMatches=[], successfulFeeds=0, loadingScores=false;
-  runSignalCheck();
 const localISODate=(date=new Date())=>{const d=new Date(date.getTime()-date.getTimezoneOffset()*60000);return d.toISOString().slice(0,10)};
 let selectedMatchDate=localISODate();
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -200,6 +199,7 @@ async function loadScores(){
  const feedsSucceeded=successfulFeeds;
  if(feedsSucceeded>0)allMatches=freshMatches;
  render();
+ runSignalCheck();
  const live=allMatches.filter(m=>m.state==='in').slice(0,4);
  const box=document.getElementById('liveRows');
  if(box){
