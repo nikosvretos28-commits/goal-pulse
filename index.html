@@ -358,7 +358,7 @@ header nav a{padding:9px 0;font-size:11px}
 .live-inline-stat.interval b{color:#f4f8ff}
 @media(max-width:850px){.live-match-centre{overflow-x:auto}.live-match-line{min-width:850px;grid-template-columns:minmax(350px,1fr) minmax(450px,1fr)}.live-match-line .live-row{padding:9px 6px}.live-inline-stats{padding:5px;gap:4px}}
 @media(max-width:560px){.live-match-centre .top-live-head{position:sticky;left:0}.live-match-line{min-width:820px;grid-template-columns:340px 480px}.live-match-line .live-row{grid-template-columns:18px minmax(58px,1fr) 38px minmax(58px,1fr) 18px 34px;gap:4px}.live-inline-stat{padding:6px 2px}.live-inline-stat b{font-size:12px}}
-</style>
+.live-match-main{min-width:340px;display:flex;flex-direction:column;gap:3px}.goal-now-alert{display:inline-flex;align-self:flex-start;margin:0 8px 7px;padding:5px 9px;border:1px solid #ff9a36;border-radius:6px;background:#43220b;color:#ffd08a;font-size:10px;font-weight:900;letter-spacing:.3px;animation:goalPulseGlow 1.2s ease-in-out infinite alternate}.goal-now-alert:before{content:"";display:inline-block;width:6px;height:6px;margin:auto 6px auto 0;border-radius:50%;background:#ff8b26}@keyframes goalPulseGlow{from{box-shadow:0 0 0 #ff8b2600}to{box-shadow:0 0 12px #ff8b2666}}\n</style>
 </head>
 <body>
 <div class="wrap">
@@ -377,7 +377,7 @@ header nav a{padding:9px 0;font-size:11px}
 
 <section class="scoreboard-top">
  <div class="scoreboard-title"><div><div class="eyebrow">GOAL PULSE · LIVE FOOTBALL CENTRE</div><h1>Live Score <span>+</span></h1><p>Όλοι οι διαθέσιμοι αγώνες και τα live δεδομένα σε μία οθόνη.</p></div><div class="scoreboard-status"><span class="pulse-dot"></span><span id="liveCountTop">LIVE CENTER</span><small id="topUpdated">Αυτόματη ενημέρωση</small></div></div>
- <div class="top-live live-match-centre" id="live"><div class="top-live-head"><strong>● Live Matches</strong><span class="subtle">Αγώνας και στατιστικά στην ίδια γραμμή</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
+ <div class="top-live live-match-centre" id="highActivity"><div class="top-live-head"><strong>⚡ High Activity Matches</strong><span class="subtle">Αγώνες με έντονη επιθετική πίεση</span></div><div id="highActivityRows"><div class="subtle" style="padding:10px">Αναμονή πραγματικών live στατιστικών…</div></div></div><div class="top-live live-match-centre" id="live"><div class="top-live-head"><strong>● Live Matches</strong><span class="subtle">Αγώνας και στατιστικά στην ίδια γραμμή</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
 </section>
 <nav class="product-nav" aria-label="Κύριες ενότητες"><a class="selected" href="#matches" data-menu-filter="all">⚽ Όλοι οι αγώνες</a><a href="#matches" data-menu-filter="live">● Live</a><a href="#matches" data-menu-filter="upcoming">Πρόγραμμα</a><a href="#matches" data-menu-filter="finished">Αποτελέσματα</a><a href="#matches" data-menu-filter="favorites">★ Αγαπημένα</a><a href="#insights">📊 Στατιστικά</a><a href="#signalMarket">✦ AI Alerts</a><a href="#signalMarket" onclick="setTimeout(()=>{document.getElementById('signalMarket').value='goal';document.getElementById('vipAlerts').checked=true},0)">◆ VIP Alerts</a><a href="#savedScanner">☷ Personal Scanners</a><a href="#pulseAlertsTitle" onclick="document.getElementById('showSignalHistory').click()">◷ Today / History</a><a href="#leagues">🏆 Διοργανώσεις</a></nav>
 
@@ -547,6 +547,8 @@ function updateIntervalStats(match,trail,current,now){
 }
 
 function liveMatchLine(m){
+ const recentAlert=signalAlertHistory.find(a=>String(a.eventId)===String(m.id)&&a.market==="πιθανό γκολ"&&a.createdAt&&Date.now()-a.createdAt<8*60*1000);
+ const alertHtml=recentAlert?'<span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>':"";
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams[0]||{},away=teams[1]||{};
@@ -562,7 +564,14 @@ function liveMatchLine(m){
  };
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
  const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',pair('shots'),'shot')+statCell('ΕΝΤΟΣ',pair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',pair('shotsOffTarget'),'shot')+'</div>';
- return '<div class="live-match-line"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="crest">'+teamBadge(m.home)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="crest">'+teamBadge(m.away)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></button>'+statsHtml+'</div>';
+ return '<div class="live-match-line"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="crest">'+teamBadge(m.home)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="crest">'+teamBadge(m.away)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></button>'+alertHtml+'</div>'+statsHtml+'</div>';
+}
+function renderHighActivityMatches(){
+ const box=document.getElementById("highActivityRows");if(!box)return;
+ const now=Date.now();const recent=signalAlertHistory.filter(a=>a.market==="πιθανό γκολ"&&a.createdAt&&now-a.createdAt<8*60*1000);
+ const ids=[...new Set(recent.map(a=>String(a.eventId)))];
+ const matches=ids.map(id=>allMatches.find(m=>String(m.id)===id&&m.state==="in")).filter(Boolean).slice(0,5);
+ box.innerHTML=matches.length?matches.map(m=>liveMatchLine(m)).join(''):'<div class="subtle" style="padding:10px">Δεν υπάρχει αυτή τη στιγμή αγώνας με αρκετά στοιχεία για προειδοποίηση πιθανού γκολ.</div>';
 }
 async function runSignalCheck(){
  if(signalBusy)return;
@@ -576,7 +585,7 @@ async function runSignalCheck(){
   liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));
    updateInsightSummary();
    if(active==='signals')render();
-  const liveBox=document.getElementById('liveRows');if(liveBox)liveBox.innerHTML=allMatches.filter(m=>m.state==='in').slice(0,6).map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
+  const liveBox=document.getElementById('liveRows');if(liveBox)liveBox.innerHTML=allMatches.filter(m=>m.state==='in').slice(0,6).map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';renderHighActivityMatches();
  
   // Evaluate alerts against the actual scoreboard after a ten-minute observation window.
   let outcomesChanged=false;signalAlertHistory.forEach(a=>{if(a.outcome!=='εκκρεμεί'||a.manualOutcome||!a.createdAt||Date.now()-a.createdAt<10*60*1000)return;const match=allMatches.find(m=>m.id===a.eventId);if(!match)return;const score=Number(match.home.score||0)+Number(match.away.score||0);if(a.market==='πιθανό γκολ'){a.outcome=score>a.startScore?'Επιβεβαιώθηκε · γκολ':'Δεν επιβεβαιώθηκε · χωρίς γκολ'}else if(a.market==='πιθανό κόρνερ'){const live=liveMetricsCache.get(String(a.eventId));if(!live?.statsAvailable)return;const corners=(live.teams||[]).reduce((sum,t)=>sum+Number(t.corners||0),0);if(a.startCorners==null)return;a.outcome=corners>a.startCorners?'Επιβεβαιώθηκε · κόρνερ':'Δεν επιβεβαιώθηκε · χωρίς κόρνερ'}else return;a.evaluatedAt=Date.now();outcomesChanged=true;});if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory();}
@@ -619,7 +628,7 @@ async function runSignalCheck(){
     const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,market:selectedMarket==='goal'?'πιθανό γκολ':selectedMarket==='corner'?'πιθανό κόρνερ':'ένταση',time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,outcome:'εκκρεμεί'};
     const alert={...base,level:'AI'};signalAlertHistory.unshift(alert);
     if(vip){signalAlertHistory.unshift({...base,level:'VIP'});newAlerts++}
-    signalAlertHistory=signalAlertHistory.slice(0,100);signalLastAlertAt.set(key,now);newAlerts++;try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
+    signalAlertHistory=signalAlertHistory.slice(0,100);signalLastAlertAt.set(key,now);newAlerts++;try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}renderHighActivityMatches();
     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · '+(vip?'VIP Alert':'AI Alert'),{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-'+key})}catch{}}
    }
   }
