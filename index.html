@@ -493,6 +493,43 @@ header nav a{padding:9px 0;font-size:11px}
 }
 
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* Goal Pulse readability and full-width goal celebration */
+.match{font-size:15px;border-width:1px;overflow:hidden;position:relative}
+.match-meta{font-size:12px;line-height:1.4;gap:10px}
+.match-meta>span:first-child{font-size:12px;font-weight:800}
+.match-meta>span:last-child{font-size:13px;font-weight:900}
+.teams{grid-template-columns:minmax(0,1fr) 86px minmax(0,1fr);gap:10px}
+.team{font-size:15px;line-height:1.3;overflow-wrap:anywhere;min-width:0}
+.team-logo{flex-shrink:0}
+.match-score{font-size:26px;line-height:1.2}
+.match-score small{font-size:11px;margin-top:3px}
+.match-bottom{font-size:13px;flex-wrap:wrap}
+.match-bottom .mini-btn{font-size:12px;padding:8px 10px}
+.stat{font-size:12px;padding:7px 9px}
+.stat b{font-size:13px}
+.goal-flash{z-index:2;border-color:#fff!important;animation:goalPulseFullBar .72s ease-in-out 0s 7;box-shadow:0 0 0 2px #fff,0 0 22px 8px #00f566cc,0 0 48px 12px #00dfff88!important;background:linear-gradient(100deg,#063b2a 0%,#0b382f 22%,#173b46 50%,#0b382f 78%,#063b2a 100%)!important}
+.goal-flash::before{content:"⚽  G O A L  •  ΓΚΟΛ!  ⚽";display:block;position:absolute;z-index:4;top:0;left:0;right:0;padding:7px 12px;text-align:center;color:#06130d;background:linear-gradient(90deg,#00f566,#d9ff38,#00f566);font-weight:1000;font-size:14px;letter-spacing:1.5px;animation:goalBanner .72s ease-in-out 0s 7;pointer-events:none}
+.goal-flash .match-meta{padding-top:29px}
+@keyframes goalPulseFullBar{0%,100%{border-color:#00f566;box-shadow:0 0 0 1px #00f566,0 0 14px 3px #00f56699}50%{border-color:#fff;box-shadow:0 0 0 3px #fff,0 0 28px 10px #00f566dd,0 0 55px 14px #00dfff88}}
+@keyframes goalBanner{0%,100%{filter:brightness(1);transform:scale(1)}50%{filter:brightness(1.4);transform:scale(1.012)}}
+@media(max-width:560px){
+ .match{padding:12px 10px;border-radius:12px}
+ .match-meta,.match-meta>span:first-child{font-size:11px}
+ .match-meta>span:last-child{font-size:12px}
+ .teams{grid-template-columns:minmax(0,1fr) 66px minmax(0,1fr);gap:5px}
+ .team{font-size:13px;gap:5px;line-height:1.25}
+ .team-logo{font-size:18px}
+ .team-logo img{width:20px;height:20px}
+ .match-score{font-size:22px}
+ .match-score small{font-size:10px}
+ .match-bottom{font-size:12px;align-items:flex-start}
+ .match-bottom>span{font-size:11px}
+ .match-bottom .mini-btn{font-size:11px;padding:8px 7px}
+ .stat{font-size:11px;padding:6px 7px}
+ .stat b{font-size:12px}
+ .goal-flash::before{font-size:12px;padding:7px 6px;letter-spacing:1px}
+}
+@media(min-width:561px) and (max-width:850px){.team{font-size:14px}.match-score{font-size:24px}}
 </style>
 </head>
 <body>
@@ -557,7 +594,7 @@ const LEAGUES=[
  ['uefa.europa','Europa League','Europe','🏆'],
  ['uefa.europa.conf','Conference League','Europe','🏆']
 ];
-let active='all', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null;
+let active='all', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null; let goalFlashMatchIds=[];
 const readFavorites=()=>{try{return new Set(JSON.parse(localStorage.getItem('goalPulseFavorites')||'[]').map(String))}catch{return new Set()}};
 let favoriteMatchIds=readFavorites();
 function setMatchFilter(filter){active=filter;document.querySelectorAll('.filter').forEach(x=>{const selected=x.dataset.filter===filter;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',selected?'true':'false')});document.querySelectorAll('[data-menu-filter]').forEach(x=>x.classList.toggle('selected',x.dataset.menuFilter===filter));render()}
@@ -622,8 +659,14 @@ async function loadScores(){
  });
  const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  const feedsSucceeded=successfulFeeds;
- if(feedsSucceeded>0){allMatches=freshMatches;lastSuccessfulScoreUpdate=new Date();}
+ goalFlashMatchIds=[];
+ if(feedsSucceeded>0){
+  const previousById=new Map(allMatches.map(m=>[String(m.id),m]));
+  freshMatches.forEach(m=>{const prev=previousById.get(String(m.id));if(!prev)return;const oldHome=Number(prev.home.score),newHome=Number(m.home.score),oldAway=Number(prev.away.score),newAway=Number(m.away.score);if(Number.isFinite(oldHome)&&Number.isFinite(newHome)&&Number.isFinite(oldAway)&&Number.isFinite(newAway)&&(newHome>oldHome||newAway>oldAway))goalFlashMatchIds.push(String(m.id));});
+  allMatches=freshMatches;lastSuccessfulScoreUpdate=new Date();
+ }
  render();
+ goalFlashMatchIds.forEach(id=>{const card=[...document.querySelectorAll('.match')].find(el=>el.dataset.eventId===id);if(card){card.classList.remove('goal-flash');void card.offsetWidth;card.classList.add('goal-flash');setTimeout(()=>card.classList.remove('goal-flash'),6500);}});
  runSignalCheck();
  const live=allMatches.filter(m=>m.state==='in').slice(0,6);
  const box=document.getElementById('liveRows');
