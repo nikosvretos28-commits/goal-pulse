@@ -974,26 +974,34 @@ async function runSignalCheck(){
     if(dc>0){pressurePoints+=2*dc;reasons.push(dc+' νέα κόρνερ')}
    });
    const sensitivity=Number(signalThreshold.value);
-   const selectedMarket=signalMarket.value;
-   const last=signalLastAlertAt.get(key+':'+selectedMarket)||0;
    const cornerPoints=cornersAdded*2;
    const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
    const cornerEvidence=cornersAdded>=2||(cornersAdded>=1&&totalShotsAdded>=2);
    const evidenceKinds=(totalShotsAdded>0?1:0)+(shotsOnTargetAdded>0?1:0)+(cornersAdded>0?1:0);
-   const marketPoints=selectedMarket==='corner'?cornerPoints:selectedMarket==='goal'?goalPoints:pressurePoints;
-   const hasMarketEvidence=selectedMarket==='corner'?cornerEvidence:(selectedMarket==='goal'?goalEvidence:evidenceKinds>=2);
-   const candidateKey=key+':'+selectedMarket;
-   const candidateValid=marketPoints>=Math.max(sensitivity,selectedMarket==='goal'?5:selectedMarket==='corner'?4:5)&&hasMarketEvidence;
-   const previousCandidateAt=signalCandidateLastAt.get(candidateKey)||0;
-   if(candidateValid){const consecutive=previousCandidateAt>0&&now-previousCandidateAt<=90000;signalCandidateCounts.set(candidateKey,consecutive?(signalCandidateCounts.get(candidateKey)||0)+1:1);signalCandidateLastAt.set(candidateKey,now)}else{signalCandidateCounts.delete(candidateKey);signalCandidateLastAt.delete(candidateKey)}
-   if(candidateValid&&(signalCandidateCounts.get(candidateKey)||0)>=2&&now-last>8*60*1000){
-    const reason=[...new Set(reasons)].join(' · ')||'αύξηση κόρνερ';
-    const vip=vipAlertsToggle.checked&&marketPoints>=Math.max(9,sensitivity+5)&&goalEvidence&&cornersAdded>=1&&evidenceKinds>=3;
-    const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,market:selectedMarket==='goal'?'πιθανό γκολ':selectedMarket==='corner'?'πιθανό κόρνερ':'ένταση',time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShots:live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
-    const alert={...base,level:'AI'};signalAlertHistory.unshift(alert);
-    if(vip){signalAlertHistory.unshift({...base,level:'VIP'});newAlerts++}
-    signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(key+':'+selectedMarket,now);newAlerts++;try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}renderTopAiAlerts();renderHighActivityMatches();
-    if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · '+(vip?'VIP Alert':'AI Alert'),{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-'+key})}catch{}}
+   // Keep goal and corner AI alerts active simultaneously; pressure remains selectable.
+   const marketsToCheck=[
+    {key:'goal',label:'πιθανό γκολ',points:goalPoints,evidence:goalEvidence,min:5},
+    {key:'corner',label:'πιθανό κόρνερ',points:cornerPoints,evidence:cornerEvidence,min:4}
+   ];
+   if(signalMarket.value==='pressure')marketsToCheck.push({key:'pressure',label:'ένταση',points:pressurePoints,evidence:evidenceKinds>=2,min:5});
+   for(const market of marketsToCheck){
+    const candidateKey=key+':'+market.key;
+    const last=signalLastAlertAt.get(candidateKey)||0;
+    const candidateValid=market.points>=Math.max(sensitivity,market.min)&&market.evidence;
+    const previousCandidateAt=signalCandidateLastAt.get(candidateKey)||0;
+    if(candidateValid){const consecutive=previousCandidateAt>0&&now-previousCandidateAt<=90000;signalCandidateCounts.set(candidateKey,consecutive?(signalCandidateCounts.get(candidateKey)||0)+1:1);signalCandidateLastAt.set(candidateKey,now)}
+    else{signalCandidateCounts.delete(candidateKey);signalCandidateLastAt.delete(candidateKey)}
+    if(candidateValid&&(signalCandidateCounts.get(candidateKey)||0)>=2&&now-last>8*60*1000){
+     const reason=[...new Set(reasons)].join(' · ')||'αύξηση live δραστηριότητας';
+     const vip=vipAlertsToggle.checked&&market.points>=Math.max(9,sensitivity+5)&&goalEvidence&&cornersAdded>=1&&evidenceKinds>=3;
+     const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,market:market.label,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShots:live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
+     signalAlertHistory.unshift({...base,level:'AI'});
+     if(vip){signalAlertHistory.unshift({...base,level:'VIP'});newAlerts++}
+     signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(candidateKey,now);newAlerts++;
+     try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
+     renderTopAiAlerts();renderHighActivityMatches();
+     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · AI Alert',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-'+candidateKey})}catch{}}
+    }
    }
   }
   renderHighActivityMatches();
