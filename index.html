@@ -773,7 +773,7 @@ document.getElementById('refreshScores').addEventListener('click',loadScores);
 const signalThreshold=document.getElementById('signalThreshold'),signalThresholdLabel=document.getElementById('signalThresholdLabel'),signalMarket=document.getElementById('signalMarket'),signalWindow=document.getElementById('signalWindow'),scannerMinute=document.getElementById('scannerMinute'),scannerLeague=document.getElementById('scannerLeague'),vipAlertsToggle=document.getElementById('vipAlerts'),signalResults=document.getElementById('signalResults'),signalStatus=document.getElementById('signalStatus');
 let liveMetricsCache=new Map();
 let selectedLiveStatsId="";
-let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalAlertHistory=[];try{signalAlertHistory=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(!Array.isArray(signalAlertHistory))signalAlertHistory=[];signalAlertHistory=signalAlertHistory.filter(a=>a&&Number.isFinite(Number(a.createdAt))).slice(0,5000);signalAlertHistory.forEach(a=>{if(a.eventId&&a.createdAt){const k=String(a.eventId);signalLastAlertAt.set(k,Math.max(signalLastAlertAt.get(k)||0,Number(a.createdAt)))}})}catch{}
+let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalAlertHistory=[];try{signalAlertHistory=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(!Array.isArray(signalAlertHistory))signalAlertHistory=[];signalAlertHistory=signalAlertHistory.filter(a=>a&&Number.isFinite(Number(a.createdAt))).slice(0,5000);signalAlertHistory.forEach(a=>{if(a.eventId&&a.createdAt){const k=String(a.eventId);signalLastAlertAt.set(k,Math.max(signalLastAlertAt.get(k)||0,Number(a.createdAt)))}})}catch{}
 signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/10');
 document.getElementById('enableNotifications').addEventListener('click',async()=>{
  if(!('Notification' in window)){signalStatus.textContent='Οι ειδοποιήσεις browser δεν υποστηρίζονται σε αυτή τη συσκευή.';return}
@@ -956,7 +956,10 @@ async function runSignalCheck(){
    const evidenceKinds=(totalShotsAdded>0?1:0)+(shotsOnTargetAdded>0?1:0)+(cornersAdded>0?1:0);
    const marketPoints=selectedMarket==='corner'?cornerPoints:selectedMarket==='goal'?goalPoints:pressurePoints;
    const hasMarketEvidence=selectedMarket==='corner'?cornerEvidence:(selectedMarket==='goal'?goalEvidence:evidenceKinds>=2);
-   if(marketPoints>=Math.max(sensitivity,selectedMarket==='goal'?5:selectedMarket==='corner'?4:5)&&hasMarketEvidence&&now-last>8*60*1000){
+   const candidateKey=key+':'+selectedMarket;
+   const candidateValid=marketPoints>=Math.max(sensitivity,selectedMarket==='goal'?5:selectedMarket==='corner'?4:5)&&hasMarketEvidence;
+   if(candidateValid)signalCandidateCounts.set(candidateKey,(signalCandidateCounts.get(candidateKey)||0)+1);else signalCandidateCounts.delete(candidateKey);
+   if(candidateValid&&(signalCandidateCounts.get(candidateKey)||0)>=2&&now-last>8*60*1000){
     const reason=[...new Set(reasons)].join(' · ')||'αύξηση κόρνερ';
     const vip=vipAlertsToggle.checked&&marketPoints>=Math.max(9,sensitivity+5)&&goalEvidence&&cornersAdded>=1&&evidenceKinds>=3;
     const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,market:selectedMarket==='goal'?'πιθανό γκολ':selectedMarket==='corner'?'πιθανό κόρνερ':'ένταση',time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,outcome:'εκκρεμεί'};
