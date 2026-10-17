@@ -1060,12 +1060,13 @@ async async function showDetails(btn){
   subtitle.textContent='LIVE · '+(liveEvent.clock||'σε εξέλιξη');
   const renderLiveDetails=()=>{
    const live=liveMetricsCache.get(String(liveEvent.id));
-   const teams=Array.isArray(live?.teams)?live.teams:[];
-   const h=teams.find(t=>String(t.homeAway||'').toLowerCase()==='home')||teams.find(t=>sameTeam(t.team,liveEvent.home.name))||teams[0]||{};
-   const a=teams.find(t=>String(t.homeAway||'').toLowerCase()==='away')||teams.find(t=>sameTeam(t.team,liveEvent.away.name))||teams.find(t=>t!==h)||{};
-   const val=(team,key)=>team[key]===undefined||team[key]===null||team[key]===''||!Number.isFinite(Number(team[key]))?'—':String(Number.isInteger(Number(team[key]))?Number(team[key]):Number(Number(team[key]).toFixed(2)));
-   const metrics=[['Σουτ','shots'],['Σουτ στην εστία','shotsOnTarget'],['Σουτ εκτός εστίας','shotsOffTarget'],['Μπλοκαρισμένα σουτ','blockedShots'],['Κόρνερ','corners'],['Κατοχή (%)','possession'],['Επικίνδυνες επιθέσεις','dangerousAttacks'],['Expected Goals (xG)','xG']];
-   const rows=metrics.filter(([,key])=>h[key]!=null||a[key]!=null).map(([label,key])=>'<div class="stat-row"><span>'+esc(val(h,key))+'</span><strong>'+esc(label)+'</strong><span class="stat-divider">—</span><span>'+esc(val(a,key))+'</span></div>').join('');
+   const rawTeams=Array.isArray(live?.teams)?live.teams:[];
+   const norm=n=>String(n||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+   const rank=t=>{const n=norm(t.team),hn=norm(liveEvent.home.name),an=norm(liveEvent.away.name);if(String(t.homeAway||'').toLowerCase()==='home'||(n&&hn&&(n===hn||n.includes(hn)||hn.includes(n))))return 0;if(String(t.homeAway||'').toLowerCase()==='away'||(n&&an&&(n===an||n.includes(an)||an.includes(n))))return 1;return 2};
+   const teams=[...rawTeams].sort((x,y)=>rank(x)-rank(y));
+   const h=teams[0]||{},a=teams[1]||{};
+   const val=(team,key)=>team[key]===undefined||team[key]===null||team[key]===''?'—':String(team[key]);
+   const rows=[['Σουτ','shots'],['Σουτ στην εστία','shotsOnTarget'],['Σουτ εκτός εστίας','shotsOffTarget'],['Μπλοκαρισμένα σουτ','blockedShots'],['Κόρνερ','corners'],['Κατοχή (%)','possession'],['Επικίνδυνες επιθέσεις','dangerousAttacks'],['Expected Goals (xG)','xG']].filter(([label,key])=>h[key]!=null||a[key]!=null).map(([label,key])=>'<div class="stat-row"><span>'+esc(val(h,key))+'</span><strong>'+esc(label)+'</strong><span class="stat-divider">—</span><span>'+esc(val(a,key))+'</span></div>').join('');
    const trail=signalTrails.get(String(liveEvent.id))||[];
    const delta=(minutes,key)=>{
     const base=[...trail].reverse().find(item=>Date.now()-item.at>=minutes*60000);
@@ -1091,7 +1092,13 @@ async async function showDetails(btn){
   content.innerHTML='<p class="analysis-note">Φόρτωση πραγματικών live στατιστικών…</p>';
   modal.classList.add('open');
   renderLiveDetails();
-  try{await runSignalCheck();renderLiveDetails()}catch{}
+  try{
+   const date=(selectedMatchDate||new Date().toISOString().slice(0,10)).replace(/-/g,'');
+   const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
+   const data=await response.json();
+   if(response.ok){liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));renderLiveDetails()}
+   else content.insertAdjacentHTML('beforeend','<p class="analysis-note">Η πηγή live στατιστικών δεν απάντησε τώρα. Δοκίμασε ξανά σε λίγο.</p>');
+  }catch{try{await runSignalCheck();renderLiveDetails()}catch{}}
   return;
  }
  const date=card?.dataset.matchDate||'';
