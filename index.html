@@ -223,6 +223,7 @@ const signalThreshold=document.getElementById('signalThreshold'),signalThreshold
 signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/35');
 document.getElementById('runSignalCheck').addEventListener('click',()=>{
  const threshold=Number(signalThreshold.value),market=signalMarket.value;
+ if(!successfulFeeds){signalResults.innerHTML='<p>Η τελευταία ενημέρωση σκορ δεν είναι διαθέσιμη. Δεν χρησιμοποιούμε παλιά δεδομένα για νέα σήματα. Δοκίμασε ξανά σε λίγο.</p>';return}
  const liveMatches=allMatches.filter(m=>m.state==='in');
  if(!liveMatches.length){signalResults.innerHTML='<p>Δεν εντοπίζονται live αγώνες από την τρέχουσα πηγή. Δοκίμασε ξανά όταν υπάρχουν πραγματικά live δεδομένα.</p>';return}
  const rows=liveMatches.map(m=>{
