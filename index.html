@@ -99,8 +99,10 @@ function render(){
 }
 async function loadScores(){
  const results=await Promise.all(LEAGUES.map(async l=>{
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
   try{
-   const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+l[0]+'/scoreboard');
+   const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+l[0]+'/scoreboard',{signal:controller.signal});
    if(!r.ok)throw new Error('HTTP '+r.status);
    const data=await r.json();
    return (data.events||[]).map(e=>{
@@ -114,7 +116,7 @@ async function loadScores(){
     const date=validKickoff?kickoff.toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit'}):'';
     return {league:l[1],flag:l[3],state,clock,date,home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score}};
    });
-  }catch(err){return []}
+  }catch(err){return []}finally{clearTimeout(timeout)}
  }));
  allMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  render();
