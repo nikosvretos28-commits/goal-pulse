@@ -143,6 +143,68 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    if (url.pathname === "/api/live-metrics") {
+      const date = url.searchParams.get("date") || "";
+      if (!/^\\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
+      const cacheKey = "live-metrics:" + date;
+      const cachedMetrics = cache.get(cacheKey);
+      if (cachedMetrics && Date.now() - cachedMetrics.at < 15000) return send(res, 200, cachedMetrics.body);
+      const scoreboard = scoreboardCache.get(date);
+      if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
+        return send(res, 503, { error: "Scoreboard not loaded yet", matches: [] });
+      }
+      const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
+        .filter(event => (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
+        .map(event => ({ event, leagueCode: feed.code })));
+      const work = liveEvents.slice(0, 24);
+      let cursor = 0;
+      const matches = [];
+      const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
+        while (cursor < work.length) {
+          const item = work[cursor++];
+          const event = item.event;
+          try {
+            const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
+              headers: { "Accept": "application/json" },
+              signal: AbortSignal.timeout(8000)
+            });
+            if (!response.ok) continue;
+            const summary = await response.json();
+            const teams = summary?.boxscore?.teams || [];
+            const values = teams.map(team => {
+              const stats = team.statistics || [];
+              const get = (...names) => {
+                const found = stats.find(s => names.includes(String(s.name || s.abbreviation || "").toLowerCase().replace(/[^a-z]/g, "")));
+                if (!found) return null;
+                const n = Number(String(found.displayValue ?? found.value ?? "").replace("%", ""));
+                return Number.isFinite(n) ? n : null;
+              };
+              return {
+                team: team.team?.displayName || team.team?.name || "",
+                shots: get("totalshots", "shots", "shotsattempted"),
+                shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
+                corners: get("woncorners", "cornerkicks", "corners"),
+                possession: get("possessionpct", "possession"),
+                dangerousAttacks: get("dangerousattacks")
+              };
+            });
+            matches.push({
+              eventId: String(event.id),
+              home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
+              away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
+              minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
+              statsAvailable: teams.length > 0 && values.some(v => v.shots !== null || v.shotsOnTarget !== null || v.corners !== null),
+              teams: values
+            });
+          } catch {}
+        }
+      });
+      await Promise.all(workers);
+      const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString() };
+      cache.set(cacheKey, { at: Date.now(), body });
+      return send(res, 200, body);
+    }
+
     if (url.pathname === "/api/pitch/date") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return send(res, 400, { error: "date must be YYYY-MM-DD" });
