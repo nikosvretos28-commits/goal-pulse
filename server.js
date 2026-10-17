@@ -79,7 +79,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === "/api/scoreboard") {
       const date = url.searchParams.get("date") || "";
-      if (!/^\\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
+      if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
       const cached = scoreboardCache.get(date);
       if (cached && Date.now() - cached.at < SCOREBOARD_TTL_MS) {
         res.setHeader("X-Goal-Pulse-Cache", "HIT");
