@@ -247,6 +247,18 @@ header nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}header nav a{f
  .insight-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.insight-metrics .insight-card{min-width:0;padding:11px}.insight-metrics small{display:block;color:var(--muted);font-size:10px}.insight-metrics strong{display:block;color:var(--green);font-size:23px;line-height:1.2;margin-top:4px;font-variant-numeric:tabular-nums}
  .league-list{display:grid;gap:3px}.league-item{width:100%;text-align:left;font:inherit;color:inherit;background:transparent;border:1px solid transparent;cursor:pointer}.league-item:hover,.league-item:focus-visible,.league-item[aria-pressed="true"]{background:#103329;border-color:#1a644a;outline:none}.league-item[aria-pressed="true"] .name{color:var(--green)}
  .team-logo img{width:100%;height:100%;object-fit:contain;display:block}.team-logo{display:inline-flex;align-items:center;justify-content:center;overflow:hidden}
+
+/* Goal Pulse refinement: clear live-state cues, touch-friendly controls and resilient crest sizing */
+.live-row{width:100%;text-align:left;color:var(--text);background:transparent;cursor:pointer;transition:background .18s ease}
+.live-row:hover,.live-row:focus-visible{background:#10283a;outline:1px solid #00dfff;outline-offset:-1px}
+.live-row .score{font-variant-numeric:tabular-nums;font-size:14px;letter-spacing:.5px}
+.live-row .minute{white-space:nowrap}
+.crest{min-width:24px;min-height:24px}
+.crest img{width:24px;height:24px;object-fit:contain}
+.favorite-toggle:focus-visible,.filter:focus-visible,button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.match{scroll-margin-top:90px}
+@media(max-width:520px){.live-row{grid-template-columns:24px minmax(0,1fr) auto minmax(0,1fr) 24px 38px;gap:4px;padding:10px 7px;font-size:11px}.live-row .crest img{width:20px;height:20px}.live-row .score{font-size:13px}.live-row .minute{font-size:9px;padding:4px 3px}}
+
 </style>
 </head>
 <body>
