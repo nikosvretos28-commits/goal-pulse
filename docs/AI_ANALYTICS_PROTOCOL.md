@@ -94,3 +94,69 @@ Implementation priority:
 - Tracking-based metrics: use only when validated player/ball tracking is actually available.
 
 These methods are complementary, not interchangeable. Use the most informative method supported by the data, rather than selecting a sophisticated name for data that is not present.
+
+## 7. Dedicated live-corner alert protocol
+
+Corner alerts are a separate market from goal alerts. A high-pressure phase can raise corner likelihood, but shots, possession or a goal alert must never automatically become a corner alert.
+
+### 7.1 Alert definition and horizon
+- Every alert must name its target: **at least one additional corner in the next 5, 10 or 15 minutes**. Do not mix these horizons in one hit-rate figure.
+- Use a distinct alert key per match, market, horizon and model version. Apply a market-specific cooldown and suppress duplicate alerts while the same pressure episode continues.
+- Distinguish a live in-play alert from a pre-match estimate. Do not issue a live alert for a match whose state or data freshness cannot be verified.
+
+### 7.2 Required live evidence
+Use the strongest available evidence, in this order:
+1. Timestamped corner events and match clock, to confirm the true event sequence and measure time since the last corner.
+2. Recent attacks into the final third/penalty area, crosses, blocked shots, shots from inside the box, clearances and sustained territorial pressure, if the provider supplies these event types.
+3. Rolling 5/10-minute changes in shots, shots on target and corners; use the recent corner rate as context, not as a stand-alone trigger.
+4. Scoreline, minute, red cards, home/away status and game state, plus the attacking team's historical corners-for and opponent corners-conceded profile, split by home/away and competition where possible.
+5. League and match-level baselines with sample sizes and missing-data indicators.
+
+Aggregate possession or a provider's “dangerous attacks” count is supporting evidence only: definitions vary by provider and neither measure proves that a corner is imminent. Do not invent crosses, box entries, blocked shots, or historical rates when absent.
+
+### 7.3 Two-stage trigger
+**Stage A — pressure watch:** enter watch state only when the match is live, data is fresh, and at least two independent signals support sustained attacking pressure. Examples include a rise in recent shots/SOT plus an increase in attacks/crosses/blocked shots, or verified box pressure plus a recent corner sequence. A single high full-match total is insufficient.
+
+**Stage B — alert decision:** issue a corner alert only if the target horizon has adequate evidence from a validated model, or from a clearly labelled heuristic while the model is not calibrated. Require:
+- at least two independent live signals, with no contradictory stale/missing critical data;
+- a score/minute/red-card adjustment where those inputs are available;
+- a threshold selected from chronological out-of-sample testing for that horizon and league group;
+- a clear confidence label and short explanation listing the observed evidence;
+- cooldown and duplicate suppression.
+
+If the provider supplies only aggregate shots, shots on target and corners, use a conservative **“corner pressure” heuristic**, not a claimed probability of the next corner. If recent deltas are unavailable, show “insufficient live data” rather than guessing.
+
+### 7.4 Model and baseline
+When enough licensed data is available, estimate the probability of one or more corners in each horizon using time-to-event or discrete-time hazard modelling. Inputs may include:
+- recent and match corner rates, time since last corner and corner sequences;
+- event-level attacking actions and pressure proxies;
+- home/away, minute, score difference, red cards and competition;
+- team corners-for and opponent corners-conceded, adjusted for opponent strength;
+- data freshness and missingness.
+
+Fit separate horizon outputs or a properly calibrated survival model. Compare against simple league/minute and recent-rate baselines. Avoid leakage by using only information timestamped before the alert. Calibrate per competition only when sample size supports it; otherwise shrink toward a broader baseline.
+
+### 7.5 Outcomes, evaluation and honest reporting
+- Store every candidate/issued alert with event ID, issue timestamp, horizon, observed features, data/provider version, rule/model version and threshold.
+- Label success only if at least one verified corner occurs after the alert timestamp and within the declared horizon. A corner already taken at or before the alert cannot count.
+- If the match feed ends, becomes stale, or the match is abandoned before the horizon completes, label the case **censored/unevaluable**, not a win or loss.
+- Report precision, false-alert rate, coverage, lead time and calibration separately for each horizon; include sample size and confidence intervals.
+- Do not present a local-device alert history as the site's global history. Do not advertise a hit rate as predictive accuracy until outcomes are persisted and evaluated.
+
+### 7.6 User-facing alert copy
+Use concise, evidence-based language, for example:
+- **CORNER PRESSURE — WATCH**: “Pressure increased in the last 5 minutes; shots rose and recent attacking actions are sustained. Corner probability not calibrated.”
+- **CORNER ALERT — 10 MIN**: show only after the validated threshold is met; display the estimated probability, model version and supporting evidence.
+- **INSUFFICIENT DATA**: “Live event data is incomplete/stale; no corner alert issued.”
+
+Never promise a corner, say it is “sure”, or imply betting certainty. Clearly separate measured statistics from model estimates.
+
+### 7.7 Rollout gates
+1. Verify that live corner events and timestamps are available and correctly ordered in each target competition.
+2. Collect timestamped pre-alert snapshots and verified corner outcomes in persistent storage.
+3. Build chronological training/validation/test sets, separated by match and time.
+4. Backtest 5/10/15-minute horizons against simple baselines and measure calibration, false alarms and lead time.
+5. Start in shadow mode; compare predictions without showing users actionable alerts.
+6. Enable user-facing corner alerts only after pre-defined performance and data-coverage gates pass; monitor drift and disable automatically if the feed degrades.
+
+**Current status:** the live pipeline currently exposes aggregate corner totals and rolling corner deltas when available. It does not yet provide a verified event-level corner timeline, persistent alert-outcome labels, a calibrated corner model, or a proven corner-alert hit rate. Therefore, a dedicated heuristic “corner pressure” signal is the honest interim option; a calibrated predictive alert is not yet implemented.
