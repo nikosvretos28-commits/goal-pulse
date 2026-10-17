@@ -140,6 +140,7 @@ document.getElementById('matchSearch').addEventListener('input',render);
 document.getElementById('refreshScores').addEventListener('click',loadScores);
 function closeAnalysis(){document.getElementById('analysisModal').classList.remove('open')}
 function normTeam(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|afc|sc|ac|club|de|the)\b/g,'').replace(/[^a-z0-9]/g,'')}
+function sameTeam(a,b){const x=normTeam(a),y=normTeam(b);return !!x&&!!y&&(x===y||(x.length>=5&&y.length>=5&&(x.includes(y)||y.includes(x))))}
 function findStat(stats,key){for(const p of (stats?.data?.periods||[])){if(p.period!=='All')continue;for(const g of (p.groups||[])){for(const item of (g.items||[])){if(item.key===key)return item}}}return null}
 async function showDetails(btn){
  const article=btn.closest('.match'),home=article.dataset.home||'',away=article.dataset.away||'',date=article.dataset.matchDate||'';
@@ -153,7 +154,7 @@ async function showDetails(btn){
   const dateRes=await fetch(ANALYTICS_API+'/api/pitch/date?date='+encodeURIComponent(date)),dateJson=await dateRes.json();
   if(!dateRes.ok)throw new Error(dateJson.error||'Η πηγή analytics δεν είναι ακόμη ρυθμισμένη.');
   const matches=dateJson?.data?.matches||[];
-  const target=matches.find(x=>normTeam(x.home_team?.name)===normTeam(home)&&normTeam(x.away_team?.name)===normTeam(away));
+  const target=matches.find(x=>sameTeam(x.home_team?.name,home)&&sameTeam(x.away_team?.name,away));
   if(!target){content.innerHTML='<p class="analysis-note">Δεν βρέθηκε ακριβής αντιστοίχιση στη δωρεάν πηγή για αυτή την ημερομηνία. Τα xG/pressure δεν είναι διαθέσιμα για όλους τους αγώνες.</p>';return}
   if(target.status!=='finished'){content.innerHTML='<p class="analysis-note">Τα analytics της δωρεάν πηγής είναι μετά τη λήξη του αγώνα. Δοκίμασε ξανά μετά την ολοκλήρωση και την ενημέρωση των δεδομένων.</p>';return}
   const routes=['stats','momentum','shots'];
