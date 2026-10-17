@@ -43,7 +43,7 @@ nav{display:flex;gap:24px;color:#c5d6e7;font-weight:650}nav a{color:inherit;text
 <section class="hero">
 <div class="hero-main"><div class="hero-copy"><div class="eyebrow">● LIVE SCORES &nbsp; • &nbsp; MATCH INTELLIGENCE</div><h1>FEEL THE GAME.<span>LIVE THE PULSE.</span></h1><p>Live-score εμπειρία νέας γενιάς. Αποτελέσματα, στατιστικά και εικόνα αγώνα σε ένα premium περιβάλλον.</p><button class="primary" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Δες τους αγώνες <span>→</span></button></div><div class="hero-ball" aria-hidden="true">⚽</div></div>
 <aside class="side-live" id="live"><div class="panel-head"><h2>🔴 Live τώρα</h2><span class="subtle">LIVE SCORE FEED</span></div>
-<div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div>
+<div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div>
 </aside>
 </section>
 
@@ -52,12 +52,12 @@ nav{display:flex;gap:24px;color:#c5d6e7;font-weight:650}nav a{color:inherit;text
 <input class="search" id="matchSearch" placeholder="⌕  Αναζήτηση ομάδας ή πρωταθλήματος…" aria-label="Αναζήτηση αγώνα">
 </div>
 <div class="main-grid">
-<section class="panel"><div class="panel-head"><div class="section-title"><h2 style="margin:0">⚽ Αγώνες</h2><span class="count" id="count">Φόρτωση…</span></div><span class="subtle" id="resultCount">6 αγώνες</span></div>
+<section class="panel"><div class="panel-head"><div class="section-title"><h2 style="margin:0">⚽ Αγώνες</h2><span class="count" id="count">Φόρτωση…</span></div><span class="subtle" id="resultCount">Αποτελέσματα API</span></div>
 <div id="matchList"><p class="subtle" style="padding:20px">Φόρτωση πραγματικών αγώνων…</p></div></section>
 <aside class="right-stack">
 <section class="panel pressure"><div class="pressure-head"><h3>💚 Live Pressure Wave</h3><span class="subtle">LIVE DATA REQUIRED</span></div>
 <div style="margin-top:14px"><strong>Πραγματική ανάλυση πίεσης</strong><p class="subtle">Θα εμφανίζεται όταν συνδεθούν αξιόπιστα λεπτομερή live στατιστικά. Δεν εμφανίζουμε ψεύτικο γράφημα ή κατασκευασμένα δεδομένα.</p></div></section>
-<section class="panel" id="leagues"><div class="panel-head"><h2>🏆 Top Leagues</h2><span class="subtle">5 διοργανώσεις</span></div><div class="league-list"><div class="league-item"><span class="flag">🏴</span><span class="name">Premier League<small>England</small></span><span class="live-tag">LIVE</span></div><div class="league-item"><span class="flag">🇪🇸</span><span class="name">La Liga<small>Spain</small></span><span class="live-tag">LIVE</span></div><div class="league-item"><span class="flag">🇮🇹</span><span class="name">Serie A<small>Italy</small></span><span class="live-tag">LIVE</span></div><div class="league-item"><span class="flag">🇩🇪</span><span class="name">Bundesliga<small>Germany</small></span><span class="live-tag">LIVE</span></div><div class="league-item"><span class="flag">🇫🇷</span><span class="name">Ligue 1<small>France</small></span><span class="live-tag">LIVE</span></div></div></section>
+<section class="panel" id="leagues"><div class="panel-head"><h2>🏆 Top Leagues</h2><span class="subtle">6 διοργανώσεις</span></div><div class="league-list"><div class="league-item"><span class="flag">🏴</span><span class="name">Premier League<small>England</small></span><span class="live-tag">LEAGUE</span></div><div class="league-item"><span class="flag">🇪🇸</span><span class="name">La Liga<small>Spain</small></span><span class="live-tag">LIVE</span></div><div class="league-item"><span class="flag">🇮🇹</span><span class="name">Serie A<small>Italy</small></span><span class="live-tag">LIVE</span></div><div class="league-item"><span class="flag">🇩🇪</span><span class="name">Bundesliga<small>Germany</small></span><span class="live-tag">LIVE</span></div><div class="league-item"><span class="flag">🇫🇷</span><span class="name">Ligue 1<small>France</small></span><span class="live-tag">LIVE</span></div></div></section>
 <section class="panel insight" id="insights"><h3>✦ Pulse Intelligence</h3><p>Η επόμενη έκδοση μπορεί να συνδυάσει ζωντανά στατιστικά, ρυθμό αγώνα και ιστορικά δεδομένα.</p><div class="insight-card"><div class="insight-label">AI INSIGHTS · CONCEPT</div><strong>Ανάλυση αγώνα σε πραγματικό χρόνο</strong><p style="margin:7px 0 0">Απαιτείται σύνδεση σε πραγματική πηγή δεδομένων και επαληθευμένο μοντέλο.</p></div></section>
 </aside>
 </div>
@@ -113,9 +113,8 @@ async function loadScores(){
  allMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  render();
  const live=allMatches.filter(m=>m.state==='in').slice(0,4);
- const liveRows=document.querySelectorAll('.live-row');
- if(liveRows.length){
-  const box=liveRows[0].parentElement;
+ const box=document.getElementById('liveRows');
+ if(box){
   box.innerHTML=live.length?live.map(m=>'<div class="live-row"><span class="crest">⚽</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></div>').join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
  }
 }
