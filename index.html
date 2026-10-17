@@ -358,7 +358,37 @@ header nav a{padding:9px 0;font-size:11px}
 .live-inline-stat.interval b{color:#f4f8ff}
 @media(max-width:850px){.live-match-centre{overflow-x:auto}.live-match-line{min-width:850px;grid-template-columns:minmax(350px,1fr) minmax(450px,1fr)}.live-match-line .live-row{padding:9px 6px}.live-inline-stats{padding:5px;gap:4px}}
 @media(max-width:560px){.live-match-centre .top-live-head{position:sticky;left:0}.live-match-line{min-width:920px;grid-template-columns:380px 540px}.live-match-line .live-row{grid-template-columns:20px minmax(76px,1fr) 44px minmax(76px,1fr) 20px 38px;gap:5px}.live-match-line .live-row .teamname{font-size:12px}.live-inline-stats{grid-template-columns:repeat(5,minmax(96px,1fr));gap:5px;padding:6px}.live-inline-stat{padding:7px 4px}.live-inline-stat span{font-size:10px}.live-inline-stat b{font-size:13px}}
-.live-match-main{min-width:340px;display:flex;flex-direction:column;gap:3px}.goal-now-alert{display:inline-flex;align-self:flex-start;margin:0 8px 7px;padding:5px 9px;border:1px solid #ff9a36;border-radius:6px;background:#43220b;color:#ffd08a;font-size:10px;font-weight:900;letter-spacing:.3px;animation:goalPulseGlow 1.2s ease-in-out infinite alternate}.goal-now-alert:before{content:"";display:inline-block;width:6px;height:6px;margin:auto 6px auto 0;border-radius:50%;background:#ff8b26}@keyframes goalPulseGlow{from{box-shadow:0 0 0 #ff8b2600}to{box-shadow:0 0 12px #ff8b2666}}\n</style>
+.live-match-main{min-width:340px;display:flex;flex-direction:column;gap:3px}.goal-now-alert{display:inline-flex;align-self:flex-start;margin:0 8px 7px;padding:5px 9px;border:1px solid #ff9a36;border-radius:6px;background:#43220b;color:#ffd08a;font-size:10px;font-weight:900;letter-spacing:.3px;animation:goalPulseGlow 1.2s ease-in-out infinite alternate}.goal-now-alert:before{content:"";display:inline-block;width:6px;height:6px;margin:auto 6px auto 0;border-radius:50%;background:#ff8b26}@keyframes goalPulseGlow{from{box-shadow:0 0 0 #ff8b2600}to{box-shadow:0 0 12px #ff8b2666}}\n
+/* Final compact scoreboard: keep the fixture and all five stats visible on mobile */
+@media(max-width:560px){
+  html,body{max-width:100%;overflow-x:hidden}
+  .wrap{width:100%;max-width:100%;padding-left:7px;padding-right:7px}
+  .live-match-centre{width:100%;max-width:100%;overflow-x:hidden}
+  .live-match-line{width:100%;min-width:0;max-width:100%;grid-template-columns:minmax(0,0.95fr) minmax(0,1.05fr);overflow:hidden}
+  .live-match-main{min-width:0;width:100%;gap:2px}
+  .live-match-line .live-row{min-width:0;grid-template-columns:12px minmax(0,1fr) 27px minmax(0,1fr) 12px 28px;gap:2px;padding:7px 3px;font-size:8px}
+  .live-match-line .live-row .crest img{width:14px;height:14px}
+  .live-match-line .live-row .teamname{min-width:0;font-size:8px;letter-spacing:-.2px}
+  .live-match-line .live-row .score{font-size:10px}
+  .live-match-line .live-row .minute{font-size:8px;padding:3px 2px}
+  .live-inline-stats{min-width:0;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;padding:3px}
+  .live-inline-stat{min-width:0;padding:5px 1px;gap:4px;border-radius:4px}
+  .live-inline-stat span{font-size:7px;letter-spacing:-.25px;white-space:normal;line-height:1.15;overflow-wrap:anywhere}
+  .live-inline-stat b{font-size:10px;white-space:normal;overflow-wrap:anywhere}
+  .goal-now-alert{max-width:100%;font-size:8px;padding:4px 5px;margin:0 3px 5px}
+}
+@media(min-width:561px) and (max-width:850px){
+  .live-match-centre{overflow-x:hidden}
+  .live-match-line{min-width:0;width:100%;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .live-match-main{min-width:0}
+  .live-match-line .live-row{grid-template-columns:16px minmax(0,1fr) 32px minmax(0,1fr) 16px 30px;gap:3px;padding:8px 4px;font-size:9px}
+  .live-inline-stats{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;padding:4px}
+  .live-inline-stat{padding:5px 2px}
+  .live-inline-stat span{font-size:8px;white-space:normal}
+  .live-inline-stat b{font-size:11px}
+}
+
+</style>
 </head>
 <body>
 <div class="wrap">
