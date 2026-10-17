@@ -1049,7 +1049,7 @@ function normTeam(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u03
 function sameTeam(a,b){const x=normTeam(a),y=normTeam(b);return !!x&&!!y&&(x===y||(x.length>=5&&y.length>=5&&(x.includes(y)||y.includes(x))))}
 function findStat(stats,key){const periods=stats?.data?.periods||[];const ordered=[...periods.filter(p=>String(p.period||'').toLowerCase()==='all'),...periods.filter(p=>String(p.period||'').toLowerCase()!=='all')];for(const p of ordered){for(const g of (p.groups||[])){for(const item of (g.items||[])){if(item.key===key)return item}}}return null}
 function usableMetric(v){if(v===undefined||v===null||String(v).trim()==='')return false;return Number.isFinite(Number(v))}
-async async function showDetails(btn){
+async function showDetails(btn){
  const card=btn.closest('.match');
  const home=card?.dataset.home||'',away=card?.dataset.away||'';
  const liveEvent=allMatches.find(m=>sameTeam(m.home.name,home)&&sameTeam(m.away.name,away)&&m.state==='in');
