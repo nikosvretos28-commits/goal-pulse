@@ -87,6 +87,7 @@ function render(){
  const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='signals'&&false))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
  const list=document.getElementById('matchList');
  if(!allMatches.length){list.innerHTML='<p class="subtle" style="padding:20px">Δεν υπάρχουν διαθέσιμα δεδομένα αυτή τη στιγμή. Δοκίμασε ξανά σε λίγο.</p>';}
+ else if(active==='signals'){list.innerHTML='<p class="subtle" style="padding:20px">Τα AI signals δεν είναι ενεργά ακόμη. Χρειάζονται πραγματικά live στατιστικά και επαληθευμένο μοντέλο· δεν εμφανίζουμε κατασκευασμένες προβλέψεις.</p>';}
  else if(!filtered.length){list.innerHTML='<p class="subtle" style="padding:20px">Δεν βρέθηκαν αγώνες για αυτά τα φίλτρα.</p>';}
  else{
   const groups={};
