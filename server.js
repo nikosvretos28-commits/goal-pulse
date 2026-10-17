@@ -1,4 +1,5 @@
 const http = require("node:http");
+const webpush = require("web-push");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
@@ -8,6 +9,81 @@ try { ({ Pool } = require("pg")); } catch {}
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
+
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:nikosvretos28@gmail.com";
+const pushSubscriptions = new Map();
+const pushRateLimit = new Map();
+let pushDbInit = null;
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+async function ensurePushDb() {
+  if (!analyticsPool) return false;
+  if (!pushDbInit) pushDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint TEXT PRIMARY KEY,
+      subscription JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).then(() => true).catch(error => { pushDbInit = null; console.error("Push subscription database unavailable:", error.message); return false; });
+  return pushDbInit;
+}
+async function savePushSubscription(subscription) {
+  const endpoint = String(subscription?.endpoint || "");
+  if (!endpoint.startsWith("https://") || !subscription?.keys?.p256dh || !subscription?.keys?.auth) throw new Error("Invalid push subscription");
+  pushSubscriptions.set(endpoint, subscription);
+  if (await ensurePushDb()) {
+    await analyticsPool.query(
+      "INSERT INTO push_subscriptions(endpoint,subscription,created_at,updated_at) VALUES($1,$2::jsonb,NOW(),NOW()) ON CONFLICT(endpoint) DO UPDATE SET subscription=EXCLUDED.subscription,updated_at=NOW()",
+      [endpoint, JSON.stringify(subscription)]
+    );
+  }
+}
+async function sendPushToSubscribers(payload) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return { sent: 0, failed: 0, configured: false };
+  let subscriptions = [...pushSubscriptions.values()];
+  if (await ensurePushDb()) {
+    try {
+      const result = await analyticsPool.query("SELECT subscription FROM push_subscriptions");
+      subscriptions = result.rows.map(row => row.subscription);
+    } catch {}
+  }
+  let sent = 0, failed = 0;
+  await Promise.all(subscriptions.map(async subscription => {
+    try {
+      await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 300, urgency: "high" });
+      sent++;
+    } catch (error) {
+      failed++;
+      if (error.statusCode === 404 || error.statusCode === 410) {
+        pushSubscriptions.delete(subscription.endpoint);
+        if (await ensurePushDb()) await analyticsPool.query("DELETE FROM push_subscriptions WHERE endpoint=$1", [subscription.endpoint]).catch(() => {});
+      }
+    }
+  }));
+  return { sent, failed, configured: true };
+}
+function pushRequestAllowed(req, res) {
+  const origin = req.headers.origin || "";
+  if (!ALLOWED_ORIGINS.has(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
+  const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+  const now = Date.now(), previous = pushRateLimit.get(ip) || 0;
+  if (now - previous < 800) { send(res, 429, { error: "Too many requests" }); return false; }
+  pushRateLimit.set(ip, now);
+  return true;
+}
+async function readJsonBody(req) {
+  let raw = "";
+  for await (const chunk of req) {
+    raw += chunk;
+    if (raw.length > 20000) throw new Error("Request body too large");
+  }
+  return JSON.parse(raw || "{}");
+}
+
 const cache = new Map();
 const pitchInflight = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -247,12 +323,44 @@ const server = http.createServer(async (req, res) => {
   if (origin && ALLOWED_ORIGINS.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   }
   if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
   const url = new URL(req.url, "http://localhost");
-  if (req.method !== "GET") return send(res, 405, { error: "Method not allowed" });
+  if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+
+  if (url.pathname === "/api/push/vapid-public-key" && req.method === "GET") {
+    return send(res, VAPID_PUBLIC_KEY ? 200 : 503, VAPID_PUBLIC_KEY ? { publicKey: VAPID_PUBLIC_KEY } : { error: "Push is not configured" });
+  }
+  if (url.pathname === "/api/push/subscribe" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    try {
+      const body = await readJsonBody(req);
+      await savePushSubscription(body.subscription);
+      return send(res, 201, { ok: true, persistent: Boolean(analyticsPool && await ensurePushDb()) });
+    } catch (error) {
+      return send(res, 400, { error: error.message || "Invalid subscription" });
+    }
+  }
+  if (url.pathname === "/api/push/alert" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    try {
+      const body = await readJsonBody(req);
+      const level = body.level === "VIP" ? "VIP" : "AI";
+      const title = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
+      const result = await sendPushToSubscribers({
+        title,
+        body: String(body.body || "Νέα live ένδειξη στο Goal Pulse").slice(0, 180),
+        tag: "goal-pulse-" + level.toLowerCase() + "-" + String(body.eventId || "live").slice(0, 60),
+        url: "/"
+      });
+      return send(res, 200, { ok: true, ...result });
+    } catch (error) {
+      return send(res, 400, { error: error.message || "Push send failed" });
+    }
+  }
+
 
   if (url.pathname === "/api/health") {
     return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY), persistentAnalyticsConfigured: Boolean(analyticsPool) });
