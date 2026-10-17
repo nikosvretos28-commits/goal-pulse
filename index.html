@@ -575,6 +575,23 @@ header nav a{padding:9px 0;font-size:11px}
  .live-match-line .live-row .crest img{width:13px;height:13px}
 }
 
+
+/* AI Alerts sit at the very top so new signals are immediately visible */
+.top-ai-alerts{margin:14px 0 18px;padding:16px;border:1px solid #1c5365;border-radius:16px;background:linear-gradient(120deg,#0b2637,#0b1a2b 65%,#102b36);box-shadow:0 10px 30px #0003}
+.top-ai-alerts-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.top-ai-alerts-head h2{font-size:18px;margin:0;font-weight:950}
+.top-ai-alerts-head p{font-size:12px;color:var(--muted);margin:4px 0 0}
+.top-ai-alert-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:9px}
+.top-ai-alert-card{display:block;width:100%;text-align:left;color:var(--text);background:#071522;border:1px solid #28516a;border-radius:12px;padding:12px;cursor:pointer;min-width:0}
+.top-ai-alert-card:hover,.top-ai-alert-card:focus-visible{border-color:var(--green);box-shadow:0 0 0 1px #00f56644}
+.top-ai-alert-card .alert-card-kicker{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:#8fd9e7;font-weight:900;letter-spacing:.4px;text-transform:uppercase}
+.top-ai-alert-card .alert-card-match{font-size:15px;font-weight:900;line-height:1.25;margin:8px 0 5px;overflow-wrap:anywhere}
+.top-ai-alert-card .alert-card-market{font-size:12px;color:#d9fbe9;font-weight:800}
+.top-ai-alert-card .alert-card-reason{font-size:11px;color:var(--muted);margin-top:5px}
+.top-ai-alert-empty{padding:12px;border:1px dashed #28516a;border-radius:10px;color:var(--muted);font-size:12px}
+.top-ai-alert-privacy{font-size:10px;color:var(--muted);margin:10px 0 0}
+@media(max-width:560px){.top-ai-alerts{padding:12px;margin:10px 0 14px}.top-ai-alerts-head h2{font-size:16px}.top-ai-alert-card .alert-card-match{font-size:14px}}
+
 </style>
 </head>
 <body>
@@ -591,6 +608,13 @@ header nav a{padding:9px 0;font-size:11px}
 <nav aria-label="Κύριο μενού"><a href="#matches" data-menu-filter="all">Live Score+</a><a href="#matches" data-menu-filter="live">Live</a><a href="#matches" data-menu-filter="finished">Αποτελέσματα</a><a href="#matches" data-menu-filter="upcoming">Πρόγραμμα</a><a href="#matches" data-menu-filter="favorites">★ Αγαπημένα</a><a href="#insights">Στατιστικά</a><a href="#signalMarket">AI Alerts</a><a href="#leagues">Διοργανώσεις</a></nav>
 <div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span><button class="login" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Live Score ↗</button></div>
 </header>
+
+<section class="top-ai-alerts" id="topAiAlerts" aria-labelledby="topAiAlertsTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="topAiAlertsTitle">⚡ AI ALERTS · LIVE ΠΡΟΤΑΣΕΙΣ</h2><p>Οι νεότερες ενδείξεις εμφανίζονται εδώ πρώτες.</p></div><span class="pulse-status" id="topAiAlertCount">0 ALERTS</span></div>
+ <div class="top-ai-alert-list" id="topAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων ενδείξεων από πραγματικά live στατιστικά…</div></div>
+ <p class="top-ai-alert-privacy">Οι ενδείξεις βασίζονται στα διαθέσιμα στατιστικά και δεν εγγυώνται αποτέλεσμα.</p>
+</section>
+
 
 <section class="scoreboard-top">
  <div class="scoreboard-title"><div><div class="eyebrow">GOAL PULSE · LIVE FOOTBALL CENTRE</div><h1>Live Score <span>+</span></h1><p>Όλοι οι διαθέσιμοι αγώνες και τα live δεδομένα σε μία οθόνη.</p></div><div class="scoreboard-status"><span class="pulse-dot"></span><span id="liveCountTop">LIVE CENTER</span><small id="topUpdated">Αυτόματη ενημέρωση</small></div></div>
@@ -748,6 +772,17 @@ document.getElementById('enableNotifications').addEventListener('click',async()=
  if(!('Notification' in window)){signalStatus.textContent='Οι ειδοποιήσεις browser δεν υποστηρίζονται σε αυτή τη συσκευή.';return}
  try{const p=await Notification.requestPermission();signalStatus.textContent=p==='granted'?'Οι ειδοποιήσεις browser ενεργοποιήθηκαν. Άφησε τη σελίδα ανοιχτή για live παρακολούθηση.':p==='denied'?'Οι ειδοποιήσεις έχουν μπλοκαριστεί από τον browser.':'Δεν δόθηκε άδεια για ειδοποιήσεις.'}catch{signalStatus.textContent='Δεν ήταν δυνατή η ενεργοποίηση ειδοποιήσεων.'}
 });
+
+function renderTopAiAlerts(){
+ const host=document.getElementById('topAiAlertList'),count=document.getElementById('topAiAlertCount');
+ if(!host||!count)return;
+ let alerts=[];
+ try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))alerts=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()-Number(a.createdAt)<=30*60*1000&&Date.now()>=Number(a.createdAt)).slice(0,8)}catch{}
+ count.textContent=alerts.length+' ALERT'+(alerts.length===1?'':'S');
+ if(!alerts.length){host.innerHTML='<div class="top-ai-alert-empty">Δεν υπάρχει αυτή τη στιγμή νέα ένδειξη. Τα AI Alerts εμφανίζονται μόλις ο live scanner εντοπίσει μεταβολές στα στατιστικά.</div>';return}
+ host.innerHTML=alerts.map((a,i)=>'<button type="button" class="top-ai-alert-card" data-top-alert="'+i+'"><span class="alert-card-kicker"><span>⚡ '+esc(a.level||'AI')+' ALERT</span><span>'+esc(a.time||'LIVE')+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-market">'+esc(a.market||'Live signal')+'</div><div class="alert-card-reason">'+esc(a.reason||'Νέα μεταβολή live στατιστικών')+'</div></button>').join('');
+}
+
 function showSignalHistory(){
   const now=new Date(),yesterday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);
   const filtered=signalAlertHistory.filter(a=>{const d=new Date(Number(a.createdAt));return !Number.isNaN(d.getTime())&&d.getFullYear()===yesterday.getFullYear()&&d.getMonth()===yesterday.getMonth()&&d.getDate()===yesterday.getDate()});
@@ -914,7 +949,7 @@ async function runSignalCheck(){
     const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason,market:selectedMarket==='goal'?'πιθανό γκολ':selectedMarket==='corner'?'πιθανό κόρνερ':'ένταση',time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,outcome:'εκκρεμεί'};
     const alert={...base,level:'AI'};signalAlertHistory.unshift(alert);
     if(vip){signalAlertHistory.unshift({...base,level:'VIP'});newAlerts++}
-    signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(key,now);newAlerts++;try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}renderHighActivityMatches();
+    signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(key,now);newAlerts++;try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}renderTopAiAlerts();renderHighActivityMatches();
     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · '+(vip?'VIP Alert':'AI Alert'),{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-'+key})}catch{}}
    }
   }
@@ -924,6 +959,18 @@ async function runSignalCheck(){
  }catch(err){signalStatus.textContent='Live scanner: '+(err.message||'προσωρινό σφάλμα');if(!signalAlertHistory.length)signalResults.innerHTML='<p>Δεν υπάρχουν ακόμη διαθέσιμα live στατιστικά. Δεν δημιουργούμε σήματα όταν λείπουν δεδομένα.</p>'}
  finally{signalBusy=false}
 }
+
+document.getElementById('topAiAlertList').addEventListener('click',event=>{
+ const card=event.target.closest('button[data-top-alert]');if(!card)return;
+ /* Detail remains empty until secure subscriber authentication is available. */
+ const modal=document.getElementById('analysisModal');
+ document.getElementById('analysisTitle').textContent='';
+ document.getElementById('analysisSubtitle').textContent='';
+ document.getElementById('analysisContent').innerHTML='';
+ modal.classList.add('open');
+});
+
+renderTopAiAlerts();
 document.getElementById('runSignalCheck').addEventListener('click',runSignalCheck);
 signalMarket.addEventListener('change',runSignalCheck);signalWindow.addEventListener('change',runSignalCheck);scannerMinute.addEventListener('change',runSignalCheck);scannerLeague.addEventListener('change',runSignalCheck);vipAlertsToggle.addEventListener('change',runSignalCheck);
 signalThreshold.addEventListener('change',runSignalCheck);
