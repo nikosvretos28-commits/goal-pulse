@@ -354,9 +354,8 @@ const server = http.createServer(async (req, res) => {
                 blockedShots: get("blockedshots", "shotsblocked"),
                 corners: get("woncorners", "cornerkicks", "corners"),
                 attacks: get("attacks", "totalattacks", "attacksfor", "totalattacksfor"),
-                dangerousAttacks: get("dangerousattacks", "dangerousattacksfor", "dangerousattackscreated"),
+                dangerousAttacks: get("dangerousattacks", "dangerousattacksfor", "dangerousattackscreated", "dangerousattackswon"),
                 possession: get("possessionpct", "possession"),
-                dangerousAttacks: get("dangerousattacks"),
                 xG: get("expectedgoals", "xg", "expectedgoalsfor")
               };
             });
