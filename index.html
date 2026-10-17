@@ -151,6 +151,94 @@ button:active{transform:scale(.98)}
  .panel-head h2{font-size:14px}
 }
 
+
+/* MyGoal247-inspired compact fixtures: Goal Pulse palette */
+:root{--bg:#050b13;--panel:#0a1522;--panel2:#101f30;--line:#26394a;--green:#00f566;--cyan:#00dfff}
+body{background:#050b13}
+.wrap{max-width:1500px}
+header{height:64px;border-bottom:1px solid #253849}
+.scoreboard-top{margin:0 0 7px}
+.scoreboard-title{padding:9px 4px}
+.scoreboard-title h1{font-size:22px;letter-spacing:-.5px}
+.scoreboard-status{border-radius:5px}
+.top-live{border-radius:5px;background:#091522}
+.top-live-head{background:#101f30;padding:7px 10px}
+.top-live .live-row{padding:7px 9px;border-radius:0}
+.product-nav{border-radius:5px;background:#0b1724;border-color:#293d50}
+.product-nav a{border-radius:4px}
+.filters{background:#0b1724;border-color:#293d50;border-radius:5px;padding:7px}
+.filter{border-radius:4px;background:#101f30;border-color:#2b4052;padding:8px 12px}
+.filter.active,.filter:hover{background:var(--green);color:#06120d}
+.date-label{border-radius:4px;background:#07121e;border-color:#2b4052}
+.search{border-radius:4px;background:#07121e;border-color:#2b4052}
+.main-grid{grid-template-columns:minmax(0,2.25fr) minmax(260px,.75fr);gap:12px}
+.main-grid>.panel,.right-stack>.panel,.pulse-alerts{border-radius:5px;background:#091522;border-color:#26394a}
+.panel-head{background:#101f30;padding:10px 12px}
+.panel-head h2{font-size:14px}
+.league-block{padding:0 7px 8px}
+.league-head{margin:0 -7px 2px;padding:9px 12px;background:#12263a;border-bottom:1px solid #2b4052;font-size:12px}
+.league-country{font-size:9px;text-transform:uppercase;letter-spacing:.4px}
+.match{display:block;margin:0;border:0;border-bottom:1px solid #1d3042;border-radius:0;padding:9px 8px;background:#0a1623;box-shadow:none}
+.match:nth-child(even){background:#0c1927}
+.match:hover{background:#102437;border-color:#2c5669;transform:none}
+.match-meta{align-items:center;margin-bottom:7px;font-size:9px}
+.match-live{color:#ff6a83}
+.teams{grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr);gap:9px}
+.team{font-size:12px;font-weight:650}
+.team-logo{font-size:15px;opacity:.75}
+.match-score{font-size:17px;color:#f4f8ff;font-variant-numeric:tabular-nums}
+.match-score small{font-size:8px;letter-spacing:.5px}
+.match-bottom{margin-top:7px;padding-top:6px;border-top:1px solid #172a3b}
+.match-bottom>.subtle{font-size:9px}
+.match-bottom .mini-btn{padding:4px 7px;min-height:27px;font-size:9px;border-radius:4px}
+.stats{margin-top:7px}
+.stat{border-radius:3px;background:#122438}
+.right-stack{gap:10px}
+.pressure,.insight{padding:13px}
+.league-list{padding:3px 9px 8px}
+.league-item{padding:8px 6px;border-bottom-color:#1d3042}
+.pulse-alerts{padding:12px}
+.bottom-strip{gap:8px;margin:12px 0 18px}
+.feature{border-radius:5px;background:#091522;border-color:#26394a}
+@media(max-width:850px){
+ .main-grid{grid-template-columns:minmax(0,1fr);gap:9px}
+ .scoreboard-title{padding:8px 2px}
+ .scoreboard-title h1{font-size:21px}
+ .main-grid>.panel{border-radius:5px}
+ .right-stack{grid-template-columns:1fr}
+ .right-stack .panel:last-child{grid-column:auto}
+}
+@media(max-width:560px){
+ .wrap{padding:0 5px}
+ header{height:54px}
+ .brand svg{width:33px;height:32px}
+ .brand-name{font-size:17px}
+ .login{min-height:34px;padding:6px 9px;border-radius:4px}
+ .scoreboard-title{padding:7px 2px}
+ .scoreboard-title h1{font-size:20px}
+ .scoreboard-status{padding:5px 6px;font-size:9px}
+ .top-live .live-row{grid-template-columns:18px minmax(0,1fr) 34px minmax(0,1fr) 32px;gap:4px;padding:7px 5px;font-size:9px}
+ .product-nav{padding:3px;gap:2px}
+ .product-nav a{padding:7px 2px;font-size:9px}
+ .filters{gap:5px;padding:5px}
+ .date-label{padding:6px 7px}
+ .date-label input{font-size:11px}
+ .filter{padding:7px 8px;font-size:10px;min-height:32px}
+ .search{min-height:35px}
+ .panel-head{padding:9px}
+ .league-head{padding:8px 9px}
+ .match{padding:8px 6px}
+ .match-meta{font-size:8px;margin-bottom:6px}
+ .teams{grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr);gap:3px}
+ .team{font-size:10px;gap:3px}
+ .team-logo{font-size:12px}
+ .match-score{font-size:15px}
+ .match-bottom{gap:5px}
+ .match-bottom .mini-btn{font-size:8px;padding:4px 5px}
+ .stat{font-size:8px;padding:3px 4px}
+ .bottom-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
 </style>
 </head>
 <body>
