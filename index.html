@@ -1012,7 +1012,7 @@ async function runSignalCheck(){
      signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(candidateKey,now);newAlerts++;
      try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
      renderTopAiAlerts();renderHighActivityMatches();
-     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · AI Alert',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-'+candidateKey})}catch{}}
+     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · AI Alert',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-ai-'+candidateKey});if(vip)new Notification('Goal Pulse · ◆ VIP ALERT',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · Ισχυρή ένδειξη VIP: '+reason,tag:'goal-pulse-vip-'+candidateKey})}catch{}}
     }
    }
   }
