@@ -406,6 +406,21 @@ function showSignalHistory(){
  if(!signalAlertHistory.length){signalResults.innerHTML='<p>Δεν έχει καταγραφεί ακόμη έξαρση πίεσης. Ο έλεγχος συνεχίζεται όσο η σελίδα είναι ανοιχτή.</p>';return}
  signalResults.innerHTML=signalAlertHistory.slice(0,12).map((a,i)=>'<div class="signal-row"><div><strong>⚡ '+esc(a.level||'AI')+' · '+esc(a.home)+' – '+esc(a.away)+'</strong><div class="signal-muted">'+esc(a.league)+' · '+esc(a.minute)+' · '+esc(a.market||'ένταση')+' · '+esc(a.reason)+'<br><span>Αξιολόγηση: '+esc(a.outcome||'εκκρεμεί')+'</span></div><div style="display:flex;gap:5px;margin-top:6px"><button class="mini-btn" data-outcome="hit" data-alert="'+i+'">Επιβεβαιώθηκε</button><button class="mini-btn" data-outcome="miss" data-alert="'+i+'">Δεν επιβεβαιώθηκε</button></div></div><span class="signal-score">'+esc(a.time)+'</span></div>').join('')+'<p class="signal-muted">Τα σήματα βασίζονται σε μεταβολές live στατιστικών, όχι σε εκπαιδευμένο μοντέλο πρόβλεψης.</p>';
 }
+function updateIntervalStats(match,trail,current,now){
+ const article=[...document.querySelectorAll('.match')].find(el=>el.dataset.eventId===String(match.id));
+ const strip=article&&article.querySelector('.live-stat-strip');
+ if(!strip)return;
+ let node=strip.querySelector('.live-interval-stats');
+ if(!node){node=document.createElement('span');node.className='live-interval-stats';node.style.cssText='flex-basis:100%;color:#00dfff;border-top:1px solid #173b55;padding-top:5px';strip.appendChild(node)}
+ const delta=(minutes)=>{
+  const base=[...trail].reverse().find(item=>now-item.at>=minutes*60000);
+  if(!base)return 'Δ'+minutes+'′ συλλογή δεδομένων';
+  const calc=(key,i)=>{const a=Number(current[i]?.[key]),b=Number(base.values[i]?.[key]);return Number.isFinite(a)&&Number.isFinite(b)?Math.max(0,a-b):null};
+  const pair=key=>{const a=calc(key,0),b=calc(key,1);return a===null||b===null?'—':a+'–'+b};
+  return 'Δ'+minutes+'′ Σουτ '+pair('shots')+' · Στην εστία '+pair('shotsOnTarget')+' · Κόρνερ '+pair('corners');
+ };
+ node.textContent=delta(5)+'  |  '+delta(10);
+}
 async function runSignalCheck(){
  if(signalBusy)return;
  signalBusy=true;
@@ -432,6 +447,7 @@ async function runSignalCheck(){
    trail.push({values,at:now});
    while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
    signalTrails.set(key,trail);
+    updateIntervalStats(m,trail,values,now);
    signalSnapshots.set(key,{values,at:now});
    const baseline=[...trail].reverse().find(item=>now-item.at>=Math.min(4,Number(signalWindow.value))*60*1000);
    if(!baseline)continue;
