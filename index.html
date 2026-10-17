@@ -80,10 +80,64 @@ nav{display:flex;gap:24px;color:#c5d6e7;font-weight:650}nav a{color:inherit;text
 <div class="disclaimer">GOAL PULSE · FOOTBALL INTELLIGENCE — Αυτή η προεπισκόπηση χρησιμοποιεί ενδεικτικά δεδομένα. Δεν παρέχει πραγματικά live σκορ ή στοιχηματικές προβλέψεις.</div>
 </div>
 <script>
-const cards=[...document.querySelectorAll('.match')];let active='all';
-function filterMatches(){const q=document.getElementById('matchSearch').value.trim().toLowerCase();let n=0;cards.forEach(c=>{const ok=(active==='all'||(active==='signals'&&c.dataset.signal==='yes')||c.dataset.status===active)&&(!q||(c.dataset.search+' '+c.innerText).toLowerCase().includes(q));c.style.display=ok?'block':'none';if(ok)n++});document.getElementById('resultCount').textContent=n+' αγώνες';document.getElementById('count').textContent=n+' DEMO'}
-document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');active=b.dataset.filter;filterMatches()}));
-document.getElementById('matchSearch').addEventListener('input',filterMatches);
-function showDetails(btn){const m=btn.closest('.match');const teams=m.querySelector('.teams').innerText.replace(/\n/g,' · ');alert(teams+'\n\nΠροεπισκόπηση UI: τα δεδομένα αγώνα είναι demo. Η σύνδεση σε πραγματικό live API δεν έχει υλοποιηθεί ακόμη.')}
+const LEAGUES=[
+ ['eng.1','Premier League','England','🏴'],
+ ['esp.1','La Liga','Spain','🇪🇸'],
+ ['ita.1','Serie A','Italy','🇮🇹'],
+ ['ger.1','Bundesliga','Germany','🇩🇪'],
+ ['fra.1','Ligue 1','France','🇫🇷'],
+ ['uefa.champions','Champions League','Europe','⭐']
+];
+let active='all', allMatches=[];
+const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function statusFor(e){const s=e.competitions&&e.competitions[0]&&e.competitions[0].status&&e.competitions[0].status.type;return s&&s.state||'pre'}
+function cardFor(m){
+ const state=m.state, c=m.competition, home=m.home, away=m.away;
+ const scoreHome=home.score==null?'–':home.score, scoreAway=away.score==null?'–':away.score;
+ const label=state==='in'?'● LIVE · '+(m.clock||'Σε εξέλιξη'):state==='post'?'ΟΛΟΚΛΗΡΩΘΗΚΕ':(m.clock||'ΠΡΟΣΕΧΗΣ');
+ return '<article class="match" data-status="'+(state==='in'?'live':state==='pre'?'upcoming':'finished')+'" data-signal="no" data-search="'+esc((c+' '+home.name+' '+away.name).toLowerCase())+'"><div class="match-meta"><span>'+esc(c.toUpperCase())+'</span><span class="'+(state==='in'?'match-live':'')+'">'+esc(label)+'</span></div><div class="teams"><div class="team"><span class="team-logo">⚽</span>'+esc(home.name)+'</div><div class="match-score">'+esc(scoreHome)+' – '+esc(scoreAway)+'<small>'+(state==='in'?'LIVE':state==='post'?'FT':'PRE-MATCH')+'</small></div><div class="team away">'+esc(away.name)+'<span class="team-logo">⚽</span></div></div><div class="match-bottom"><span class="subtle">'+esc(m.league+' · '+(m.date||''))+'</span><button class="mini-btn" type="button" onclick="showDetails(this)">Ανάλυση αγώνα ↗</button></div></article>';
+}
+function render(){
+ const q=document.getElementById('matchSearch').value.trim().toLowerCase();
+ const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='signals'&&false))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
+ const list=document.getElementById('matchList');
+ if(!allMatches.length){list.innerHTML='<p class="subtle" style="padding:20px">Δεν υπάρχουν διαθέσιμα δεδομένα αυτή τη στιγμή. Δοκίμασε ξανά σε λίγο.</p>';}
+ else if(!filtered.length){list.innerHTML='<p class="subtle" style="padding:20px">Δεν βρέθηκαν αγώνες για αυτά τα φίλτρα.</p>';}
+ else{
+  const groups={};
+  filtered.forEach(m=>{if(!groups[m.league])groups[m.league]={flag:m.flag,items:[]};groups[m.league].items.push(m)});
+  list.innerHTML=Object.keys(groups).map(name=>'<div class="league-block"><div class="league-head"><span class="flag">'+groups[name].flag+'</span><div>'+esc(name)+'<div class="league-country">Real scoreboard data</div></div></div>'+groups[name].items.map(cardFor).join('')+'</div>').join('');
+ }
+ document.getElementById('resultCount').textContent=filtered.length+' αγώνες';
+ document.getElementById('count').textContent=allMatches.length+' από API';
+}
+async function loadScores(){
+ const results=await Promise.all(LEAGUES.map(async l=>{
+  try{
+   const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+l[0]+'/scoreboard');
+   if(!r.ok)throw new Error('HTTP '+r.status);
+   const data=await r.json();
+   return (data.events||[]).map(e=>{
+    const comp=(e.competitions||[])[0]||{}, teams=comp.competitors||[];
+    const h=teams.find(t=>t.homeAway==='home')||teams[0]||{}, a=teams.find(t=>t.homeAway==='away')||teams[1]||{};
+    const st=(comp.status&&comp.status.type)||e.status&&e.status.type||{};
+    return {league:l[1],flag:l[3],state:st.state||'pre',clock:(comp.status&&comp.status.displayClock)||st.shortDetail||e.date||'',date:st.shortDetail||'',home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score}};
+   });
+  }catch(err){return []}
+ }));
+ allMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
+ render();
+ const live=allMatches.filter(m=>m.state==='in').slice(0,4);
+ const liveRows=document.querySelectorAll('.live-row');
+ if(liveRows.length){
+  const box=liveRows[0].parentElement;
+  box.innerHTML=live.length?live.map(m=>'<div class="live-row"><span class="crest">⚽</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></div>').join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
+ }
+}
+document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');active=b.dataset.filter;render()}));
+document.getElementById('matchSearch').addEventListener('input',render);
+function showDetails(btn){const m=btn.closest('.match');alert(m.querySelector('.teams').innerText.replace(/\n/g,' · ')+'\n\nΤα σκορ προέρχονται από τον διαθέσιμο πίνακα αγώνων. Αναλυτικά live στατιστικά/xG δεν παρέχονται από αυτή τη σύνδεση.')}
+loadScores();
+setInterval(loadScores,60000);
 </script>
 </body></html>
