@@ -1024,7 +1024,8 @@ async function runSignalCheck(){
      const vip=vipAlertsToggle.checked&&market.points>=Math.max(9,sensitivity+5)&&goalEvidence&&cornersAdded>=1&&evidenceKinds>=3;
      const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason:market.key==='corner'?'Σύνολο τώρα: '+totalCorners+' κόρνερ · Εκτίμηση λήξης: '+(projectedCorners==null?'—':projectedCorners.toFixed(1))+' · Γραμμή: Over '+overLine+' · Επιβεβαιωτικές ενδείξεις επίθεσης: '+(attacksAdded>0?'επιθέσεις ':'')+(dangerousAttacksAdded>0?'επικίνδυνες επιθέσεις ':'')+(shotsOnTargetAdded>0?'σουτ στην εστία':'')+' · '+[...new Set(reasons)].join(' · '):reason,market:market.label,overLine:market.key==='corner'?overLine:null,projectedCorners:market.key==='corner'?projectedCorners:null,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShots:live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
      signalAlertHistory.unshift({...base,level:'AI'});
-     if(vip){signalAlertHistory.unshift({...base,level:'VIP'});newAlerts++}
+     sendGoalPulsePushAlert('AI',m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,base.eventId||m.id);
+     if(vip){signalAlertHistory.unshift({...base,level:'VIP'});sendGoalPulsePushAlert('VIP',m.home.name+' – '+m.away.name+' · '+base.market+' · Ισχυρή ένδειξη VIP: '+reason,base.eventId||m.id);newAlerts++}
      signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(candidateKey,now);newAlerts++;
      try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
      renderTopAiAlerts();renderHighActivityMatches();
@@ -1199,35 +1200,37 @@ let goalPulseServiceWorkerRegistration=null;
 if('serviceWorker' in navigator && location.protocol==='https:'){
  navigator.serviceWorker.register('/sw.js').then(reg=>{goalPulseServiceWorkerRegistration=reg}).catch(()=>{});
 }
-const enablePushButton=document.getElementById('enablePushNotifications');
-if(enablePushButton)enablePushButton.addEventListener('click',async()=>{
- const status=document.getElementById('pushNotificationStatus');
- if(!('Notification' in window)){status.textContent='Ο browser δεν υποστηρίζει ειδοποιήσεις.';return}
- try{
-  const permission=await Notification.requestPermission();
-  if(permission!=='granted'){status.textContent='Δεν δόθηκε άδεια ειδοποιήσεων.';return}
-  if('serviceWorker' in navigator){
-   goalPulseServiceWorkerRegistration=goalPulseServiceWorkerRegistration||await navigator.serviceWorker.register('/sw.js');
-   await goalPulseServiceWorkerRegistration.showNotification('Goal Pulse · Ειδοποιήσεις ενεργές',{body:'Η συσκευή επέτρεψε τις ειδοποιήσεις. Για ειδοποιήσεις όταν το site είναι κλειστό απαιτείται ακόμη σύνδεση Push server.' ,icon:'/favicon.ico',tag:'goal-pulse-test'});
-  }else{new Notification('Goal Pulse · Ειδοποιήσεις ενεργές',{body:'Η άδεια ειδοποιήσεων ενεργοποιήθηκε.'})}
-  status.textContent='Η άδεια δόθηκε σε αυτή τη συσκευή. Η αποστολή push στο παρασκήνιο θα ενεργοποιηθεί με τον server.';
- }catch(e){status.textContent='Δεν ήταν δυνατή η ενεργοποίηση. Έλεγξε τις ρυθμίσεις ειδοποιήσεων του browser.'}
-});
 
-const enableVipPushButton=document.getElementById('enableVipPushNotifications');
-if(enableVipPushButton)enableVipPushButton.addEventListener('click',async()=>{
- const status=document.getElementById('vipPushNotificationStatus');
- if(!('Notification' in window)){status.textContent='Ο browser δεν υποστηρίζει ειδοποιήσεις.';return}
+function urlBase64ToUint8Array(base64String){
+ const padding='='.repeat((4-base64String.length%4)%4);
+ const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+ const raw=atob(base64);return Uint8Array.from([...raw].map(char=>char.charCodeAt(0)));
+}
+async function enableGoalPulsePush(statusIds){
+ const statuses=statusIds.map(id=>document.getElementById(id)).filter(Boolean);
+ const setStatus=message=>statuses.forEach(el=>el.textContent=message);
+ if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){setStatus('Αυτή η συσκευή/browser δεν υποστηρίζει Web Push.');return}
  try{
   const permission=await Notification.requestPermission();
-  if(permission!=='granted'){status.textContent=permission==='denied'?'Οι ειδοποιήσεις έχουν μπλοκαριστεί από τον browser.':'Δεν δόθηκε άδεια ειδοποιήσεων.';return}
-  if('serviceWorker' in navigator){
-   goalPulseServiceWorkerRegistration=goalPulseServiceWorkerRegistration||await navigator.serviceWorker.register('/sw.js');
-   await goalPulseServiceWorkerRegistration.showNotification('Goal Pulse · VIP ειδοποιήσεις ενεργές',{body:'Η άδεια ειδοποιήσεων VIP ενεργοποιήθηκε σε αυτή τη συσκευή. Για ειδοποιήσεις όταν το site είναι κλειστό απαιτείται ακόμη σύνδεση Push server.',icon:'/favicon.ico',tag:'goal-pulse-vip-test'});
-  }else{new Notification('Goal Pulse · VIP ειδοποιήσεις ενεργές',{body:'Η άδεια ειδοποιήσεων ενεργοποιήθηκε.'})}
-  status.textContent='Οι ειδοποιήσεις VIP έχουν άδεια σε αυτή τη συσκευή. Η αποστολή push στο παρασκήνιο απαιτεί ακόμη σύνδεση Push server.';
- }catch(e){status.textContent='Δεν ήταν δυνατή η ενεργοποίηση. Έλεγξε τις ρυθμίσεις ειδοποιήσεων του browser.'}
-});
+  if(permission!=='granted'){setStatus(permission==='denied'?'Οι ειδοποιήσεις έχουν μπλοκαριστεί από τις ρυθμίσεις του browser.':'Δεν δόθηκε άδεια ειδοποιήσεων.');return}
+  goalPulseServiceWorkerRegistration=goalPulseServiceWorkerRegistration||await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  const keyResponse=await fetch(ANALYTICS_API+'/api/push/vapid-public-key');
+  if(!keyResponse.ok)throw new Error('Ο push server δεν είναι ακόμη έτοιμος.');
+  const keyData=await keyResponse.json();
+  let subscription=await goalPulseServiceWorkerRegistration.pushManager.getSubscription();
+  if(!subscription)subscription=await goalPulseServiceWorkerRegistration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(keyData.publicKey)});
+  const saveResponse=await fetch(ANALYTICS_API+'/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
+  if(!saveResponse.ok)throw new Error('Δεν αποθηκεύτηκε η συνδρομή push.');
+  setStatus('Push ειδοποιήσεις ενεργοποιήθηκαν σε αυτή τη συσκευή. Τα νέα alerts που εντοπίζονται από τον scanner θα αποστέλλονται μέσω push.');
+  await goalPulseServiceWorkerRegistration.showNotification('Goal Pulse · Push ενεργό',{body:'Η συσκευή συνδέθηκε για AI και VIP ειδοποιήσεις.',icon:'/favicon.ico',badge:'/favicon.ico',tag:'goal-pulse-push-ready'});
+ }catch(error){setStatus('Δεν ενεργοποιήθηκε το push: '+(error.message||'έλεγξε άδεια και σύνδεση.'))}
+}
+document.getElementById('enablePushNotifications')?.addEventListener('click',()=>enableGoalPulsePush(['pushNotificationStatus','vipPushNotificationStatus']));
+document.getElementById('enableVipPushNotifications')?.addEventListener('click',()=>enableGoalPulsePush(['vipPushNotificationStatus','pushNotificationStatus']));
+async function sendGoalPulsePushAlert(level,body,eventId){
+ try{await fetch(ANALYTICS_API+'/api/push/alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level,body,eventId})})}catch{}
+}
 
 loadScores();
 setInterval(loadScores,60000);
