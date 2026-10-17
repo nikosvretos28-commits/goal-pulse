@@ -979,11 +979,16 @@ async function runSignalCheck(){
 
 ['topAiAlertList','topVipAlertList'].forEach(id=>document.getElementById(id).addEventListener('click',event=>{
  const card=event.target.closest('button[data-top-alert]');if(!card)return;
- /* Keep both AI and VIP details hidden until secure subscriber authentication exists. */
+ let recent=[];
+ try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))recent=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()-Number(a.createdAt)<=30*60*1000&&Date.now()>=Number(a.createdAt))}catch{}
+ const isVip=card.dataset.topAlert==='◆';
+ const matches=recent.filter(a=>isVip?a.level==='VIP':a.level!=='VIP');
+ const alert=matches[Number(card.dataset.alertIndex)];
+ if(!alert)return;
  const modal=document.getElementById('analysisModal');
- document.getElementById('analysisTitle').textContent='';
- document.getElementById('analysisSubtitle').textContent='';
- document.getElementById('analysisContent').innerHTML='';
+ document.getElementById('analysisTitle').textContent=(alert.level||'AI')+' ALERT · '+(alert.market||'Live signal');
+ document.getElementById('analysisSubtitle').textContent=(alert.home||'')+' – '+(alert.away||'')+' · '+(alert.league||'')+' · '+(alert.minute||'LIVE');
+ document.getElementById('analysisContent').innerHTML='<div class="analysis-note"><strong>Γιατί εμφανίστηκε</strong><p>'+esc(alert.reason||'Μεταβολή στα διαθέσιμα live στατιστικά')+'</p><p><strong>Ώρα:</strong> '+esc(alert.time||'—')+'</p><p><strong>Αξιολόγηση:</strong> '+esc(alert.outcome||'Εκκρεμεί')+'</p><p>Η ένδειξη βασίζεται σε μεταβολές στα διαθέσιμα στατιστικά. Δεν αποτελεί βεβαιότητα ούτε εγγύηση αποτελέσματος.</p></div>';
  modal.classList.add('open');
 }));
 
