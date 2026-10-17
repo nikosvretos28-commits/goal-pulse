@@ -388,6 +388,49 @@ header nav a{padding:9px 0;font-size:11px}
   .live-inline-stat b{font-size:11px}
 }
 
+
+/* Match-centre usability polish: fixed compact columns, xG last, no sideways page scroll */
+.live-match-line{grid-template-columns:minmax(0,0.9fr) minmax(0,1.1fr);min-width:0}
+.live-match-main{min-width:0}
+.live-inline-stats{grid-template-columns:repeat(6,minmax(0,1fr))}
+.live-inline-stat.xg{border-color:#3b6d57;background:linear-gradient(150deg,#102c27,#0b1c2b)}
+.live-inline-stat.xg span{color:#9ce6bf}
+.live-inline-stat.xg b{color:#c0ffd9}
+@media(max-width:560px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  .wrap{width:100%;max-width:100%;padding-left:6px;padding-right:6px}
+  .scoreboard-title{padding:12px 10px;gap:7px}
+  .scoreboard-title h1{font-size:22px;letter-spacing:-.6px}
+  .scoreboard-title p{font-size:10px;line-height:1.3}
+  .scoreboard-status{padding:7px 8px;font-size:9px;white-space:nowrap}
+  .scoreboard-status small{font-size:8px}
+  .top-live-head{gap:6px;padding:9px 8px!important}
+  .top-live-head strong{font-size:10px}
+  .top-live-head .subtle{font-size:8px;text-align:right}
+  .live-match-centre{width:100%;max-width:100%;overflow:hidden}
+  .live-match-line{width:100%;max-width:100%;min-width:0;grid-template-columns:minmax(0,0.92fr) minmax(0,1.08fr);overflow:hidden}
+  .live-match-main{width:100%;min-width:0;gap:2px}
+  .live-match-line .live-row{width:100%;min-width:0;grid-template-columns:11px minmax(0,1fr) 24px minmax(0,1fr) 11px 25px;gap:1px;padding:7px 2px;font-size:8px}
+  .live-match-line .live-row .crest img{width:12px;height:12px}
+  .live-match-line .live-row .teamname{min-width:0;font-size:7px;letter-spacing:-.3px}
+  .live-match-line .live-row .score{font-size:9px}
+  .live-match-line .live-row .minute{font-size:7px;padding:2px 1px}
+  .live-inline-stats{grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;padding:2px}
+  .live-inline-stat{min-width:0;padding:4px 0;gap:3px;border-radius:3px}
+  .live-inline-stat span{font-size:6px;letter-spacing:-.3px;white-space:normal;line-height:1.1;overflow-wrap:anywhere}
+  .live-inline-stat b{font-size:8px;white-space:normal;overflow-wrap:anywhere}
+  .goal-now-alert{max-width:100%;font-size:7px;padding:3px;margin:0 2px 4px}
+}
+@media(min-width:561px) and (max-width:850px){
+ .live-match-centre{overflow:hidden}
+ .live-match-line{width:100%;min-width:0;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr)}
+ .live-match-line .live-row{grid-template-columns:14px minmax(0,1fr) 30px minmax(0,1fr) 14px 28px;gap:2px;padding:8px 3px}
+ .live-inline-stats{grid-template-columns:repeat(6,minmax(0,1fr));gap:2px;padding:3px}
+ .live-inline-stat{padding:5px 1px}
+ .live-inline-stat span{font-size:7px;white-space:normal}
+ .live-inline-stat b{font-size:10px}
+}
+
 </style>
 </head>
 <body>
@@ -593,7 +636,7 @@ function liveMatchLine(m,highActivity=false){
   return Math.max(0,Number(a)-Number(x))+'–'+Math.max(0,Number(b)-Number(y));
  };
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
- const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',pair('shots'),'shot')+statCell('ΕΝΤΟΣ',pair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',pair('shotsOffTarget'),'shot')+'</div>';
+ const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',pair('shots'),'shot')+statCell('ΕΝΤΟΣ',pair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',pair('shotsOffTarget'),'shot')+statCell('xG',pair('xG'),'xg')+'</div>';
  return '<div class="live-match-line"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="crest">'+teamBadge(m.home)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="crest">'+teamBadge(m.away)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></button>'+alertHtml+'</div>'+statsHtml+'</div>';
 }
 function renderHighActivityMatches(){
