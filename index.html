@@ -772,8 +772,15 @@ function updateIntervalStats(match,trail,current,now){
 function liveMatchLine(m,highActivity=false,activityLevel=0){
  const recentAlert=signalAlertHistory.find(a=>String(a.eventId)===String(m.id)&&a.market==="πιθανό γκολ"&&a.createdAt&&Date.now()-a.createdAt<8*60*1000);
  const waveLevel=Math.max(0,Math.min(100,Number(activityLevel)||0));
- const waveColor=waveLevel>=65?'#ef4444':waveLevel>=35?'#f97316':'#facc15';
- const wavePoints='0,22 6,21 12,23 18,19 24,21 30,16 36,18 42,12 48,15 54,20 60,17 66,23 72,19 78,14 84,16 90,10 96,13 102,19 108,16 114,22 120,18 126,20 133,17 140,19';
+ const waveColor=waveLevel>=65?'#ef4444':waveLevel>=35?'#f97316':'#22c55e';
+ const waveAmplitude=3+(waveLevel/100)*13;
+ const wavePoints=Array.from({length:35},(_,i)=>{
+  const x=i*140/34;
+  const phase=i%7;
+  const spike=phase===3?-waveAmplitude:phase===4?waveAmplitude*.42:0;
+  const y=Math.max(3,Math.min(34,19+Math.sin(i*1.35)*waveAmplitude*.24+spike));
+  return x.toFixed(1)+','+y.toFixed(1);
+ }).join(' ');
  const waveSvg='<svg class="activity-ecg" viewBox="0 0 140 38" preserveAspectRatio="none" aria-hidden="true"><polyline class="ecg-trace" points="'+wavePoints+'"/></svg>';
  const waveHtml='<span class="activity-wave" style="--wave-color:'+waveColor+';--wave-level:'+waveLevel+'%" role="img" aria-label="Ένταση επιθετικής δραστηριότητας '+waveLevel+' στα 100" title="Δείκτης επιθετικής δραστηριότητας: '+waveLevel+'/100">'+waveSvg+'<span class="ecg-glow"></span></span>';
  const alertHtml=recentAlert?'<div class="activity-alert-row"><span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>'+waveHtml+'</div>':(highActivity?'<div class="activity-alert-row"><span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>'+waveHtml+'</div>':"");
