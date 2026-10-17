@@ -17,6 +17,7 @@ const SCOREBOARD_LEAGUES = [
   "uefa.europa.conf"
 ];
 const scoreboardCache = new Map();
+const scoreboardInflight = new Map();
 
 
 function send(res, status, body, type = "application/json; charset=utf-8") {
@@ -85,28 +86,44 @@ const server = http.createServer(async (req, res) => {
         res.setHeader("X-Goal-Pulse-Cache", "HIT");
         return send(res, 200, cached.body);
       }
-      const feeds = await Promise.all(SCOREBOARD_LEAGUES.map(async code => {
-        try {
-          const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
-            headers: { "Accept": "application/json" },
-            signal: AbortSignal.timeout(10000)
-          });
-          if (!response.ok) return { code, events: [], ok: false };
-          const body = await response.json();
-          return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
-        } catch {
-          return { code, events: [], ok: false };
-        }
-      }));
-      const successfulFeeds = feeds.filter(feed => feed.ok).length;
-      const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: feeds.map(({code,events,ok}) => ({code,events,ok})) };
-      if (successfulFeeds > 0) scoreboardCache.set(date, { at: Date.now(), body });
-      else if (cached && Date.now() - cached.at < SCOREBOARD_TTL_MS + SCOREBOARD_STALE_TTL_MS) {
-        res.setHeader("X-Goal-Pulse-Cache", "STALE");
-        return send(res, 200, cached.body);
+
+      let sharedRequest = scoreboardInflight.get(date);
+      if (!sharedRequest) {
+        sharedRequest = (async () => {
+          const feeds = await Promise.all(SCOREBOARD_LEAGUES.map(async code => {
+            try {
+              const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
+                headers: { "Accept": "application/json" },
+                signal: AbortSignal.timeout(10000)
+              });
+              if (!response.ok) return { code, events: [], ok: false };
+              const body = await response.json();
+              return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
+            } catch {
+              return { code, events: [], ok: false };
+            }
+          }));
+          const successfulFeeds = feeds.filter(feed => feed.ok).length;
+          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: feeds.map(({code,events,ok}) => ({code,events,ok})) };
+          if (successfulFeeds > 0) {
+            scoreboardCache.set(date, { at: Date.now(), body });
+            return { status: 200, body, cache: "MISS" };
+          }
+          if (cached && Date.now() - cached.at < SCOREBOARD_TTL_MS + SCOREBOARD_STALE_TTL_MS) {
+            return { status: 200, body: cached.body, cache: "STALE" };
+          }
+          return { status: 502, body, cache: "MISS" };
+        })();
+        scoreboardInflight.set(date, sharedRequest);
       }
-      res.setHeader("X-Goal-Pulse-Cache", "MISS");
-      return send(res, successfulFeeds > 0 ? 200 : 502, body);
+
+      try {
+        const result = await sharedRequest;
+        res.setHeader("X-Goal-Pulse-Cache", result.cache);
+        return send(res, result.status, result.body);
+      } finally {
+        if (scoreboardInflight.get(date) === sharedRequest) scoreboardInflight.delete(date);
+      }
     }
 
     if (url.pathname === "/api/pitch/date") {
