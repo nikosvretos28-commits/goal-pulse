@@ -357,7 +357,7 @@ const server = http.createServer(async (req, res) => {
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
-              statsAvailable: teams.length > 0 && values.some(v => Object.values(v).some(value => value !== null && value !== "")),
+              statsAvailable: teams.length > 0 && values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "blockedShots", "corners", "possession", "dangerousAttacks", "xG"].some(key => v[key] !== null)),
               teams: values
             });
           } catch {}
