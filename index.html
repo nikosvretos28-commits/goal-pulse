@@ -442,6 +442,56 @@ header nav a{padding:9px 0;font-size:11px}
 @keyframes ecgSweep{0%{stroke-dashoffset:35;opacity:.72}50%{opacity:1}100%{stroke-dashoffset:-35;opacity:.82}}
 @media(prefers-reduced-motion:reduce){.ecg-trace{animation:none}}
 @media(max-width:560px){.activity-alert-row{gap:5px;padding:0 3px 5px}.activity-wave{height:25px;width:76px;min-width:62px;padding:2px 3px}.activity-alert-row .goal-now-alert{font-size:7px;padding:3px 4px}}
+
+/* Readability pass: larger type and clearer stat tiles without changing the Goal Pulse look */
+.live-match-line .live-row .teamname{font-size:12px}
+.live-match-line .live-row .score{font-size:14px}
+.live-match-line .live-row .minute{font-size:10px;padding:4px 5px}
+.live-inline-stats{gap:4px;padding:5px}
+.live-inline-stat{padding:7px 4px;gap:5px}
+.live-inline-stat span{font-size:10px;letter-spacing:0;color:#b8cddd;line-height:1.2}
+.live-inline-stat b{font-size:14px;line-height:1.15}
+.goal-now-alert{font-size:10px;padding:5px 7px}
+.top-live-head strong{font-size:13px}
+.top-live-head .subtle{font-size:10px}
+.subtle,.analysis-note{font-size:12px;line-height:1.5}
+.detail-heading{font-size:16px}
+.stat-table-head,.stat-row{font-size:13px;line-height:1.35}
+.analysis-stat small{font-size:11px}
+.analysis-stat strong{font-size:20px}
+@media(max-width:560px){
+ .scoreboard-title h1{font-size:24px}
+ .scoreboard-title p{font-size:12px;line-height:1.45}
+ .scoreboard-status{font-size:10px}
+ .scoreboard-status small{font-size:9px}
+ .top-live-head strong{font-size:12px}
+ .top-live-head .subtle{font-size:10px}
+ .live-match-line{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr)}
+ .live-match-line .live-row{grid-template-columns:14px minmax(0,1fr) 30px minmax(0,1fr) 14px 30px;gap:2px;padding:8px 3px;font-size:10px}
+ .live-match-line .live-row .crest img{width:15px;height:15px}
+ .live-match-line .live-row .teamname{font-size:10px;letter-spacing:-.1px}
+ .live-match-line .live-row .score{font-size:12px}
+ .live-match-line .live-row .minute{font-size:9px;padding:3px 2px}
+ .live-inline-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px}
+ .live-inline-stat{padding:7px 3px;gap:4px;border-radius:5px}
+ .live-inline-stat span{font-size:10px;letter-spacing:0;line-height:1.2;white-space:normal;overflow-wrap:normal}
+ .live-inline-stat b{font-size:13px;white-space:nowrap;overflow-wrap:normal}
+ .goal-now-alert{font-size:9px;padding:4px 5px}
+ .activity-wave{height:26px;width:78px}
+ .detail-heading{font-size:16px}
+ .stat-table-head,.stat-row{font-size:12px;padding:10px 7px;gap:5px}
+ .analysis-stat small{font-size:11px}
+ .analysis-stat strong{font-size:18px}
+ .subtle,.analysis-note{font-size:12px}
+}
+@media(min-width:561px) and (max-width:850px){
+ .live-match-line .live-row .teamname{font-size:11px}
+ .live-match-line .live-row .score{font-size:13px}
+ .live-inline-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+ .live-inline-stat span{font-size:10px}
+ .live-inline-stat b{font-size:13px}
+}
+
 </style>
 </head>
 <body>
