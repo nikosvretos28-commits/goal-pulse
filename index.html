@@ -851,6 +851,16 @@ const LEAGUES=[
  ['caf.nations','Africa Cup of Nations','Africa','🌍'],
  ['afc.asian.cup','AFC Asian Cup','Asia','🌏'],
  ['fifa.cwc','FIFA Club World Cup','World','🌍']
+ ['ita.w.1','Serie A Women','Italy','🇮🇹'],
+ ['ger.w.1','Frauen-Bundesliga','Germany','🇩🇪'],
+ ['por.w.1','Liga BPI Women','Portugal','🇵🇹'],
+ ['mex.w.1','Liga MX Femenil','Mexico','🇲🇽'],
+ ['bra.w.1','Brasileirão Feminino','Brazil','🇧🇷'],
+ ['arg.w.1','Primera División Femenina','Argentina','🇦🇷'],
+ ['aus.w.1','A-League Women','Australia','🇦🇺'],
+ ['uefa.w.champions','UEFA Women's Champions League','Europe','🏆'],
+ ['uefa.w.euro','UEFA Women's EURO','Europe','🏆'],
+ ['fifa.w.world','FIFA Women's World Cup','World','🌍']
 ];
 let active='all', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null; let goalFlashMatchIds=[];
 const readFavorites=()=>{try{return new Set(JSON.parse(localStorage.getItem('goalPulseFavorites')||'[]').map(String))}catch{return new Set()}};
