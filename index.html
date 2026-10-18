@@ -1358,7 +1358,7 @@ async function showDetails(btn){
   const matches=dateJson?.data?.matches||[];
   const target=matches.find(x=>sameTeam(x.home_team?.name,home)&&sameTeam(x.away_team?.name,away));
   if(!target){await showSeasonResultsDetails(card,home,away,subtitle,content);return}
-  if(target.status!=='finished'){content.innerHTML='<p class="analysis-note">Τα analytics της δωρεάν πηγής είναι μετά τη λήξη του αγώνα. Δοκίμασε ξανά μετά την ολοκλήρωση και την ενημέρωση των δεδομένων.</p>';return}
+  if(target.status!=='finished'){content.innerHTML='<section class="forebet-section"><h4>Αναλυτικά στατιστικά παρόχου</h4><p class="analysis-note">Τα λεπτομερή xG και τα συμβάντα αυτού του παρόχου εμφανίζονται μετά τη λήξη. Η πρόβλεψη και η φόρμα σεζόν είναι διαθέσιμες παρακάτω.</p></section>';await showSeasonResultsDetails(card,home,away,subtitle,content,true);return}
   const routes=['stats','momentum','shots','events'];
   const responses=await Promise.all(routes.map(endpoint=>fetch(ANALYTICS_API+'/api/pitch/matches/'+target.id+'/'+endpoint)));
   const data=await Promise.all(responses.map(r=>r.json()));
@@ -1386,7 +1386,7 @@ async function showDetails(btn){
   content.innerHTML='<div class="analysis-grid"><div class="analysis-stat"><small>xG · '+esc(home)+'</small><strong>'+esc(fmt(xgHome))+'</strong></div><div class="analysis-stat"><small>xG · '+esc(away)+'</small><strong>'+esc(fmt(xgAway))+'</strong></div><div class="analysis-stat"><small>Σουτ συνολικά</small><strong>'+esc(fmt(shotCount||null))+'</strong></div><div class="analysis-stat"><small>xGOT · '+esc(home)+'</small><strong>'+esc(fmt(xgotHome))+'</strong></div><div class="analysis-stat"><small>xGOT · '+esc(away)+'</small><strong>'+esc(fmt(xgotAway))+'</strong></div><div class="analysis-stat"><small>Τελικό σκορ</small><strong>'+esc(fmt(target.score_home))+'–'+esc(fmt(target.score_away))+'</strong></div></div>'+(extraRows?'<h3 class="detail-heading">📊 Στατιστικά ομάδων</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(home)+'</span><span>Στατιστικό</span><span>'+esc(away)+'</span></div>'+extraRows+xgRow+'</div>':'')+'<h3 class="detail-heading">🕒 Ροή αγώνα</h3>'+eventHtml+'<h3 class="detail-heading">💚 Pressure Wave</h3>'+chart+'<p class="analysis-note">Τα στοιχεία προέρχονται από PitchAPI και εμφανίζονται μόνο όταν υπάρχουν. Πρόκειται για ανάλυση μετά τη λήξη, όχι για live στατιστικά ή εγγυημένες προβλέψεις.</p>';
   subtitle.textContent=target.league?.name||'Match analytics';
   await showSeasonResultsDetails(card,home,away,subtitle,content,true);
- }catch(err){await showSeasonResultsDetails(card,home,away,subtitle,content)}
+ }catch(err){content.innerHTML='<section class="forebet-section"><h4>Αναλυτικά στατιστικά παρόχου</h4><p class="analysis-note">Τα λεπτομερή xG και τα συμβάντα δεν είναι διαθέσιμα αυτή τη στιγμή. Φόρτωση της πρόβλεψης και των αποτελεσμάτων σεζόν.</p></section>';await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
 }
 /* Goal Pulse cross-device notification permission and service-worker foundation. */
 let goalPulseServiceWorkerRegistration=null;
