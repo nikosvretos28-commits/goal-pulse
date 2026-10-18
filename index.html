@@ -1472,6 +1472,7 @@ function urlBase64ToUint8Array(base64String){
 async function enableGoalPulsePush(statusIds){
  const statuses=statusIds.map(id=>document.getElementById(id)).filter(Boolean);
  const setStatus=message=>statuses.forEach(el=>el.textContent=message);
+ setStatus('Έλεγχος σύνδεσης ειδοποιήσεων…');
  if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){setStatus('Αυτή η συσκευή/browser δεν υποστηρίζει Web Push.');return}
  try{
   const permission=await Notification.requestPermission();
