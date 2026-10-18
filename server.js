@@ -850,7 +850,7 @@ const server = http.createServer(async (req, res) => {
           try {
             if (String(event.id).startsWith("m_")) {
               const pitchStats = await pitchGet("/v1/matches/" + encodeURIComponent(event.id) + "/stats");
-              const groups = (pitchStats?.data?.periods || []).filter(period => !period.period || period.period === "All").flatMap(period => period.groups || []);
+              const groups = (pitchStats?.data?.periods || []).filter(period => !period.period || String(period.period).trim().toLowerCase() === "all").flatMap(period => period.groups || []);
               const items = groups.flatMap(group => group.items || []);
               const readStat = (side, aliases) => {
                 const found = items.find(stat => aliases.includes(String(stat.key || "").toLowerCase()) || aliases.includes(String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")));
