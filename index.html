@@ -558,9 +558,10 @@ header nav a{padding:9px 0;font-size:11px}
 .live-match-line.goal-flash-row{position:relative;z-index:3;outline:2px solid #43e0a2;outline-offset:-2px;background:linear-gradient(90deg,#0c4534,#103b31 35%,#234956 65%,#0c4534)!important;animation:goalPulseFullBar .72s ease-in-out 0s 7;box-shadow:0 0 22px 5px #43e0a2aa!important}
 .live-match-line.goal-flash-row::before{content:"⚽  GOAL • ΓΚΟΛ!  ⚽";position:absolute;z-index:8;left:0;right:0;top:0;text-align:center;padding:5px 4px;background:linear-gradient(90deg,#43e0a2,#f2c879,#43e0a2);color:#081a14;font-size:11px;font-weight:1000;letter-spacing:1px;pointer-events:none;animation:goalBanner .72s ease-in-out 0s 7}
 .live-match-line.goal-flash-row .live-row{padding-top:28px}
-/* Let the live stats use their actual number of available fields; hide unavailable xG */
-.live-inline-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
-@media(max-width:850px){.live-inline-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}}
+/* Keep all available live metrics readable; xG remains the final metric */
+.live-inline-stats{grid-template-columns:repeat(8,minmax(0,1fr))}
+@media(max-width:850px){.live-match-line{grid-template-columns:minmax(0,1fr);min-width:0}.live-inline-stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:420px){.live-inline-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px}.live-inline-stat span{font-size:8px;white-space:normal}.live-inline-stat b{font-size:12px}}
 /* Main fixture cards: improve hierarchy and tap/read comfort */
 .match .team{font-size:16px;font-weight:850;line-height:1.25}
 .match .match-score{font-size:28px;font-weight:1000}
