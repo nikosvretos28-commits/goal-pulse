@@ -828,8 +828,10 @@ async function loadScores(){
   return (feed.events||[]).map(e=>{
    const comp=(e.competitions||[])[0]||{}, teams=comp.competitors||[];
    const h=teams.find(t=>t.homeAway==='home')||teams[0]||{}, a=teams.find(t=>t.homeAway==='away')||teams[1]||{};
-   const st=(comp.status&&comp.status.type)||e.status&&e.status.type||{};
-   const state=st.state||'pre';
+   // ESPN sometimes puts the live state on the event and sometimes on the competition.
+   const statusTypes=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
+   const state=statusTypes.some(x=>x.state==='in')?'in':statusTypes.some(x=>x.state==='post')?'post':(statusTypes.find(x=>x.state)?.state||'pre');
+   const st=statusTypes.find(x=>x.state===state)||statusTypes[0]||{};
    const kickoff=e.date?new Date(e.date):null;
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
    const clock=state==='in'?((comp.status&&comp.status.displayClock)||st.shortDetail||'LIVE'):state==='post'?'FT':validKickoff?kickoff.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'ΠΡΟΣΕΧΗΣ';
