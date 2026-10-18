@@ -837,6 +837,30 @@ const server = http.createServer(async (req, res) => {
           const item = work[cursor++];
           const event = item.event;
           try {
+            if (String(event.id).startsWith("m_")) {
+              const pitchStats = await pitchGet("/v1/matches/" + encodeURIComponent(event.id) + "/stats");
+              const groups = (pitchStats?.data?.periods || []).filter(period => !period.period || period.period === "All").flatMap(period => period.groups || []);
+              const items = groups.flatMap(group => group.items || []);
+              const readStat = (side, aliases) => {
+                const found = items.find(stat => aliases.includes(String(stat.key || "").toLowerCase()) || aliases.includes(String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""));
+                if (!found) return null;
+                const value = Number.parseFloat(String(found[side] ?? "").replace(",", "."));
+                return Number.isFinite(value) ? value : null;
+              };
+              const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
+              const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
+              const values = [
+                { team: homeName, homeAway: "home", shots: readStat("home", ["total_shots","shots","total_attempts"]), shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal"]), shotsOffTarget: null, blockedShots: null, corners: readStat("home", ["corners","corner_kicks"]), attacks: null, dangerousAttacks: null, possession: readStat("home", ["possession","possession_percentage"]), xG: readStat("home", ["expected_goals","xg"]) },
+                { team: awayName, homeAway: "away", shots: readStat("away", ["total_shots","shots","total_attempts"]), shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal"]), shotsOffTarget: null, blockedShots: null, corners: readStat("away", ["corners","corner_kicks"]), attacks: null, dangerousAttacks: null, possession: readStat("away", ["possession","possession_percentage"]), xG: readStat("away", ["expected_goals","xg"]) }
+              ];
+              matches.push({
+                eventId: String(event.id), home: homeName, away: awayName,
+                minute: event.status?.displayClock || "",
+                statsAvailable: values.some(value => ["shots","shotsOnTarget","corners","possession","xG"].some(key => value[key] !== null)),
+                teams: values
+              });
+              continue;
+            }
             const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
               headers: { "Accept": "application/json" },
               signal: AbortSignal.timeout(8000)
