@@ -315,7 +315,7 @@ async function findPitchLeague(code) {
   const aliases = pitchLeagueAliases(code);
   if (!aliases.length) return null;
   const normal = value => String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
-  const candidates = leagues.filter(item => aliases.includes(normal(item.name)));
+  const candidates = leagues.filter(item => aliases.some(alias => normal(item.name) === alias || normal(item.name).includes(alias) || alias.includes(normal(item.name))));
   const country = code.split(".")[0];
   const countryCodes = {eng:"ENG",esp:"ESP",ita:"ITA",ger:"DEU",fra:"FRA",por:"PRT",ned:"NLD",sco:"SCO",gre:"GRC",tur:"TUR",bra:"BRA",arg:"ARG",usa:"USA",mex:"MEX",aus:"AUS",bel:"BEL",aut:"AUT",sui:"CHE",den:"DNK",nor:"NOR",swe:"SWE",pol:"POL",jpn:"JPN",kor:"KOR",sau:"SAU"};
   return candidates.find(item => item.country_code === countryCodes[country]) || candidates[0] || null;
@@ -743,7 +743,7 @@ const server = http.createServer(async (req, res) => {
               for (const code of SCOREBOARD_LEAGUES) {
                 const aliases = pitchLeagueAliases(code).map(normal);
                 if (!aliases.length) continue;
-                const candidates = directory.filter(item => aliases.includes(normal(item.name)));
+                const candidates = directory.filter(item => aliases.some(alias => normal(item.name) === alias || normal(item.name).includes(alias) || alias.includes(normal(item.name))));
                 const chosen = candidates.find(item => item.country_code === countryCodes[code.split(".")[0]]) || candidates[0];
                 if (chosen?.id) idToCode.set(String(chosen.id), code);
               }
@@ -756,7 +756,7 @@ const server = http.createServer(async (req, res) => {
                 const matchCountry = String(match.league?.country_code || match.league?.country || "").toUpperCase();
                 let code = idToCode.get(String(match.league?.id || ""));
                 if (!code && matchLeagueName) {
-                  const candidates = SCOREBOARD_LEAGUES.filter(candidate => (aliasesByCode.get(candidate) || []).includes(matchLeagueName));
+                  const candidates = SCOREBOARD_LEAGUES.filter(candidate => (aliasesByCode.get(candidate) || []).some(alias => matchLeagueName === alias || matchLeagueName.includes(alias) || alias.includes(matchLeagueName)));
                   code = candidates.find(candidate => {
                     const expectedCountry = countryCodes[candidate.split(".")[0]];
                     return !expectedCountry || !matchCountry || matchCountry === expectedCountry || matchCountry.includes(expectedCountry);
@@ -783,7 +783,7 @@ const server = http.createServer(async (req, res) => {
               if (sourceMatches.length) {
                 finalFeeds = SCOREBOARD_LEAGUES.map(code => ({ code, events: byCode.get(code) || [], ok: true }));
                 successfulFeeds = finalFeeds.length;
-                console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches: [...byCode.values()].reduce((n, list) => n + list.length, 0) }));
+                const mappedMatches = [...byCode.values()].reduce((n, list) => n + list.length, 0);\n                console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, sample: mappedMatches ? undefined : sourceMatches.slice(0, 3).map(match => ({ league: match.league?.name, country: match.league?.country_code || match.league?.country, hasHome: Boolean(match.home_team?.name), hasAway: Boolean(match.away_team?.name), keys: Object.keys(match || {}) })) }));
               }
             } catch (error) {
               console.error("PitchAPI scoreboard fallback failed:", error.message);
