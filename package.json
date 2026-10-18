@@ -2,7 +2,7 @@
   "name": "goal-pulse",
   "version": "1.0.0",
   "private": true,
-  "description": "Goal Pulse static frontend with secure PitchAPI proxy",
+  "description": "Goal Pulse live-score API with secure PitchAPI proxy and Web Push alerts",
   "scripts": {
     "start": "node server.js"
   },
@@ -10,6 +10,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "pg": "^8.13.1"
   }
 }
