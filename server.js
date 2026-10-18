@@ -461,7 +461,7 @@ const server = http.createServer(async (req, res) => {
     const end = calendarSeason ? new Date(Date.UTC(season, 11, 31)) : splitSeason ? new Date(Date.UTC(season + 1, 5, 30)) : new Date(Date.UTC(season + 1, 5, 30));
     const compactDate = date => date.toISOString().slice(0, 10).replace(/-/g, "");
     try {
-      const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + compactDate(start) + "-" + compactDate(end), {
+      const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + compactDate(start) + "-" + compactDate(end), {
         headers: { "Accept": "application/json" },
         signal: AbortSignal.timeout(20000)
       });
