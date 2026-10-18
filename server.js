@@ -454,7 +454,7 @@ const server = http.createServer(async (req, res) => {
     if (!Number.isInteger(season) || season < 2000 || season > new Date().getUTCFullYear() + 1) return send(res, 400, { error: "Invalid season", matches: [] });
     const historyKey = "competition-history:" + league + ":" + season;
     const historyCached = cache.get(historyKey);
-    if (historyCached && Date.now() - historyCached.at < 6 * 60 * 60 * 1000) return send(res, 200, historyCached.body);
+    if (historyCached && Date.now() - historyCached.at < 30 * 60 * 1000) return send(res, 200, historyCached.body);
     const calendarSeason = ["bra.1", "arg.1", "usa.1"].includes(league);
     const splitSeason = ["mex.1", "aus.1"].includes(league);
     const start = calendarSeason ? new Date(Date.UTC(season, 0, 1)) : splitSeason ? new Date(Date.UTC(season, 6, 1)) : new Date(Date.UTC(season, 7, 1));
