@@ -816,11 +816,23 @@ async function loadScores(){
  if(refreshButton){refreshButton.disabled=true;refreshButton.textContent='↻ Φόρτωση…'}
  if(feedStatus)feedStatus.textContent='Ενημέρωση σκορ…';
  let scoreboardJson={successfulFeeds:0,feeds:[]};
- try{
-  const scoreboardRes=await fetch(ANALYTICS_API+'/api/scoreboard?date='+selectedMatchDate.replace(/-/g,''),{signal:AbortSignal.timeout(18000)});
-  if(!scoreboardRes.ok)throw new Error('Scoreboard request failed: '+scoreboardRes.status);
-  scoreboardJson=await scoreboardRes.json();
- }catch(err){scoreboardJson={successfulFeeds:0,feeds:[]}}
+ let scoreboardError='';
+ // Retry transient API/provider failures and bypass intermediary/browser caches.
+ for(let attempt=0;attempt<3;attempt++){
+  try{
+   const sep=ANALYTICS_API+'/api/scoreboard?date='+selectedMatchDate.replace(/-/g,'')+'&_='+Date.now();
+   const scoreboardRes=await fetch(sep,{cache:'no-store',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(20000)});
+   if(!scoreboardRes.ok)throw new Error('Scoreboard API HTTP '+scoreboardRes.status);
+   const payload=await scoreboardRes.json();
+   if(!Array.isArray(payload.feeds))throw new Error('Μη έγκυρη απάντηση σκορ');
+   scoreboardJson=payload;
+   scoreboardError='';
+   break;
+  }catch(err){
+   scoreboardError=err&&err.message?err.message:'Πρόβλημα σύνδεσης';
+   if(attempt<2)await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
+  }
+ }
  successfulFeeds=Number(scoreboardJson.successfulFeeds)||0;
  const results=(scoreboardJson.feeds||[]).map(feed=>{
   // Keep real matches visible even when the provider adds an unlisted competition.
@@ -842,7 +854,7 @@ async function loadScores(){
  const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  const feedsSucceeded=successfulFeeds;
  goalFlashMatchIds=[];
- if(feedsSucceeded>0){
+ if(feedsSucceeded>0 || freshMatches.length>0){
   const previousById=new Map(allMatches.map(m=>[String(m.id),m]));
   freshMatches.forEach(m=>{const prev=previousById.get(String(m.id));if(!prev)return;const oldHome=Number(prev.home.score),newHome=Number(m.home.score),oldAway=Number(prev.away.score),newAway=Number(m.away.score);if(Number.isFinite(oldHome)&&Number.isFinite(newHome)&&Number.isFinite(oldAway)&&Number.isFinite(newAway)&&(newHome>oldHome||newAway>oldAway))goalFlashMatchIds.push(String(m.id));});
   allMatches=freshMatches;lastSuccessfulScoreUpdate=new Date();
