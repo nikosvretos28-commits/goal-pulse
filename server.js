@@ -446,6 +446,50 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY), persistentAnalyticsConfigured: Boolean(analyticsPool) });
   }
 
+  if (url.pathname === "/api/competition-history" && req.method === "GET") {
+    const league = String(url.searchParams.get("league") || "");
+    const daysRaw = Number(url.searchParams.get("days") || 90);
+    const days = Math.min(120, Math.max(30, Number.isFinite(daysRaw) ? Math.round(daysRaw) : 90));
+    if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
+    const historyKey = "competition-history:" + league + ":" + days;
+    const historyCached = cache.get(historyKey);
+    if (historyCached && Date.now() - historyCached.at < 10 * 60 * 1000) return send(res, 200, historyCached.body);
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 86400000);
+    const compactDate = date => date.toISOString().slice(0, 10).replace(/-/g, "");
+    try {
+      const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + compactDate(start) + "-" + compactDate(end), {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok) return send(res, 502, { error: "Competition history provider unavailable", matches: [] });
+      const body = await response.json();
+      const matches = (Array.isArray(body.events) ? body.events : []).map(event => {
+        const competition = (event.competitions || [])[0] || {};
+        const teams = competition.competitors || [];
+        const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
+        const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
+        const state = (competition.status && competition.status.type && competition.status.type.state) || (event.status && event.status.type && event.status.type.state) || "pre";
+        const hs = home.score == null ? null : Number(home.score);
+        const as = away.score == null ? null : Number(away.score);
+        return {
+          id: String(event.id || ""),
+          leagueCode: league,
+          state,
+          date: event.date || "",
+          home: { name: home.team && (home.team.displayName || home.team.name) || "Home", score: Number.isFinite(hs) ? hs : null },
+          away: { name: away.team && (away.team.displayName || away.team.name) || "Away", score: Number.isFinite(as) ? as : null }
+        };
+      }).filter(match => match.state === "post" && match.home.score !== null && match.away.score !== null && match.home.name !== "Home" && match.away.name !== "Away");
+      const result = { league, days, matches, fetchedAt: new Date().toISOString() };
+      cache.set(historyKey, { at: Date.now(), body: result });
+      return send(res, 200, result);
+    } catch (error) {
+      return send(res, 502, { error: "Competition history request failed", matches: [] });
+    }
+  }
+
+
 
   try {
     if (url.pathname === "/api/scoreboard") {
