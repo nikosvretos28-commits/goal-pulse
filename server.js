@@ -100,7 +100,8 @@ const SCOREBOARD_LEAGUES = [
   "eng.fa", "eng.league_cup", "esp.copa_del_rey", "esp.super_cup", "ita.coppa_italia",
   "ita.super_cup", "ger.dfb_pokal", "ger.super_cup", "fra.coupe_de_france",
   "ned.cup", "sco.tennents", "sco.cis", "por.taca.portugal", "gre.cup", "arg.copa", "bra.copa_do_brazil",
-  "conmebol.libertadores", "conmebol.sudamericana"
+  "conmebol.libertadores", "conmebol.sudamericana",
+  "eng.5", "eng.6", "eng.7", "esp.3", "ita.4", "ger.4", "fra.4", "por.3", "ned.3", "gre.2", "tur.2", "bra.4", "arg.3", "jpn.2", "kor.2", "aus.2", "usa.nwsl", "eng.w.1", "esp.w.1", "fra.w.1", "uefa.nations", "fifa.world", "fifa.worldq.uefa", "fifa.worldq.conmebol", "conmebol.copa_america", "concacaf.gold", "concacaf.nations", "caf.nations", "afc.asian.cup", "fifa.cwc"
 ];
 const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
