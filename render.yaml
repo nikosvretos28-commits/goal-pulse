@@ -1,6 +1,9 @@
 services:
   - type: web
     name: goal-pulse
-    runtime: static
-    buildCommand: ""
-    staticPublishPath: .
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
