@@ -763,8 +763,9 @@ const server = http.createServer(async (req, res) => {
                   }) || candidates[0];
                 }
                 if (!code) continue;
-                const statusText = String(match.status || "").toLowerCase();
-                const state = /live|in.?play|first.?half|second.?half|half.?time|extra.?time|penalt/.test(statusText) ? "in" : /finished|full.?time/.test(statusText) ? "post" : "pre";
+                const rawStatus = match.status;
+                const statusText = (typeof rawStatus === "string" ? rawStatus : [rawStatus?.name, rawStatus?.description, rawStatus?.short, rawStatus?.type, rawStatus?.state].filter(Boolean).join(" ")).toLowerCase().replace(/[_-]+/g, " ");
+                const state = /live|in\s*play|playing|started|first\s*half|second\s*half|half\s*time|half\s*ended|extra\s*time|penalt|\b1h\b|\b2h\b|\bht\b|\bint\b|\bperiod\s*[12]\b/.test(statusText) ? "in" : /finished|full\s*time|after\s*extra|ended|complete|\bft\b/.test(statusText) ? "post" : "pre";
                 const status = { type: { state, completed: state === "post" }, displayClock: match.minute != null ? String(match.minute) + "'" : String(match.status || "") };
                 const homeName = match.home_team?.name || "";
                 const awayName = match.away_team?.name || "";
