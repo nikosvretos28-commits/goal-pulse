@@ -433,7 +433,9 @@ const server = http.createServer(async (req, res) => {
         }
       }
       for (const [id, item] of pushScanSnapshots) if (now - item.at > 15 * 60 * 1000) pushScanSnapshots.delete(id);
-      return send(res, 200, { ok: true, checked, candidates, deliveries: sent, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) });
+      const liveMatches = Number(metrics.totalLive || 0);
+      const statsMatches = (metrics.matches || []).filter(match => match.statsAvailable).length;
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
@@ -611,6 +613,8 @@ if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
         console.error("Scheduled push scan returned HTTP " + response.status + ": " + (result.detail || result.error || "unknown error"));
       } else {
         console.log("Scheduled push scan completed:", JSON.stringify({
+          liveMatches: Number(result.liveMatches || 0),
+          statsMatches: Number(result.statsMatches || 0),
           checked: Number(result.checked || 0),
           candidates: Number(result.candidates || 0),
           deliveries: Number(result.deliveries || 0),
