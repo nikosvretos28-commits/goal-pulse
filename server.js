@@ -596,7 +596,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool) }));
 if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
+  console.log("Background push scanner scheduled every 60 seconds.");
   const backgroundScanTimer = setInterval(async () => {
     try {
       await fetch("http://127.0.0.1:" + PORT + "/api/push/scan", {
