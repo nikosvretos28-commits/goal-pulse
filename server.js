@@ -461,13 +461,33 @@ const server = http.createServer(async (req, res) => {
     const end = calendarSeason ? new Date(Date.UTC(season, 11, 31)) : splitSeason ? new Date(Date.UTC(season + 1, 5, 30)) : new Date(Date.UTC(season + 1, 5, 30));
     const compactDate = date => date.toISOString().slice(0, 10).replace(/-/g, "");
     try {
-      const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + compactDate(start) + "-" + compactDate(end), {
-        headers: { "Accept": "application/json" },
-        signal: AbortSignal.timeout(20000)
-      });
-      if (!response.ok) return send(res, 502, { error: "Competition season provider unavailable", matches: [] });
-      const body = await response.json();
-      const matches = (Array.isArray(body.events) ? body.events : []).map(event => {
+      // ESPN can return incomplete/empty results for a full-season date range.
+      // Fetch bounded monthly windows and merge by event id instead.
+      const windows = [];
+      let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+      while (cursor <= end) {
+        const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+        const windowStart = cursor < start ? start : cursor;
+        const windowEnd = monthEnd > end ? end : monthEnd;
+        windows.push({ start: windowStart, end: windowEnd });
+        cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+      }
+      const events = [];
+      for (let i = 0; i < windows.length; i += 3) {
+        const batch = await Promise.all(windows.slice(i, i + 3).map(async window => {
+          const range = compactDate(window.start) + "-" + compactDate(window.end);
+          const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range, {
+            headers: { "Accept": "application/json" },
+            signal: AbortSignal.timeout(20000)
+          });
+          if (!response.ok) throw new Error("Competition history provider unavailable");
+          const body = await response.json();
+          return Array.isArray(body.events) ? body.events : [];
+        }));
+        for (const batchEvents of batch) events.push(...batchEvents);
+      }
+      const uniqueEvents = new Map(events.map(event => [String(event.id || event.date + ":" + event.name), event]));
+      const matches = [...uniqueEvents.values()].map(event => {
         const competition = (event.competitions || [])[0] || {};
         const teams = competition.competitors || [];
         const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
