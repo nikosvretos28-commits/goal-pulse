@@ -9,6 +9,13 @@ try { ({ Pool } = require("pg")); } catch {}
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
+const ESPN_HEADERS = {
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Referer": "https://www.espn.com/soccer/",
+  "Origin": "https://www.espn.com"
+};
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
@@ -454,7 +461,7 @@ const server = http.createServer(async (req, res) => {
     if (cached && Date.now() - cached.at < 30 * 60 * 1000) return send(res, 200, cached.body);
     try {
       const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/standings?season=" + season, {
-        headers: { "Accept": "application/json" },
+        headers: ESPN_HEADERS,
         signal: AbortSignal.timeout(15000)
       });
       if (!response.ok) throw new Error("Standings provider unavailable");
@@ -515,7 +522,7 @@ const server = http.createServer(async (req, res) => {
     if (cached && Date.now()-cached.at < 5*60*1000) return send(res, 200, cached.body);
     try {
       const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + startRaw + "-" + endRaw, {
-        headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(18000)
+        headers: ESPN_HEADERS, signal: AbortSignal.timeout(18000)
       });
       if (!response.ok) throw new Error("Fixtures provider unavailable");
       const body = await response.json();
