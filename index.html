@@ -1108,7 +1108,7 @@ async function loadScores(){
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
    const clock=state==='in'?((comp.status&&comp.status.displayClock)||st.shortDetail||'LIVE'):state==='post'?'FT':validKickoff?kickoff.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'ΠΡΟΣΕΧΗΣ';
    const date=validKickoff?kickoff.toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit'}):'';
-   return {id:String(e.id||''),leagueCode:l[0],league:l[1],competitionType:competitionLabel(l[0]),flag:l[3],state,clock,date,dateISO:validKickoff?e.date.slice(0,10):'',home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score,logo:h.team&&h.team.logo||''},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score,logo:a.team&&a.team.logo||''}};
+   return {id:String(e.id||''),leagueCode:l[0],league:e.leagueName||l[1],competitionType:competitionLabel(l[0]),flag:l[3],state,clock,date,dateISO:validKickoff?e.date.slice(0,10):'',home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score,logo:h.team&&h.team.logo||''},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score,logo:a.team&&a.team.logo||''}};
   });
  });
  const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
