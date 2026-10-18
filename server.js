@@ -730,11 +730,59 @@ const server = http.createServer(async (req, res) => {
               return { code, events: [], ok: false, error: error.message || "request failed" };
             }
           }));
-          const successfulFeeds = feeds.filter(feed => feed.ok).length;
+          let finalFeeds = feeds;
+          let successfulFeeds = feeds.filter(feed => feed.ok).length;
+          if (successfulFeeds === 0) {
+            // ESPN blocks requests from this deployment; use the configured PitchAPI source.
+            try {
+              const isoDate = date.slice(0,4) + "-" + date.slice(4,6) + "-" + date.slice(6,8);
+              const directory = (await pitchGet("/v1/leagues"))?.data?.leagues || [];
+              const normal = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+              const countryCodes = {eng:"ENG",esp:"ESP",ita:"ITA",ger:"DEU",fra:"FRA",por:"PRT",ned:"NLD",sco:"SCO",gre:"GRC",tur:"TUR",bra:"BRA",arg:"ARG",usa:"USA",mex:"MEX",aus:"AUS",bel:"BEL",aut:"AUT",sui:"CHE",den:"DNK",nor:"NOR",swe:"SWE",pol:"POL",jpn:"JPN",kor:"KOR",sau:"SAU"};
+              const idToCode = new Map();
+              for (const code of SCOREBOARD_LEAGUES) {
+                const aliases = pitchLeagueAliases(code).map(normal);
+                if (!aliases.length) continue;
+                const candidates = directory.filter(item => aliases.includes(normal(item.name)));
+                const chosen = candidates.find(item => item.country_code === countryCodes[code.split(".")[0]]) || candidates[0];
+                if (chosen?.id) idToCode.set(String(chosen.id), code);
+              }
+              const pitchBody = await pitchGet("/v1/date/" + isoDate + "?status=all");
+              const sourceMatches = pitchBody?.data?.matches || [];
+              const byCode = new Map();
+              for (const match of sourceMatches) {
+                const code = idToCode.get(String(match.league?.id || ""));
+                if (!code) continue;
+                const statusText = String(match.status || "").toLowerCase();
+                const state = /live|in.?play|first.?half|second.?half|half.?time|extra.?time|penalt/.test(statusText) ? "in" : /finished|full.?time/.test(statusText) ? "post" : "pre";
+                const status = { type: { state, completed: state === "post" }, displayClock: match.minute != null ? String(match.minute) + "'" : String(match.status || "") };
+                const homeName = match.home_team?.name || "";
+                const awayName = match.away_team?.name || "";
+                const event = {
+                  id: String(match.id || ""), date: match.time_utc || match.date || "",
+                  name: homeName + " vs " + awayName, status,
+                  competitions: [{ status, competitors: [
+                    { homeAway: "home", team: { displayName: homeName }, score: match.score_home == null ? undefined : String(match.score_home) },
+                    { homeAway: "away", team: { displayName: awayName }, score: match.score_away == null ? undefined : String(match.score_away) }
+                  ] }]
+                };
+                if (!event.id || !homeName || !awayName) continue;
+                if (!byCode.has(code)) byCode.set(code, []);
+                byCode.get(code).push(event);
+              }
+              if (sourceMatches.length) {
+                finalFeeds = SCOREBOARD_LEAGUES.map(code => ({ code, events: byCode.get(code) || [], ok: true }));
+                successfulFeeds = finalFeeds.length;
+                console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches: [...byCode.values()].reduce((n, list) => n + list.length, 0) }));
+              }
+            } catch (error) {
+              console.error("PitchAPI scoreboard fallback failed:", error.message);
+            }
+          }
           if (successfulFeeds === 0) {
             console.error("All scoreboard feeds failed:", JSON.stringify(feeds.slice(0, 6).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))));
           }
-          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: feeds.map(({code,events,ok}) => ({code,events,ok})) };
+          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok}) => ({code,events,ok})), source: feeds.some(feed => feed.ok) ? "ESPN" : (successfulFeeds ? "PitchAPI" : "unavailable") };
           if (successfulFeeds > 0) {
             scoreboardCache.set(date, { at: Date.now(), body });
             return { status: 200, body, cache: "MISS" };
