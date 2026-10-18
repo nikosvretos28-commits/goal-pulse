@@ -446,6 +446,61 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY), persistentAnalyticsConfigured: Boolean(analyticsPool) });
   }
 
+  if (url.pathname === "/api/league-standings" && req.method === "GET") {
+    const league = String(url.searchParams.get("league") || "");
+    const season = Math.round(Number(url.searchParams.get("season") || new Date().getUTCFullYear()));
+    if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", standings: [] });
+    if (!Number.isInteger(season) || season < 2000 || season > new Date().getUTCFullYear() + 1) return send(res, 400, { error: "Invalid season", standings: [] });
+    const key = "league-standings:" + league + ":" + season;
+    const cached = cache.get(key);
+    if (cached && Date.now() - cached.at < 30 * 60 * 1000) return send(res, 200, cached.body);
+    try {
+      const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/standings?season=" + season, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok) throw new Error("Standings provider unavailable");
+      const body = await response.json();
+      const allGroups = [];
+      const walk = node => {
+        if (!node || typeof node !== "object") return;
+        if (Array.isArray(node.entries)) allGroups.push({ name: node.name || node.abbreviation || "", entries: node.entries });
+        if (Array.isArray(node.children)) node.children.forEach(walk);
+        if (node.standings && typeof node.standings === "object") walk(node.standings);
+        if (Array.isArray(node.groups)) node.groups.forEach(walk);
+      };
+      walk(body);
+      const getStat = (entry, names) => {
+        const stats = Array.isArray(entry.stats) ? entry.stats : [];
+        const item = stats.find(stat => names.includes(String(stat.name || "").toLowerCase()) || names.includes(String(stat.abbreviation || "").toLowerCase()));
+        return item ? (item.value ?? item.displayValue ?? null) : null;
+      };
+      const standings = allGroups.flatMap(group => group.entries.map(entry => {
+        const team = entry.team || {};
+        const rank = getStat(entry, ["rank", "playoffseed", "seed"]);
+        return {
+          group: group.name,
+          rank: rank == null ? null : Number(rank),
+          team: team.displayName || team.name || "—",
+          played: getStat(entry, ["gamesplayed", "played", "gp"]),
+          wins: getStat(entry, ["wins", "w"]),
+          draws: getStat(entry, ["ties", "draws", "d"]),
+          losses: getStat(entry, ["losses", "l"]),
+          goalsFor: getStat(entry, ["pointsfor", "goalsfor", "gf"]),
+          goalsAgainst: getStat(entry, ["pointsagainst", "goalsagainst", "ga"]),
+          goalDiff: getStat(entry, ["pointdifferential", "goaldifference", "gd"]),
+          points: getStat(entry, ["points", "pts"]),
+          form: getStat(entry, ["form", "streak"])
+        };
+      })).filter(item => item.team && item.team !== "—");
+      const result = { league, season, standings, fetchedAt: new Date().toISOString() };
+      cache.set(key, { at: Date.now(), body: result });
+      return send(res, 200, result);
+    } catch (error) {
+      return send(res, 502, { error: "Standings temporarily unavailable", standings: [] });
+    }
+  }
+
   if (url.pathname === "/api/competition-history" && req.method === "GET") {
     const league = String(url.searchParams.get("league") || "");
     const seasonRaw = Number(url.searchParams.get("season") || new Date().getUTCFullYear());
