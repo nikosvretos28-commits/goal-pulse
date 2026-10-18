@@ -591,14 +591,17 @@ const server = http.createServer(async (req, res) => {
                 headers: { "Accept": "application/json" },
                 signal: AbortSignal.timeout(10000)
               });
-              if (!response.ok) return { code, events: [], ok: false };
+              if (!response.ok) return { code, events: [], ok: false, error: "HTTP " + response.status };
               const body = await response.json();
               return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
-            } catch {
-              return { code, events: [], ok: false };
+            } catch (error) {
+              return { code, events: [], ok: false, error: error.message || "request failed" };
             }
           }));
           const successfulFeeds = feeds.filter(feed => feed.ok).length;
+          if (successfulFeeds === 0) {
+            console.error("All scoreboard feeds failed:", JSON.stringify(feeds.slice(0, 6).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))));
+          }
           const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: feeds.map(({code,events,ok}) => ({code,events,ok})) };
           if (successfulFeeds > 0) {
             scoreboardCache.set(date, { at: Date.now(), body });
