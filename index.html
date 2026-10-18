@@ -1102,7 +1102,9 @@ async function loadScores(){
    const h=teams.find(t=>t.homeAway==='home')||teams[0]||{}, a=teams.find(t=>t.homeAway==='away')||teams[1]||{};
    // ESPN sometimes puts the live state on the event and sometimes on the competition.
    const statusTypes=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
-   const state=statusTypes.some(x=>x.state==='in')?'in':statusTypes.some(x=>x.state==='post')?'post':(statusTypes.find(x=>x.state)?.state||'pre');
+   const stateText=[...statusTypes.map(x=>[x.state,x.name,x.description,x.shortDetail,x.detail].filter(Boolean).join(' ')),e.status&&e.status.displayClock,comp.status&&comp.status.displayClock].filter(Boolean).join(' ').toLowerCase();
+   const rawState=statusTypes.map(x=>String(x.state||'').toLowerCase()).find(x=>x);
+   const state=['in','live','in_progress','in-play'].includes(rawState)||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(stateText)?'in':['post','finished','complete'].includes(rawState)||/\b(full time|finished|ended|ft|aet|penalties)\b/.test(stateText)?'post':(rawState||'pre');
    const st=statusTypes.find(x=>x.state===state)||statusTypes[0]||{};
    const kickoff=e.date?new Date(e.date):null;
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
