@@ -557,6 +557,30 @@ const server = http.createServer(async (req, res) => {
     const endDate = new Date(Date.UTC(Number(endRaw.slice(0,4)),Number(endRaw.slice(4,6))-1,Number(endRaw.slice(6,8))));
     const days = Math.round((endDate-startDate)/86400000);
     if (days < 0 || days > 31) return send(res, 400, { error: "Date range must be within 32 days", matches: [] });
+    try {
+      const pitchLeague = await findPitchLeague(league);
+      if (pitchLeague && pitchLeague.id) {
+        const seasonYear = Number(startRaw.slice(0,4));
+        const pitchSeason = pitchSeasonForCode(league, seasonYear, pitchLeague.seasons);
+        const pitchData = await pitchGet("/v1/leagues/" + encodeURIComponent(pitchLeague.id) + "/matches?season=" + encodeURIComponent(pitchSeason) + "&status=all");
+        const sourceMatches = pitchData?.data?.matches || [];
+        if (sourceMatches.length) {
+          const matches = sourceMatches.map(event => {
+            const status = String(event.status || "").toLowerCase();
+            const state = /finished|full.?time|ft/.test(status) ? "post" : /live|in.?play|half.?time|paused/.test(status) ? "in" : "pre";
+            const hs = event.score_home == null ? null : Number(event.score_home);
+            const as = event.score_away == null ? null : Number(event.score_away);
+            return { id:String(event.id||""), leagueCode:league, league:pitchLeague.name, state, clock:event.minute!=null?String(event.minute)+"'":(event.status||""), date:event.time_utc||event.date||"", home:{name:event.home_team?.name||"Home",score:Number.isFinite(hs)?hs:null}, away:{name:event.away_team?.name||"Away",score:Number.isFinite(as)?as:null} };
+          }).filter(match => {
+            const day = String(match.date||"").slice(0,10).replace(/-/g,"");
+            return day >= startRaw && day <= endRaw && match.id && match.home.name !== "Home" && match.away.name !== "Away";
+          }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+          if (matches.length) return send(res, 200, { league, start:startRaw, end:endRaw, matches, fetchedAt:new Date().toISOString(), source:"PitchAPI" });
+        }
+      }
+    } catch (providerError) {
+      console.error("PitchAPI competition fixtures fallback:", league, providerError.message);
+    }
     const key = "competition-fixtures:" + league + ":" + startRaw + ":" + endRaw;
     const cached = cache.get(key);
     if (cached && Date.now()-cached.at < 5*60*1000) return send(res, 200, cached.body);
