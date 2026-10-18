@@ -1351,8 +1351,8 @@ async function showDetails(btn){
    const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
    const data=await response.json();
    if(response.ok){liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));renderLiveDetails();await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
-   else content.insertAdjacentHTML('beforeend','<p class="analysis-note">Η πηγή live στατιστικών δεν απάντησε τώρα. Δοκίμασε ξανά σε λίγο.</p>');
-  }catch{try{await runSignalCheck();renderLiveDetails()}catch{}}
+   else {content.insertAdjacentHTML('beforeend','<p class="analysis-note">Η πηγή live στατιστικών δεν απάντησε τώρα. Εμφανίζεται η ανάλυση σεζόν ως εναλλακτική.</p>');await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
+  }catch{try{await runSignalCheck();renderLiveDetails()}catch{}await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
   liveDetailRefreshTimer=setInterval(async()=>{
    const activeModal=document.getElementById('analysisModal');
    if(!activeModal?.classList.contains('open')||document.getElementById('analysisTitle')?.textContent!==liveEvent.home.name+' — '+liveEvent.away.name){stopLiveDetailRefresh();return;}
