@@ -448,21 +448,24 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/competition-history" && req.method === "GET") {
     const league = String(url.searchParams.get("league") || "");
-    const daysRaw = Number(url.searchParams.get("days") || 90);
-    const days = Math.min(120, Math.max(30, Number.isFinite(daysRaw) ? Math.round(daysRaw) : 90));
+    const seasonRaw = Number(url.searchParams.get("season") || new Date().getUTCFullYear());
+    const season = Math.round(seasonRaw);
     if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
-    const historyKey = "competition-history:" + league + ":" + days;
+    if (!Number.isInteger(season) || season < 2000 || season > new Date().getUTCFullYear() + 1) return send(res, 400, { error: "Invalid season", matches: [] });
+    const historyKey = "competition-history:" + league + ":" + season;
     const historyCached = cache.get(historyKey);
-    if (historyCached && Date.now() - historyCached.at < 10 * 60 * 1000) return send(res, 200, historyCached.body);
-    const end = new Date();
-    const start = new Date(end.getTime() - days * 86400000);
+    if (historyCached && Date.now() - historyCached.at < 6 * 60 * 60 * 1000) return send(res, 200, historyCached.body);
+    const calendarSeason = ["bra.1", "arg.1", "usa.1"].includes(league);
+    const splitSeason = ["mex.1", "aus.1"].includes(league);
+    const start = calendarSeason ? new Date(Date.UTC(season, 0, 1)) : splitSeason ? new Date(Date.UTC(season, 6, 1)) : new Date(Date.UTC(season, 6, 1));
+    const end = calendarSeason ? new Date(Date.UTC(season, 11, 31)) : splitSeason ? new Date(Date.UTC(season + 1, 5, 30)) : new Date(Date.UTC(season + 1, 5, 30));
     const compactDate = date => date.toISOString().slice(0, 10).replace(/-/g, "");
     try {
       const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + compactDate(start) + "-" + compactDate(end), {
         headers: { "Accept": "application/json" },
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(20000)
       });
-      if (!response.ok) return send(res, 502, { error: "Competition history provider unavailable", matches: [] });
+      if (!response.ok) return send(res, 502, { error: "Competition season provider unavailable", matches: [] });
       const body = await response.json();
       const matches = (Array.isArray(body.events) ? body.events : []).map(event => {
         const competition = (event.competitions || [])[0] || {};
@@ -475,21 +478,20 @@ const server = http.createServer(async (req, res) => {
         return {
           id: String(event.id || ""),
           leagueCode: league,
+          season,
           state,
           date: event.date || "",
           home: { name: home.team && (home.team.displayName || home.team.name) || "Home", score: Number.isFinite(hs) ? hs : null },
           away: { name: away.team && (away.team.displayName || away.team.name) || "Away", score: Number.isFinite(as) ? as : null }
         };
       }).filter(match => match.state === "post" && match.home.score !== null && match.away.score !== null && match.home.name !== "Home" && match.away.name !== "Away");
-      const result = { league, days, matches, fetchedAt: new Date().toISOString() };
+      const result = { league, season, seasonStart: start.toISOString().slice(0,10), seasonEnd: end.toISOString().slice(0,10), matches, fetchedAt: new Date().toISOString() };
       cache.set(historyKey, { at: Date.now(), body: result });
       return send(res, 200, result);
     } catch (error) {
-      return send(res, 502, { error: "Competition history request failed", matches: [] });
+      return send(res, 502, { error: "Competition season request failed", matches: [] });
     }
   }
-
-
 
   try {
     if (url.pathname === "/api/scoreboard") {
