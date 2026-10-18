@@ -280,6 +280,46 @@ function send(res, status, body, type = "application/json; charset=utf-8") {
   res.end(typeof body === "string" ? body : JSON.stringify(body));
 }
 
+function pitchLeagueAliases(code) {
+  const aliases = {
+    "eng.1":["premier league"],"eng.2":["championship"],"eng.3":["league one"],"eng.4":["league two"],
+    "esp.1":["laliga","la liga"],"esp.2":["laliga 2","segunda division"],
+    "ita.1":["serie a"],"ita.2":["serie b"],"ita.3":["serie c"],
+    "ger.1":["bundesliga"],"ger.2":["2. bundesliga"],"fra.1":["ligue 1"],"fra.2":["ligue 2"],
+    "por.1":["primeira liga","liga portugal"],"por.2":["liga portugal 2"],
+    "ned.1":["eredivisie"],"ned.2":["eerste divisie"],"sco.1":["premiership"],"sco.2":["championship"],
+    "gre.1":["super league greece","super league"],"tur.1":["super lig","süper lig"],
+    "bra.1":["serie a"],"bra.2":["serie b"],"arg.1":["liga profesional","primera division"],"arg.2":["primera nacional"],
+    "usa.1":["major league soccer","mls"],"usa.2":["usl championship"],"mex.1":["liga mx"],"aus.1":["a-league men","a-league"],
+    "bel.1":["pro league"],"aut.1":["bundesliga"],"sui.1":["super league"],"den.1":["superliga"],"nor.1":["eliteserien"],"swe.1":["allsvenskan"],
+    "pol.1":["ekstraklasa"],"jpn.1":["j1 league"],"kor.1":["k league 1"],"sau.1":["saudi pro league"],
+    "uefa.champions":["uefa champions league","champions league"],"uefa.europa":["uefa europa league","europa league"],
+    "uefa.europa.conf":["uefa conference league","conference league"],"eng.fa":["fa cup"],"eng.league_cup":["efl cup","league cup"],
+    "esp.copa_del_rey":["copa del rey"],"ita.coppa_italia":["coppa italia"],"ger.dfb_pokal":["dfb pokal"]
+  };
+  return aliases[code] || [];
+}
+function pitchSeasonForCode(code, year, seasons) {
+  const calendar = ["bra.1","arg.1","usa.1","mex.1","aus.1","bra.2","arg.2"].includes(code);
+  const wanted = calendar ? String(year) : String(year)+"/"+String(year+1);
+  const available = Array.isArray(seasons) ? seasons.map(String) : [];
+  if (available.includes(wanted)) return wanted;
+  if (available.includes(String(year-1)+"/"+String(year))) return String(year-1)+"/"+String(year);
+  if (available.includes(String(year-1))) return String(year-1);
+  if (available.length) return available[0];
+  return wanted;
+}
+async function findPitchLeague(code) {
+  const response = await pitchGet("/v1/leagues");
+  const leagues = response?.data?.leagues || [];
+  const aliases = pitchLeagueAliases(code);
+  if (!aliases.length) return null;
+  const normal = value => String(value||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  const candidates = leagues.filter(item => aliases.includes(normal(item.name)));
+  const country = code.split(".")[0];
+  const countryCodes = {eng:"ENG",esp:"ESP",ita:"ITA",ger:"DEU",fra:"FRA",por:"PRT",ned:"NLD",sco:"SCO",gre:"GRC",tur:"TUR",bra:"BRA",arg:"ARG",usa:"USA",mex:"MEX",aus:"AUS",bel:"BEL",aut:"AUT",sui:"CHE",den:"DNK",nor:"NOR",swe:"SWE",pol:"POL",jpn:"JPN",kor:"KOR",sau:"SAU"};
+  return candidates.find(item => item.country_code === countryCodes[country]) || candidates[0] || null;
+}
 async function pitchGet(apiPath) {
   const key = process.env.PITCH_API_KEY;
   if (!key) {
@@ -557,6 +597,28 @@ const server = http.createServer(async (req, res) => {
     if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
     if (!Number.isInteger(season) || season < 2000 || season > new Date().getUTCFullYear() + 1) return send(res, 400, { error: "Invalid season", matches: [] });
     const historyKey = "competition-history:" + league + ":" + season;
+    try {
+      const pitchLeague = await findPitchLeague(league);
+      if (pitchLeague && pitchLeague.id) {
+        const pitchSeason = pitchSeasonForCode(league, season, pitchLeague.seasons);
+        const pitchData = await pitchGet("/v1/leagues/" + encodeURIComponent(pitchLeague.id) + "/matches?season=" + encodeURIComponent(pitchSeason) + "&status=all");
+        const sourceMatches = pitchData?.data?.matches || [];
+        if (sourceMatches.length) {
+          const matches = sourceMatches.map(event => {
+            const status = String(event.status || "").toLowerCase();
+            const state = /finished|full.?time|ft/.test(status) ? "post" : /live|in.?play|half.?time|paused/.test(status) ? "in" : "pre";
+            const hs = event.score_home == null ? null : Number(event.score_home);
+            const as = event.score_away == null ? null : Number(event.score_away);
+            return { id:String(event.id||""), leagueCode:league, season, state, date:event.time_utc||event.date||"", home:{name:event.home_team?.name||"Home",score:Number.isFinite(hs)?hs:null}, away:{name:event.away_team?.name||"Away",score:Number.isFinite(as)?as:null} };
+          }).filter(match => match.state === "post" && match.home.score !== null && match.away.score !== null && match.home.name !== "Home" && match.away.name !== "Away");
+          const result = { league, season, seasonStart: "", seasonEnd: "", matches, fetchedAt: new Date().toISOString(), source: "PitchAPI" };
+          cache.set(historyKey, { at: Date.now(), body: result });
+          return send(res, 200, result);
+        }
+      }
+    } catch (providerError) {
+      console.error("PitchAPI competition history fallback:", league, season, providerError.message);
+    }
     const historyCached = cache.get(historyKey);
     if (historyCached && Date.now() - historyCached.at < 30 * 60 * 1000) return send(res, 200, historyCached.body);
     const calendarSeason = ["bra.1", "arg.1", "usa.1", "bra.copa_do_brazil", "arg.copa", "conmebol.libertadores", "conmebol.sudamericana"].includes(league);
