@@ -499,6 +499,50 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/competition-fixtures" && req.method === "GET") {
+    const league = String(url.searchParams.get("league") || "");
+    const startRaw = String(url.searchParams.get("start") || "");
+    const endRaw = String(url.searchParams.get("end") || "");
+    const validDate = value => /^\\d{8}$/.test(value) && !Number.isNaN(Date.parse(value.slice(0,4)+"-"+value.slice(4,6)+"-"+value.slice(6,8)+"T00:00:00Z"));
+    if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
+    if (!validDate(startRaw) || !validDate(endRaw)) return send(res, 400, { error: "start and end must be YYYYMMDD", matches: [] });
+    const startDate = new Date(Date.UTC(Number(startRaw.slice(0,4)),Number(startRaw.slice(4,6))-1,Number(startRaw.slice(6,8))));
+    const endDate = new Date(Date.UTC(Number(endRaw.slice(0,4)),Number(endRaw.slice(4,6))-1,Number(endRaw.slice(6,8))));
+    const days = Math.round((endDate-startDate)/86400000);
+    if (days < 0 || days > 31) return send(res, 400, { error: "Date range must be within 32 days", matches: [] });
+    const key = "competition-fixtures:" + league + ":" + startRaw + ":" + endRaw;
+    const cached = cache.get(key);
+    if (cached && Date.now()-cached.at < 5*60*1000) return send(res, 200, cached.body);
+    try {
+      const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + startRaw + "-" + endRaw, {
+        headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(18000)
+      });
+      if (!response.ok) throw new Error("Fixtures provider unavailable");
+      const body = await response.json();
+      const matches = (Array.isArray(body.events) ? body.events : []).map(event => {
+        const competition = (event.competitions || [])[0] || {};
+        const teams = competition.competitors || [];
+        const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
+        const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
+        const status = (competition.status && competition.status.type) || (event.status && event.status.type) || {};
+        const hs = home.score == null ? null : Number(home.score);
+        const as = away.score == null ? null : Number(away.score);
+        return {
+          id: String(event.id || ""), leagueCode: league, league: event.league && event.league.name || league,
+          state: status.state || "pre", clock: status.shortDetail || status.detail || "",
+          date: event.date || "", home: { name: home.team && (home.team.displayName || home.team.name) || "Home", score: Number.isFinite(hs) ? hs : null },
+          away: { name: away.team && (away.team.displayName || away.team.name) || "Away", score: Number.isFinite(as) ? as : null }
+        };
+      }).filter(match => match.id && match.home.name !== "Home" && match.away.name !== "Away")
+        .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+      const result = { league, start: startRaw, end: endRaw, matches, fetchedAt: new Date().toISOString() };
+      cache.set(key, { at: Date.now(), body: result });
+      return send(res, 200, result);
+    } catch (error) {
+      return send(res, 502, { error: "Competition fixtures temporarily unavailable", matches: [] });
+    }
+  }
+
   if (url.pathname === "/api/competition-history" && req.method === "GET") {
     const league = String(url.searchParams.get("league") || "");
     const seasonRaw = Number(url.searchParams.get("season") || new Date().getUTCFullYear());
