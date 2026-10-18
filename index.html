@@ -673,7 +673,63 @@ header nav a{padding:9px 0;font-size:11px}
 
 
 .gp-analysis-tabs{display:flex;gap:5px;overflow-x:auto;padding:8px;margin:10px 0;background:#091824;border:1px solid #203e51;border-radius:9px;scrollbar-width:thin}.gp-analysis-tab{flex:0 0 auto;border:1px solid #27465a;background:#102638;color:#a9c0ce;border-radius:5px;padding:9px 12px;font:inherit;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap}.gp-analysis-tab.active{background:#174c43;border-color:#43e0a2;color:#68edb7;box-shadow:inset 0 -2px #43e0a2}.gp-analysis-panel{display:none}.gp-analysis-panel.active{display:block}.gp-analysis-panel .forebet-section{margin-top:0}@media(max-width:480px){.gp-analysis-tabs{margin:8px -2px;padding:6px}.gp-analysis-tab{padding:9px 10px;font-size:10px}}
-.gp-data-coverage{border:1px solid rgba(75,205,165,.25);background:linear-gradient(135deg,rgba(22,48,60,.72),rgba(13,26,39,.78));border-radius:14px;padding:14px;margin:12px 0}.gp-coverage-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.gp-coverage-grid>div{background:rgba(3,12,22,.35);border-radius:9px;padding:10px;min-width:0}.gp-coverage-grid small{display:block;color:var(--muted,#9fb0c4);font-size:11px;line-height:1.35}.gp-coverage-grid strong{display:block;margin-top:5px;color:var(--text,#eef5fb);font-size:16px;overflow-wrap:anywhere}@media(max-width:560px){.gp-coverage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}.gp-all-season-results{max-height:720px;overflow-y:auto;overscroll-behavior:contain}.gp-all-season-result .event-player{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.gp-all-season-result .event-player strong{font-variant-numeric:tabular-nums;color:var(--accent,#39d98a)}.gp-all-season-result .event-score{font-size:11px;white-space:nowrap}@media(max-width:560px){.gp-all-season-result{gap:5px}.gp-all-season-result .event-minute{min-width:48px}.gp-all-season-result .event-player{font-size:11px}}.gp-all-season-results{max-height:720px;overflow-y:auto;overscroll-behavior:contain}.gp-all-season-result .event-player{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.gp-all-season-result .event-player strong{font-variant-numeric:tabular-nums;color:var(--accent,#39d98a)}.gp-competition-kind{font-size:9px;font-weight:800;letter-spacing:.03em;color:#8ddfc3;border:1px solid #2d6556;border-radius:5px;padding:3px 5px;white-space:nowrap}.gp-all-season-result .event-minute{min-width:48px}@media(max-width:560px){.gp-all-season-result{gap:5px}.gp-all-season-result .event-minute{min-width:45px}.gp-all-season-result .event-player{font-size:11px}}</style>
+.gp-data-coverage{border:1px solid rgba(75,205,165,.25);background:linear-gradient(135deg,rgba(22,48,60,.72),rgba(13,26,39,.78));border-radius:14px;padding:14px;margin:12px 0}.gp-coverage-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.gp-coverage-grid>div{background:rgba(3,12,22,.35);border-radius:9px;padding:10px;min-width:0}.gp-coverage-grid small{display:block;color:var(--muted,#9fb0c4);font-size:11px;line-height:1.35}.gp-coverage-grid strong{display:block;margin-top:5px;color:var(--text,#eef5fb);font-size:16px;overflow-wrap:anywhere}@media(max-width:560px){.gp-coverage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}.gp-all-season-results{max-height:720px;overflow-y:auto;overscroll-behavior:contain}.gp-all-season-result .event-player{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.gp-all-season-result .event-player strong{font-variant-numeric:tabular-nums;color:var(--accent,#39d98a)}.gp-all-season-result .event-score{font-size:11px;white-space:nowrap}@media(max-width:560px){.gp-all-season-result{gap:5px}.gp-all-season-result .event-minute{min-width:48px}.gp-all-season-result .event-player{font-size:11px}}.gp-all-season-results{max-height:720px;overflow-y:auto;overscroll-behavior:contain}.gp-all-season-result .event-player{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.gp-all-season-result .event-player strong{font-variant-numeric:tabular-nums;color:var(--accent,#39d98a)}.gp-competition-kind{font-size:9px;font-weight:800;letter-spacing:.03em;color:#8ddfc3;border:1px solid #2d6556;border-radius:5px;padding:3px 5px;white-space:nowrap}.gp-all-season-result .event-minute{min-width:48px}@media(max-width:560px){.gp-all-season-result{gap:5px}.gp-all-season-result .event-minute{min-width:45px}.gp-all-season-result .event-player{font-size:11px}}
+/* Football24-inspired match-first layout: compact header, grouped fixtures, filters always near the top. */
+.wrap{display:flex;flex-direction:column}
+.wrap>header{order:0;position:sticky;top:0;z-index:40;background:#071522f2;backdrop-filter:blur(14px);height:68px}
+.wrap>.scoreboard-top{order:1;margin-top:14px}
+.wrap>.product-nav{order:2;position:sticky;top:68px;z-index:35;background:#0a1d2bf5;backdrop-filter:blur(12px);border:1px solid #234457;border-radius:12px;padding:5px;margin:0 0 12px;gap:4px;overflow-x:auto;white-space:nowrap}
+.wrap>.filters{order:3;margin:8px 0 12px;padding:10px;background:#0d2232;border:1px solid #234457;border-radius:13px}
+.wrap>.main-grid{order:4}
+.wrap>#topAiAlerts{order:5}
+.wrap>#topVipAlerts{order:6}
+.wrap>#trends{order:7}
+.wrap>#topTrends{order:8}
+.wrap>#insights{order:9}
+.wrap>#leagues{order:10}
+.wrap>.pulse-alerts{order:11}
+.wrap>.bottom-strip{order:12}
+.wrap>.disclaimer{order:13}
+nav{gap:15px;overflow-x:auto;white-space:nowrap}
+nav a{flex:0 0 auto}
+.scoreboard-top{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.scoreboard-title{grid-column:1/-1;padding:16px 20px;border:1px solid #234457;border-radius:14px;background:linear-gradient(105deg,#102c40,#0b1d2c)}
+.scoreboard-title h1{font-size:26px;margin:3px 0}
+.scoreboard-title p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.scoreboard-title .eyebrow{font-size:9px;letter-spacing:1.5px}
+.top-live{min-width:0;margin:0;border-radius:13px}
+.top-live-head{padding:12px 14px}
+.top-live-head strong{font-size:12px}
+.product-nav a{flex:0 0 auto;padding:9px 12px;border-radius:9px;font-size:11px;text-decoration:none}
+.product-nav a.selected,.product-nav a:hover{background:#174636;color:#76f1bd}
+.filters .filter{padding:8px 12px}
+#matchList{min-height:140px}
+.match{border-radius:10px;padding:11px 12px;margin-bottom:6px}
+.league-head{padding:11px 8px}
+.top-ai-alerts,.top-vip-alerts{margin:12px 0}
+@media(max-width:760px){
+ .wrap{padding:0 10px}
+ .wrap>header{height:58px;gap:8px}
+ .brand{min-width:0;gap:5px}.brand svg{width:36px;height:34px}.brand-name{font-size:17px}
+ header nav{display:none}
+ .header-actions{gap:6px}.live-badge{padding:6px 8px}.login{padding:9px 12px;font-size:11px}
+ .wrap>.product-nav{top:58px}
+ .scoreboard-top{grid-template-columns:1fr;gap:9px}
+ .scoreboard-title{padding:12px 14px}
+ .scoreboard-title h1{font-size:22px}
+ .top-live-head{padding:10px 12px}
+ .wrap>.filters{gap:6px;padding:8px}
+ .date-controls{width:100%;gap:5px}
+ .date-label{flex:1;min-width:0;padding:7px}.date-label input{min-width:0;width:100%;max-width:none}
+ .search{order:10;flex-basis:100%;max-width:none;margin-left:0}
+ .filter{padding:8px 10px!important}
+ .main-grid{grid-template-columns:minmax(0,1fr)}
+ .right-stack{grid-row:auto}
+ .live-row{grid-template-columns:22px minmax(0,1fr) auto minmax(0,1fr) 22px 36px;padding:10px 8px;gap:4px}
+ .teamname{font-size:11px}
+}
+
+</style>
 </head>
 <body>
 <div class="wrap">
