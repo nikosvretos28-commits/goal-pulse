@@ -96,7 +96,7 @@ const SCOREBOARD_STALE_TTL_MS = 15 * 1000;
 const SCOREBOARD_LEAGUES = [
   "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "por.1",
   "ned.1", "sco.1", "gre.1", "tur.1", "bra.1", "arg.1",
-  "usa.1", "mex.1", "aus.1", "eng.2", "esp.2", "ita.2", "ger.2", "fra.2", "bel.1", "aut.1", "sui.1", "den.1", "nor.1", "swe.1", "pol.1", "jpn.1", "kor.1", "sau.1", "bra.2", "uefa.champions", "uefa.europa", "uefa.europa.conf",
+  "usa.1", "mex.1", "aus.1", "eng.2", "esp.2", "ita.2", "ger.2", "fra.2", "bel.1", "aut.1", "sui.1", "den.1", "nor.1", "swe.1", "pol.1", "jpn.1", "kor.1", "sau.1", "bra.2", "eng.3", "eng.4", "ita.3", "ger.3", "fra.3", "por.2", "ned.2", "sco.2", "bel.2", "aut.2", "sui.2", "den.2", "nor.2", "swe.2", "pol.2", "tur.2", "usa.2", "bra.3", "arg.2", "uefa.champions", "uefa.europa", "uefa.europa.conf",
   "eng.fa", "eng.league_cup", "esp.copa_del_rey", "esp.super_cup", "ita.coppa_italia",
   "ita.super_cup", "ger.dfb_pokal", "ger.super_cup", "fra.coupe_de_france",
   "ned.cup", "sco.tennents", "sco.cis", "por.taca.portugal", "gre.cup", "arg.copa", "bra.copa_do_brazil",
