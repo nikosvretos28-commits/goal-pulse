@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://goal-pulse-live-2026-2.onrender.com/sitemap.xml
