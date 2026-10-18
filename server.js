@@ -762,7 +762,13 @@ const server = http.createServer(async (req, res) => {
                     return !expectedCountry || !matchCountry || matchCountry === expectedCountry || matchCountry.includes(expectedCountry);
                   }) || candidates[0];
                 }
-                if (!code) continue;
+                // Do not discard a real fixture just because its competition is not in our curated alias list.
+                // The UI can display these as an additional PitchAPI competition instead of silently losing live games.
+                if (!code) {
+                  const leagueId = String(match.league?.id || "");
+                  const leagueSlug = normal(match.league?.name || "other").replace(/\\s+/g, "-").slice(0, 36) || "other";
+                  code = "pitch." + (leagueId || leagueSlug).replace(/[^a-zA-Z0-9-]/g, "-");
+                }
                 const rawStatus = match.status;
                 const statusParts = typeof rawStatus === "string"
                   ? [rawStatus]
@@ -782,7 +788,7 @@ const server = http.createServer(async (req, res) => {
                 const awayName = match.away_team?.name || "";
                 const event = {
                   id: String(match.id || ""), date: match.time_utc || match.date || "",
-                  name: homeName + " vs " + awayName, status,
+                  name: homeName + " vs " + awayName, leagueName: String(match.league?.name || "Άλλη διοργάνωση"), status,
                   competitions: [{ status, competitors: [
                     { homeAway: "home", team: { displayName: homeName }, score: match.score_home == null ? undefined : String(match.score_home) },
                     { homeAway: "away", team: { displayName: awayName }, score: match.score_away == null ? undefined : String(match.score_away) }
