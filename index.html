@@ -1494,8 +1494,15 @@ async function enableGoalPulsePush(statusIds){
   const saveResponse=await fetch(ANALYTICS_API+'/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
   if(!saveResponse.ok)throw new Error('Δεν αποθηκεύτηκε η συνδρομή push.');
   const savedData=await saveResponse.json().catch(()=>({persistent:false}));
-  setStatus(savedData.persistent?'Push ειδοποιήσεις ενεργές σε αυτή τη συσκευή. Ο server αποθήκευσε τη συνδρομή και θα στέλνει τα νέα AI/VIP alerts.':'Push ενεργό προσωρινά σε αυτή τη συσκευή. Ο server δεν διαθέτει ακόμη μόνιμη αποθήκευση συνδρομών, οπότε μετά από επανεκκίνηση μπορεί να χρειαστεί νέα ενεργοποίηση.');
-  await goalPulseServiceWorkerRegistration.showNotification('Goal Pulse · Push ενεργό',{body:'Η συσκευή συνδέθηκε για AI και VIP ειδοποιήσεις.',icon:'/favicon.ico',badge:'/favicon.ico',tag:'goal-pulse-push-ready'});
+  setStatus('Η συνδρομή καταχωρήθηκε. Δοκιμάζω πραγματική αποστολή push…');
+  const testResponse=await fetch(ANALYTICS_API+'/api/push/alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level:'AI',body:'Δοκιμαστική ειδοποίηση Goal Pulse · η σύνδεση push ελέγχθηκε.',eventId:'push-test'})});
+  const testData=await testResponse.json().catch(()=>({}));
+  if(!testResponse.ok)throw new Error('Η εγγραφή έγινε, αλλά η δοκιμή push απέτυχε (HTTP '+testResponse.status+').');
+  if(Number(testData.sent)>0){
+   setStatus(savedData.persistent?'Επιτυχία: ο server έστειλε δοκιμαστική push ειδοποίηση. Η συνδρομή αποθηκεύτηκε μόνιμα.':'Επιτυχία: ο server έστειλε δοκιμαστική push ειδοποίηση. Προσοχή: η συνδρομή είναι προσωρινή και μπορεί να χαθεί μετά από επανεκκίνηση.');
+  }else{
+   setStatus('Η συνδρομή καταχωρήθηκε, αλλά ο server δεν παρέδωσε τη δοκιμαστική ειδοποίηση (sent: '+Number(testData.sent||0)+', failed: '+Number(testData.failed||0)+').');
+  }
  }catch(error){setStatus('Δεν ενεργοποιήθηκε το push: '+(error.message||'έλεγξε άδεια και σύνδεση.'))}
 }
 document.getElementById('enablePushNotifications')?.addEventListener('click',()=>enableGoalPulsePush(['pushNotificationStatus','vipPushNotificationStatus']));
