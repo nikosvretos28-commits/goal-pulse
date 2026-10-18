@@ -783,7 +783,8 @@ const server = http.createServer(async (req, res) => {
               if (sourceMatches.length) {
                 finalFeeds = SCOREBOARD_LEAGUES.map(code => ({ code, events: byCode.get(code) || [], ok: true }));
                 successfulFeeds = finalFeeds.length;
-                const mappedMatches = [...byCode.values()].reduce((n, list) => n + list.length, 0);\n                console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, sample: mappedMatches ? undefined : sourceMatches.slice(0, 3).map(match => ({ league: match.league?.name, country: match.league?.country_code || match.league?.country, hasHome: Boolean(match.home_team?.name), hasAway: Boolean(match.away_team?.name), keys: Object.keys(match || {}) })) }));
+                const mappedMatches = [...byCode.values()].reduce((n, list) => n + list.length, 0);
+                console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, sample: mappedMatches ? undefined : sourceMatches.slice(0, 3).map(match => ({ league: match.league?.name, country: match.league?.country_code || match.league?.country, hasHome: Boolean(match.home_team?.name), hasAway: Boolean(match.away_team?.name), keys: Object.keys(match || {}) })) }));
               }
             } catch (error) {
               console.error("PitchAPI scoreboard fallback failed:", error.message);
