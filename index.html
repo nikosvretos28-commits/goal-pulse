@@ -713,7 +713,7 @@ header nav a{padding:9px 0;font-size:11px}
 
 <div class="filters" id="matches">
 <div class="date-controls" aria-label="Επιλογή ημερομηνίας αγώνων"><button class="mini-btn date-step" id="prevDate" type="button" aria-label="Προηγούμενη ημέρα">‹</button><label class="date-label" for="matchDate">Ημερομηνία <input id="matchDate" type="date" aria-label="Ημερομηνία αγώνων"></label><button class="mini-btn date-step" id="nextDate" type="button" aria-label="Επόμενη ημέρα">›</button><button class="mini-btn" id="todayDate" type="button">Σήμερα</button></div>
-<button class="filter active" data-filter="all">Όλοι</button><button class="filter" data-filter="live">● Live</button><button class="filter" data-filter="upcoming">Προσεχείς</button><button class="filter" data-filter="finished">Ολοκληρωμένοι</button><button class="filter" data-filter="favorites">★ Αγαπημένα</button><button class="filter" data-filter="signals">⚡ Pressure scanner</button>
+<button class="filter" data-filter="all">Όλοι</button><button class="filter active" data-filter="live" aria-pressed="true">● Live τώρα</button><button class="filter" data-filter="upcoming">Προσεχείς</button><button class="filter" data-filter="finished">Ολοκληρωμένοι</button><button class="filter" data-filter="favorites">★ Αγαπημένα</button><button class="filter" data-filter="signals">⚡ Pressure scanner</button>
 <input class="search" id="matchSearch" placeholder="⌕  Αναζήτηση ομάδας ή πρωταθλήματος…" aria-label="Αναζήτηση αγώνα">
 </div>
 <div class="main-grid">
@@ -901,7 +901,7 @@ const LEAGUES=[
  ['fin.2','Ykkösliiga','Finland','🇫🇮'],
  ['isl.2','1. deild karla','Iceland','🇮🇸']
 ];
-let active='all', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null; let goalFlashMatchIds=[];
+let active='live', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null; let goalFlashMatchIds=[];
 const readFavorites=()=>{try{return new Set(JSON.parse(localStorage.getItem('goalPulseFavorites')||'[]').map(String))}catch{return new Set()}};
 let favoriteMatchIds=readFavorites();
 function setMatchFilter(filter){active=filter;document.querySelectorAll('.filter').forEach(x=>{const selected=x.dataset.filter===filter;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',selected?'true':'false')});document.querySelectorAll('[data-menu-filter]').forEach(x=>x.classList.toggle('selected',x.dataset.menuFilter===filter));render()}
@@ -920,7 +920,7 @@ function updateInsightSummary(){const count=id=>{const el=document.getElementByI
 function render(){
  const q=document.getElementById('matchSearch').value.trim().toLowerCase();
  const filtered=allMatches.filter(m=>(active==='all'||(active==='live'&&m.state==='in')||(active==='upcoming'&&m.state==='pre')||(active==='finished'&&m.state==='post')||(active==='signals'&&m.state==='in'&&liveMetricsCache.get(String(m.id))?.statsAvailable)||(active==='favorites'&&favoriteMatchIds.has(String(m.id))))&&(!q||(m.league+' '+m.home.name+' '+m.away.name).toLowerCase().includes(q)));
-  if(active==='all')filtered.sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
+  if(active==='all'||active==='live')filtered.sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  const list=document.getElementById('matchList');
  if(!allMatches.length){list.innerHTML='<div class="empty-state" style="padding:24px;text-align:center"><div style="font-size:28px;margin-bottom:8px">⚽</div><strong style="display:block;margin-bottom:6px">Δεν βρέθηκαν αγώνες</strong><p class="subtle" style="margin:0 0 14px">'+(successfulFeeds?'Δεν υπάρχουν προγραμματισμένοι αγώνες στις επιλεγμένες διοργανώσεις αυτή τη στιγμή.':'Η σύνδεση με τις πηγές σκορ δεν είναι διαθέσιμη προσωρινά.')+'</p><button class="mini-btn" type="button" onclick="loadScores()">↻ Δοκίμασε ξανά</button></div>';}
  else if(active==='signals'&&!filtered.length){list.innerHTML='<p class="subtle" style="padding:20px">Δεν υπάρχουν αυτή τη στιγμή αγώνες με διαθέσιμα πραγματικά live στατιστικά. Πάτησε «Έλεγχος live πίεσης» στην ενότητα AI Alerts για νέο έλεγχο.</p>';}
