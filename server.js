@@ -15,6 +15,9 @@ const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:nikosvretos28@gmail.com";
 const pushSubscriptions = new Map();
 const pushRateLimit = new Map();
+const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || "";
+const pushScanSnapshots = new Map();
+const pushScanLastAlert = new Map();
 let pushDbInit = null;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -361,6 +364,81 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+
+  if (url.pathname === "/api/push/scan" && req.method === "POST") {
+    if (!PUSH_SCAN_TOKEN || req.headers.authorization !== "Bearer " + PUSH_SCAN_TOKEN) {
+      return send(res, 401, { error: "Unauthorized scanner" });
+    }
+    try {
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const base = "http://127.0.0.1:" + PORT;
+      const scoreboardResponse = await fetch(base + "/api/scoreboard?date=" + date, { signal: AbortSignal.timeout(25000) });
+      if (!scoreboardResponse.ok) throw new Error("Scoreboard unavailable: " + scoreboardResponse.status);
+      const metricsResponse = await fetch(base + "/api/live-metrics?date=" + date, { signal: AbortSignal.timeout(45000) });
+      if (!metricsResponse.ok) throw new Error("Live metrics unavailable: " + metricsResponse.status);
+      const metrics = await metricsResponse.json();
+      const now = Date.now();
+      let checked = 0, sent = 0, candidates = 0;
+      for (const match of (metrics.matches || [])) {
+        if (!match.statsAvailable || !Array.isArray(match.teams) || match.teams.length < 2) continue;
+        const teams = match.teams;
+        const total = key => teams.every(team => team[key] != null)
+          ? teams.reduce((sum, team) => sum + Number(team[key] || 0), 0) : null;
+        const current = {
+          at: now,
+          shots: total("shots"),
+          onTarget: total("shotsOnTarget"),
+          corners: total("corners"),
+          attacks: total("attacks"),
+          dangerous: total("dangerousAttacks")
+        };
+        const id = String(match.eventId);
+        const previous = pushScanSnapshots.get(id);
+        pushScanSnapshots.set(id, current);
+        checked++;
+        if (!previous || now - previous.at < 35000) continue;
+        const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
+        const shots = delta("shots"), onTarget = delta("onTarget"), corners = delta("corners");
+        const attacks = delta("attacks"), dangerous = delta("dangerous");
+        const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
+        const goalEvidence = onTarget >= 1 && shots >= 2;
+        const points = onTarget * 4 + Math.min(shots, 4) + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5);
+        const isAiGoal = goalEvidence && points >= 5;
+        const isAiPressure = !isAiGoal && evidenceKinds >= 3 && points >= 7;
+        const isVip = goalEvidence && corners >= 1 && evidenceKinds >= 3 && points >= 9;
+        const levels = [];
+        if (isAiGoal || isAiPressure) levels.push("AI");
+        if (isVip) levels.push("VIP");
+        for (const level of levels) {
+          const cooldownKey = id + ":" + level;
+          if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
+          const reason = [
+            shots ? shots + " νέες τελικές" : "",
+            onTarget ? onTarget + " νέα σουτ στην εστία" : "",
+            corners ? corners + " νέα κόρνερ" : "",
+            attacks ? attacks + " νέες επιθέσεις" : "",
+            dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
+          ].filter(Boolean).join(" · ");
+          const result = await sendPushToSubscribers({
+            title: level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT",
+            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + (match.minute || "LIVE") + " · " + (isAiGoal ? "Ένδειξη πιθανού γκολ" : "Αυξημένη επιθετική πίεση") + " · " + reason).slice(0, 180),
+            tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
+            url: "/"
+          });
+          if (result.sent > 0) {
+            pushScanLastAlert.set(cooldownKey, now);
+            sent += result.sent;
+          }
+          candidates++;
+        }
+      }
+      for (const [id, item] of pushScanSnapshots) if (now - item.at > 15 * 60 * 1000) pushScanSnapshots.delete(id);
+      return send(res, 200, { ok: true, checked, candidates, deliveries: sent, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) });
+    } catch (error) {
+      console.error("Background push scan failed:", error.message);
+      return send(res, 503, { error: "Background scan failed", detail: error.message });
+    }
+  }
 
   if (url.pathname === "/api/health") {
     return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY), persistentAnalyticsConfigured: Boolean(analyticsPool) });
