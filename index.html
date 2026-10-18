@@ -1109,7 +1109,6 @@ async function runSignalCheck(){
    const sensitivity=Number(signalThreshold.value);
    const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
    const evidenceKinds=(totalShotsAdded>0?1:0)+(shotsOnTargetAdded>0?1:0)+(cornersAdded>0?1:0)+(attacksAdded>0?1:0)+(dangerousAttacksAdded>0?1:0);
-   const minuteMatch=String(m.clock||'').match(/\d+/);
    const matchMinute=minuteMatch?Number(minuteMatch[0]):null;
    const totalCorners=live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null;
    const overLine=Number(document.getElementById('cornerOverLine')?.value||10.5);
