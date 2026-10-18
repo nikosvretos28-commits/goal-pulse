@@ -1480,7 +1480,8 @@ async function enableGoalPulsePush(statusIds){
   if(!subscription)subscription=await goalPulseServiceWorkerRegistration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(keyData.publicKey)});
   const saveResponse=await fetch(ANALYTICS_API+'/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
   if(!saveResponse.ok)throw new Error('Δεν αποθηκεύτηκε η συνδρομή push.');
-  setStatus('Push ειδοποιήσεις ενεργοποιήθηκαν σε αυτή τη συσκευή. Τα νέα alerts που εντοπίζονται από τον scanner θα αποστέλλονται μέσω push.');
+  const savedData=await saveResponse.json().catch(()=>({persistent:false}));
+  setStatus(savedData.persistent?'Push ειδοποιήσεις ενεργές σε αυτή τη συσκευή. Ο server αποθήκευσε τη συνδρομή και θα στέλνει τα νέα AI/VIP alerts.':'Push ενεργό προσωρινά σε αυτή τη συσκευή. Ο server δεν διαθέτει ακόμη μόνιμη αποθήκευση συνδρομών, οπότε μετά από επανεκκίνηση μπορεί να χρειαστεί νέα ενεργοποίηση.');
   await goalPulseServiceWorkerRegistration.showNotification('Goal Pulse · Push ενεργό',{body:'Η συσκευή συνδέθηκε για AI και VIP ειδοποιήσεις.',icon:'/favicon.ico',badge:'/favicon.ico',tag:'goal-pulse-push-ready'});
  }catch(error){setStatus('Δεν ενεργοποιήθηκε το push: '+(error.message||'έλεγξε άδεια και σύνδεση.'))}
 }
