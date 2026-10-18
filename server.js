@@ -527,20 +527,21 @@ const server = http.createServer(async (req, res) => {
         windows.push({ start: windowStart, end: windowEnd });
         cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
       }
-      const events = [];
-      for (let i = 0; i < windows.length; i += 3) {
-        const batch = await Promise.all(windows.slice(i, i + 3).map(async window => {
-          const range = compactDate(window.start) + "-" + compactDate(window.end);
-          const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range, {
-            headers: { "Accept": "application/json" },
-            signal: AbortSignal.timeout(20000)
-          });
-          if (!response.ok) throw new Error("Competition history provider unavailable");
-          const body = await response.json();
-          return Array.isArray(body.events) ? body.events : [];
-        }));
-        for (const batchEvents of batch) events.push(...batchEvents);
-      }
+      // Fetch month windows concurrently and tolerate isolated provider failures.
+      // A single bad month must not erase every completed result for the season.
+      const windowResults = await Promise.allSettled(windows.map(async window => {
+        const range = compactDate(window.start) + "-" + compactDate(window.end);
+        const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!response.ok) throw new Error("Competition history provider unavailable");
+        const body = await response.json();
+        return Array.isArray(body.events) ? body.events : [];
+      }));
+      const successfulWindows = windowResults.filter(result => result.status === "fulfilled");
+      if (!successfulWindows.length) throw new Error("No competition history windows available");
+      const events = successfulWindows.flatMap(result => result.value);
       const uniqueEvents = new Map(events.map(event => [String(event.id || event.date + ":" + event.name), event]));
       const matches = [...uniqueEvents.values()].map(event => {
         const competition = (event.competitions || [])[0] || {};
