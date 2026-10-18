@@ -5,8 +5,8 @@ self.addEventListener('push',event=>{
  try{if(event.data)data={...data,...event.data.json()}}catch{try{if(event.data)data.body=event.data.text()}catch{}}
  event.waitUntil(self.registration.showNotification(data.title||'Goal Pulse · Alert',{
   body:data.body||'Νέα live ένδειξη',
-  icon:'/favicon.ico',
-  badge:'/favicon.ico',
+  icon:'/goal-pulse-icon.svg',
+  badge:'/goal-pulse-icon.svg',
   tag:data.tag||'goal-pulse-push',
   data:{url:data.url||'/'},
   requireInteraction:false
