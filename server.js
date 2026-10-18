@@ -98,7 +98,7 @@ const SCOREBOARD_LEAGUES = [
   "usa.1", "mex.1", "aus.1", "uefa.champions", "uefa.europa", "uefa.europa.conf",
   "eng.fa", "eng.league_cup", "esp.copa_del_rey", "esp.super_cup", "ita.coppa_italia",
   "ita.super_cup", "ger.dfb_pokal", "ger.super_cup", "fra.coupe_de_france",
-  "ned.cup", "sco.tennents", "sco.cis", "por.taca.portugal", "arg.copa", "bra.copa_do_brazil",
+  "ned.cup", "sco.tennents", "sco.cis", "por.taca.portugal", "gre.cup", "arg.copa", "bra.copa_do_brazil",
   "conmebol.libertadores", "conmebol.sudamericana"
 ];
 const scoreboardCache = new Map();
