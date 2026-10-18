@@ -851,7 +851,7 @@ async function openCompetition(code){
  const league=LEAGUES.find(x=>x[0]===code);if(!league)return;
  const matches=allMatches.filter(m=>m.leagueCode===code);
  const currentYear=new Date().getFullYear();
- const years=[currentYear,currentYear-1,currentYear-2,currentYear-3,currentYear-4];
+ const years=Array.from({length:10},(_,i)=>currentYear-i);
  document.getElementById('competitionTitle').textContent=league[1];
  document.getElementById('competitionSubtitle').textContent=league[2]+' · πλήρες ιστορικό σεζόν και προϊστορία';
  document.getElementById('competitionContent').innerHTML='<div class="competition-empty">Φόρτωση πλήρους ιστορικού σεζόν και αποτελεσμάτων…</div>';
