@@ -627,9 +627,21 @@ const server = http.createServer(async (req, res) => {
       const cacheKey = "live-metrics:" + date;
       const cachedMetrics = cache.get(cacheKey);
       if (cachedMetrics && Date.now() - cachedMetrics.at < 15000) return send(res, 200, cachedMetrics.body);
-      const scoreboard = scoreboardCache.get(date);
+      let scoreboard = scoreboardCache.get(date);
+      // Prime the scoreboard cache after a cold boot instead of returning 503 until the browser calls /api/scoreboard first.
       if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
-        return send(res, 503, { error: "Scoreboard not loaded yet", matches: [] });
+        try {
+          const primeResponse = await fetch("http://127.0.0.1:" + PORT + "/api/scoreboard?date=" + date, {
+            headers: { "Accept": "application/json" },
+            signal: AbortSignal.timeout(20000)
+          });
+          if (primeResponse.ok) scoreboard = scoreboardCache.get(date);
+        } catch (error) {
+          console.error("Could not prime scoreboard for live metrics:", error.message);
+        }
+      }
+      if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
+        return send(res, 503, { error: "Live scoreboard feed unavailable; retry shortly", matches: [] });
       }
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
         .filter(event => (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
