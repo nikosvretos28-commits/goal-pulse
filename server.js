@@ -799,7 +799,12 @@ const server = http.createServer(async (req, res) => {
                 byCode.get(code).push(event);
               }
               if (sourceMatches.length) {
-                finalFeeds = SCOREBOARD_LEAGUES.map(code => ({ code, events: byCode.get(code) || [], ok: true }));
+                const knownFeeds = SCOREBOARD_LEAGUES.map(code => ({ code, events: byCode.get(code) || [], ok: true }));
+                const knownCodes = new Set(SCOREBOARD_LEAGUES);
+                const extraFeeds = [...byCode.entries()]
+                  .filter(([code, events]) => !knownCodes.has(code) && events.length)
+                  .map(([code, events]) => ({ code, events, ok: true }));
+                finalFeeds = knownFeeds.concat(extraFeeds);
                 successfulFeeds = finalFeeds.length;
                 const mappedMatches = [...byCode.values()].reduce((n, list) => n + list.length, 0);
                 console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, states: [...byCode.values()].flat().reduce((acc, event) => { const state = event.status?.type?.state || "unknown"; acc[state] = (acc[state] || 0) + 1; return acc; }, {}), sample: [...byCode.values()].flat().slice(0, 4).map(event => ({ name: event.name, state: event.status?.type?.state, clock: event.status?.displayClock })) }));
