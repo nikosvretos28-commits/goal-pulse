@@ -596,4 +596,18 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+if (PUSH_SCAN_TOKEN) {
+  const backgroundScanTimer = setInterval(async () => {
+    try {
+      await fetch("http://127.0.0.1:" + PORT + "/api/push/scan", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + PUSH_SCAN_TOKEN },
+        signal: AbortSignal.timeout(55000)
+      });
+    } catch (error) {
+      console.error("Scheduled push scan request failed:", error.message);
+    }
+  }, 60000);
+  backgroundScanTimer.unref();
+}
 server.listen(PORT, "0.0.0.0", () => console.log("Goal Pulse listening on " + PORT));
