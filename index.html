@@ -734,6 +734,19 @@ header nav a{padding:9px 0;font-size:11px}
 <div class="competition-modal" id="competitionModal" role="dialog" aria-modal="true" aria-labelledby="competitionTitle"><div class="competition-box"><div class="competition-hero"><div><div class="insight-label">GOAL PULSE · COMPETITION INTELLIGENCE</div><h2 id="competitionTitle">Ανάλυση διοργάνωσης</h2><div id="competitionSubtitle" class="subtle">Πραγματικά δεδομένα διαθέσιμων αγώνων</div></div><button type="button" class="analysis-close" id="closeCompetition">Κλείσιμο ✕</button></div><div id="competitionContent"><p class="subtle">Φόρτωση ανάλυσης…</p></div></div></div>
 <div class="analysis-modal" id="analysisModal" role="dialog" aria-modal="true" aria-labelledby="analysisTitle"><div class="analysis-box"><div class="analysis-top"><div><h2 id="analysisTitle">Ανάλυση αγώνα</h2><div class="subtle" id="analysisSubtitle">Φόρτωση δεδομένων…</div></div><button class="analysis-close" type="button" onclick="closeAnalysis()">Κλείσιμο ✕</button></div><div id="analysisContent"><p class="analysis-note">Αναζήτηση διαθέσιμων δεδομένων…</p></div></div></div>
 <script>
+(function(){
+ function showGoalPulseError(message){
+  try{
+   let box=document.getElementById('gp-runtime-diagnostic');
+   if(!box){box=document.createElement('div');box.id='gp-runtime-diagnostic';box.style.cssText='position:fixed;z-index:2147483647;left:12px;right:12px;bottom:12px;background:#3b1420;color:#fff;border:1px solid #ff6b7a;border-radius:12px;padding:12px 14px;font:14px/1.45 system-ui;box-shadow:0 8px 30px #0008;overflow-wrap:anywhere';document.body.appendChild(box)}
+   box.textContent='Goal Pulse: εντοπίστηκε σφάλμα εμφάνισης. '+String(message||'Άγνωστο σφάλμα').slice(0,240);
+  }catch(_){}
+ }
+ window.addEventListener('error',function(e){showGoalPulseError(e.message||'Σφάλμα JavaScript')});
+ window.addEventListener('unhandledrejection',function(e){showGoalPulseError(e.reason&&e.reason.message||e.reason||'Αποτυχία φόρτωσης')});
+})();
+</script>
+<script>
 const ANALYTICS_API='https://goal-pulse-analytics.onrender.com';
 let liveDetailRefreshTimer=null;
 function stopLiveDetailRefresh(){if(liveDetailRefreshTimer){clearInterval(liveDetailRefreshTimer);liveDetailRefreshTimer=null;}}
