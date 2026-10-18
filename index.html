@@ -1402,8 +1402,8 @@ async function showDetails(btn){
     if(!poll.ok)throw new Error('live stats unavailable');
     liveMetricsCache=new Map((pollData.matches||[]).map(x=>[String(x.eventId),x]));
     renderLiveDetails();
-    await showSeasonResultsDetails(card,home,away,subtitle,content,true);
-   }catch(error){const note=document.createElement('p');note.className='analysis-note';note.textContent='Η αυτόματη ενημέρωση θα ξαναδοκιμάσει σύντομα.';content.appendChild(note);}
+    document.getElementById('liveRefreshError')?.remove();
+   }catch(error){let note=document.getElementById('liveRefreshError');if(!note){note=document.createElement('p');note.id='liveRefreshError';note.className='analysis-note';content.appendChild(note)}note.textContent='Η αυτόματη ενημέρωση θα ξαναδοκιμάσει σύντομα.';}
   },30000);
   return;
  }
