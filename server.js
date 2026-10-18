@@ -750,8 +750,18 @@ const server = http.createServer(async (req, res) => {
               const pitchBody = await pitchGet("/v1/date/" + isoDate + "?status=all");
               const sourceMatches = pitchBody?.data?.matches || [];
               const byCode = new Map();
+              const aliasesByCode = new Map(SCOREBOARD_LEAGUES.map(code => [code, pitchLeagueAliases(code).map(normal)]));
               for (const match of sourceMatches) {
-                const code = idToCode.get(String(match.league?.id || ""));
+                const matchLeagueName = normal(match.league?.name || "");
+                const matchCountry = String(match.league?.country_code || match.league?.country || "").toUpperCase();
+                let code = idToCode.get(String(match.league?.id || ""));
+                if (!code && matchLeagueName) {
+                  const candidates = SCOREBOARD_LEAGUES.filter(candidate => (aliasesByCode.get(candidate) || []).includes(matchLeagueName));
+                  code = candidates.find(candidate => {
+                    const expectedCountry = countryCodes[candidate.split(".")[0]];
+                    return !expectedCountry || !matchCountry || matchCountry === expectedCountry || matchCountry.includes(expectedCountry);
+                  }) || candidates[0];
+                }
                 if (!code) continue;
                 const statusText = String(match.status || "").toLowerCase();
                 const state = /live|in.?play|first.?half|second.?half|half.?time|extra.?time|penalt/.test(statusText) ? "in" : /finished|full.?time/.test(statusText) ? "post" : "pre";
