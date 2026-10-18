@@ -699,6 +699,8 @@ header nav a{padding:9px 0;font-size:11px}
 <div class="analysis-modal" id="analysisModal" role="dialog" aria-modal="true" aria-labelledby="analysisTitle"><div class="analysis-box"><div class="analysis-top"><div><h2 id="analysisTitle">Ανάλυση αγώνα</h2><div class="subtle" id="analysisSubtitle">Φόρτωση δεδομένων…</div></div><button class="analysis-close" type="button" onclick="closeAnalysis()">Κλείσιμο ✕</button></div><div id="analysisContent"><p class="analysis-note">Αναζήτηση διαθέσιμων δεδομένων…</p></div></div></div>
 <script>
 const ANALYTICS_API='https://goal-pulse-analytics.onrender.com';
+let liveDetailRefreshTimer=null;
+function stopLiveDetailRefresh(){if(liveDetailRefreshTimer){clearInterval(liveDetailRefreshTimer);liveDetailRefreshTimer=null;}}
 const LEAGUES=[
  ['eng.1','Premier League','England','🏴'],
  ['esp.1','La Liga','Spain','🇪🇸'],
@@ -1203,7 +1205,7 @@ document.getElementById('saveScanner').addEventListener('click',()=>{const name=
 document.getElementById('savedScanner').addEventListener('change',()=>{const s=readScanners()[Number(document.getElementById('savedScanner').value)];if(!s)return;signalMarket.value=s.market;signalWindow.value=s.window;scannerMinute.value=s.minute;scannerLeague.value=s.league;signalThreshold.value=s.sensitivity;signalThresholdLabel.textContent=s.sensitivity+'/10';vipAlertsToggle.checked=!!s.vip;runSignalCheck()});
 document.getElementById('clearSignalHistory').addEventListener('click',()=>{signalAlertHistory=[];signalLastAlertAt.clear();try{localStorage.removeItem('goalPulseAlertHistory')}catch{}showSignalHistory()});document.getElementById('signalHistoryPeriod').addEventListener('change',showSignalHistory);
 signalResults.addEventListener('click',event=>{const b=event.target.closest('button[data-outcome]');if(!b)return;const item=signalAlertHistory[Number(b.dataset.alert)];if(!item)return;item.outcome=b.dataset.outcome==='hit'?'Χειροκίνητα: επιβεβαιώθηκε':'Χειροκίνητα: δεν επιβεβαιώθηκε';item.manualOutcome=true;try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory()});
-function closeAnalysis(){document.getElementById('analysisModal').classList.remove('open')}
+function closeAnalysis(){stopLiveDetailRefresh();document.getElementById('analysisModal').classList.remove('open')}
 document.getElementById('analysisModal').addEventListener('click',event=>{if(event.target.id==='analysisModal')closeAnalysis()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAnalysis()});
 function normTeam(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|afc|sc|ac|club|de|the)\b/g,'').replace(/[^a-z0-9]/g,'')}
@@ -1234,9 +1236,10 @@ async function showSeasonResultsDetails(card,home,away,subtitle,content,append=f
  }catch(error){content.innerHTML='<p class="analysis-note">Δεν μπόρεσαν να φορτωθούν τα φετινά αποτελέσματα. Δοκίμασε ξανά σε λίγο.</p><button class="mini-btn" id="retrySeasonResults" type="button">↻ Επανάληψη</button>';document.getElementById('retrySeasonResults')?.addEventListener('click',()=>showSeasonResultsDetails(card,home,away,subtitle,content))}
 }
 async function showDetails(btn){
+ stopLiveDetailRefresh();
  const card=btn.closest('.match');
  const home=card?.dataset.home||'',away=card?.dataset.away||'';
- const liveEvent=allMatches.find(m=>sameTeam(m.home.name,home)&&sameTeam(m.away.name,away)&&m.state==='in');
+ let liveEvent=allMatches.find(m=>sameTeam(m.home.name,home)&&sameTeam(m.away.name,away)&&m.state==='in');
  const modal=document.getElementById('analysisModal'),content=document.getElementById('analysisContent');
  const title=document.getElementById('analysisTitle'),subtitle=document.getElementById('analysisSubtitle');
  if(liveEvent){
@@ -1299,6 +1302,21 @@ async function showDetails(btn){
    if(response.ok){liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));renderLiveDetails();await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
    else content.insertAdjacentHTML('beforeend','<p class="analysis-note">Η πηγή live στατιστικών δεν απάντησε τώρα. Δοκίμασε ξανά σε λίγο.</p>');
   }catch{try{await runSignalCheck();renderLiveDetails()}catch{}}
+  liveDetailRefreshTimer=setInterval(async()=>{
+   const activeModal=document.getElementById('analysisModal');
+   if(!activeModal?.classList.contains('open')||document.getElementById('analysisTitle')?.textContent!==liveEvent.home.name+' — '+liveEvent.away.name){stopLiveDetailRefresh();return;}
+   try{
+    const latest=allMatches.find(m=>String(m.id)===String(liveEvent.id));
+    if(latest)liveEvent=latest;
+    const pollDate=(selectedMatchDate||new Date().toISOString().slice(0,10)).replace(/-/g,'');
+    const poll=await fetch(ANALYTICS_API+'/api/live-metrics?date='+pollDate,{signal:AbortSignal.timeout(12000),cache:'no-store'});
+    const pollData=await poll.json();
+    if(!poll.ok)throw new Error('live stats unavailable');
+    liveMetricsCache=new Map((pollData.matches||[]).map(x=>[String(x.eventId),x]));
+    renderLiveDetails();
+    await showSeasonResultsDetails(card,home,away,subtitle,content,true);
+   }catch(error){const note=document.createElement('p');note.className='analysis-note';note.textContent='Η αυτόματη ενημέρωση θα ξαναδοκιμάσει σύντομα.';content.appendChild(note);}
+  },30000);
   return;
  }
  const date=card?.dataset.matchDate||'';
