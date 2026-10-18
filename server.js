@@ -596,7 +596,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (PUSH_SCAN_TOKEN) {
+if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
   const backgroundScanTimer = setInterval(async () => {
     try {
       await fetch("http://127.0.0.1:" + PORT + "/api/push/scan", {
