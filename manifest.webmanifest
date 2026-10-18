@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "Goal Pulse — Live Football Scores",
+  "short_name": "Goal Pulse",
+  "description": "Live football scores, match statistics and AI alerts.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#071522",
+  "theme_color": "#071522",
+  "orientation": "any",
+  "icons": [
+    { "src": "/goal-pulse-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
