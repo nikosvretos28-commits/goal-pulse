@@ -842,7 +842,7 @@ const server = http.createServer(async (req, res) => {
               const groups = (pitchStats?.data?.periods || []).filter(period => !period.period || period.period === "All").flatMap(period => period.groups || []);
               const items = groups.flatMap(group => group.items || []);
               const readStat = (side, aliases) => {
-                const found = items.find(stat => aliases.includes(String(stat.key || "").toLowerCase()) || aliases.includes(String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""));
+                const found = items.find(stat => aliases.includes(String(stat.key || "").toLowerCase()) || aliases.includes(String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")));
                 if (!found) return null;
                 const value = Number.parseFloat(String(found[side] ?? "").replace(",", "."));
                 return Number.isFinite(value) ? value : null;
