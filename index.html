@@ -674,7 +674,7 @@ header nav a{padding:9px 0;font-size:11px}
 
 .gp-analysis-tabs{display:flex;gap:5px;overflow-x:auto;padding:8px;margin:10px 0;background:#091824;border:1px solid #203e51;border-radius:9px;scrollbar-width:thin}.gp-analysis-tab{flex:0 0 auto;border:1px solid #27465a;background:#102638;color:#a9c0ce;border-radius:5px;padding:9px 12px;font:inherit;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap}.gp-analysis-tab.active{background:#174c43;border-color:#43e0a2;color:#68edb7;box-shadow:inset 0 -2px #43e0a2}.gp-analysis-panel{display:none}.gp-analysis-panel.active{display:block}.gp-analysis-panel .forebet-section{margin-top:0}@media(max-width:480px){.gp-analysis-tabs{margin:8px -2px;padding:6px}.gp-analysis-tab{padding:9px 10px;font-size:10px}}
 .gp-data-coverage{border:1px solid rgba(75,205,165,.25);background:linear-gradient(135deg,rgba(22,48,60,.72),rgba(13,26,39,.78));border-radius:14px;padding:14px;margin:12px 0}.gp-coverage-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.gp-coverage-grid>div{background:rgba(3,12,22,.35);border-radius:9px;padding:10px;min-width:0}.gp-coverage-grid small{display:block;color:var(--muted,#9fb0c4);font-size:11px;line-height:1.35}.gp-coverage-grid strong{display:block;margin-top:5px;color:var(--text,#eef5fb);font-size:16px;overflow-wrap:anywhere}@media(max-width:560px){.gp-coverage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}.gp-all-season-results{max-height:720px;overflow-y:auto;overscroll-behavior:contain}.gp-all-season-result .event-player{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.gp-all-season-result .event-player strong{font-variant-numeric:tabular-nums;color:var(--accent,#39d98a)}.gp-all-season-result .event-score{font-size:11px;white-space:nowrap}@media(max-width:560px){.gp-all-season-result{gap:5px}.gp-all-season-result .event-minute{min-width:48px}.gp-all-season-result .event-player{font-size:11px}}.gp-all-season-results{max-height:720px;overflow-y:auto;overscroll-behavior:contain}.gp-all-season-result .event-player{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.gp-all-season-result .event-player strong{font-variant-numeric:tabular-nums;color:var(--accent,#39d98a)}.gp-competition-kind{font-size:9px;font-weight:800;letter-spacing:.03em;color:#8ddfc3;border:1px solid #2d6556;border-radius:5px;padding:3px 5px;white-space:nowrap}.gp-all-season-result .event-minute{min-width:48px}@media(max-width:560px){.gp-all-season-result{gap:5px}.gp-all-season-result .event-minute{min-width:45px}.gp-all-season-result .event-player{font-size:11px}}
-/* Football24-inspired match-first layout: compact header, grouped fixtures, filters always near the top. */
+/* Futbol24-inspired match-first layout: compact live scores, visible grouped fixtures, fast date and event filters. */
 .wrap{display:flex;flex-direction:column}
 .wrap>header{order:0;position:sticky;top:0;z-index:40;background:#071522f2;backdrop-filter:blur(14px);height:68px}
 .wrap>.scoreboard-top{order:1;margin-top:14px}
@@ -727,6 +727,38 @@ nav a{flex:0 0 auto}
  .right-stack{grid-row:auto}
  .live-row{grid-template-columns:22px minmax(0,1fr) auto minmax(0,1fr) 22px 36px;padding:10px 8px;gap:4px}
  .teamname{font-size:11px}
+}
+
+
+/* Compact Futbol24-style fixture presentation, keeping Goal Pulse's own branding. */
+.match{border:0;border-bottom:1px solid #1a3749;border-radius:0;background:#091b29;margin:0;padding:10px 11px;box-shadow:none}
+.match:hover{transform:none;background:#102638;border-color:#275268}
+.league-block{padding:0 8px 8px;margin-bottom:8px;border:1px solid #203e51;border-radius:10px;overflow:hidden;background:#081a28}
+.league-head{background:#10293a;padding:10px 11px;border-bottom:1px solid #244456}
+.league-block.is-open .league-head{background:#102b3d}
+.league-matches{display:block}
+.league-matches[hidden]{display:none}
+.match-meta{margin-bottom:7px}
+.teams{grid-template-columns:minmax(0,1fr) 62px minmax(0,1fr);gap:6px}
+.match-score{font-size:19px}
+.team{gap:6px;font-size:12px}
+.team-logo{font-size:18px}
+.match-bottom{margin-top:8px;padding-top:7px}
+.top-ai-alerts,.top-vip-alerts{padding:12px 15px}
+.top-ai-alerts h2,.top-vip-alerts h2{font-size:14px}
+@media(max-width:760px){
+ .league-block{margin-bottom:7px;padding:0 5px 5px}
+ .league-head{padding:9px 8px;gap:7px}
+ .league-head .flag{font-size:18px}
+ .league-category-tag{font-size:8px}
+ .match{padding:9px 7px}
+ .match-meta{font-size:9px}
+ .teams{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr);gap:4px}
+ .team{font-size:11px;gap:4px}
+ .team-logo{font-size:15px}
+ .match-score{font-size:17px}
+ .stats{gap:4px;margin-top:8px}
+ .stat{font-size:9px;padding:4px 6px}
 }
 
 </style>
@@ -1004,7 +1036,7 @@ function render(){
    const g=groups[key];
    const liveCount=g.items.filter(m=>m.state==='in').length;
    const category=String(g.type||'ΔΙΟΡΓΑΝΩΣΗ').toUpperCase();
-   return '<div class="league-block" data-league-group="'+esc(key)+'"><button class="league-head" type="button" aria-expanded="false" aria-controls="league-matches-'+esc(key).replace(/[^a-zA-Z0-9_-]/g,'-')+'" data-league-toggle><span class="flag">'+esc(g.flag)+'</span><span class="league-heading-copy"><strong>'+esc(g.name)+'</strong><span class="league-country">'+esc(category)+' · '+g.items.length+' αγώνες'+(liveCount?' · '+liveCount+' LIVE':'')+'</span></span><span class="league-category-tag">'+esc(category)+'</span><span class="league-chevron" aria-hidden="true">⌄</span></button><div class="league-matches" id="league-matches-'+esc(key).replace(/[^a-zA-Z0-9_-]/g,'-')+'" hidden>'+g.items.map(cardFor).join('')+'</div></div>';
+   return '<div class="league-block is-open" data-league-group="'+esc(key)+'"><button class="league-head" type="button" aria-expanded="true" aria-controls="league-matches-'+esc(key).replace(/[^a-zA-Z0-9_-]/g,'-')+'" data-league-toggle><span class="flag">'+esc(g.flag)+'</span><span class="league-heading-copy"><strong>'+esc(g.name)+'</strong><span class="league-country">'+esc(category)+' · '+g.items.length+' αγώνες'+(liveCount?' · '+liveCount+' LIVE':'')+'</span></span><span class="league-category-tag">'+esc(category)+'</span><span class="league-chevron" aria-hidden="true">⌄</span></button><div class="league-matches" id="league-matches-'+esc(key).replace(/[^a-zA-Z0-9_-]/g,'-')+'">'+g.items.map(cardFor).join('')+'</div></div>';
   }).join('');
  }
  const resultCount=document.getElementById('resultCount'); if(resultCount)resultCount.textContent=filtered.length+' αγώνες';
