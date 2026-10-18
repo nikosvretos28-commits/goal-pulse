@@ -823,8 +823,8 @@ async function loadScores(){
  }catch(err){scoreboardJson={successfulFeeds:0,feeds:[]}}
  successfulFeeds=Number(scoreboardJson.successfulFeeds)||0;
  const results=(scoreboardJson.feeds||[]).map(feed=>{
-  const l=LEAGUES.find(item=>item[0]===feed.code);
-  if(!l)return [];
+  // Keep real matches visible even when the provider adds an unlisted competition.
+  const l=LEAGUES.find(item=>item[0]===feed.code)||[String(feed.code||'unknown'),String(feed.code||'Άλλη διοργάνωση').replace(/[._]/g,' ').toUpperCase(),'International','⚽'];
   return (feed.events||[]).map(e=>{
    const comp=(e.competitions||[])[0]||{}, teams=comp.competitors||[];
    const h=teams.find(t=>t.homeAway==='home')||teams[0]||{}, a=teams.find(t=>t.homeAway==='away')||teams[1]||{};
