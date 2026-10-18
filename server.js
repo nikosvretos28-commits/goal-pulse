@@ -601,11 +601,22 @@ if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
   console.log("Background push scanner scheduled every 60 seconds.");
   const backgroundScanTimer = setInterval(async () => {
     try {
-      await fetch("http://127.0.0.1:" + PORT + "/api/push/scan", {
+      const response = await fetch("http://127.0.0.1:" + PORT + "/api/push/scan", {
         method: "POST",
         headers: { Authorization: "Bearer " + PUSH_SCAN_TOKEN },
         signal: AbortSignal.timeout(55000)
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        console.error("Scheduled push scan returned HTTP " + response.status + ": " + (result.detail || result.error || "unknown error"));
+      } else {
+        console.log("Scheduled push scan completed:", JSON.stringify({
+          checked: Number(result.checked || 0),
+          candidates: Number(result.candidates || 0),
+          deliveries: Number(result.deliveries || 0),
+          date: result.date || null
+        }));
+      }
     } catch (error) {
       console.error("Scheduled push scan request failed:", error.message);
     }
