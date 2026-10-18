@@ -73,9 +73,10 @@ function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
   if (!ALLOWED_ORIGINS.has(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
   const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
-  const now = Date.now(), previous = pushRateLimit.get(ip) || 0;
+  const rateKey = ip + ":" + new URL(req.url, "http://localhost").pathname;
+  const now = Date.now(), previous = pushRateLimit.get(rateKey) || 0;
   if (now - previous < 800) { send(res, 429, { error: "Too many requests" }); return false; }
-  pushRateLimit.set(ip, now);
+  pushRateLimit.set(rateKey, now);
   return true;
 }
 async function readJsonBody(req) {
