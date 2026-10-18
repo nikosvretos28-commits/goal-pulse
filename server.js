@@ -457,7 +457,7 @@ const server = http.createServer(async (req, res) => {
     if (historyCached && Date.now() - historyCached.at < 6 * 60 * 60 * 1000) return send(res, 200, historyCached.body);
     const calendarSeason = ["bra.1", "arg.1", "usa.1"].includes(league);
     const splitSeason = ["mex.1", "aus.1"].includes(league);
-    const start = calendarSeason ? new Date(Date.UTC(season, 0, 1)) : splitSeason ? new Date(Date.UTC(season, 6, 1)) : new Date(Date.UTC(season, 6, 1));
+    const start = calendarSeason ? new Date(Date.UTC(season, 0, 1)) : splitSeason ? new Date(Date.UTC(season, 6, 1)) : new Date(Date.UTC(season, 7, 1));
     const end = calendarSeason ? new Date(Date.UTC(season, 11, 31)) : splitSeason ? new Date(Date.UTC(season + 1, 5, 30)) : new Date(Date.UTC(season + 1, 5, 30));
     const compactDate = date => date.toISOString().slice(0, 10).replace(/-/g, "");
     try {
