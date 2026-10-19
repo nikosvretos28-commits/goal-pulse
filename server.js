@@ -785,11 +785,12 @@ const server = http.createServer(async (req, res) => {
                 const aliases = pitchLeagueAliases(code).map(normal);
                 if (!aliases.length) continue;
                 const allowed = countryCodes[code.split(".")[0]] || [];
-                const candidates = directory.filter(item =>
+                const chosen = directory.find(item =>
                   aliases.includes(normal(item.name)) &&
-                  (!allowed.length || allowed.includes(String(item.country_code || "").toUpperCase()))
+                  allowed.length > 0 &&
+                  allowed.includes(String(item.country_code || "").toUpperCase())
                 );
-                const chosen = candidates[0];
+                // No country match means no mapping; avoid assigning another country's league.
                 if (chosen?.id) idToCode.set(String(chosen.id), code);
               }
               const pitchBody = await pitchGet("/v1/date/" + isoDate + "?status=all");
@@ -806,7 +807,7 @@ const server = http.createServer(async (req, res) => {
                   );
                   code = candidates.find(candidate => {
                     const allowed = countryCodes[candidate.split(".")[0]] || [];
-                    return !allowed.length || !matchCountry || allowed.some(value => matchCountry === value || matchCountry.includes(value));
+                    return allowed.length > 0 && matchCountry.length > 0 && allowed.some(value => matchCountry === value);
                   });
                 }
                 // Do not discard a real fixture just because its competition is not in our curated alias list.
