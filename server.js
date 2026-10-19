@@ -740,7 +740,7 @@ const server = http.createServer(async (req, res) => {
             try {
               const isoDate = date.slice(0,4) + "-" + date.slice(4,6) + "-" + date.slice(6,8);
               const directory = (await pitchGet("/v1/leagues"))?.data?.leagues || [];
-              const normal = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+              const normal = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
               const countryCodes = {eng:"ENG",esp:"ESP",ita:"ITA",ger:"DEU",fra:"FRA",por:"PRT",ned:"NLD",sco:"SCO",gre:"GRC",tur:"TUR",bra:"BRA",arg:"ARG",usa:"USA",mex:"MEX",aus:"AUS",bel:"BEL",aut:"AUT",sui:"CHE",den:"DNK",nor:"NOR",swe:"SWE",pol:"POL",jpn:"JPN",kor:"KOR",sau:"SAU"};
               const idToCode = new Map();
               for (const code of SCOREBOARD_LEAGUES) {
@@ -769,7 +769,7 @@ const server = http.createServer(async (req, res) => {
                 // The UI can display these as an additional PitchAPI competition instead of silently losing live games.
                 if (!code) {
                   const leagueId = String(match.league?.id || "");
-                  const leagueSlug = normal(match.league?.name || "other").replace(/\\s+/g, "-").slice(0, 36) || "other";
+                  const leagueSlug = normal(match.league?.name || "other").replace(/\s+/g, "-").slice(0, 36) || "other";
                   code = "pitch." + (leagueId || leagueSlug).replace(/[^a-zA-Z0-9-]/g, "-");
                 }
                 const rawStatus = match.status;
