@@ -821,7 +821,7 @@ const server = http.createServer(async (req, res) => {
                 const statusParts = typeof rawStatus === "string"
                   ? [rawStatus]
                   : rawStatus && typeof rawStatus === "object"
-                    ? Object.entries(rawStatus).filter(([key, value]) => /status|name|description|short|long|type|state|period|phase|elapsed|minute|live|code|abbrev/i.test(key) && value != null).map(([key, value]) => key + " " + (typeof value === "object" ? JSON.stringify(value) : String(value)))
+                    ? Object.entries(rawStatus).filter(([key, value]) => /status|name|description|short|long|type|state|period|phase|elapsed|minute|live|code|abbrev/i.test(key) && value != null).map(([, value]) => typeof value === "object" ? JSON.stringify(value) : String(value))
                     : [];
                 const nestedStatus = rawStatus && typeof rawStatus === "object"
                   ? [rawStatus.code, rawStatus.short_name, rawStatus.shortName, rawStatus.abbreviation, rawStatus.description, rawStatus.name, rawStatus.state, rawStatus.type?.name, rawStatus.type?.shortName, rawStatus.type?.state]
@@ -836,7 +836,7 @@ const server = http.createServer(async (req, res) => {
                 const truthyLive = value => value === true || value === 1 || /^(true|1|yes|live)$/i.test(String(value ?? "").trim());
                 const liveFlag = truthyLive(match.is_live) || truthyLive(match.live) || truthyLive(match.in_play) || truthyLive(rawStatus?.is_live) || truthyLive(rawStatus?.live);
                 // Explicit scheduled/not-started status must win over inconsistent live flags from the provider.
-                const state = isFinished ? "post" : (explicitLive || liveFlag || hasElapsedMinute) ? "in" : isNotStarted ? "pre" : "pre";
+                const state = isFinished ? "post" : isNotStarted ? "pre" : (explicitLive || liveFlag || hasElapsedMinute) ? "in" : "pre";
                 const status = { type: { state, completed: state === "post" }, displayClock: match.minute != null ? String(match.minute) + "'" : String(match.status || "") };
                 const homeName = match.home_team?.name || "";
                 const awayName = match.away_team?.name || "";
