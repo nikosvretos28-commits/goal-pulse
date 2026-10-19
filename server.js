@@ -732,7 +732,7 @@ const server = http.createServer(async (req, res) => {
           }));
           let finalFeeds = feeds;
           let successfulFeeds = feeds.filter(feed => feed.ok).length;
-          if (successfulFeeds === 0 || feeds.every(feed => feed.events.length === 0)) {
+          if (process.env.PITCH_API_KEY) {
             // ESPN may return HTTP 200 with empty event lists from this deployment; use PitchAPI whenever it yields no fixtures.
             try {
               const isoDate = date.slice(0,4) + "-" + date.slice(4,6) + "-" + date.slice(6,8);
@@ -800,14 +800,21 @@ const server = http.createServer(async (req, res) => {
                 byCode.get(code).push(event);
               }
               if (sourceMatches.length) {
-                const knownFeeds = SCOREBOARD_LEAGUES.map(code => ({ code, events: byCode.get(code) || [], ok: true }));
+                const knownFeeds = SCOREBOARD_LEAGUES.map(code => {
+                  const existing = feeds.find(feed => feed.code === code);
+                  const merged = new Map();
+                  for (const event of existing?.events || []) merged.set(String(event.id || event.date + ":" + event.name), event);
+                  for (const event of byCode.get(code) || []) merged.set(String(event.id || event.date + ":" + event.name), event);
+                  const events = [...merged.values()];
+                  return { code, events, ok: Boolean(existing?.ok || events.length) };
+                });
                 const knownCodes = new Set(SCOREBOARD_LEAGUES);
                 const extraFeeds = [...byCode.entries()]
                   .filter(([code, events]) => !knownCodes.has(code) && events.length)
                   .map(([code, events]) => ({ code, events, ok: true }));
                 finalFeeds = knownFeeds.concat(extraFeeds);
-                successfulFeeds = finalFeeds.length;
-                const mappedMatches = [...byCode.values()].reduce((n, list) => n + list.length, 0);
+                successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
+                const mappedMatches = finalFeeds.reduce((n, feed) => n + feed.events.length, 0);
                 console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, states: [...byCode.values()].flat().reduce((acc, event) => { const state = event.status?.type?.state || "unknown"; acc[state] = (acc[state] || 0) + 1; return acc; }, {}), sample: [...byCode.values()].flat().slice(0, 4).map(event => ({ name: event.name, state: event.status?.type?.state, clock: event.status?.displayClock })) }));
               }
             } catch (error) {
@@ -817,7 +824,7 @@ const server = http.createServer(async (req, res) => {
           if (successfulFeeds === 0) {
             console.error("All scoreboard feeds failed:", JSON.stringify(feeds.slice(0, 6).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))));
           }
-          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok}) => ({code,events,ok})), source: feeds.some(feed => feed.ok) ? "ESPN" : (successfulFeeds ? "PitchAPI" : "unavailable") };
+          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok}) => ({code,events,ok})), source: successfulFeeds ? (feeds.some(feed => feed.ok) ? "ESPN+PitchAPI" : "PitchAPI") : "unavailable" };
           if (successfulFeeds > 0) {
             scoreboardCache.set(date, { at: Date.now(), body });
             return { status: 200, body, cache: "MISS" };
