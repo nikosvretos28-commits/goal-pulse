@@ -109,7 +109,9 @@ const ESPN_UNSUPPORTED_LEAGUES = new Set([
   "bel.2", "pol.2", "usa.2", "gre.cup", "eng.6", "eng.7",
   "esp.3", "ger.4", "fra.4", "por.3", "gre.2", "jpn.2",
   "kor.2", "aus.2", "conmebol.copa_america", "concacaf.nations",
-  "ita.w.1", "ger.w.1"
+  "ita.w.1", "ger.w.1", "por.w.1", "bra.w.1", "arg.w.1",
+  "uefa.w.champions", "egy.1", "mar.1", "irn.1", "qat.1", "uae.1",
+  "isl.1", "cro.1", "srb.1"
 ]);
 const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
