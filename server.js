@@ -1067,6 +1067,55 @@ const server = http.createServer(async (req, res) => {
           const item = work[cursor++];
           const event = item.event;
           try {
+            if (String(event.id).startsWith("sportscore:")) {
+              const slug = String(event.id).slice("sportscore:".length);
+              const detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
+                headers: { "Accept": "application/json" },
+                signal: AbortSignal.timeout(8000)
+              });
+              if (!detailResponse.ok) continue;
+              const detail = await detailResponse.json();
+              const root = detail.match || detail.data || detail.fixture || detail;
+              const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
+              const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
+              const statsRows = [];
+              const visited = new Set();
+              const walk = (node, depth = 0) => {
+                if (!node || typeof node !== "object" || depth > 8 || visited.has(node)) return;
+                visited.add(node);
+                if (Array.isArray(node)) {
+                  for (const item of node) walk(item, depth + 1);
+                  return;
+                }
+                const label = String(node.name || node.key || node.title || node.label || node.stat || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
+                const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
+                if (label && home != null && away != null && (typeof home !== "object") && (typeof away !== "object")) statsRows.push({ label, home, away });
+                for (const [key, value] of Object.entries(node)) {
+                  if (["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) continue;
+                  walk(value, depth + 1);
+                }
+              };
+              walk(root);
+              const readStat = (side, aliases) => {
+                const found = statsRows.find(row => aliases.includes(row.label));
+                if (!found) return null;
+                const raw = found[side];
+                const n = Number.parseFloat(String(raw).replace("%", "").replace(",", "."));
+                return Number.isFinite(n) ? n : null;
+              };
+              const values = [
+                { team: homeName, homeAway: "home", shots: readStat("home", ["total_shots","shots","shots_total","total_attempts","shots_attempted"]), shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","on_target"]), shotsOffTarget: readStat("home", ["shots_off_target","shots_off_goal","shots_wide","off_target"]), blockedShots: readStat("home", ["blocked_shots","shots_blocked"]), corners: readStat("home", ["corners","corner_kicks","won_corners"]), attacks: readStat("home", ["attacks","total_attacks"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for"]), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct"]), xG: readStat("home", ["expected_goals","xg","expected_goals_xg"]) },
+                { team: awayName, homeAway: "away", shots: readStat("away", ["total_shots","shots","shots_total","total_attempts","shots_attempted"]), shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","on_target"]), shotsOffTarget: readStat("away", ["shots_off_target","shots_off_goal","shots_wide","off_target"]), blockedShots: readStat("away", ["blocked_shots","shots_blocked"]), corners: readStat("away", ["corners","corner_kicks","won_corners"]), attacks: readStat("away", ["attacks","total_attacks"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for"]), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct"]), xG: readStat("away", ["expected_goals","xg","expected_goals_xg"]) }
+              ];
+              matches.push({
+                eventId: String(event.id), home: homeName, away: awayName,
+                minute: event.status?.displayClock || "",
+                statsAvailable: values.some(value => ["shots","shotsOnTarget","corners","possession","xG"].some(key => value[key] !== null)),
+                teams: values
+              });
+              continue;
+            }
             if (String(event.id).startsWith("m_")) {
               const pitchStats = await pitchGet("/v1/matches/" + encodeURIComponent(event.id) + "/stats");
               const periods = pitchStats?.data?.periods || [];
