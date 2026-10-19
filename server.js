@@ -918,7 +918,79 @@ const server = http.createServer(async (req, res) => {
               console.error("PitchAPI scoreboard fallback failed:", error.message);
             }
           }
-          const scoreboardSource = feeds.some(feed => feed.ok && feed.events.length) ? "ESPN+PitchAPI" : finalFeeds.some(feed => feed.events.length) ? "PitchAPI" : "unavailable";
+
+          // SportScore is an optional third scoreboard source. Treat it as score/fixture
+          // coverage only; it is never used as a substitute for verified match statistics.
+          try {
+            const sportScoreUrl = "https://sportscore.com/api/widget/matches/?sport=football&limit=50&src=goal-pulse";
+            const sportScoreResponse = await fetch(sportScoreUrl, {
+              headers: { "Accept": "application/json" },
+              signal: AbortSignal.timeout(7000)
+            });
+            if (sportScoreResponse.ok) {
+              const sportScoreBody = await sportScoreResponse.json();
+              const sportScoreMatches = Array.isArray(sportScoreBody.matches) ? sportScoreBody.matches : [];
+              const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+              const sportScoreEvents = [];
+              for (const match of sportScoreMatches) {
+                const matchDate = match.time ? new Date(match.time) : null;
+                if (!matchDate || !Number.isFinite(matchDate.getTime()) || matchDate.toISOString().slice(0, 10) !== requestedIsoDate) continue;
+                const homeName = String(match.home || "").trim();
+                const awayName = String(match.away || "").trim();
+                if (!homeName || !awayName) continue;
+                const statusText = String(match.status_text || match.status || "").toLowerCase();
+                const state = /live|in play|in-play|playing|1st half|2nd half|half time|extra time|penalt/.test(statusText)
+                  ? "in"
+                  : /finished|full time|ended|complete|after extra|\bft\b|\baet\b|\bpen\b/.test(statusText)
+                    ? "post"
+                    : "pre";
+                const toScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : String(Number(value));
+                const status = { type: { state, completed: state === "post" }, displayClock: String(match.status_text || "") };
+                sportScoreEvents.push({
+                  id: "sportscore:" + String(match.slug || match.time + ":" + homeName + ":" + awayName),
+                  date: match.time,
+                  name: homeName + " vs " + awayName,
+                  leagueName: "SportScore",
+                  status,
+                  competitions: [{ status, competitors: [
+                    { homeAway: "home", team: { displayName: homeName }, score: toScore(match.home_score) },
+                    { homeAway: "away", team: { displayName: awayName }, score: toScore(match.away_score) }
+                  ] }]
+                });
+              }
+              if (sportScoreEvents.length) {
+                const normalizeSportScoreTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+                const existingPairs = new Set(finalFeeds.flatMap(feed => feed.events || []).map(event => {
+                  const teams = (event.competitions || [])[0]?.competitors || [];
+                  const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
+                  const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
+                  const h = normalizeSportScoreTeam(home.team?.displayName || home.team?.name);
+                  const a = normalizeSportScoreTeam(away.team?.displayName || away.team?.name);
+                  return h && a ? h + "||" + a : "";
+                }).filter(Boolean));
+                const missingSportScoreEvents = sportScoreEvents.filter(event => {
+                  const teams = event.competitions[0].competitors;
+                  const pair = normalizeSportScoreTeam(teams[0].team.displayName) + "||" + normalizeSportScoreTeam(teams[1].team.displayName);
+                  return pair !== "||" && !existingPairs.has(pair);
+                });
+                if (missingSportScoreEvents.length) {
+                  finalFeeds = finalFeeds.concat([{ code: "sportscore", events: missingSportScoreEvents, ok: true }]);
+                  successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
+                  console.log("SportScore added uncovered fixtures:", JSON.stringify({ date, received: sportScoreMatches.length, sameDate: sportScoreEvents.length, added: missingSportScoreEvents.length }));
+                }
+              }
+            } else {
+              console.warn("SportScore scoreboard skipped:", "HTTP " + sportScoreResponse.status);
+            }
+          } catch (error) {
+            console.warn("SportScore scoreboard unavailable; keeping existing feeds:", error.message || "request failed");
+          }
+
+          const scoreboardSource = feeds.some(feed => feed.ok && feed.events.length)
+            ? (finalFeeds.some(feed => feed.code === "sportscore") ? "ESPN+PitchAPI+SportScore" : "ESPN+PitchAPI")
+            : finalFeeds.some(feed => feed.events.length)
+              ? (finalFeeds.some(feed => feed.code === "sportscore") ? "PitchAPI+SportScore" : "PitchAPI")
+              : "unavailable";
           if (successfulFeeds === 0) {
             console.error("All scoreboard feeds failed:", JSON.stringify(feeds.slice(0, 6).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))));
           }
