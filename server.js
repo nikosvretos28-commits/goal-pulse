@@ -550,7 +550,7 @@ const server = http.createServer(async (req, res) => {
     const league = String(url.searchParams.get("league") || "");
     const startRaw = String(url.searchParams.get("start") || "");
     const endRaw = String(url.searchParams.get("end") || "");
-    const validDate = value => /^\\d{8}$/.test(value) && !Number.isNaN(Date.parse(value.slice(0,4)+"-"+value.slice(4,6)+"-"+value.slice(6,8)+"T00:00:00Z"));
+    const validDate = value => /^\d{8}$/.test(value) && !Number.isNaN(Date.parse(value.slice(0,4)+"-"+value.slice(4,6)+"-"+value.slice(6,8)+"T00:00:00Z"));
     if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
     if (!validDate(startRaw) || !validDate(endRaw)) return send(res, 400, { error: "start and end must be YYYYMMDD", matches: [] });
     const startDate = new Date(Date.UTC(Number(startRaw.slice(0,4)),Number(startRaw.slice(4,6))-1,Number(startRaw.slice(6,8))));
