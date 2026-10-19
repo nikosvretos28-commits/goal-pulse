@@ -119,16 +119,23 @@ const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
 function resolveDatabaseUrl(raw) {
   if (!raw) return "";
-  // Replace only the hostname text; do not parse or log credentials, which may contain
-  // URL-reserved characters and must remain private.
+  // Normalize only the host. Keep credentials private and never log the full URL.
   const renderHost = "dpg-db9t153rjlhs7382ko40-a.frankfurt-postgres.render.com";
-  return raw
-    // Handle both standard user@host URLs and the malformed host-only "base" URL
-    // that Render logs showed as ENOTFOUND base. Never alter credentials or log the URL.
-    .replace(/@base(?=[:/?#]|$)/i, "@" + renderHost)
-    .replace(/:\/\/base(?=[:/?#]|$)/i, "://" + renderHost)
-    .replace(/@dpg-db9t153rjlhs7382ko40-a(?=[:/])/i, "@" + renderHost)
-    .replace(/:\/\/dpg-db9t153rjlhs7382ko40-a(?=[:/])/i, "://" + renderHost);
+  try {
+    const parsed = new URL(raw);
+    if (parsed.hostname.toLowerCase() === "base" ||
+        parsed.hostname.toLowerCase() === "dpg-db9t153rjlhs7382ko40-a") {
+      parsed.hostname = renderHost;
+    }
+    return parsed.toString();
+  } catch {
+    // Safe fallback for URL strings that cannot be parsed because credentials are malformed.
+    return raw
+      .replace(/@base(?=[:/?#]|$)/i, "@" + renderHost)
+      .replace(/:\/\/base(?=[:/?#]|$)/i, "://" + renderHost)
+      .replace(/@dpg-db9t153rjlhs7382ko40-a(?=[:/?#]|$)/i, "@" + renderHost)
+      .replace(/:\/\/dpg-db9t153rjlhs7382ko40-a(?=[:/?#]|$)/i, "://" + renderHost);
+  }
 }
 const resolvedDatabaseUrl = resolveDatabaseUrl(process.env.DATABASE_URL || "");
 const analyticsPool = resolvedDatabaseUrl && Pool ? new Pool({
