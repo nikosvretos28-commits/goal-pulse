@@ -1072,9 +1072,17 @@ const server = http.createServer(async (req, res) => {
             const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             const map = new Map();
             for (const match of (payload.matches || [])) {
-              if (!match.slug || !match.home || !match.away) continue;
+              if (!match.home || !match.away) continue;
+              let matchSlug = match.slug || match.match_slug || match.matchSlug || "";
+              if (!matchSlug && match.url) {
+                try {
+                  const pathname = new URL(String(match.url), "https://sportscore.com").pathname;
+                  matchSlug = pathname.split("/").filter(Boolean).pop() || "";
+                } catch {}
+              }
+              if (!matchSlug) continue;
               const home = normalizeTeam(match.home), away = normalizeTeam(match.away);
-              if (home && away) map.set(home + "|" + away, String(match.slug));
+              if (home && away) map.set(home + "|" + away, String(matchSlug));
             }
             sportScoreWidgetSlugCache.map = map;
             sportScoreWidgetSlugCache.at = Date.now();
