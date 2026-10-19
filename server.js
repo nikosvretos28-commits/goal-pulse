@@ -562,7 +562,12 @@ const server = http.createServer(async (req, res) => {
     const league = String(url.searchParams.get("league") || "");
     const startRaw = String(url.searchParams.get("start") || "");
     const endRaw = String(url.searchParams.get("end") || "");
-    const validDate = value => /^\d{8}$/.test(value) && !Number.isNaN(Date.parse(value.slice(0,4)+"-"+value.slice(4,6)+"-"+value.slice(6,8)+"T00:00:00Z"));
+    const validDate = value => {
+      if (!/^\d{8}$/.test(value)) return false;
+      const year = Number(value.slice(0,4)), month = Number(value.slice(4,6)), day = Number(value.slice(6,8));
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+    };
     if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
     if (!validDate(startRaw) || !validDate(endRaw)) return send(res, 400, { error: "start and end must be YYYYMMDD", matches: [] });
     const startDate = new Date(Date.UTC(Number(startRaw.slice(0,4)),Number(startRaw.slice(4,6))-1,Number(startRaw.slice(6,8))));
@@ -730,8 +735,15 @@ const server = http.createServer(async (req, res) => {
       if (!sharedRequest) {
         sharedRequest = (async () => {
           const feeds = [];
-          for (let i = 0; i < SCOREBOARD_LEAGUES.length; i += 12) {
-            feeds.push(...await Promise.all(SCOREBOARD_LEAGUES.slice(i, i + 12).map(async code => {
+          // ESPN returns HTTP 400 for these unsupported competition paths. Keep them
+          // in the canonical league list; PitchAPI can still supply their fixtures.
+          const ESPN_UNSUPPORTED_LEAGUES = new Set([
+            "pol.1", "kor.1", "sau.1", "ger.3", "fra.3", "por.2",
+            "bel.2", "pol.2", "usa.2", "gre.cup", "eng.6", "eng.7"
+          ]);
+          const espnLeagues = SCOREBOARD_LEAGUES.filter(code => !ESPN_UNSUPPORTED_LEAGUES.has(code));
+          for (let i = 0; i < espnLeagues.length; i += 12) {
+            feeds.push(...await Promise.all(espnLeagues.slice(i, i + 12).map(async code => {
             try {
               const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
                 headers: { "Accept": "application/json" },
