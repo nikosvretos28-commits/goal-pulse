@@ -782,7 +782,8 @@ const server = http.createServer(async (req, res) => {
                 const explicitLive = /live|in\s*play|in\s*progress|playing|started|first\s*half|second\s*half|1st\s*half|2nd\s*half|half\s*time|half\s*ended|extra\s*time|penalt|\b1h\b|\b2h\b|\bht\b|\bint\b|\bperiod\s*[12]\b/.test(statusText);
                 const hasElapsedMinute = match.minute != null && String(match.minute).trim() !== "" && Number.isFinite(Number(match.minute)) && Number(match.minute) > 0;
                 const liveFlag = match.is_live === true || match.live === true || match.in_play === true;
-                const state = isFinished ? "post" : (explicitLive || liveFlag || (!isNotStarted && hasElapsedMinute)) ? "in" : "pre";
+                // Explicit scheduled/not-started status must win over inconsistent live flags from the provider.
+                const state = isFinished ? "post" : isNotStarted ? "pre" : (explicitLive || liveFlag || hasElapsedMinute) ? "in" : "pre";
                 const status = { type: { state, completed: state === "post" }, displayClock: match.minute != null ? String(match.minute) + "'" : String(match.status || "") };
                 const homeName = match.home_team?.name || "";
                 const awayName = match.away_team?.name || "";
