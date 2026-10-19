@@ -126,8 +126,9 @@ function resolveDatabaseUrl(raw) {
   if (/^[a-f0-9]{32}$/i.test(trimmed)) {
     const username = process.env.PGUSER || "goal_pulse_memberships_user";
     const database = process.env.PGDATABASE || "goal_pulse_memberships";
+    const password = process.env.PGPASSWORD || process.env.DATABASE_PASSWORD || trimmed;
     const internalHost = "dpg-db9t153rjlhs7382ko40-a";
-    return "postgresql://" + encodeURIComponent(username) + ":" + trimmed + "@" + internalHost + "/" + encodeURIComponent(database);
+    return "postgresql://" + encodeURIComponent(username) + ":" + encodeURIComponent(password) + "@" + internalHost + "/" + encodeURIComponent(database);
   }
   // Normalize only the host. Keep credentials private and never log the full URL.
   const renderHost = "dpg-db9t153rjlhs7382ko40-a.frankfurt-postgres.render.com";
@@ -1347,7 +1348,7 @@ const databaseUrlShape = {
   hasBaseHost: /(?:@|:\/\/)base(?=[:/?#]|$)/i.test(rawDatabaseUrl),
   prefix: (rawDatabaseUrl.match(/^[a-z][a-z0-9+.-]*:\/\//i) || [rawDatabaseUrl.slice(0, Math.min(8, rawDatabaseUrl.length))])[0]
 };
-console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool), databaseHost: analyticsDatabaseHost, databaseUrlShape }));
+console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool), databaseHost: analyticsDatabaseHost, databaseUrlShape, databaseCredentialEnvKeys: Object.keys(process.env).filter(key => /^(DATABASE|POSTGRES|PGHOST|PGUSER|PGDATABASE|PGPASSWORD)/i.test(key)) }));
 if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
   console.log("Background push scanner scheduled every 60 seconds.");
   // Run once shortly after startup so the live pipeline is tested immediately after every deploy.
