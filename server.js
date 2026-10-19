@@ -1097,7 +1097,7 @@ const server = http.createServer(async (req, res) => {
       const work = liveEvents.slice(0, 36);
       let cursor = 0;
       const matches = [];
-      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, sample: null };
+      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], sample: null };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
@@ -1115,11 +1115,14 @@ const server = http.createServer(async (req, res) => {
                 sportScoreDetailDiagnostics.noSlug = (sportScoreDetailDiagnostics.noSlug || 0) + 1;
                 continue;
               }
+              if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
               const detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
                 headers: { "Accept": "application/json" },
                 signal: AbortSignal.timeout(8000)
               });
               if (!detailResponse.ok) {
+                const statusKey = String(detailResponse.status);
+                sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
                 if (detailResponse.status === 404) sportScoreDetailDiagnostics.notFound++;
                 else sportScoreDetailDiagnostics.otherErrors++;
                 continue;
