@@ -773,13 +773,23 @@ const server = http.createServer(async (req, res) => {
               const isoDate = date.slice(0,4) + "-" + date.slice(4,6) + "-" + date.slice(6,8);
               const directory = (await pitchGet("/v1/leagues"))?.data?.leagues || [];
               const normal = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-              const countryCodes = {eng:"ENG",esp:"ESP",ita:"ITA",ger:"DEU",fra:"FRA",por:"PRT",ned:"NLD",sco:"SCO",gre:"GRC",tur:"TUR",bra:"BRA",arg:"ARG",usa:"USA",mex:"MEX",aus:"AUS",bel:"BEL",aut:"AUT",sui:"CHE",den:"DNK",nor:"NOR",swe:"SWE",pol:"POL",jpn:"JPN",kor:"KOR",sau:"SAU"};
+              const countryCodes = {
+                eng:["ENG","GB","GBR","UK"],esp:["ESP"],ita:["ITA"],ger:["DEU","GER","DE"],fra:["FRA"],
+                por:["PRT","POR","PT"],ned:["NLD","NED","NL"],sco:["SCO","GB","GBR","UK"],gre:["GRC","GRE","GR"],
+                tur:["TUR"],bra:["BRA"],arg:["ARG"],usa:["USA"],mex:["MEX"],aus:["AUS"],bel:["BEL"],aut:["AUT"],
+                sui:["CHE","SUI","CH"],den:["DNK","DEN","DK"],nor:["NOR"],swe:["SWE"],pol:["POL"],jpn:["JPN"],
+                kor:["KOR"],sau:["SAU"]
+              };
               const idToCode = new Map();
               for (const code of SCOREBOARD_LEAGUES) {
                 const aliases = pitchLeagueAliases(code).map(normal);
                 if (!aliases.length) continue;
-                const candidates = directory.filter(item => aliases.some(alias => normal(item.name) === alias || normal(item.name).includes(alias) || alias.includes(normal(item.name))));
-                const chosen = candidates.find(item => item.country_code === countryCodes[code.split(".")[0]]) || candidates[0];
+                const allowed = countryCodes[code.split(".")[0]] || [];
+                const candidates = directory.filter(item =>
+                  aliases.includes(normal(item.name)) &&
+                  (!allowed.length || allowed.includes(String(item.country_code || "").toUpperCase()))
+                );
+                const chosen = candidates[0];
                 if (chosen?.id) idToCode.set(String(chosen.id), code);
               }
               const pitchBody = await pitchGet("/v1/date/" + isoDate + "?status=all");
@@ -791,11 +801,13 @@ const server = http.createServer(async (req, res) => {
                 const matchCountry = String(match.league?.country_code || match.league?.country || "").toUpperCase();
                 let code = idToCode.get(String(match.league?.id || ""));
                 if (!code && matchLeagueName) {
-                  const candidates = SCOREBOARD_LEAGUES.filter(candidate => (aliasesByCode.get(candidate) || []).some(alias => matchLeagueName === alias || matchLeagueName.includes(alias) || alias.includes(matchLeagueName)));
+                  const candidates = SCOREBOARD_LEAGUES.filter(candidate =>
+                    (aliasesByCode.get(candidate) || []).includes(matchLeagueName)
+                  );
                   code = candidates.find(candidate => {
-                    const expectedCountry = countryCodes[candidate.split(".")[0]];
-                    return !expectedCountry || !matchCountry || matchCountry === expectedCountry || matchCountry.includes(expectedCountry);
-                  }) || candidates[0];
+                    const allowed = countryCodes[candidate.split(".")[0]] || [];
+                    return !allowed.length || !matchCountry || allowed.some(value => matchCountry === value || matchCountry.includes(value));
+                  });
                 }
                 // Do not discard a real fixture just because its competition is not in our curated alias list.
                 // The UI can display these as an additional PitchAPI competition instead of silently losing live games.
