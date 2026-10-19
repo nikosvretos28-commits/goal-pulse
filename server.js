@@ -325,10 +325,14 @@ async function findPitchLeague(code) {
   const aliases = pitchLeagueAliases(code);
   if (!aliases.length) return null;
   const normal = value => String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
-  const candidates = leagues.filter(item => aliases.some(alias => normal(item.name) === alias || normal(item.name).includes(alias) || alias.includes(normal(item.name))));
+  // Match a competition only when its normalized name matches an explicit alias.
+  // Substring matching and falling back to the first result can silently map
+  // unrelated leagues (e.g. Egypt's Premier League as England's Premier League).
+  const candidates = leagues.filter(item => aliases.some(alias => normal(item.name) === normal(alias)));
   const country = code.split(".")[0];
-  const countryCodes = {eng:"ENG",esp:"ESP",ita:"ITA",ger:"DEU",fra:"FRA",por:"PRT",ned:"NLD",sco:"SCO",gre:"GRC",tur:"TUR",bra:"BRA",arg:"ARG",usa:"USA",mex:"MEX",aus:"AUS",bel:"BEL",aut:"AUT",sui:"CHE",den:"DNK",nor:"NOR",swe:"SWE",pol:"POL",jpn:"JPN",kor:"KOR",sau:"SAU"};
-  return candidates.find(item => item.country_code === countryCodes[country]) || candidates[0] || null;
+  const countryCodes = {eng:["ENG","GB","GBR","UK"],esp:["ESP"],ita:["ITA"],ger:["DEU","GER","DE"],fra:["FRA"],por:["PRT","POR","PT"],ned:["NLD","NED","NL"],sco:["SCO","GB","GBR","UK"],gre:["GRC","GRE","GR"],tur:["TUR"],bra:["BRA"],arg:["ARG"],usa:["USA"],mex:["MEX"],aus:["AUS"],bel:["BEL"],aut:["AUT"],sui:["CHE","SUI","CH"],den:["DNK","DEN","DK"],nor:["NOR"],swe:["SWE"],pol:["POL"],jpn:["JPN"],kor:["KOR"],sau:["SAU"]};
+  const allowed = countryCodes[country] || [];
+  return candidates.find(item => allowed.includes(String(item.country_code || "").toUpperCase())) || null;
 }
 async function pitchGet(apiPath) {
   const key = process.env.PITCH_API_KEY;
