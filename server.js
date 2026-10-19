@@ -119,17 +119,12 @@ const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
 function resolveDatabaseUrl(raw) {
   if (!raw) return "";
-  try {
-    const parsed = new URL(raw);
-    // Repair the two malformed host forms previously seen in the Render environment.
-    if (parsed.hostname === "base" || parsed.hostname === "dpg-db9t153rjlhs7382ko40-a") {
-      parsed.hostname = "dpg-db9t153rjlhs7382ko40-a.frankfurt-postgres.render.com";
-    }
-    return parsed.toString();
-  } catch (error) {
-    console.error("DATABASE_URL is not a valid URL; database persistence is disabled.");
-    return "";
-  }
+  // Replace only the hostname text; do not parse or log credentials, which may contain
+  // URL-reserved characters and must remain private.
+  const renderHost = "dpg-db9t153rjlhs7382ko40-a.frankfurt-postgres.render.com";
+  return raw
+    .replace(/@base(?=[:/])/i, "@" + renderHost)
+    .replace(/@dpg-db9t153rjlhs7382ko40-a(?=[:/])/i, "@" + renderHost);
 }
 const resolvedDatabaseUrl = resolveDatabaseUrl(process.env.DATABASE_URL || "");
 const analyticsPool = resolvedDatabaseUrl && Pool ? new Pool({
