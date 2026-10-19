@@ -821,15 +821,20 @@ const server = http.createServer(async (req, res) => {
                 const statusParts = typeof rawStatus === "string"
                   ? [rawStatus]
                   : rawStatus && typeof rawStatus === "object"
-                    ? Object.entries(rawStatus).filter(([key, value]) => /status|name|description|short|long|type|state|period|phase|elapsed|minute|live/i.test(key) && value != null).map(([key, value]) => key + " " + (typeof value === "object" ? JSON.stringify(value) : String(value)))
+                    ? Object.entries(rawStatus).filter(([key, value]) => /status|name|description|short|long|type|state|period|phase|elapsed|minute|live|code|abbrev/i.test(key) && value != null).map(([key, value]) => key + " " + (typeof value === "object" ? JSON.stringify(value) : String(value)))
                     : [];
-                const statusText = [...statusParts, match.status_name, match.status_short, match.status_long, match.status_code, match.period, match.phase, match.live_status]
-                  .filter(value => value != null).join(" ").toLowerCase().replace(/[_-]+/g, " ");
+                const nestedStatus = rawStatus && typeof rawStatus === "object"
+                  ? [rawStatus.code, rawStatus.short_name, rawStatus.shortName, rawStatus.abbreviation, rawStatus.description, rawStatus.name, rawStatus.state, rawStatus.type?.name, rawStatus.type?.shortName, rawStatus.type?.state]
+                  : [];
+                const statusText = [...statusParts, ...nestedStatus, match.status_name, match.status_short, match.status_long, match.status_code, match.period, match.phase, match.live_status, match.time?.status, match.time?.period]
+                  .filter(value => value != null).map(value => typeof value === "object" ? JSON.stringify(value) : String(value)).join(" ").toLowerCase().replace(/[_-]+/g, " ");
                 const isFinished = /finished|full\s*time|after\s*extra|ended|complete|\bft\b|\baet\b|\bpen\b/.test(statusText);
                 const isNotStarted = /not\s*started|not\s*begin|scheduled|upcoming|fixture|to\s*be\s*played|kick\s*off|tbd|postponed|cancelled|abandoned/.test(statusText);
-                const explicitLive = /live|in\s*play|in\s*progress|playing|started|first\s*half|second\s*half|1st\s*half|2nd\s*half|half\s*time|half\s*ended|extra\s*time|penalt|\b1h\b|\b2h\b|\bht\b|\bint\b|\bperiod\s*[12]\b/.test(statusText);
-                const hasElapsedMinute = match.minute != null && String(match.minute).trim() !== "" && Number.isFinite(Number(match.minute)) && Number(match.minute) > 0;
-                const liveFlag = match.is_live === true || match.live === true || match.in_play === true;
+                const explicitLive = /live|in\s*play|inplay|in\s*progress|inprogress|playing|started|first\s*half|second\s*half|1st\s*half|2nd\s*half|half\s*time|half\s*ended|extra\s*time|penalt|\b1h\b|\b2h\b|\bht\b|\bint\b|\bperiod\s*[12]\b/.test(statusText);
+                const minuteValue = match.minute ?? match.elapsed ?? match.time?.elapsed ?? match.time?.minute ?? null;
+                const hasElapsedMinute = minuteValue != null && String(minuteValue).trim() !== "" && Number.isFinite(Number(minuteValue)) && Number(minuteValue) > 0;
+                const truthyLive = value => value === true || value === 1 || /^(true|1|yes|live)$/i.test(String(value ?? "").trim());
+                const liveFlag = truthyLive(match.is_live) || truthyLive(match.live) || truthyLive(match.in_play) || truthyLive(rawStatus?.is_live) || truthyLive(rawStatus?.live);
                 // Explicit scheduled/not-started status must win over inconsistent live flags from the provider.
                 const state = isFinished ? "post" : isNotStarted ? "pre" : (explicitLive || liveFlag || hasElapsedMinute) ? "in" : "pre";
                 const status = { type: { state, completed: state === "post" }, displayClock: match.minute != null ? String(match.minute) + "'" : String(match.status || "") };
