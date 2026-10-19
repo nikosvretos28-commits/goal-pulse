@@ -1,9 +1,23 @@
 services:
   - type: web
-    name: goal-pulse
+    name: goal-pulse-analytics
     runtime: node
     plan: free
     region: frankfurt
     buildCommand: npm install
     startCommand: npm start
     autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: goal-pulse-memberships
+          property: connectionString
+
+databases:
+  - name: goal-pulse-memberships
+    databaseName: goal_pulse_memberships
+    user: goal_pulse_memberships_user
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "18"
+    ipAllowList: []
