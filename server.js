@@ -834,7 +834,10 @@ const server = http.createServer(async (req, res) => {
                 finalFeeds = knownFeeds.concat(extraFeeds);
                 successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
                 const mappedMatches = finalFeeds.reduce((n, feed) => n + feed.events.length, 0);
-                console.log("Scoreboard using ESPN+PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, states: [...byCode.values()].flat().reduce((acc, event) => { const state = event.status?.type?.state || "unknown"; acc[state] = (acc[state] || 0) + 1; return acc; }, {}), sample: [...byCode.values()].flat().slice(0, 4).map(event => ({ name: event.name, state: event.status?.type?.state, clock: event.status?.displayClock })) }));
+                const mappedEvents = [...byCode.values()].flat();
+                const rawStatusCounts = sourceMatches.reduce((acc, match) => { const raw = match.status; const key = typeof raw === "string" ? raw : raw == null ? "(missing)" : JSON.stringify(raw); const label = String(key).slice(0, 100); acc[label] = (acc[label] || 0) + 1; return acc; }, {});
+                const mergedEvents = finalFeeds.flatMap(feed => feed.events || []);
+                console.log("Scoreboard using ESPN+PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, pitchStates: mappedEvents.reduce((acc, event) => { const state = event.status?.type?.state || "unknown"; acc[state] = (acc[state] || 0) + 1; return acc; }, {}), mergedStates: mergedEvents.reduce((acc, event) => { const state = event.status?.type?.state || "unknown"; acc[state] = (acc[state] || 0) + 1; return acc; }, {}), rawStatusCounts, sample: sourceMatches.slice(0, 8).map(match => ({ league: match.league?.name, home: match.home_team?.name, away: match.away_team?.name, status: match.status, status_name: match.status_name, minute: match.minute, is_live: match.is_live, live: match.live, in_play: match.in_play })), mappedSample: mappedEvents.slice(0, 4).map(event => ({ name: event.name, state: event.status?.type?.state, clock: event.status?.displayClock })) }));
               }
             } catch (error) {
               console.error("PitchAPI scoreboard fallback failed:", error.message);
