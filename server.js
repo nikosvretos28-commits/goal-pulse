@@ -717,7 +717,9 @@ const server = http.createServer(async (req, res) => {
       let sharedRequest = scoreboardInflight.get(date);
       if (!sharedRequest) {
         sharedRequest = (async () => {
-          const feeds = await Promise.all(SCOREBOARD_LEAGUES.map(async code => {
+          const feeds = [];
+          for (let i = 0; i < SCOREBOARD_LEAGUES.length; i += 12) {
+            feeds.push(...await Promise.all(SCOREBOARD_LEAGUES.slice(i, i + 12).map(async code => {
             try {
               const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
                 headers: { "Accept": "application/json" },
@@ -729,7 +731,8 @@ const server = http.createServer(async (req, res) => {
             } catch (error) {
               return { code, events: [], ok: false, error: error.message || "request failed" };
             }
-          }));
+            })));
+          }
           let finalFeeds = feeds;
           let successfulFeeds = feeds.filter(feed => feed.ok).length;
           if (process.env.PITCH_API_KEY) {
