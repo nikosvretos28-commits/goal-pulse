@@ -115,6 +115,7 @@ const ESPN_UNSUPPORTED_LEAGUES = new Set([
 ]);
 const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
+const sportScoreWidgetSlugCache = { at: 0, map: new Map() };
 const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
 function resolveDatabaseUrl(raw) {
@@ -1059,6 +1060,30 @@ const server = http.createServer(async (req, res) => {
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
         .filter(event => (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
         .map(event => ({ event, leagueCode: feed.code })));
+      const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
+      if (sportScoreLiveExists && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
+        try {
+          const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&limit=50&src=goal-pulse", {
+            headers: { "Accept": "application/json" },
+            signal: AbortSignal.timeout(8000)
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+            const map = new Map();
+            for (const match of (payload.matches || [])) {
+              if (!match.slug || !match.home || !match.away) continue;
+              const home = normalizeTeam(match.home), away = normalizeTeam(match.away);
+              if (home && away) map.set(home + "|" + away, String(match.slug));
+            }
+            sportScoreWidgetSlugCache.map = map;
+            sportScoreWidgetSlugCache.at = Date.now();
+            console.log("SportScore detail slug map refreshed:", JSON.stringify({ matches: (payload.matches || []).length, slugs: map.size }));
+          }
+        } catch (error) {
+          console.warn("SportScore detail slug map refresh failed:", error.message || "unknown error");
+        }
+      }
       const work = liveEvents.slice(0, 36);
       let cursor = 0;
       const matches = [];
@@ -1069,7 +1094,17 @@ const server = http.createServer(async (req, res) => {
           const event = item.event;
           try {
             if (String(event.id).startsWith("sportscore:")) {
-              const slug = String(event.id).slice("sportscore:".length);
+              const suffix = String(event.id).slice("sportscore:".length);
+              const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
+              const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
+              const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const pair = normalizeTeam(homeName) + "|" + normalizeTeam(awayName);
+              const reversePair = normalizeTeam(awayName) + "|" + normalizeTeam(homeName);
+              const slug = sportScoreWidgetSlugCache.map.get(pair) || sportScoreWidgetSlugCache.map.get(reversePair) || (/^\\d+$/.test(suffix) ? "" : suffix);
+              if (!slug) {
+                sportScoreDetailDiagnostics.noSlug = (sportScoreDetailDiagnostics.noSlug || 0) + 1;
+                continue;
+              }
               const detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
                 headers: { "Accept": "application/json" },
                 signal: AbortSignal.timeout(8000)
@@ -1101,8 +1136,6 @@ const server = http.createServer(async (req, res) => {
                 inspect(root);
                 sportScoreDetailDiagnostics.sample = { eventId: String(event.id), rootKeys: Object.keys(root || {}), paths: paths.slice(0, 40) };
               }
-              const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
-              const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
               const statsRows = [];
               const visited = new Set();
               const walk = (node, depth = 0) => {
