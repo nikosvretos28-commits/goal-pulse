@@ -800,12 +800,31 @@ const server = http.createServer(async (req, res) => {
                 byCode.get(code).push(event);
               }
               if (sourceMatches.length) {
+                const normalizeTeam = value => normal(value).replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/\s+/g, " ").trim();
+                const teamPair = event => {
+                  const comp = (event.competitions || [])[0] || {};
+                  const teams = comp.competitors || [];
+                  const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
+                  const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
+                  const homeName = normalizeTeam(home.team?.displayName || home.team?.name || "");
+                  const awayName = normalizeTeam(away.team?.displayName || away.team?.name || "");
+                  return homeName && awayName ? homeName + "||" + awayName : "";
+                };
                 const knownFeeds = SCOREBOARD_LEAGUES.map(code => {
                   const existing = feeds.find(feed => feed.code === code);
-                  const merged = new Map();
-                  for (const event of existing?.events || []) merged.set(String(event.id || event.date + ":" + event.name), event);
-                  for (const event of byCode.get(code) || []) merged.set(String(event.id || event.date + ":" + event.name), event);
-                  const events = [...merged.values()];
+                  const events = [];
+                  const ids = new Set();
+                  const pairs = new Set();
+                  const add = event => {
+                    const id = String(event.id || "");
+                    const pair = teamPair(event);
+                    if ((id && ids.has(id)) || (pair && pairs.has(pair))) return;
+                    events.push(event);
+                    if (id) ids.add(id);
+                    if (pair) pairs.add(pair);
+                  };
+                  for (const event of existing?.events || []) add(event);
+                  for (const event of byCode.get(code) || []) add(event);
                   return { code, events, ok: Boolean(existing?.ok || events.length) };
                 });
                 const knownCodes = new Set(SCOREBOARD_LEAGUES);
@@ -815,7 +834,7 @@ const server = http.createServer(async (req, res) => {
                 finalFeeds = knownFeeds.concat(extraFeeds);
                 successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
                 const mappedMatches = finalFeeds.reduce((n, feed) => n + feed.events.length, 0);
-                console.log("Scoreboard using PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, states: [...byCode.values()].flat().reduce((acc, event) => { const state = event.status?.type?.state || "unknown"; acc[state] = (acc[state] || 0) + 1; return acc; }, {}), sample: [...byCode.values()].flat().slice(0, 4).map(event => ({ name: event.name, state: event.status?.type?.state, clock: event.status?.displayClock })) }));
+                console.log("Scoreboard using ESPN+PitchAPI:", JSON.stringify({ date, sourceMatches: sourceMatches.length, mappedMatches, states: [...byCode.values()].flat().reduce((acc, event) => { const state = event.status?.type?.state || "unknown"; acc[state] = (acc[state] || 0) + 1; return acc; }, {}), sample: [...byCode.values()].flat().slice(0, 4).map(event => ({ name: event.name, state: event.status?.type?.state, clock: event.status?.displayClock })) }));
               }
             } catch (error) {
               console.error("PitchAPI scoreboard fallback failed:", error.message);
