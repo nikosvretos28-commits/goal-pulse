@@ -739,7 +739,10 @@ const server = http.createServer(async (req, res) => {
           // in the canonical league list; PitchAPI can still supply their fixtures.
           const ESPN_UNSUPPORTED_LEAGUES = new Set([
             "pol.1", "kor.1", "sau.1", "ger.3", "fra.3", "por.2",
-            "bel.2", "pol.2", "usa.2", "gre.cup", "eng.6", "eng.7"
+            "bel.2", "pol.2", "usa.2", "gre.cup", "eng.6", "eng.7",
+            "esp.3", "ger.4", "fra.4", "por.3", "gre.2", "jpn.2",
+            "kor.2", "aus.2", "conmebol.copa_america", "concacaf.nations",
+            "ita.w.1", "ger.w.1"
           ]);
           const espnLeagues = SCOREBOARD_LEAGUES.filter(code => !ESPN_UNSUPPORTED_LEAGUES.has(code));
           for (let i = 0; i < espnLeagues.length; i += 12) {
