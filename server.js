@@ -120,6 +120,15 @@ const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
 function resolveDatabaseUrl(raw) {
   if (!raw) return "";
+  // Render's DATABASE_URL was configured as the database password only.
+  // Rebuild the URI using the known database metadata and Render's private hostname.
+  const trimmed = String(raw).trim();
+  if (/^[a-f0-9]{32}$/i.test(trimmed)) {
+    const username = process.env.PGUSER || "goal_pulse_memberships_user";
+    const database = process.env.PGDATABASE || "goal_pulse_memberships";
+    const internalHost = "dpg-db9t153rjlhs7382ko40-a";
+    return "postgresql://" + encodeURIComponent(username) + ":" + trimmed + "@" + internalHost + "/" + encodeURIComponent(database);
+  }
   // Normalize only the host. Keep credentials private and never log the full URL.
   const renderHost = "dpg-db9t153rjlhs7382ko40-a.frankfurt-postgres.render.com";
   try {
