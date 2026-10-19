@@ -1078,7 +1078,7 @@ const server = http.createServer(async (req, res) => {
             }
             sportScoreWidgetSlugCache.map = map;
             sportScoreWidgetSlugCache.at = Date.now();
-            console.log("SportScore detail slug map refreshed:", JSON.stringify({ matches: (payload.matches || []).length, slugs: map.size }));
+            console.log("SportScore detail slug map refreshed:", JSON.stringify({ rootKeys: Object.keys(payload || {}), matches: (payload.matches || []).length, slugs: map.size, firstMatchKeys: Object.keys((payload.matches || [])[0] || {}), firstMatch: (payload.matches || []).slice(0, 2).map(match => ({ home: match.home, away: match.away, slug: match.slug, id: match.id, home_team: match.home_team, away_team: match.away_team, status: match.status })) }));
           }
         } catch (error) {
           console.warn("SportScore detail slug map refresh failed:", error.message || "unknown error");
