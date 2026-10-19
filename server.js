@@ -125,8 +125,8 @@ function resolveDatabaseUrl(raw) {
   return raw
     // Handle both standard user@host URLs and the malformed host-only "base" URL
     // that Render logs showed as ENOTFOUND base. Never alter credentials or log the URL.
-    .replace(/@base(?=[:/])/i, "@" + renderHost)
-    .replace(/:\/\/base(?=[:/])/i, "://" + renderHost)
+    .replace(/@base(?=[:/?#]|$)/i, "@" + renderHost)
+    .replace(/:\/\/base(?=[:/?#]|$)/i, "://" + renderHost)
     .replace(/@dpg-db9t153rjlhs7382ko40-a(?=[:/])/i, "@" + renderHost)
     .replace(/:\/\/dpg-db9t153rjlhs7382ko40-a(?=[:/])/i, "://" + renderHost);
 }
