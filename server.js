@@ -488,7 +488,19 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/health") {
-    return send(res, 200, { ok: true, pitchApiConfigured: Boolean(process.env.PITCH_API_KEY), persistentAnalyticsConfigured: Boolean(analyticsPool) });
+    let databaseConnected = false;
+    if (analyticsPool) {
+      try { await analyticsPool.query("SELECT 1"); databaseConnected = true; }
+      catch (error) { console.error("Health check database query failed:", error.code || error.message); }
+    }
+    return send(res, databaseConnected ? 200 : 503, {
+      ok: databaseConnected,
+      pitchApiConfigured: Boolean(process.env.PITCH_API_KEY),
+      persistentAnalyticsConfigured: Boolean(analyticsPool),
+      databaseConnected,
+      pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
+      pushScannerEnabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true")
+    });
   }
 
   if (url.pathname === "/api/league-standings" && req.method === "GET") {
