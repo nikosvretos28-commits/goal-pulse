@@ -1062,6 +1062,7 @@ const server = http.createServer(async (req, res) => {
       const work = liveEvents.slice(0, 36);
       let cursor = 0;
       const matches = [];
+      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, sample: null };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
@@ -1073,9 +1074,33 @@ const server = http.createServer(async (req, res) => {
                 headers: { "Accept": "application/json" },
                 signal: AbortSignal.timeout(8000)
               });
-              if (!detailResponse.ok) continue;
+              if (!detailResponse.ok) {
+                if (detailResponse.status === 404) sportScoreDetailDiagnostics.notFound++;
+                else sportScoreDetailDiagnostics.otherErrors++;
+                continue;
+              }
               const detail = await detailResponse.json();
+              sportScoreDetailDiagnostics.ok++;
               const root = detail.match || detail.data || detail.fixture || detail;
+              if (!sportScoreDetailDiagnostics.sample) {
+                const paths = [];
+                const inspect = (node, path = "", depth = 0) => {
+                  if (!node || typeof node !== "object" || depth > 5 || paths.length >= 50) return;
+                  if (Array.isArray(node)) {
+                    if (node.length) inspect(node[0], path + "[0]", depth + 1);
+                    return;
+                  }
+                  for (const [key, value] of Object.entries(node)) {
+                    const next = path ? path + "." + key : key;
+                    if (/stat|shot|corner|attack|possession|expected|home|away|slug|match/i.test(key)) {
+                      paths.push({ path: next, type: Array.isArray(value) ? "array" : typeof value, sample: value == null || typeof value !== "object" ? value : undefined });
+                    }
+                    if (value && typeof value === "object") inspect(value, next, depth + 1);
+                  }
+                };
+                inspect(root);
+                sportScoreDetailDiagnostics.sample = { eventId: String(event.id), rootKeys: Object.keys(root || {}), paths: paths.slice(0, 40) };
+              }
               const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
               const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
               const statsRows = [];
@@ -1187,6 +1212,13 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
+      if (work.some(item => String(item.event.id).startsWith("sportscore:"))) {
+        console.log("SportScore live metrics detail diagnostic:", JSON.stringify({
+          attempted: work.filter(item => String(item.event.id).startsWith("sportscore:")).length,
+          ...sportScoreDetailDiagnostics,
+          statsAvailable: matches.filter(match => String(match.eventId).startsWith("sportscore:") && match.statsAvailable).length
+        }));
+      }
       const persisted = await persistRollingTrends(matches, date);
       if (!persisted) addRollingTrends(matches);
       const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory: persisted ? "postgresql; retained across service restarts" : "in-memory fallback; resets on service restart" };
