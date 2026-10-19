@@ -1077,7 +1077,9 @@ const server = http.createServer(async (req, res) => {
               if (!matchSlug && match.url) {
                 try {
                   const pathname = new URL(String(match.url), "https://sportscore.com").pathname;
-                  matchSlug = pathname.split("/").filter(Boolean).pop() || "";
+                  const segments = pathname.split("/").filter(Boolean);
+                  const matchIndex = segments.indexOf("match");
+                  matchSlug = matchIndex >= 0 ? (segments[matchIndex + 1] || "") : (segments[segments.length - 1] || "");
                 } catch {}
               }
               if (!matchSlug) continue;
