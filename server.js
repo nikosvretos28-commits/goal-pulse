@@ -1086,7 +1086,7 @@ const server = http.createServer(async (req, res) => {
             }
             sportScoreWidgetSlugCache.map = map;
             sportScoreWidgetSlugCache.at = Date.now();
-            console.log("SportScore detail slug map refreshed:", JSON.stringify({ rootKeys: Object.keys(payload || {}), matches: (payload.matches || []).length, slugs: map.size, firstMatchKeys: Object.keys((payload.matches || [])[0] || {}), firstMatch: (payload.matches || []).slice(0, 2).map(match => ({ home: match.home, away: match.away, slug: match.slug, id: match.id, home_team: match.home_team, away_team: match.away_team, status: match.status })) }));
+            console.log("SportScore detail slug map refreshed:", JSON.stringify({ rootKeys: Object.keys(payload || {}), matches: (payload.matches || []).length, slugs: map.size, firstMatchKeys: Object.keys((payload.matches || [])[0] || {}), firstMatch: (payload.matches || []).slice(0, 2).map(match => ({ home: match.home, away: match.away, slug: match.slug, id: match.id, url: match.url, status: match.status })) }));
           }
         } catch (error) {
           console.warn("SportScore detail slug map refresh failed:", error.message || "unknown error");
@@ -1299,9 +1299,29 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool) }));
+const analyticsDatabaseHost = (() => { try { return resolvedDatabaseUrl ? new URL(resolvedDatabaseUrl).hostname : "unset"; } catch { return resolvedDatabaseUrl ? "invalid-url" : "unset"; } })();
+console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool), databaseHost: analyticsDatabaseHost }));
 if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
   console.log("Background push scanner scheduled every 60 seconds.");
+  // Run once shortly after startup so the live pipeline is tested immediately after every deploy.
+  setTimeout(async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:" + PORT + "/api/push/scan", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + PUSH_SCAN_TOKEN },
+        signal: AbortSignal.timeout(55000)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) console.error("Startup push scan returned HTTP " + response.status + ": " + (result.detail || result.error || "unknown error"));
+      else console.log("Startup push scan completed:", JSON.stringify({
+        liveMatches: Number(result.liveMatches || 0), statsMatches: Number(result.statsMatches || 0),
+        checked: Number(result.checked || 0), candidates: Number(result.candidates || 0),
+        deliveries: Number(result.deliveries || 0), date: result.date || null
+      }));
+    } catch (error) {
+      console.error("Startup push scan request failed:", error.message || "unknown error");
+    }
+  }, 5000);
   const backgroundScanTimer = setInterval(async () => {
     try {
       const response = await fetch("http://127.0.0.1:" + PORT + "/api/push/scan", {
