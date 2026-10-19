@@ -732,8 +732,8 @@ const server = http.createServer(async (req, res) => {
           }));
           let finalFeeds = feeds;
           let successfulFeeds = feeds.filter(feed => feed.ok).length;
-          if (successfulFeeds === 0) {
-            // ESPN blocks requests from this deployment; use the configured PitchAPI source.
+          if (successfulFeeds === 0 || feeds.every(feed => feed.events.length === 0)) {
+            // ESPN may return HTTP 200 with empty event lists from this deployment; use PitchAPI whenever it yields no fixtures.
             try {
               const isoDate = date.slice(0,4) + "-" + date.slice(4,6) + "-" + date.slice(6,8);
               const directory = (await pitchGet("/v1/leagues"))?.data?.leagues || [];
