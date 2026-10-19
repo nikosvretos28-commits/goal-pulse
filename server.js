@@ -958,7 +958,17 @@ const server = http.createServer(async (req, res) => {
                 const toScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : String(Number(value));
                 const homeScore = match.home_score ?? match.homeScore ?? match.scores?.home ?? match.score?.home;
                 const awayScore = match.away_score ?? match.awayScore ?? match.scores?.away ?? match.score?.away;
-                const slugOrId = match.slug || match.id || match.fixture_id || (matchTime + ":" + homeName + ":" + awayName);
+                const normalizeSlugPart = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                let matchSlug = match.slug || match.match_slug || match.matchSlug || "";
+                if (!matchSlug && (match.url || match.match_url || match.href)) {
+                  try {
+                    const pathname = new URL(String(match.url || match.match_url || match.href), "https://sportscore.com").pathname;
+                    const segments = pathname.split("/").filter(Boolean);
+                    const matchIndex = segments.indexOf("match");
+                    matchSlug = matchIndex >= 0 ? (segments[matchIndex + 1] || "") : (segments[segments.length - 1] || "");
+                  } catch {}
+                }
+                const slugOrId = matchSlug || match.id || match.fixture_id || (normalizeSlugPart(homeName) + "-vs-" + normalizeSlugPart(awayName));
                 const eventId = "sportscore:" + String(slugOrId);
                 if (seenSportScore.has(eventId)) continue;
                 seenSportScore.add(eventId);
@@ -1110,16 +1120,31 @@ const server = http.createServer(async (req, res) => {
               const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const pair = normalizeTeam(homeName) + "|" + normalizeTeam(awayName);
               const reversePair = normalizeTeam(awayName) + "|" + normalizeTeam(homeName);
-              const slug = sportScoreWidgetSlugCache.map.get(pair) || sportScoreWidgetSlugCache.map.get(reversePair) || (/^\d+$/.test(suffix) ? "" : suffix);
+              let slug = sportScoreWidgetSlugCache.map.get(pair) || sportScoreWidgetSlugCache.map.get(reversePair) || (/^\d+$/.test(suffix) || suffix.includes(":") ? "" : suffix);
               if (!slug) {
                 sportScoreDetailDiagnostics.noSlug = (sportScoreDetailDiagnostics.noSlug || 0) + 1;
                 continue;
               }
               if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
-              const detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
+              let detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
                 headers: { "Accept": "application/json" },
                 signal: AbortSignal.timeout(8000)
               });
+              if (detailResponse.status === 404 && slug.includes("-vs-")) {
+                const parts = slug.split("-vs-");
+                if (parts.length === 2) {
+                  const reverseSlug = parts[1] + "-vs-" + parts[0];
+                  const retryResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(reverseSlug) + "&src=goal-pulse", {
+                    headers: { "Accept": "application/json" },
+                    signal: AbortSignal.timeout(8000)
+                  });
+                  if (retryResponse.ok) { slug = reverseSlug; detailResponse = retryResponse; }
+                  else {
+                    const statusKey = String(retryResponse.status);
+                    sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
+                  }
+                }
+              }
               if (!detailResponse.ok) {
                 const statusKey = String(detailResponse.status);
                 sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
