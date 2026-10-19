@@ -919,68 +919,86 @@ const server = http.createServer(async (req, res) => {
             }
           }
 
-          // SportScore is an optional third scoreboard source. Treat it as score/fixture
-          // coverage only; it is never used as a substitute for verified match statistics.
+          // SportScore's documented fixtures endpoint supports explicit live/upcoming filters.
+          // Use it for broader coverage; stats still must come from verified metrics providers.
           try {
-            const sportScoreUrl = "https://sportscore.com/api/widget/matches/?sport=football&limit=50&src=goal-pulse";
-            const sportScoreResponse = await fetch(sportScoreUrl, {
-              headers: { "Accept": "application/json" },
-              signal: AbortSignal.timeout(7000)
-            });
-            if (sportScoreResponse.ok) {
-              const sportScoreBody = await sportScoreResponse.json();
-              const sportScoreMatches = Array.isArray(sportScoreBody.matches) ? sportScoreBody.matches : [];
-              const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
-              const sportScoreEvents = [];
-              for (const match of sportScoreMatches) {
-                const matchDate = match.time ? new Date(match.time) : null;
+            const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+            const sportScoreResponses = await Promise.all(["live", "upcoming"].map(async status => {
+              const endpoint = "https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
+                encodeURIComponent(requestedIsoDate) + "&status=" + status + "&limit=200&src=goal-pulse";
+              try {
+                const response = await fetch(endpoint, { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000) });
+                if (!response.ok) return { status, ok: false, httpStatus: response.status, matches: [] };
+                const body = await response.json();
+                const matches = Array.isArray(body.matches) ? body.matches :
+                  Array.isArray(body.data) ? body.data :
+                  Array.isArray(body.fixtures) ? body.fixtures : [];
+                return { status, ok: true, matches };
+              } catch (error) {
+                return { status, ok: false, error: error.message || "request failed", matches: [] };
+              }
+            }));
+            const sportScoreEvents = [];
+            const seenSportScore = new Set();
+            for (const result of sportScoreResponses) {
+              for (const match of result.matches) {
+                const matchTime = match.time || match.start_time || match.starting_at || match.date || match.kickoff;
+                const matchDate = matchTime ? new Date(matchTime) : null;
                 if (!matchDate || !Number.isFinite(matchDate.getTime()) || matchDate.toISOString().slice(0, 10) !== requestedIsoDate) continue;
-                const homeName = String(match.home || "").trim();
-                const awayName = String(match.away || "").trim();
+                const homeName = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || match.participants?.find(p => p.meta?.location === "home")?.name || "").trim();
+                const awayName = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || match.participants?.find(p => p.meta?.location === "away")?.name || "").trim();
                 if (!homeName || !awayName) continue;
-                const statusText = String(match.status_text || match.status || "").toLowerCase();
-                const state = /live|in play|in-play|playing|1st half|2nd half|half time|extra time|penalt/.test(statusText)
+                const rawStatus = String(match.status_text || match.status || match.state || result.status || "").toLowerCase();
+                const state = result.status === "live" || /live|in play|in-play|playing|1st half|2nd half|half time|extra time|penalt|in_progress/.test(rawStatus)
                   ? "in"
-                  : /finished|full time|ended|complete|after extra|\bft\b|\baet\b|\bpen\b/.test(statusText)
-                    ? "post"
-                    : "pre";
+                  : /finished|full time|ended|complete|after extra|\bft\b|\baet\b|\bpen\b/.test(rawStatus)
+                    ? "post" : "pre";
+                if (result.status === "live" && state !== "in") continue;
                 const toScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : String(Number(value));
-                const status = { type: { state, completed: state === "post" }, displayClock: String(match.status_text || "") };
+                const homeScore = match.home_score ?? match.homeScore ?? match.scores?.home ?? match.score?.home;
+                const awayScore = match.away_score ?? match.awayScore ?? match.scores?.away ?? match.score?.away;
+                const slugOrId = match.slug || match.id || match.fixture_id || (matchTime + ":" + homeName + ":" + awayName);
+                const eventId = "sportscore:" + String(slugOrId);
+                if (seenSportScore.has(eventId)) continue;
+                seenSportScore.add(eventId);
+                const status = { type: { state, completed: state === "post" }, displayClock: String(match.minute || match.status_text || (state === "in" ? "LIVE" : "")) };
                 sportScoreEvents.push({
-                  id: "sportscore:" + String(match.slug || match.time + ":" + homeName + ":" + awayName),
-                  date: match.time,
-                  name: homeName + " vs " + awayName,
-                  leagueName: "SportScore",
-                  status,
-                  competitions: [{ status, competitors: [
-                    { homeAway: "home", team: { displayName: homeName }, score: toScore(match.home_score) },
-                    { homeAway: "away", team: { displayName: awayName }, score: toScore(match.away_score) }
+                  id: eventId, date: matchDate.toISOString(), name: homeName + " vs " + awayName,
+                  leagueName: String(match.competition?.name || match.league?.name || match.competition_name || match.league_name || "Football"),
+                  status, competitions: [{ status, competitors: [
+                    { homeAway: "home", team: { displayName: homeName }, score: toScore(homeScore) },
+                    { homeAway: "away", team: { displayName: awayName }, score: toScore(awayScore) }
                   ] }]
                 });
               }
-              if (sportScoreEvents.length) {
-                const normalizeSportScoreTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
-                const existingPairs = new Set(finalFeeds.flatMap(feed => feed.events || []).map(event => {
-                  const teams = (event.competitions || [])[0]?.competitors || [];
-                  const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
-                  const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
-                  const h = normalizeSportScoreTeam(home.team?.displayName || home.team?.name);
-                  const a = normalizeSportScoreTeam(away.team?.displayName || away.team?.name);
-                  return h && a ? h + "||" + a : "";
-                }).filter(Boolean));
-                const missingSportScoreEvents = sportScoreEvents.filter(event => {
-                  const teams = event.competitions[0].competitors;
-                  const pair = normalizeSportScoreTeam(teams[0].team.displayName) + "||" + normalizeSportScoreTeam(teams[1].team.displayName);
-                  return pair !== "||" && !existingPairs.has(pair);
-                });
-                if (missingSportScoreEvents.length) {
-                  finalFeeds = finalFeeds.concat([{ code: "sportscore", events: missingSportScoreEvents, ok: true }]);
-                  successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
-                  console.log("SportScore added uncovered fixtures:", JSON.stringify({ date, received: sportScoreMatches.length, sameDate: sportScoreEvents.length, added: missingSportScoreEvents.length }));
-                }
+            }
+            if (sportScoreEvents.length) {
+              const normalizeSportScoreTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const existingPairs = new Set(finalFeeds.flatMap(feed => feed.events || []).map(event => {
+                const teams = (event.competitions || [])[0]?.competitors || [];
+                const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
+                const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
+                const h = normalizeSportScoreTeam(home.team?.displayName || home.team?.name);
+                const a = normalizeSportScoreTeam(away.team?.displayName || away.team?.name);
+                return h && a ? h + "||" + a : "";
+              }).filter(Boolean));
+              const missingSportScoreEvents = sportScoreEvents.filter(event => {
+                const teams = event.competitions[0].competitors;
+                const pair = normalizeSportScoreTeam(teams[0].team.displayName) + "||" + normalizeSportScoreTeam(teams[1].team.displayName);
+                return pair !== "||" && !existingPairs.has(pair);
+              });
+              if (missingSportScoreEvents.length) {
+                finalFeeds = finalFeeds.concat([{ code: "sportscore", events: missingSportScoreEvents, ok: true }]);
+                successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
               }
+              console.log("SportScore live/upcoming fixtures:", JSON.stringify({
+                date, liveReceived: sportScoreResponses.find(x => x.status === "live")?.matches.length || 0,
+                upcomingReceived: sportScoreResponses.find(x => x.status === "upcoming")?.matches.length || 0,
+                mapped: sportScoreEvents.length, added: missingSportScoreEvents.length,
+                errors: sportScoreResponses.filter(x => !x.ok).map(x => ({ status: x.status, httpStatus: x.httpStatus, error: x.error }))
+              }));
             } else {
-              console.warn("SportScore scoreboard skipped:", "HTTP " + sportScoreResponse.status);
+              console.warn("SportScore returned no mappable fixtures:", JSON.stringify(sportScoreResponses.map(x => ({ status: x.status, ok: x.ok, received: x.matches.length, httpStatus: x.httpStatus, error: x.error }))));
             }
           } catch (error) {
             console.warn("SportScore scoreboard unavailable; keeping existing feeds:", error.message || "request failed");
