@@ -632,12 +632,22 @@ const server = http.createServer(async (req, res) => {
             "SELECT alert_id,payload FROM alert_history WHERE payload->>'source'='server-push' AND payload->>'market'='πιθανό γκολ' AND payload->>'outcome'='εκκρεμεί' AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
           );
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
+          const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const completedScoreboardByTeams = new Map();
+          for (const event of scoreboardEvents) {
+            const competition = event.competitions?.[0];
+            const competitors = competition?.competitors || [];
+            const home = competitors.find(team => team.homeAway === "home") || competitors[0];
+            const away = competitors.find(team => team.homeAway === "away") || competitors[1];
+            const state = String(event.status?.type?.state || "").toLowerCase();
+            const statusLabel = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
+            if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusLabel))) continue;
+            completedScoreboardByTeams.set(normalizeTeam(home.team.displayName) + "|" + normalizeTeam(away.team.displayName), {
+              status: "post", statusText: "finished", homeScore: home.score, awayScore: away.score
+            });
+          }
           for (const row of pending.rows) {
             const alert = row.payload || {};
-            const live = metricById.get(String(alert.eventId));
-            if (!live) continue;
-            const statusText = String(live.statusText || live.status || "").toLowerCase();
-            const statusClock = String(live.minute || "").toLowerCase();
             const minuteMatch = String(alert.minuteNumber ?? alert.minute ?? "").match(/(\d{1,3})/);
             const signalMinute = Number(alert.minuteNumber ?? (minuteMatch ? minuteMatch[1] : NaN));
             const explicitPeriod = String(alert.periodAtSignal || "").toLowerCase();
@@ -649,6 +659,18 @@ const server = http.createServer(async (req, res) => {
             const secondHalf = explicitPeriod
               ? explicitPeriod === "second_half"
               : !firstHalf && Number.isFinite(signalMinute) && signalMinute > 45;
+            let live = metricById.get(String(alert.eventId));
+            // Live-metrics drops fixtures after full time. For second-half alerts only,
+            // recover a completed final score from the scoreboard by exact home/away team order.
+            // This is deliberately not used for first-half alerts: full-time scores cannot
+            // establish what happened before halftime.
+            if (secondHalf && (!live || !/finished|full.?time|ended|final|\bft\b/.test(String(live.statusText || live.status || "").toLowerCase())) && alert.home && alert.away) {
+              const completed = completedScoreboardByTeams.get(normalizeTeam(alert.home) + "|" + normalizeTeam(alert.away));
+              if (completed) live = completed;
+            }
+            if (!live) continue;
+            const statusText = String(live.statusText || live.status || "").toLowerCase();
+            const statusClock = String(live.minute || "").toLowerCase();
             const homeScore = Number(live.homeScore), awayScore = Number(live.awayScore);
             const hasFullScore = live.homeScore != null && live.awayScore != null && Number.isFinite(homeScore) && Number.isFinite(awayScore);
             let outcomeScore = null, finished = false;
