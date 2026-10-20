@@ -280,15 +280,26 @@ async function persistRollingTrends(matches, date) {
             row.event_id === String(match.eventId) &&
             String(row.team_name).trim().toLowerCase() === String(team.team || "").trim().toLowerCase()
           );
-          const delta = key => {
-            const current = team[key];
-            const old = previous?.[key];
+          const delta = (currentKey, previousKey = currentKey) => {
+            const current = team[currentKey];
+            const old = previous?.[previousKey];
             if (!previous || current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
             return Math.max(0, Number(current) - Number(old));
           };
-          return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shots_on_target"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerous_attacks") };
+          return {
+            team: team.team,
+            shots: delta("shots"),
+            shotsOnTarget: delta("shotsOnTarget", "shots_on_target"),
+            corners: delta("corners"),
+            attacks: delta("attacks"),
+            dangerousAttacks: delta("dangerousAttacks", "dangerous_attacks")
+          };
         });
-        return { available: teams.some(team => team.shots != null || team.shotsOnTarget != null || team.corners != null), sampleMinutes: minutes, teams };
+        return {
+          available: teams.some(team => team.shots != null || team.shotsOnTarget != null || team.corners != null || team.attacks != null || team.dangerousAttacks != null),
+          sampleMinutes: minutes,
+          teams
+        };
       };
       match.trend = { source: "PostgreSQL-persisted cumulative-stat deltas", window5m: makeWindow(5), window10m: makeWindow(10) };
     }
