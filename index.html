@@ -1444,30 +1444,36 @@ function renderHighActivityMatches(){
   if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   const teams=stats.teams;
   const trail=signalTrails.get(String(m.id))||[];
-  const baseline=[...trail].reverse().find(item=>now-item.at>=5*60*1000);
-  let recentShots=0,recentOnTarget=0;
+  // Hi Activity must be driven by fresh, observed changes—not season-long/cumulative totals.
+  const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
+  let recentShots=0,recentOnTarget=0,hasRecentData=false;
   if(baseline&&Array.isArray(baseline.values)){
    teams.forEach((team,i)=>{
     const prev=baseline.values[i]||{};
     for(const key of ["shots","shotsOnTarget"]){
-     if(team[key]!=null&&prev[key]!=null){
+     if(team[key]!=null&&prev[key]!=null&&Number.isFinite(Number(team[key]))&&Number.isFinite(Number(prev[key]))){
       const delta=Math.max(0,Number(team[key])-Number(prev[key]));
       if(key==="shots")recentShots+=delta;else recentOnTarget+=delta;
+      hasRecentData=true;
      }
     }
    });
-  }else{
+  }
+  // Use the server's persisted 5-minute deltas only when their sampling window is fresh.
+  if(!hasRecentData){
    const trend=stats.trend?.window5m;
-   if(trend?.available&&Array.isArray(trend.teams)){
+   const sampleMinutes=Number(trend?.sampleMinutes);
+   if(trend?.available&&Array.isArray(trend.teams)&&Number.isFinite(sampleMinutes)&&sampleMinutes>=4.5&&sampleMinutes<=8){
     for(const team of trend.teams){
-     recentShots+=Math.max(0,Number(team.shots)||0);
-     recentOnTarget+=Math.max(0,Number(team.shotsOnTarget)||0);
+     if(team.shots!=null&&Number.isFinite(Number(team.shots)))recentShots+=Math.max(0,Number(team.shots));
+     if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget)))recentOnTarget+=Math.max(0,Number(team.shotsOnTarget));
     }
+    hasRecentData=trend.teams.some(team=>team.shots!=null||team.shotsOnTarget!=null);
    }
   }
-  const totalShots=teams.reduce((n,t)=>n+Number(t.shots||0),0);
-  const totalOnTarget=teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0);
-  const hasRecentData=!!baseline||!!stats.trend?.window5m?.available;
+  const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
+  const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
+  // Corners and cumulative shot totals never qualify a match on their own.
   const active=hasRecentData&&recentShots>=2&&recentOnTarget>=1;
   const score=recentShots+recentOnTarget*2;
   const intensity=Math.max(0,Math.min(100,Math.round(recentShots*10+recentOnTarget*20)));
