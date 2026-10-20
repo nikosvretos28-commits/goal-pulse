@@ -62,6 +62,7 @@ async function ensureAlertHistoryDb() {
   });
   return alertHistoryDbInit;
 }
+ensureAlertHistoryDb().then(ready => console.log('Persistent alert history schema:', ready ? 'ready' : 'unavailable'));
 async function savePushSubscription(subscription) {
   const endpoint = String(subscription?.endpoint || "");
   if (!endpoint.startsWith("https://") || !subscription?.keys?.p256dh || !subscription?.keys?.auth) throw new Error("Invalid push subscription");
