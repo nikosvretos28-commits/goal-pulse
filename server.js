@@ -229,7 +229,11 @@ async function persistRollingTrends(matches, date) {
   try {
     const snapshots = [];
     for (const match of matches) for (const team of match.teams || []) {
-      if (team.team) snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
+      const hasPersistableStat = ["shots", "shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
+        .some(key => team[key] != null && Number.isFinite(Number(team[key])));
+      if (team.team && hasPersistableStat) {
+        snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
+      }
     }
     if (!snapshots.length) return true;
     const values = [];
@@ -1425,7 +1429,10 @@ const server = http.createServer(async (req, res) => {
       }
       const persisted = await persistRollingTrends(matches, date);
       if (!persisted) addRollingTrends(matches);
-      const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team => team.team));
+      const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
+        team.team && ["shots", "shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
+          .some(key => team[key] != null && Number.isFinite(Number(team[key])))
+      ));
       const trendHistory = !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory };
       cache.set(cacheKey, { at: Date.now(), body });
