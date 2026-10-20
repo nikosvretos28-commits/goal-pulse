@@ -1164,7 +1164,7 @@ async function loadScores(){
  renderTrendSections();
  goalFlashMatchIds.forEach(id=>{const card=[...document.querySelectorAll('.match')].find(el=>el.dataset.eventId===id);if(card){card.classList.remove('goal-flash');void card.offsetWidth;card.classList.add('goal-flash');setTimeout(()=>card.classList.remove('goal-flash'),6500);}});
  runSignalCheck();
- const live=allMatches.filter(m=>m.state==='in').slice(0,6);
+ const live=allMatches.filter(m=>m.state==='in');
  const box=document.getElementById('liveRows');
  if(box){
   box.innerHTML=live.length?live.map(liveMatchLine).join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
