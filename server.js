@@ -194,6 +194,10 @@ async function ensureAnalyticsDb() {
   return analyticsDbInit;
 }
 
+ensureAnalyticsDb().then(ready => {
+  if (ready) console.log("Goal Pulse analytics database connected; schema ready.");
+});
+
 async function persistRollingTrends(matches, date) {
   if (!analyticsPool || !await ensureAnalyticsDb()) return false;
   try {
