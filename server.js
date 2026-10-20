@@ -1486,6 +1486,9 @@ const server = http.createServer(async (req, res) => {
                 }
               };
               walk(root);
+              if (sportScoreDetailDiagnostics.sample?.eventId === String(event.id)) {
+                sportScoreDetailDiagnostics.sample.statLabels = statsRows.slice(0, 30).map(row => ({ label: row.label, home: row.home, away: row.away }));
+              }
               const readStat = (side, aliases) => {
                 const found = statsRows.find(row => aliases.includes(row.label));
                 if (!found) return null;
