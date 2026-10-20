@@ -700,6 +700,46 @@ const server = http.createServer(async (req, res) => {
       const metrics = await metricsResponse.json();
       const scoreboard = await scoreboardResponse.json();
       const scoreboardEvents = (scoreboard.feeds || []).flatMap(feed => feed.events || []);
+      // Join scoreboard score/status fields to the separate live-stat feed by normalized team names.
+      // The stats endpoint does not include scores, and displayClock often looks like "45:00";
+      // without this join the AI scanner silently sees no eligible first-half matches.
+      const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const scoreboardByTeams = new Map();
+      for (const event of scoreboardEvents) {
+        const competition = event.competitions?.[0];
+        const competitors = competition?.competitors || [];
+        const home = competitors.find(team => team.homeAway === "home") || competitors[0];
+        const away = competitors.find(team => team.homeAway === "away") || competitors[1];
+        if (!home?.team?.displayName || !away?.team?.displayName) continue;
+        const key = normalizeLiveTeam(home.team.displayName) + "|" + normalizeLiveTeam(away.team.displayName);
+        const status = event.status || competition?.status || {};
+        const statusText = String(status.type?.detail || status.type?.shortDetail || status.type?.name || status.displayClock || "");
+        scoreboardByTeams.set(key, {
+          homeScore: home.score != null ? Number(home.score) : null,
+          awayScore: away.score != null ? Number(away.score) : null,
+          statusText,
+          status: String(status.type?.state || status.type?.name || ""),
+          minute: status.displayClock || status.type?.displayClock || ""
+        });
+      }
+      for (const match of (metrics.matches || [])) {
+        const key = normalizeLiveTeam(match.home) + "|" + normalizeLiveTeam(match.away);
+        const score = scoreboardByTeams.get(key);
+        if (!score) continue;
+        if (match.homeScore == null) match.homeScore = score.homeScore;
+        if (match.awayScore == null) match.awayScore = score.awayScore;
+        if (!match.statusText) match.statusText = score.statusText;
+        if (!match.status) match.status = score.status;
+        // Convert clocks like "45:00" to a minute number for the alert gate.
+        if (match.minute != null && !Number.isFinite(Number(match.minute))) {
+          const clockMatch = String(match.minute).match(/(\\d{1,3})/);
+          if (clockMatch) match.minute = Number(clockMatch[1]);
+        }
+        if ((!Number.isFinite(Number(match.minute)) || Number(match.minute) === 0) && score.minute) {
+          const clockMatch = String(score.minute).match(/(\\d{1,3})/);
+          if (clockMatch) match.minute = Number(clockMatch[1]);
+        }
+      }
       const now = Date.now();
       // Evaluate persisted real push alerts at the end of their selected half.
       // First-half outcomes use halftime scores, so second-half goals cannot falsely confirm them.
