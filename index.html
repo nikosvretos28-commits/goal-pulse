@@ -1396,6 +1396,15 @@ function renderHighActivityMatches(){
      }
     }
    });
+  }else{
+   const trend=stats.trend?.window5m;
+   if(trend?.available&&Array.isArray(trend.teams)){
+    for(const team of trend.teams){
+     recentShots+=Math.max(0,Number(team.shots)||0);
+     recentOnTarget+=Math.max(0,Number(team.shotsOnTarget)||0);
+     recentCorners+=Math.max(0,Number(team.corners)||0);
+    }
+   }
   }
   const totalShots=teams.reduce((n,t)=>n+Number(t.shots||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0);
