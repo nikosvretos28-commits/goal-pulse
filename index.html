@@ -1474,7 +1474,7 @@ function renderHighActivityMatches(){
   return active?{match:m,score,intensity,recentShots,recentOnTarget,totalShots,totalOnTarget}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
-  .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots).slice(0,5);
+  .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
  box.innerHTML=ranked.length
   ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν το πρωτόκολλο γκολ. Η λίστα επανελέγχεται αυτόματα και οι αγώνες επιστρέφουν αν ξαναενεργοποιηθούν τα στατιστικά.</div>';
