@@ -935,8 +935,8 @@ const server = http.createServer(async (req, res) => {
           try {
             const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
             const sportScoreResponses = await Promise.all(["live", "upcoming"].map(async status => {
-              const endpoint = "https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
-                encodeURIComponent(requestedIsoDate) + "&status=" + status + "&limit=200&src=goal-pulse";
+              const endpoint = "https://sportscore.com/api/v1/fixtures/?sport=football" +
+                (status === "live" ? "" : "&date=" + encodeURIComponent(requestedIsoDate)) + "&status=" + status + "&limit=200&src=goal-pulse";
               try {
                 const response = await fetch(endpoint, { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000) });
                 if (!response.ok) return { status, ok: false, httpStatus: response.status, matches: [] };
@@ -955,7 +955,8 @@ const server = http.createServer(async (req, res) => {
               for (const match of result.matches) {
                 const matchTime = match.time || match.start_time || match.starting_at || match.date || match.kickoff;
                 const matchDate = matchTime ? new Date(matchTime) : null;
-                if (!matchDate || !Number.isFinite(matchDate.getTime()) || matchDate.toISOString().slice(0, 10) !== requestedIsoDate) continue;
+                if (!matchDate || !Number.isFinite(matchDate.getTime())) continue;
+                if (result.status !== "live" && matchDate.toISOString().slice(0, 10) !== requestedIsoDate) continue;
                 const homeName = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || match.participants?.find(p => p.meta?.location === "home")?.name || "").trim();
                 const awayName = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || match.participants?.find(p => p.meta?.location === "away")?.name || "").trim();
                 if (!homeName || !awayName) continue;
