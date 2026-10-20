@@ -131,7 +131,7 @@ function resolveDatabaseUrl(raw) {
     return "postgresql://" + encodeURIComponent(username) + ":" + encodeURIComponent(password) + "@" + internalHost + "/" + encodeURIComponent(database);
   }
   // Normalize only the host. Keep credentials private and never log the full URL.
-  const renderHost = "dpg-db9t153rjlhs7382ko40-a.frankfurt-postgres.render.com";
+  const renderHost = "dpg-db9t153rjlhs7382ko40-a";
   try {
     const parsed = new URL(raw);
     if (parsed.hostname.toLowerCase() === "base" ||
