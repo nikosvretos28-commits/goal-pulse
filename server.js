@@ -1096,8 +1096,9 @@ const server = http.createServer(async (req, res) => {
             if (response.ok) {
               const payload = await response.json();
               const liveFixtures = Array.isArray(payload) ? payload : (payload.matches || payload.data || payload.fixtures || payload.events || payload.results || []);
-              const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const liveEventsFromApi = [];
+              let replacedLive = 0;
               for (const match of liveFixtures) {
                 const homeName = String(match.home?.name || match.home_team?.name || match.home_name || (typeof match.home === "string" ? match.home : "") || "").trim();
                 const awayName = String(match.away?.name || match.away_team?.name || match.away_name || (typeof match.away === "string" ? match.away : "") || "").trim();
@@ -1130,7 +1131,7 @@ const server = http.createServer(async (req, res) => {
                     const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
                     return normalizeLiveTeam(home.team?.displayName || home.team?.name) + "||" + normalizeLiveTeam(away.team?.displayName || away.team?.name) === pair;
                   });
-                  if (index >= 0) { feed.events[index] = event; replaced = true; break; }
+                  if (index >= 0) { feed.events[index] = event; replaced = true; replacedLive++; break; }
                 }
                 if (!replaced) liveEventsFromApi.push(event);
               }
@@ -1140,8 +1141,8 @@ const server = http.createServer(async (req, res) => {
               }
               console.log("SportScore dedicated live endpoint:", JSON.stringify({
                 checkedAt: new Date().toISOString(), httpStatus: response.status, rootKeys: Object.keys(payload || {}),
-                count: liveFixtures.length, mappedLive: liveFixtures.length - liveEventsFromApi.length < 0 ? liveEventsFromApi.length : liveEventsFromApi.length,
-                activeMapped: liveEventsFromApi.length,
+                count: liveFixtures.length, mappedLive: liveEventsFromApi.length + replacedLive,
+                addedLive: liveEventsFromApi.length, replacedLive,
                 sample: liveFixtures.slice(0, 3).map(match => ({ keys: Object.keys(match || {}), id: match.id, slug: match.slug, status: match.status, status_text: match.status_text, home: match.home, away: match.away }))
               }));
             } else console.warn("SportScore dedicated live endpoint HTTP:", response.status);
