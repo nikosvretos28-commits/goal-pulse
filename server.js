@@ -787,6 +787,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
       let checked = 0, sent = 0, candidates = 0;
+      let strongSignals = 0, firstHalfOddsChecks = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const formatPushMinute = match => {
         const rawMinute = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
         if (rawMinute != null && String(rawMinute).trim() !== "") {
@@ -829,6 +830,7 @@ const server = http.createServer(async (req, res) => {
         const isAiGoal = scoreAvailable && goalEvidence && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
         const isVip = isAiGoal && corners >= 1 && points >= 9;
         const levels = [];
+        if (isAiGoal) strongSignals++;
         // Send one alert only: VIP when the evidence is exceptionally strong, otherwise AI.
         if (isVip) levels.push("VIP");
         else if (isAiGoal) levels.push("AI");
@@ -843,9 +845,13 @@ const server = http.createServer(async (req, res) => {
             const status = String(match.statusText || match.status || match.status_text || "").toLowerCase();
             const firstHalfNow = Number.isFinite(minute) && minute >= 1 && minute <= 45 && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(status);
             if (firstHalfNow && Number.isFinite(currentGoals) && currentGoals < 2) {
+              firstHalfOddsChecks++;
               verifiedOdds = await getVerifiedFirstHalfOver15(match);
+              if (verifiedOdds && verifiedOdds.price >= 1.6) oddsVerifiedCount++;
+              else oddsMissingCount++;
             }
           } catch (oddsError) {
+            oddsErrors++;
             console.error("Odds verification unavailable; suppressing unpriced betting alert:", oddsError.message);
           }
           if (!verifiedOdds || verifiedOdds.price < 1.6) continue;
@@ -924,7 +930,7 @@ const server = http.createServer(async (req, res) => {
           subscribers = subscriberResult.rows[0].count;
         } catch {}
       }
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
@@ -1904,7 +1910,8 @@ if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
       else console.log("Startup push scan completed:", JSON.stringify({
         liveMatches: Number(result.liveMatches || 0), statsMatches: Number(result.statsMatches || 0),
         checked: Number(result.checked || 0), candidates: Number(result.candidates || 0),
-        deliveries: Number(result.deliveries || 0), subscribers: Number(result.subscribers || 0), date: result.date || null
+        deliveries: Number(result.deliveries || 0), subscribers: Number(result.subscribers || 0), date: result.date || null,
+        diagnostics: result.diagnostics || null
       }));
     } catch (error) {
       console.error("Startup push scan request failed:", error.message || "unknown error");
@@ -1928,7 +1935,8 @@ if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
           candidates: Number(result.candidates || 0),
           deliveries: Number(result.deliveries || 0),
           subscribers: Number(result.subscribers || 0),
-          date: result.date || null
+          date: result.date || null,
+          diagnostics: result.diagnostics || null
         }));
       }
     } catch (error) {
