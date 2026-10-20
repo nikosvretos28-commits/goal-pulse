@@ -1096,16 +1096,53 @@ const server = http.createServer(async (req, res) => {
             if (response.ok) {
               const payload = await response.json();
               const liveFixtures = Array.isArray(payload) ? payload : (payload.matches || payload.data || payload.fixtures || payload.events || payload.results || []);
+              const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const liveEventsFromApi = [];
+              for (const match of liveFixtures) {
+                const homeName = String(match.home?.name || match.home_team?.name || match.home_name || (typeof match.home === "string" ? match.home : "") || "").trim();
+                const awayName = String(match.away?.name || match.away_team?.name || match.away_name || (typeof match.away === "string" ? match.away : "") || "").trim();
+                if (!homeName || !awayName) continue;
+                const statusValue = match.status;
+                const statusText = [typeof statusValue === "object" ? JSON.stringify(statusValue) : statusValue, match.status_text, match.status_name, match.state, match.minute, match.elapsed].filter(v => v != null).map(String).join(" ").toLowerCase();
+                if (/finished|full time|ended|complete|not started|upcoming|scheduled|postponed|cancelled/.test(statusText)) continue;
+                const slug = String(match.slug || match.match_slug || match.matchSlug || match.id || match.event_id || (normalizeLiveTeam(homeName) + "-vs-" + normalizeLiveTeam(awayName)));
+                const status = { type: { state: "in", completed: false }, displayClock: String(match.minute ?? match.elapsed ?? match.status_text ?? "LIVE") };
+                const score = value => value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : String(Number(value));
+                const homeScore = score(match.home_score ?? match.score_home ?? match.home?.score ?? match.home_team?.score ?? match.scores?.home);
+                const awayScore = score(match.away_score ?? match.score_away ?? match.away?.score ?? match.away_team?.score ?? match.scores?.away);
+                const event = {
+                  id: "sportscore:" + slug,
+                  date: match.time_utc || match.time || match.date || new Date().toISOString(),
+                  name: homeName + " vs " + awayName,
+                  leagueName: String(match.competition?.name || match.competition || match.league?.name || match.league_name || "Football"),
+                  status,
+                  competitions: [{ status, competitors: [
+                    { homeAway: "home", team: { displayName: homeName }, score: homeScore },
+                    { homeAway: "away", team: { displayName: awayName }, score: awayScore }
+                  ] }]
+                };
+                const pair = normalizeLiveTeam(homeName) + "||" + normalizeLiveTeam(awayName);
+                let replaced = false;
+                for (const feed of finalFeeds) {
+                  const index = (feed.events || []).findIndex(existing => {
+                    const teams = existing.competitions?.[0]?.competitors || [];
+                    const home = teams.find(team => team.homeAway === "home") || teams[0] || {};
+                    const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
+                    return normalizeLiveTeam(home.team?.displayName || home.team?.name) + "||" + normalizeLiveTeam(away.team?.displayName || away.team?.name) === pair;
+                  });
+                  if (index >= 0) { feed.events[index] = event; replaced = true; break; }
+                }
+                if (!replaced) liveEventsFromApi.push(event);
+              }
+              if (liveEventsFromApi.length) {
+                finalFeeds = finalFeeds.concat([{ code: "sportscore-v1-live", events: liveEventsFromApi, ok: true }]);
+                successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
+              }
               console.log("SportScore dedicated live endpoint:", JSON.stringify({
                 checkedAt: new Date().toISOString(), httpStatus: response.status, rootKeys: Object.keys(payload || {}),
-                count: liveFixtures.length,
-                sample: liveFixtures.slice(0, 5).map(match => ({
-                  keys: Object.keys(match || {}), id: match.id, slug: match.slug, home: match.home,
-                  away: match.away, home_team: match.home_team, away_team: match.away_team,
-                  home_score: match.home_score, away_score: match.away_score, score: match.score,
-                  status: match.status, status_text: match.status_text, minute: match.minute,
-                  competition: match.competition, league: match.league, time: match.time
-                }))
+                count: liveFixtures.length, mappedLive: liveFixtures.length - liveEventsFromApi.length < 0 ? liveEventsFromApi.length : liveEventsFromApi.length,
+                activeMapped: liveEventsFromApi.length,
+                sample: liveFixtures.slice(0, 3).map(match => ({ keys: Object.keys(match || {}), id: match.id, slug: match.slug, status: match.status, status_text: match.status_text, home: match.home, away: match.away }))
               }));
             } else console.warn("SportScore dedicated live endpoint HTTP:", response.status);
           } catch (error) { console.warn("SportScore dedicated live endpoint unavailable:", error.message || "request failed"); }
