@@ -1149,9 +1149,9 @@ const server = http.createServer(async (req, res) => {
           } catch (error) { console.warn("SportScore dedicated live endpoint unavailable:", error.message || "request failed"); }
 
           const scoreboardSource = feeds.some(feed => feed.ok && feed.events.length)
-            ? (finalFeeds.some(feed => feed.code === "sportscore") ? "ESPN+PitchAPI+SportScore" : "ESPN+PitchAPI")
+            ? (finalFeeds.some(feed => feed.code === "sportscore" || feed.code === "sportscore-v1-live") ? "ESPN+PitchAPI+SportScore" : "ESPN+PitchAPI")
             : finalFeeds.some(feed => feed.events.length)
-              ? (finalFeeds.some(feed => feed.code === "sportscore") ? "PitchAPI+SportScore" : "PitchAPI")
+              ? (finalFeeds.some(feed => feed.code === "sportscore" || feed.code === "sportscore-v1-live") ? "PitchAPI+SportScore" : "PitchAPI")
               : "unavailable";
           if (successfulFeeds === 0) {
             console.error("All scoreboard feeds failed:", JSON.stringify(feeds.slice(0, 6).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))));
@@ -1425,7 +1425,9 @@ const server = http.createServer(async (req, res) => {
       }
       const persisted = await persistRollingTrends(matches, date);
       if (!persisted) addRollingTrends(matches);
-      const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory: persisted ? "postgresql; retained across service restarts" : "in-memory fallback; resets on service restart" };
+      const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team => team.team));
+      const trendHistory = !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
+      const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory };
       cache.set(cacheKey, { at: Date.now(), body });
       return send(res, 200, body);
     }
