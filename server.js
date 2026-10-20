@@ -860,7 +860,8 @@ const server = http.createServer(async (req, res) => {
         const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
         const firstHalfStatusForEligibility = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusForEligibility);
-        const validFirstHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45;\n        if ((validFirstHalfMinute || (firstHalfStatusForEligibility && !Number.isFinite(minuteForEligibility))) && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility.replace(/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/g, "")) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
+        const validFirstHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45;
+        if ((validFirstHalfMinute || (firstHalfStatusForEligibility && !Number.isFinite(minuteForEligibility))) && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility.replace(/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/g, "")) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
         const current = {
           at: now,
           shots: total("shots"),
