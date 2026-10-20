@@ -717,9 +717,10 @@ const server = http.createServer(async (req, res) => {
         // stricter goal-likelihood gate; pressure alone must never trigger a goal alert.
         // Require multiple new shots, a shot on target, at least three independent
         // signals, a strong combined score, and corroborating corners/dangerous attacks.
+        const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
         const goalEvidence = shots >= 2 && onTarget >= 1;
         const points = Math.min(shots, 4) + onTarget * 2 + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5);
-        const isAiGoal = goalEvidence && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
+        const isAiGoal = scoreAvailable && goalEvidence && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
         const isVip = isAiGoal && corners >= 1 && points >= 9;
         const levels = [];
         // Send one alert only: VIP when the evidence is exceptionally strong, otherwise AI.
