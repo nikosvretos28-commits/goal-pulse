@@ -979,6 +979,7 @@ const server = http.createServer(async (req, res) => {
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
                   [alertId, id, level, now, JSON.stringify(alertRecord)]
                 );
+                console.log("Actual push alert history saved:", JSON.stringify({ alertId, eventId: id, level, alertType: alertRecord.alertType || "verified_odds" }));
               } else {
                 console.error("Actual push alert was sent but persistent history database is unavailable:", id);
               }
