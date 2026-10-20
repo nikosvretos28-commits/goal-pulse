@@ -624,6 +624,62 @@ const server = http.createServer(async (req, res) => {
       const scoreboard = await scoreboardResponse.json();
       const scoreboardEvents = (scoreboard.feeds || []).flatMap(feed => feed.events || []);
       const now = Date.now();
+      // Evaluate persisted real push alerts at the end of their selected half.
+      // First-half outcomes use halftime scores, so second-half goals cannot falsely confirm them.
+      if (await ensureAlertHistoryDb()) {
+        try {
+          const pending = await analyticsPool.query(
+            "SELECT alert_id,payload FROM alert_history WHERE payload->>'source'='server-push' AND payload->>'market'='πιθανό γκολ' AND payload->>'outcome'='εκκρεμεί' AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
+          );
+          const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
+          for (const row of pending.rows) {
+            const alert = row.payload || {};
+            const live = metricById.get(String(alert.eventId));
+            if (!live) continue;
+            const statusText = String(live.statusText || live.status || "").toLowerCase();
+            const statusClock = String(live.minute || "").toLowerCase();
+            const minuteMatch = String(alert.minuteNumber ?? alert.minute ?? "").match(/(\d{1,3})/);
+            const signalMinute = Number(alert.minuteNumber ?? (minuteMatch ? minuteMatch[1] : NaN));
+            const firstHalf = alert.periodAtSignal === "first_half" || alert.periodAtSignal === "halftime" || (Number.isFinite(signalMinute) && signalMinute <= 45);
+            const secondHalf = alert.periodAtSignal === "second_half" || (!firstHalf && Number.isFinite(signalMinute) && signalMinute > 45);
+            const homeScore = Number(live.homeScore), awayScore = Number(live.awayScore);
+            const hasFullScore = live.homeScore != null && live.awayScore != null && Number.isFinite(homeScore) && Number.isFinite(awayScore);
+            let outcomeScore = null, finished = false;
+            if (firstHalf) {
+              const hasHtScore = live.homeHtScore != null && live.awayHtScore != null && Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
+              const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\bht\b/.test(statusClock);
+              const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
+              if (hasHtScore) {
+                outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
+                finished = true;
+              } else if (isAtHalf && hasFullScore) {
+                outcomeScore = homeScore + awayScore;
+                finished = true;
+              } else if (Number.isFinite(minuteNow) && minuteNow >= 46) {
+                // Do not infer a first-half result from a second-half score.
+                continue;
+              } else if (/finished|full.?time|ended|final|ft/.test(statusText) && !hasHtScore) {
+                continue;
+              }
+            } else if (secondHalf) {
+              finished = /finished|full.?time|ended|final|ft/.test(statusText) || live.status === "post";
+              if (finished && hasFullScore) outcomeScore = homeScore + awayScore;
+            }
+            if (!finished || outcomeScore == null || alert.startScore == null) continue;
+            alert.outcome = outcomeScore > Number(alert.startScore)
+              ? "Επιβεβαιώθηκε · γκολ μέχρι τη λήξη του ημιχρόνου"
+              : "Δεν επιβεβαιώθηκε · χωρίς γκολ μέχρι τη λήξη του ημιχρόνου";
+            alert.evaluatedAt = now;
+            alert.evaluationRule = "end_of_relevant_half";
+            await analyticsPool.query(
+              "UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1",
+              [row.alert_id, JSON.stringify(alert)]
+            );
+          }
+        } catch (evaluationError) {
+          console.error("AI alert halftime outcome evaluation failed:", evaluationError.message);
+        }
+      }
       let checked = 0, sent = 0, candidates = 0;
       const formatPushMinute = match => {
         const rawMinute = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
