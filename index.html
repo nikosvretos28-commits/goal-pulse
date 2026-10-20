@@ -1258,8 +1258,27 @@ let selectedLiveStatsId="";
 let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalCandidateLastAt=new Map(), signalAlertHistory=[];try{signalAlertHistory=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(!Array.isArray(signalAlertHistory))signalAlertHistory=[];signalAlertHistory=signalAlertHistory.filter(a=>a&&Number.isFinite(Number(a.createdAt))).slice(0,5000);signalAlertHistory.forEach(a=>{if(a.eventId&&a.createdAt){const marketKey=a.market==='πιθανό γκολ'?'goal':a.market==='πιθανό κόρνερ'?'corner':'pressure';const k=String(a.eventId)+':'+marketKey;signalLastAlertAt.set(k,Math.max(signalLastAlertAt.get(k)||0,Number(a.createdAt)))}})}catch{}
 signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/10');
 document.getElementById('enableNotifications').addEventListener('click',async()=>{
- if(!('Notification' in window)){signalStatus.textContent='Οι ειδοποιήσεις browser δεν υποστηρίζονται σε αυτή τη συσκευή.';return}
- try{const p=await Notification.requestPermission();signalStatus.textContent=p==='granted'?'Οι ειδοποιήσεις browser ενεργοποιήθηκαν. Άφησε τη σελίδα ανοιχτή για live παρακολούθηση.':p==='denied'?'Οι ειδοποιήσεις έχουν μπλοκαριστεί από τον browser.':'Δεν δόθηκε άδεια για ειδοποιήσεις.'}catch{signalStatus.textContent='Δεν ήταν δυνατή η ενεργοποίηση ειδοποιήσεων.'}
+ const button=document.getElementById('enableNotifications');
+ if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){signalStatus.textContent='Οι push ειδοποιήσεις δεν υποστηρίζονται σε αυτόν τον browser. Άνοιξε το Goal Pulse από Chrome.';return}
+ button.disabled=true;
+ try{
+  const permission=await Notification.requestPermission();
+  if(permission!=='granted'){signalStatus.textContent=permission==='denied'?'Οι ειδοποιήσεις έχουν μπλοκαριστεί από τις ρυθμίσεις του browser. Επίτρεψέ τες για το Goal Pulse και δοκίμασε ξανά.':'Δεν δόθηκε άδεια για ειδοποιήσεις.';return}
+  signalStatus.textContent='Ενεργοποίηση push ειδοποιήσεων…';
+  const keyResponse=await fetch(ANALYTICS_API+'/api/push/vapid-public-key',{cache:'no-store'});
+  if(!keyResponse.ok)throw new Error('Ο server δεν έχει διαθέσιμο κλειδί push.');
+  const keyData=await keyResponse.json();
+  if(!keyData.publicKey)throw new Error('Λείπει το δημόσιο κλειδί push.');
+  const decodeKey=value=>{const padding='='.repeat((4-value.length%4)%4);const raw=atob((value+padding).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0))};
+  const registration=await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  let subscription=await registration.pushManager.getSubscription();
+  if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeKey(keyData.publicKey)});
+  const saveResponse=await fetch(ANALYTICS_API+'/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
+  const saved=await saveResponse.json().catch(()=>({}));
+  if(!saveResponse.ok||!saved.ok)throw new Error(saved.error||'Δεν αποθηκεύτηκε η συνδρομή push.');
+  signalStatus.textContent='Οι push ειδοποιήσεις Goal Pulse ενεργοποιήθηκαν και η συσκευή καταχωρίστηκε στον server. Θα λαμβάνεις ειδοποίηση όταν εντοπίζεται κατάλληλο live σήμα.';
+ }catch(error){signalStatus.textContent='Δεν ολοκληρώθηκε η ενεργοποίηση push: '+String(error.message||error).slice(0,180)}finally{button.disabled=false}
 });
 
 function renderTopAiAlerts(){
