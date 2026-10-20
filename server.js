@@ -1321,6 +1321,32 @@ const server = http.createServer(async (req, res) => {
         .filter(event => (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
+      const sportScoreLiveStatsByPair = new Map();
+      if (sportScoreLiveExists) {
+        try {
+          const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+          const liveResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
+            headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000)
+          });
+          if (liveResponse.ok) {
+            const livePayload = await liveResponse.json();
+            const liveFixtures = Array.isArray(livePayload) ? livePayload : (livePayload.matches || livePayload.data || livePayload.fixtures || livePayload.events || livePayload.results || []);
+            const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+            for (const fixture of liveFixtures) {
+              const statusText = [fixture.status, fixture.status_text, fixture.status_name, fixture.state, fixture.minute, fixture.elapsed].filter(v => v != null).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(" ").toLowerCase();
+              if (/finished|full time|ended|complete|not started|upcoming|scheduled|postponed|cancelled/.test(statusText)) continue;
+              const home = fixture.home?.name || fixture.home_team?.name || fixture.home_name || (typeof fixture.home === "string" ? fixture.home : "");
+              const away = fixture.away?.name || fixture.away_team?.name || fixture.away_name || (typeof fixture.away === "string" ? fixture.away : "");
+              const h = normalizeDirectTeam(home), a = normalizeDirectTeam(away);
+              if (h && a && Array.isArray(fixture.stats)) {
+                sportScoreLiveStatsByPair.set(h + "|" + a, fixture);
+                sportScoreLiveStatsByPair.set(a + "|" + h, fixture);
+              }
+            }
+            console.log("SportScore direct live stats feed:", JSON.stringify({ httpStatus: liveResponse.status, fixtures: liveFixtures.length, fixturesWithStats: sportScoreLiveStatsByPair.size / 2 }));
+          }
+        } catch (error) { console.warn("SportScore direct live stats feed unavailable:", error.message || "request failed"); }
+      }
       if (sportScoreLiveExists && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
         try {
           const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&status=live&limit=200&src=goal-pulse", {
@@ -1381,34 +1407,41 @@ const server = http.createServer(async (req, res) => {
                 continue;
               }
               if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
-              let detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
-                headers: { "Accept": "application/json" },
-                signal: AbortSignal.timeout(8000)
-              });
-              if (detailResponse.status === 404 && slug.includes("-vs-")) {
-                const parts = slug.split("-vs-");
-                if (parts.length === 2) {
-                  const reverseSlug = parts[1] + "-vs-" + parts[0];
-                  const retryResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(reverseSlug) + "&src=goal-pulse", {
-                    headers: { "Accept": "application/json" },
-                    signal: AbortSignal.timeout(8000)
-                  });
-                  if (retryResponse.ok) { slug = reverseSlug; detailResponse = retryResponse; }
-                  else {
-                    const statusKey = String(retryResponse.status);
-                    sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
+              let detail;
+              const directLiveMatch = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair);
+              if (directLiveMatch && Array.isArray(directLiveMatch.stats) && directLiveMatch.stats.length) {
+                detail = directLiveMatch;
+                sportScoreDetailDiagnostics.ok++;
+              } else {
+                let detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
+                  headers: { "Accept": "application/json" },
+                  signal: AbortSignal.timeout(8000)
+                });
+                if (detailResponse.status === 404 && slug.includes("-vs-")) {
+                  const parts = slug.split("-vs-");
+                  if (parts.length === 2) {
+                    const reverseSlug = parts[1] + "-vs-" + parts[0];
+                    const retryResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(reverseSlug) + "&src=goal-pulse", {
+                      headers: { "Accept": "application/json" },
+                      signal: AbortSignal.timeout(8000)
+                    });
+                    if (retryResponse.ok) { slug = reverseSlug; detailResponse = retryResponse; }
+                    else {
+                      const statusKey = String(retryResponse.status);
+                      sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
+                    }
                   }
                 }
+                if (!detailResponse.ok) {
+                  const statusKey = String(detailResponse.status);
+                  sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
+                  if (detailResponse.status === 404) sportScoreDetailDiagnostics.notFound++;
+                  else sportScoreDetailDiagnostics.otherErrors++;
+                  continue;
+                }
+                detail = await detailResponse.json();
+                sportScoreDetailDiagnostics.ok++;
               }
-              if (!detailResponse.ok) {
-                const statusKey = String(detailResponse.status);
-                sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
-                if (detailResponse.status === 404) sportScoreDetailDiagnostics.notFound++;
-                else sportScoreDetailDiagnostics.otherErrors++;
-                continue;
-              }
-              const detail = await detailResponse.json();
-              sportScoreDetailDiagnostics.ok++;
               const root = detail.match || detail.data || detail.fixture || detail;
               if (!sportScoreDetailDiagnostics.sample) {
                 const paths = [];
