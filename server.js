@@ -540,6 +540,16 @@ const server = http.createServer(async (req, res) => {
       const metrics = await metricsResponse.json();
       const now = Date.now();
       let checked = 0, sent = 0, candidates = 0;
+      const formatPushMinute = match => {
+        const rawMinute = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
+        if (rawMinute != null && String(rawMinute).trim() !== "") {
+          const numericMinute = Number(rawMinute);
+          if (Number.isFinite(numericMinute) && numericMinute >= 0) return String(Math.floor(numericMinute)) + "′";
+          return String(rawMinute).trim().slice(0, 24);
+        }
+        const statusText = String(match.status_text || match.statusText || match.status || "").trim();
+        return statusText || "LIVE";
+      };
       for (const match of (metrics.matches || [])) {
         if (!match.statsAvailable || !Array.isArray(match.teams) || match.teams.length < 2) continue;
         const teams = match.teams;
@@ -582,7 +592,7 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           const result = await sendPushToSubscribers({
             title: level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT",
-            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + (match.minute || "LIVE") + " · " + (isAiGoal ? "Ένδειξη πιθανού γκολ" : "Αυξημένη επιθετική πίεση") + " · " + reason).slice(0, 180),
+            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + formatPushMinute(match) + " · " + (isAiGoal ? "Ένδειξη πιθανού γκολ" : "Αυξημένη επιθετική πίεση") + " · " + reason).slice(0, 180),
             tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
             url: "/"
           });
