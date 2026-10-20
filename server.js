@@ -621,6 +621,8 @@ const server = http.createServer(async (req, res) => {
       const metricsResponse = await fetch(base + "/api/live-metrics?date=" + date, { signal: AbortSignal.timeout(45000) });
       if (!metricsResponse.ok) throw new Error("Live metrics unavailable: " + metricsResponse.status);
       const metrics = await metricsResponse.json();
+      const scoreboard = await scoreboardResponse.json();
+      const scoreboardEvents = (scoreboard.feeds || []).flatMap(feed => feed.events || []);
       const now = Date.now();
       let checked = 0, sent = 0, candidates = 0;
       const formatPushMinute = match => {
@@ -695,15 +697,27 @@ const server = http.createServer(async (req, res) => {
                   const n = Number(value);
                   return value !== null && value !== undefined && value !== "" && Number.isFinite(n) ? n : null;
                 };
-                const homeScore = scoreValue(match.homeScore ?? match.scoreHome ?? match.home_score ?? match.home?.score ?? match.score?.home);
-                const awayScore = scoreValue(match.awayScore ?? match.scoreAway ?? match.away_score ?? match.away?.score ?? match.score?.away);
+                const scoreEvent = scoreboardEvents.find(event => String(event.id || "") === id);
+                const competitors = scoreEvent?.competitions?.[0]?.competitors || [];
+                const homeCompetitor = competitors.find(team => team.homeAway === "home") || competitors[0];
+                const awayCompetitor = competitors.find(team => team.homeAway === "away") || competitors[1];
+                const homeScore = scoreValue(homeCompetitor?.score);
+                const awayScore = scoreValue(awayCompetitor?.score);
+                const rawMinute = String(formatPushMinute(match));
+                const minuteMatch = rawMinute.match(/(\d{1,3})(?:\s*\+\s*\d{1,2})?/);
+                const minuteNumber = minuteMatch ? Number(minuteMatch[1]) : null;
+                const statusDetail = String(scoreEvent?.competitions?.[0]?.status?.type?.detail || scoreEvent?.status?.type?.detail || "").toLowerCase();
+                const statusClock = String(scoreEvent?.competitions?.[0]?.status?.displayClock || scoreEvent?.status?.displayClock || "");
+                const halfTime = /half.?time|halftime|ημίχρονο/.test(statusDetail);
+                const secondHalf = /second half|2nd half|2ο ημίχρονο/.test(statusDetail) || (minuteNumber !== null && minuteNumber > 45) || /second half|2nd half/i.test(statusClock);
                 const alertRecord = {
                   alertId, source: "server-push", eventId: id, level,
-                  createdAt: now, home: match.home || match.homeTeam || "",
-                  away: match.away || match.awayTeam || "",
-                  league: match.league || match.competition || "",
-                  minute: formatPushMinute(match), market: "πιθανό γκολ",
-                  reason, outcome: "εκκρεμεί", evaluationWindowMinutes: 10,
+                  createdAt: now, home: homeCompetitor?.team?.displayName || match.home || match.homeTeam || "",
+                  away: awayCompetitor?.team?.displayName || match.away || match.awayTeam || "",
+                  league: scoreEvent?.competitions?.[0]?.name || match.league || match.competition || "",
+                  minute: rawMinute, minuteNumber, market: "πιθανό γκολ",
+                  periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
+                  reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
                   statsAtSignal: { shots, onTarget, corners, attacks, dangerous, evidenceKinds, points }
                 };
