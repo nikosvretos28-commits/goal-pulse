@@ -89,7 +89,16 @@ async function sendPushToSubscribers(payload) {
       sent++;
     } catch (error) {
       failed++;
+      console.error("Goal Pulse push delivery failed:", JSON.stringify({
+        statusCode: Number(error.statusCode || 0),
+        message: String(error.message || "unknown push error").slice(0, 180),
+        endpointHost: (() => { try { return new URL(subscription.endpoint).host; } catch { return "invalid"; } })()
+      }));
       if (error.statusCode === 404 || error.statusCode === 410) {
+        console.warn("Removing expired Goal Pulse push subscription:", JSON.stringify({
+          statusCode: error.statusCode,
+          endpointHost: (() => { try { return new URL(subscription.endpoint).host; } catch { return "invalid"; } })()
+        }));
         pushSubscriptions.delete(subscription.endpoint);
         if (await ensurePushDb()) await analyticsPool.query("DELETE FROM push_subscriptions WHERE endpoint=$1", [subscription.endpoint]).catch(() => {});
       }
