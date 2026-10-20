@@ -1187,6 +1187,15 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const result = await sharedRequest;
+        const resultFeeds = Array.isArray(result.body?.feeds) ? result.body.feeds : [];
+        console.log("Scoreboard response delivered:", JSON.stringify({
+          date,
+          status: result.status,
+          cache: result.cache,
+          successfulFeeds: result.body?.successfulFeeds || 0,
+          totalEvents: resultFeeds.reduce((count, feed) => count + (Array.isArray(feed.events) ? feed.events.length : 0), 0),
+          liveEvents: resultFeeds.reduce((count, feed) => count + (Array.isArray(feed.events) ? feed.events.filter(event => (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in").length : 0), 0)
+        }));
         res.setHeader("X-Goal-Pulse-Cache", result.cache);
         return send(res, result.status, result.body);
       } finally {
