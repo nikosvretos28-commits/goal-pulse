@@ -292,6 +292,13 @@ async function persistRollingTrends(matches, date) {
       };
       match.trend = { source: "PostgreSQL-persisted cumulative-stat deltas", window5m: makeWindow(5), window10m: makeWindow(10) };
     }
+    console.log("Goal Pulse rolling trend verification:", JSON.stringify({
+      date, liveMatchesChecked: matches.length,
+      window5mAvailable: matches.filter(match => match.trend?.window5m?.available).length,
+      window10mAvailable: matches.filter(match => match.trend?.window10m?.available).length,
+      persistedBaselineRows5m: baselines[5].length,
+      persistedBaselineRows10m: baselines[10].length
+    }));
     return true;
   } catch (error) {
     if (!analyticsDbWarningLogged) {
