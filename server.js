@@ -852,8 +852,8 @@ const server = http.createServer(async (req, res) => {
         sharedRequest = (async () => {
           const feeds = [];
           const espnLeagues = SCOREBOARD_LEAGUES.filter(code => !ESPN_UNSUPPORTED_LEAGUES.has(code));
-          for (let i = 0; i < espnLeagues.length; i += 12) {
-            feeds.push(...await Promise.all(espnLeagues.slice(i, i + 12).map(async code => {
+          for (let i = 0; i < espnLeagues.length; i += 36) {
+            feeds.push(...await Promise.all(espnLeagues.slice(i, i + 36).map(async code => {
             try {
               const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
                 headers: { "Accept": "application/json" },
