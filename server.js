@@ -914,7 +914,6 @@ const server = http.createServer(async (req, res) => {
             oddsErrors++;
             console.error("Odds verification unavailable; suppressing unpriced betting alert:", oddsError.message);
           }
-          if (!verifiedOdds || verifiedOdds.price < 1.6) continue;
           const cooldownKey = id + ":" + level;
           if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
           const reason = [
@@ -924,10 +923,19 @@ const server = http.createServer(async (req, res) => {
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
+          // Never invent odds: when a live price cannot be verified, send only a
+          // statistical high-activity signal, not a betting recommendation.
+          const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.6);
+          const alertTitle = hasVerifiedOdds
+            ? (level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT")
+            : "Goal Pulse · HI ACTIVITY";
+          const alertBody = hasVerifiedOdds
+            ? ("Επαληθευμένη αγορά: " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over 1,5 γκολ στο 1ο ημίχρονο, απόδοση " + verifiedOdds.price.toFixed(2) + " (" + verifiedOdds.bookmaker + ").")
+            : ("Ισχυρό στατιστικό σήμα στον αγώνα " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ". " + reason + ". Δεν υπάρχει επαληθευμένη απόδοση· δεν αποτελεί πρόταση στοιχήματος.");
           const result = await sendPushToSubscribers({
-            title: level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT",
-            body: ("Πρόταση: Στον αγώνα " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over 1,5 γκολ στο 1ο ημίχρονο, απόδοση " + verifiedOdds.price.toFixed(2) + " (" + verifiedOdds.bookmaker + ").").slice(0, 240),
-            tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
+            title: alertTitle,
+            body: alertBody.slice(0, 240),
+            tag: "goal-pulse-bg-" + (hasVerifiedOdds ? level.toLowerCase() : "hi-activity") + "-" + id,
             url: "/"
           });
           if (result.sent > 0) {
