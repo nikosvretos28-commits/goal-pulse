@@ -859,7 +859,7 @@ const server = http.createServer(async (req, res) => {
         const minuteForEligibility = parseLiveMinute(minuteRawForEligibility);
         const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
-        if (Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45 && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
+        const firstHalfStatusForEligibility = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusForEligibility);\n        const validFirstHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45;\n        if ((validFirstHalfMinute || (firstHalfStatusForEligibility && !Number.isFinite(minuteForEligibility))) && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility.replace(/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/g, "")) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
         const current = {
           at: now,
           shots: total("shots"),
@@ -900,7 +900,7 @@ const server = http.createServer(async (req, res) => {
             const minuteRaw = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
             const minute = parseLiveMinute(minuteRaw);
             const status = String(match.statusText || match.status || match.status_text || "").toLowerCase();
-            const firstHalfNow = Number.isFinite(minute) && minute >= 1 && minute <= 45 && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(status);
+            const firstHalfStatus = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(status);\n            const firstHalfNow = ((Number.isFinite(minute) && minute >= 1 && minute <= 45) || (firstHalfStatus && !Number.isFinite(minute))) && !/second half|2nd half|halftime|half.?time/.test(status);
             if (firstHalfNow && Number.isFinite(currentGoals) && currentGoals < 2) {
               firstHalfOddsChecks++;
               verifiedOdds = await getVerifiedFirstHalfOver15(match);
