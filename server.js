@@ -673,12 +673,39 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const level = body.level === "VIP" ? "VIP" : "AI";
       const title = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
+      const alertBody = String(body.body || "Νέα live ένδειξη στο Goal Pulse").slice(0, 180);
+      const eventId = String(body.eventId || "").slice(0, 160);
       const result = await sendPushToSubscribers({
         title,
-        body: String(body.body || "Νέα live ένδειξη στο Goal Pulse").slice(0, 180),
+        body: alertBody,
         tag: "goal-pulse-" + level.toLowerCase() + "-" + String(body.eventId || "live").slice(0, 60),
         url: "/"
       });
+      // Do not record the deliberate subscription-test push as a match alert.
+      if (result.sent > 0 && eventId && eventId !== "push-test") {
+        const now = Date.now();
+        const alertId = "client-push:" + eventId + ":" + level + ":" + now;
+        const alertRecord = {
+          alertId, source: "client-push", alertType: "client_generated_push",
+          eventId, level, createdAt: now, body: alertBody,
+          home: "", away: "", league: "", market: null, odds: null,
+          outcome: "εκκρεμεί", reason: alertBody,
+          evaluationRule: "manual_review"
+        };
+        try {
+          if (await ensureAlertHistoryDb()) {
+            await analyticsPool.query(
+              "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
+              [alertId, eventId, level, now, JSON.stringify(alertRecord)]
+            );
+            console.log("Client push alert history saved:", JSON.stringify({ alertId, eventId, level }));
+          } else {
+            console.error("Client push alert sent but alert history database unavailable:", eventId);
+          }
+        } catch (historyError) {
+          console.error("Client push alert history save failed:", historyError.message);
+        }
+      }
       return send(res, 200, { ok: true, ...result });
     } catch (error) {
       return send(res, 400, { error: error.message || "Push send failed" });
