@@ -1442,48 +1442,41 @@ function renderHighActivityMatches(){
   if(m.state!=="in"||/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
   const stats=liveMetricsCache.get(String(m.id));
   if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
-  const teams=stats.teams;
-  const trail=signalTrails.get(String(m.id))||[];
-  // Hi Activity must be driven by fresh, observed changes—not season-long/cumulative totals.
+  const teams=stats.teams,trail=signalTrails.get(String(m.id))||[];
   const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
-  let recentShots=0,recentOnTarget=0,hasRecentData=false;
+  const keys=["shots","shotsOnTarget","corners","attacks","dangerousAttacks"];
+  const delta={shots:0,shotsOnTarget:0,corners:0,attacks:0,dangerousAttacks:0};
+  let hasRecentData=false;
   if(baseline&&Array.isArray(baseline.values)){
-   teams.forEach((team,i)=>{
-    const prev=baseline.values[i]||{};
-    for(const key of ["shots","shotsOnTarget"]){
-     if(team[key]!=null&&prev[key]!=null&&Number.isFinite(Number(team[key]))&&Number.isFinite(Number(prev[key]))){
-      const delta=Math.max(0,Number(team[key])-Number(prev[key]));
-      if(key==="shots")recentShots+=delta;else recentOnTarget+=delta;
-      hasRecentData=true;
-     }
+   teams.forEach((team,i)=>{const prev=baseline.values[i]||{};keys.forEach(key=>{
+    if(team[key]!=null&&prev[key]!=null&&Number.isFinite(Number(team[key]))&&Number.isFinite(Number(prev[key]))){
+     delta[key]+=Math.max(0,Number(team[key])-Number(prev[key]));hasRecentData=true;
     }
-   });
+   })});
   }
-  // Use the server's persisted 5-minute deltas only when their sampling window is fresh.
   if(!hasRecentData){
-   const trend=stats.trend?.window5m;
-   const sampleMinutes=Number(trend?.sampleMinutes);
+   const trend=stats.trend?.window5m,sampleMinutes=Number(trend?.sampleMinutes);
    if(trend?.available&&Array.isArray(trend.teams)&&Number.isFinite(sampleMinutes)&&sampleMinutes>=4.5&&sampleMinutes<=8){
-    for(const team of trend.teams){
-     if(team.shots!=null&&Number.isFinite(Number(team.shots)))recentShots+=Math.max(0,Number(team.shots));
-     if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget)))recentOnTarget+=Math.max(0,Number(team.shotsOnTarget));
-    }
-    hasRecentData=trend.teams.some(team=>team.shots!=null||team.shotsOnTarget!=null);
+    keys.forEach(key=>trend.teams.forEach(team=>{if(team[key]!=null&&Number.isFinite(Number(team[key]))){delta[key]+=Math.max(0,Number(team[key]));hasRecentData=true}}));
    }
   }
+  if(!hasRecentData)return null;
+  const evidenceKinds=keys.filter(key=>delta[key]>0).length;
+  const goalEvidence=delta.shots>=2&&delta.shotsOnTarget>=1;
+  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget*2+delta.corners*2+Math.min(delta.attacks*.25,3)+Math.min(delta.dangerousAttacks*.75,5);
+  const pressureEvidence=evidenceKinds>=3&&pressureScore>=7&&(delta.corners>=1||delta.dangerousAttacks>=3);
+  const active=goalEvidence||pressureEvidence;
   const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
-  // Corners and cumulative shot totals never qualify a match on their own.
-  const active=hasRecentData&&recentShots>=2&&recentOnTarget>=1;
-  const score=recentShots+recentOnTarget*2;
-  const intensity=Math.max(0,Math.min(100,Math.round(recentShots*10+recentOnTarget*20)));
-  return active?{match:m,score,intensity,recentShots,recentOnTarget,totalShots,totalOnTarget}:null;
+  const score=pressureScore+delta.shotsOnTarget*2;
+  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*18+delta.corners*10+delta.attacks*.3+delta.dangerousAttacks*.8)));
+  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentCorners:delta.corners,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,totalShots,totalOnTarget}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
  box.innerHTML=ranked.length
   ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
-  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν το πρωτόκολλο γκολ. Η λίστα επανελέγχεται αυτόματα και οι αγώνες επιστρέφουν αν ξαναενεργοποιηθούν τα στατιστικά.</div>';
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, κόρνερ, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
 }
 async function runSignalCheck(){
  if(signalBusy)return;
@@ -1497,7 +1490,7 @@ async function runSignalCheck(){
   liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));
    updateInsightSummary();
    if(active==='signals')render();
-  const liveBox=document.getElementById('liveRows');if(liveBox)liveBox.innerHTML=allMatches.filter(m=>m.state==='in').slice(0,6).map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';renderHighActivityMatches();
+  const liveBox=document.getElementById('liveRows');if(liveBox)liveBox.innerHTML=allMatches.filter(m=>m.state==='in').map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';renderHighActivityMatches();
  
   // Evaluate alerts against the actual scoreboard after a ten-minute observation window.
   let outcomesChanged=false;signalAlertHistory.forEach(a=>{if(a.outcome!=='εκκρεμεί'||a.manualOutcome||!a.createdAt||Date.now()-a.createdAt<(Number(a.evaluationWindowMinutes)||10)*60*1000)return;const match=allMatches.find(m=>m.id===a.eventId);if(!match)return;const score=Number(match.home.score||0)+Number(match.away.score||0);if(a.market==='πιθανό γκολ'){a.outcome=score>a.startScore?'Επιβεβαιώθηκε · γκολ':'Δεν επιβεβαιώθηκε · χωρίς γκολ'}else if(String(a.market||'').startsWith('Over ')&&String(a.market).includes('συνολικά κόρνερ')){if(match.state==='in')return;const live=liveMetricsCache.get(String(a.eventId));if(!live?.statsAvailable||!Array.isArray(live.teams)||!live.teams.every(t=>t.corners!=null))return;const corners=live.teams.reduce((sum,t)=>sum+Number(t.corners),0);if(a.overLine==null)return;a.outcome=corners>Number(a.overLine)?'Επιβεβαιώθηκε · τελικό σύνολο '+corners+' κόρνερ':'Δεν επιβεβαιώθηκε · τελικό σύνολο '+corners+' κόρνερ'}else if(a.market==='πιθανό κόρνερ'){const live=liveMetricsCache.get(String(a.eventId));if(!live?.statsAvailable)return;const corners=(live.teams||[]).reduce((sum,t)=>sum+Number(t.corners||0),0);if(a.startCorners==null)return;a.outcome=corners>a.startCorners?'Επιβεβαιώθηκε · κόρνερ':'Δεν επιβεβαιώθηκε · χωρίς κόρνερ'}else if(a.market==='ένταση'){const metrics=liveMetricsCache.get(String(a.eventId));if(!metrics?.statsAvailable)return;const teams=metrics.teams||[];const shots=teams.length===2&&teams.every(t=>t.shots!=null)?teams.reduce((sum,t)=>sum+Number(t.shots),0):null;const onTarget=teams.length===2&&teams.every(t=>t.shotsOnTarget!=null)?teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null;const corners=teams.length===2&&teams.every(t=>t.corners!=null)?teams.reduce((sum,t)=>sum+Number(t.corners),0):null;const comparable=(a.startShots!=null&&shots!=null)||(a.startShotsOnTarget!=null&&onTarget!=null)||(a.startCorners!=null&&corners!=null);if(!comparable)return;const continued=(a.startShots!=null&&shots!=null&&shots>a.startShots)||(a.startShotsOnTarget!=null&&onTarget!=null&&onTarget>a.startShotsOnTarget)||(a.startCorners!=null&&corners!=null&&corners>a.startCorners);a.outcome=continued?'Επιβεβαιώθηκε · νέα δραστηριότητα':'Δεν επιβεβαιώθηκε · χωρίς νέα δραστηριότητα'}else return;a.evaluatedAt=Date.now();persistAlertRecord(a);outcomesChanged=true;});if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory();}
