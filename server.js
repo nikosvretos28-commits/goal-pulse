@@ -1339,9 +1339,9 @@ const server = http.createServer(async (req, res) => {
                   const pathname = new URL(String(match.url), "https://sportscore.com").pathname;
                   const segments = pathname.split("/").filter(Boolean);
                   const matchIndex = segments.indexOf("match");
-                  // SportScore match URLs are /football/match/<descriptive-slug>/<unique-event-id>/.
-                  // The widget detail endpoint resolves the unique event ID, not the descriptive slug.
-                  matchSlug = matchIndex >= 0 ? (segments[matchIndex + 2] || segments[matchIndex + 1] || "") : (segments[segments.length - 1] || "");
+                  // The widget detail endpoint's "slug" parameter expects the descriptive match slug.
+                  // Keep the unique event ID as a fallback only when no descriptive slug is present.
+                  matchSlug = matchIndex >= 0 ? (segments[matchIndex + 1] || segments[matchIndex + 2] || "") : (segments[segments.length - 1] || "");
                 } catch {}
               }
               if (!matchSlug) continue;
