@@ -196,11 +196,31 @@ async function ensureAnalyticsDb() {
 
 ensureAnalyticsDb().then(async ready => {
   if (!ready) return;
+  let client;
   try {
-    const result = await analyticsPool.query("SELECT COUNT(*)::int AS snapshot_count, COUNT(DISTINCT event_id)::int AS event_count FROM live_stat_snapshots");
-    console.log("Goal Pulse analytics database verified:", JSON.stringify({ connected: true, schemaReady: true, savedSnapshots: result.rows[0].snapshot_count, savedEvents: result.rows[0].event_count }));
+    client = await analyticsPool.connect();
+    await client.query("BEGIN");
+    const probeEventId = "goal-pulse-db-write-test-" + Date.now();
+    const inserted = await client.query(
+      "INSERT INTO live_stat_snapshots (event_id, match_date, team_name, shots) VALUES ($1, $2, $3, $4) RETURNING id, event_id",
+      [probeEventId, new Date().toISOString().slice(0, 10), "Goal Pulse DB write test", 1]
+    );
+    const verified = await client.query("SELECT id FROM live_stat_snapshots WHERE id = $1 AND event_id = $2", [inserted.rows[0].id, probeEventId]);
+    await client.query("ROLLBACK");
+    const counts = await analyticsPool.query("SELECT COUNT(*)::int AS snapshot_count, COUNT(DISTINCT event_id)::int AS event_count FROM live_stat_snapshots");
+    console.log("Goal Pulse analytics database write test:", JSON.stringify({
+      connected: true,
+      schemaReady: true,
+      insertVerified: verified.rowCount === 1,
+      testRowRolledBack: true,
+      savedSnapshots: counts.rows[0].snapshot_count,
+      savedEvents: counts.rows[0].event_count
+    }));
   } catch (error) {
-    console.error("Goal Pulse analytics database verification failed:", error.code || error.message);
+    if (client) { try { await client.query("ROLLBACK"); } catch (_) {} }
+    console.error("Goal Pulse analytics database write test failed:", error.code || error.message);
+  } finally {
+    if (client) client.release();
   }
 });
 
