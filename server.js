@@ -1082,7 +1082,7 @@ const server = http.createServer(async (req, res) => {
                 seenPairs.add(h + "||" + a); seenPairs.add(a + "||" + h);
               }
               if (recovered.length) { finalFeeds = finalFeeds.concat([{ code: "sportscore-widget", events: recovered, ok: true }]); successfulFeeds = finalFeeds.filter(feed => feed.ok).length; }
-              console.log("SportScore widget live fallback:", JSON.stringify({ date, received: widgetMatches.length, liveMapped: recovered.length }));
+              console.log("SportScore widget live fallback:", JSON.stringify({ date, received: widgetMatches.length, liveMapped: recovered.length, sample: widgetMatches.slice(0, 3).map(match => ({ keys: Object.keys(match || {}), status: match.status, status_text: match.status_text, state: match.state, status_name: match.status_name, status_short: match.status_short, home: match.home, away: match.away, home_name: match.home_name, away_name: match.away_name, home_team: match.home_team, away_team: match.away_team, competition: match.competition, minute: match.minute })) }));
             } else console.warn("SportScore widget live fallback HTTP:", response.status);
           } catch (error) { console.warn("SportScore widget live fallback unavailable:", error.message || "request failed"); }
 
