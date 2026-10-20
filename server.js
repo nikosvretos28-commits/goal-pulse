@@ -194,8 +194,14 @@ async function ensureAnalyticsDb() {
   return analyticsDbInit;
 }
 
-ensureAnalyticsDb().then(ready => {
-  if (ready) console.log("Goal Pulse analytics database connected; schema ready.");
+ensureAnalyticsDb().then(async ready => {
+  if (!ready) return;
+  try {
+    const result = await analyticsPool.query("SELECT COUNT(*)::int AS snapshot_count, COUNT(DISTINCT event_id)::int AS event_count FROM live_stat_snapshots");
+    console.log("Goal Pulse analytics database verified:", JSON.stringify({ connected: true, schemaReady: true, savedSnapshots: result.rows[0].snapshot_count, savedEvents: result.rows[0].event_count }));
+  } catch (error) {
+    console.error("Goal Pulse analytics database verification failed:", error.code || error.message);
+  }
 });
 
 async function persistRollingTrends(matches, date) {
