@@ -706,7 +706,7 @@ const server = http.createServer(async (req, res) => {
       if (await ensureAlertHistoryDb()) {
         try {
           const pending = await analyticsPool.query(
-            "SELECT alert_id,payload FROM alert_history WHERE payload->>'source'='server-push' AND payload->>'market'='πιθανό γκολ' AND payload->>'outcome'='εκκρεμεί' AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
+            "SELECT alert_id,payload FROM alert_history WHERE payload->>'source'='server-push' AND payload->>'market' IN ('πιθανό γκολ','Over 1,5 γκολ 1ου ημιχρόνου') AND payload->>'outcome'='εκκρεμεί' AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
           );
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
           const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
