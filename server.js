@@ -979,7 +979,7 @@ const server = http.createServer(async (req, res) => {
           subscribers = subscriberResult.rows[0].count;
         } catch {}
       }
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(process.env.ODDSPAPI_API_KEY), scoreboardJoinMatches, scoreboardJoinSamples, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(process.env.ODDSPAPI_API_KEY), firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
