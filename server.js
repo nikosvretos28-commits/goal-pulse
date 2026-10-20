@@ -240,7 +240,7 @@ async function persistRollingTrends(matches, date) {
     const tuples = snapshots.map((row, index) => {
       const n = index * 9;
       values.push(...row);
-      return `(${n+1}, ${n+2}, ${n+3}, NOW(), ${n+4}, ${n+5}, ${n+6}, ${n+7}, ${n+8}, ${n+9})`;
+      return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8}, $${n+9})`;
     });
     await analyticsPool.query(
       `INSERT INTO live_stat_snapshots
