@@ -1320,6 +1320,27 @@ document.getElementById('enableNotifications').addEventListener('click',async()=
  }catch(error){signalStatus.textContent='Δεν ολοκληρώθηκε η ενεργοποίηση push: '+String(error.message||error).slice(0,180)}finally{button.disabled=false}
 });
 
+// Restore an already-authorized push subscription after server restarts or lost DB rows.
+// No permission prompt is shown; this runs only when the visitor has already granted permission.
+void (async()=>{
+ try{
+  if(!('Notification' in window)||Notification.permission!=='granted'||!('serviceWorker' in navigator)||!('PushManager' in window))return;
+  const registration=await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  let subscription=await registration.pushManager.getSubscription();
+  const keyResponse=await fetch(ANALYTICS_API+'/api/push/vapid-public-key',{cache:'no-store'});
+  if(!keyResponse.ok)return;
+  const keyData=await keyResponse.json();
+  if(!keyData.publicKey)return;
+  if(!subscription){
+   const decodeKey=value=>{const padding='='.repeat((4-value.length%4)%4);const raw=atob((value+padding).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0))};
+   subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeKey(keyData.publicKey)});
+  }
+  const response=await fetch(ANALYTICS_API+'/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
+  if(!response.ok)console.warn('Goal Pulse could not resync the existing push subscription:',response.status);
+ }catch(error){console.warn('Goal Pulse push subscription resync skipped:',String(error.message||error).slice(0,140))}
+})();
+
 function renderTopAiAlerts(){
  let all=[];
  try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))all=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()-Number(a.createdAt)<=30*60*1000&&Date.now()>=Number(a.createdAt))}catch{}
