@@ -686,6 +686,37 @@ const server = http.createServer(async (req, res) => {
           if (result.sent > 0) {
             pushScanLastAlert.set(cooldownKey, now);
             sent += result.sent;
+            // Persist the actual server-generated push, not just browser-side test signals.
+            // This record becomes the source of truth for later 10-minute outcome evaluation.
+            try {
+              if (await ensureAlertHistoryDb()) {
+                const alertId = "push:" + id + ":" + level + ":" + now;
+                const scoreValue = value => {
+                  const n = Number(value);
+                  return value !== null && value !== undefined && value !== "" && Number.isFinite(n) ? n : null;
+                };
+                const homeScore = scoreValue(match.homeScore ?? match.scoreHome ?? match.home_score ?? match.home?.score ?? match.score?.home);
+                const awayScore = scoreValue(match.awayScore ?? match.scoreAway ?? match.away_score ?? match.away?.score ?? match.score?.away);
+                const alertRecord = {
+                  alertId, source: "server-push", eventId: id, level,
+                  createdAt: now, home: match.home || match.homeTeam || "",
+                  away: match.away || match.awayTeam || "",
+                  league: match.league || match.competition || "",
+                  minute: formatPushMinute(match), market: "πιθανό γκολ",
+                  reason, outcome: "εκκρεμεί", evaluationWindowMinutes: 10,
+                  ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
+                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, evidenceKinds, points }
+                };
+                await analyticsPool.query(
+                  "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
+                  [alertId, id, level, now, JSON.stringify(alertRecord)]
+                );
+              } else {
+                console.error("Actual push alert was sent but persistent history database is unavailable:", id);
+              }
+            } catch (historyError) {
+              console.error("Actual push alert history save failed:", historyError.message);
+            }
           }
           candidates++;
         }
