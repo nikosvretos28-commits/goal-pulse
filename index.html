@@ -1637,11 +1637,11 @@ async function runSignalCheck(){
      const aiRecord={...base,level:'AI'};aiRecord.alertId=alertHistoryKey(aiRecord);signalAlertHistory.unshift(aiRecord);persistAlertRecord(aiRecord);
 
      sendGoalPulsePushAlert('AI',m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,base.eventId||m.id);
-     if(vip){const vipRecord={...base,level:'VIP'};vipRecord.alertId=alertHistoryKey(vipRecord);signalAlertHistory.unshift(vipRecord);persistAlertRecord(vipRecord);sendGoalPulsePushAlert('VIP',m.home.name+' – '+m.away.name+' · '+base.market+' · Ισχυρή ένδειξη VIP: '+reason,base.eventId||m.id);newAlerts++}
+     
      signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(candidateKey,now);newAlerts++;
      try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
      renderTopAiAlerts();renderHighActivityMatches();
-     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · AI Alert',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-ai-'+candidateKey});if(vip)new Notification('Goal Pulse · ◆ VIP ALERT',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · Ισχυρή ένδειξη VIP: '+reason,tag:'goal-pulse-vip-'+candidateKey})}catch{}}
+     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('Goal Pulse · AI Alert',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-ai-'+candidateKey})}catch{}}
     }
    }
   }
