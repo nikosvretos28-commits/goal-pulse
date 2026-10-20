@@ -1730,7 +1730,7 @@ const server = http.createServer(async (req, res) => {
       let cursor = 0;
       const matches = [];
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], sample: null };
-      const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
+      const workers = Array.from({ length: Math.min(4, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
           const event = item.event;
@@ -1757,10 +1757,18 @@ const server = http.createServer(async (req, res) => {
                 detail = directLiveMatch;
                 sportScoreDetailDiagnostics.ok++;
               } else {
-                let detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse", {
-                  headers: { "Accept": "application/json" },
-                  signal: AbortSignal.timeout(8000)
-                });
+                const detailUrl = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse";
+                let detailResponse;
+                // SportScore intermittently returns 503 under burst traffic. Retry transient failures
+                // with short backoff, while keeping the overall request concurrency conservative.
+                for (let attempt = 0; attempt < 3; attempt++) {
+                  detailResponse = await fetch(detailUrl, {
+                    headers: { "Accept": "application/json" },
+                    signal: AbortSignal.timeout(10000)
+                  });
+                  if (detailResponse.status !== 503 || attempt === 2) break;
+                  await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
+                }
                 if (detailResponse.status === 404 && slug.includes("-vs-")) {
                   const parts = slug.split("-vs-");
                   if (parts.length === 2) {
