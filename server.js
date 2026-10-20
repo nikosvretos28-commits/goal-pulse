@@ -1086,6 +1086,30 @@ const server = http.createServer(async (req, res) => {
             } else console.warn("SportScore widget live fallback HTTP:", response.status);
           } catch (error) { console.warn("SportScore widget live fallback unavailable:", error.message || "request failed"); }
 
+          // Dedicated live-only endpoint: unlike the recent-match widget, this explicitly filters status=live.
+          try {
+            const liveDate = date.length === 8 ? date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8) : new Date().toISOString().slice(0, 10);
+            const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
+              headers: { "Accept": "application/json" },
+              signal: AbortSignal.timeout(9000)
+            });
+            if (response.ok) {
+              const payload = await response.json();
+              const liveFixtures = Array.isArray(payload) ? payload : (payload.matches || payload.data || payload.fixtures || payload.events || payload.results || []);
+              console.log("SportScore dedicated live endpoint:", JSON.stringify({
+                checkedAt: new Date().toISOString(), httpStatus: response.status, rootKeys: Object.keys(payload || {}),
+                count: liveFixtures.length,
+                sample: liveFixtures.slice(0, 5).map(match => ({
+                  keys: Object.keys(match || {}), id: match.id, slug: match.slug, home: match.home,
+                  away: match.away, home_team: match.home_team, away_team: match.away_team,
+                  home_score: match.home_score, away_score: match.away_score, score: match.score,
+                  status: match.status, status_text: match.status_text, minute: match.minute,
+                  competition: match.competition, league: match.league, time: match.time
+                }))
+              }));
+            } else console.warn("SportScore dedicated live endpoint HTTP:", response.status);
+          } catch (error) { console.warn("SportScore dedicated live endpoint unavailable:", error.message || "request failed"); }
+
           const scoreboardSource = feeds.some(feed => feed.ok && feed.events.length)
             ? (finalFeeds.some(feed => feed.code === "sportscore") ? "ESPN+PitchAPI+SportScore" : "ESPN+PitchAPI")
             : finalFeeds.some(feed => feed.events.length)
