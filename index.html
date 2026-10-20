@@ -1437,21 +1437,22 @@ function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
  const now=Date.now();
  const scoreMatch=m=>{
+  const clockText=String(m.clock||"").toLowerCase();
+  const statusText=String(m.statusText||m.status||m.state||"").toLowerCase();
+  if(m.state!=="in"||/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
   const stats=liveMetricsCache.get(String(m.id));
   if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   const teams=stats.teams;
   const trail=signalTrails.get(String(m.id))||[];
   const baseline=[...trail].reverse().find(item=>now-item.at>=5*60*1000);
-  let recentShots=0,recentOnTarget=0,recentCorners=0;
+  let recentShots=0,recentOnTarget=0;
   if(baseline&&Array.isArray(baseline.values)){
    teams.forEach((team,i)=>{
     const prev=baseline.values[i]||{};
-    for(const [key,field] of [['shots','shots'],['shotsOnTarget','shotsOnTarget'],['corners','corners']]){
-     if(team[key]!=null&&prev[field]!=null){
-      const d=Math.max(0,Number(team[key])-Number(prev[field]));
-      if(key==='shots')recentShots+=d;
-      if(key==='shotsOnTarget')recentOnTarget+=d;
-      if(key==='corners')recentCorners+=d;
+    for(const key of ["shots","shotsOnTarget"]){
+     if(team[key]!=null&&prev[key]!=null){
+      const delta=Math.max(0,Number(team[key])-Number(prev[key]));
+      if(key==="shots")recentShots+=delta;else recentOnTarget+=delta;
      }
     }
    });
@@ -1461,29 +1462,22 @@ function renderHighActivityMatches(){
     for(const team of trend.teams){
      recentShots+=Math.max(0,Number(team.shots)||0);
      recentOnTarget+=Math.max(0,Number(team.shotsOnTarget)||0);
-     recentCorners+=Math.max(0,Number(team.corners)||0);
     }
    }
   }
   const totalShots=teams.reduce((n,t)=>n+Number(t.shots||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0);
   const hasRecentData=!!baseline||!!stats.trend?.window5m?.available;
-  const score=recentShots+recentOnTarget*2+recentCorners*2;
-  // Rank only verified recent changes, never cumulative match totals as if they were live pressure.
-  const intensity=Math.max(0,Math.min(100,Math.round(recentShots*10+recentOnTarget*20+recentCorners*10)));
-  const active=hasRecentData&&(score>=3||(recentShots>=2&&recentOnTarget>=1)||(recentOnTarget>=2));
-  return active?{match:m,score,intensity,recentShots,recentOnTarget,recentCorners,totalShots,totalOnTarget,hasRecentBaseline:!!baseline}:null;
+  const active=hasRecentData&&recentShots>=2&&recentOnTarget>=1;
+  const score=recentShots+recentOnTarget*2;
+  const intensity=Math.max(0,Math.min(100,Math.round(recentShots*10+recentOnTarget*20)));
+  return active?{match:m,score,intensity,recentShots,recentOnTarget,totalShots,totalOnTarget}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots).slice(0,5);
- if(ranked.length){
-  box.innerHTML=ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join('');
- }else{
-  const liveFallback=allMatches.filter(m=>m.state==="in").slice(0,5);
-  box.innerHTML=liveFallback.length
-   ? '<div class="subtle" style="padding:8px 10px">Δεν υπάρχει ακόμη επιβεβαιωμένη υψηλή πίεση. Παρακολούθηση ζωντανών αγώνων μέχρι να αλλάξουν τα στατιστικά:</div>'+liveFallback.map(m=>liveMatchLine(m,false)).join('')
-   : '<div class="subtle" style="padding:10px">Δεν υπάρχουν live αγώνες αυτή τη στιγμή. Η λίστα ανανεώνεται αυτόματα.</div>';
- }
+ box.innerHTML=ranked.length
+  ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν το πρωτόκολλο γκολ. Η λίστα επανελέγχεται αυτόματα και οι αγώνες επιστρέφουν αν ξαναενεργοποιηθούν τα στατιστικά.</div>';
 }
 async function runSignalCheck(){
  if(signalBusy)return;
