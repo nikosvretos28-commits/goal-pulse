@@ -1529,8 +1529,47 @@ async function runSignalCheck(){
    if(active==='signals')render();
   const liveBox=document.getElementById('liveRows');if(liveBox)liveBox.innerHTML=allMatches.filter(m=>m.state==='in').map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';renderHighActivityMatches();
  
-  // Evaluate real server push goal alerts at the end of the relevant half, not after an arbitrary ten-minute window.
-  let outcomesChanged=false;signalAlertHistory.forEach(a=>{if(a.outcome!=='εκκρεμεί'||a.manualOutcome||!a.createdAt)return;const match=allMatches.find(m=>m.id===a.eventId);if(!match)return;const score=Number(match.home.score||0)+Number(match.away.score||0);if(a.source==='server-push'&&a.market==='πιθανό γκολ')return;if(Date.now()-a.createdAt<(Number(a.evaluationWindowMinutes)||10)*60*1000)return;if(a.market==='πιθανό γκολ'){a.outcome=score>a.startScore?'Επιβεβαιώθηκε · γκολ':'Δεν επιβεβαιώθηκε · χωρίς γκολ'}else if(String(a.market||'').startsWith('Over ')&&String(a.market).includes('συνολικά κόρνερ')){if(match.state==='in')return;const live=liveMetricsCache.get(String(a.eventId));if(!live?.statsAvailable||!Array.isArray(live.teams)||!live.teams.every(t=>t.corners!=null))return;const corners=live.teams.reduce((sum,t)=>sum+Number(t.corners),0);if(a.overLine==null)return;a.outcome=corners>Number(a.overLine)?'Επιβεβαιώθηκε · τελικό σύνολο '+corners+' κόρνερ':'Δεν επιβεβαιώθηκε · τελικό σύνολο '+corners+' κόρνερ'}else if(a.market==='πιθανό κόρνερ'){const live=liveMetricsCache.get(String(a.eventId));if(!live?.statsAvailable)return;const corners=(live.teams||[]).reduce((sum,t)=>sum+Number(t.corners||0),0);if(a.startCorners==null)return;a.outcome=corners>a.startCorners?'Επιβεβαιώθηκε · κόρνερ':'Δεν επιβεβαιώθηκε · χωρίς κόρνερ'}else if(a.market==='ένταση'){const metrics=liveMetricsCache.get(String(a.eventId));if(!metrics?.statsAvailable)return;const teams=metrics.teams||[];const shots=teams.length===2&&teams.every(t=>t.shots!=null)?teams.reduce((sum,t)=>sum+Number(t.shots),0):null;const onTarget=teams.length===2&&teams.every(t=>t.shotsOnTarget!=null)?teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null;const corners=teams.length===2&&teams.every(t=>t.corners!=null)?teams.reduce((sum,t)=>sum+Number(t.corners),0):null;const comparable=(a.startShots!=null&&shots!=null)||(a.startShotsOnTarget!=null&&onTarget!=null)||(a.startCorners!=null&&corners!=null);if(!comparable)return;const continued=(a.startShots!=null&&shots!=null&&shots>a.startShots)||(a.startShotsOnTarget!=null&&onTarget!=null&&onTarget>a.startShotsOnTarget)||(a.startCorners!=null&&corners!=null&&corners>a.startCorners);a.outcome=continued?'Επιβεβαιώθηκε · νέα δραστηριότητα':'Δεν επιβεβαιώθηκε · χωρίς νέα δραστηριότητα'}else return;a.evaluatedAt=Date.now();persistAlertRecord(a);outcomesChanged=true;});if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory();}
+  // Evaluate alerts only when the selected half has ended. Server push goal alerts are evaluated by the backend using persisted halftime/final scores.
+  let outcomesChanged=false;
+  signalAlertHistory.forEach(a=>{
+    if(a.outcome!=='εκκρεμεί'||a.manualOutcome||!a.createdAt)return;
+    if(a.source==='server-push'&&a.market==='πιθανό γκολ')return;
+    const match=allMatches.find(m=>m.id===a.eventId);
+    if(!match)return;
+    const clock=String(match.clock||'').toUpperCase();
+    const explicitHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/.test(clock);
+    const minuteMatch=String(a.minuteNumber??a.minute??'').match(/(\d{1,3})/);
+    const signalMinute=Number(a.minuteNumber??(minuteMatch?minuteMatch[1]:NaN));
+    const period=String(a.periodAtSignal||((Number.isFinite(signalMinute)&&signalMinute>45)?'second_half':'first_half'));
+    const firstHalf=period!=='second_half';
+    const periodFinished=firstHalf?explicitHalfTime:match.state==='post';
+    if(!periodFinished)return;
+    if(a.market==='πιθανό γκολ'){
+      const score=Number(match.home.score||0)+Number(match.away.score||0);
+      if(a.startScore==null)return;
+      a.outcome=score>Number(a.startScore)?'Επιβεβαιώθηκε · γκολ μέχρι τη λήξη του ημιχρόνου':'Δεν επιβεβαιώθηκε · χωρίς γκολ μέχρι τη λήξη του ημιχρόνου';
+    }else{
+      const live=liveMetricsCache.get(String(a.eventId));
+      if(!live?.statsAvailable||!Array.isArray(live.teams)||live.teams.length!==2)return;
+      const corners=live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null;
+      const shots=live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null;
+      const onTarget=live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null;
+      if(String(a.market||'').startsWith('Over ')&&String(a.market).includes('συνολικά κόρνερ')){
+        if(corners==null||a.overLine==null)return;
+        a.outcome=corners>Number(a.overLine)?'Επιβεβαιώθηκε · σύνολο '+corners+' κόρνερ':'Δεν επιβεβαιώθηκε · σύνολο '+corners+' κόρνερ';
+      }else if(a.market==='πιθανό κόρνερ'){
+        if(corners==null||a.startCorners==null)return;
+        a.outcome=corners>Number(a.startCorners)?'Επιβεβαιώθηκε · κόρνερ':'Δεν επιβεβαιώθηκε · χωρίς νέο κόρνερ';
+      }else if(a.market==='ένταση'){
+        const comparable=(a.startShots!=null&&shots!=null)||(a.startShotsOnTarget!=null&&onTarget!=null)||(a.startCorners!=null&&corners!=null);
+        if(!comparable)return;
+        const continued=(a.startShots!=null&&shots!=null&&shots>a.startShots)||(a.startShotsOnTarget!=null&&onTarget!=null&&onTarget>a.startShotsOnTarget)||(a.startCorners!=null&&corners!=null&&corners>a.startCorners);
+        a.outcome=continued?'Επιβεβαιώθηκε · νέα δραστηριότητα':'Δεν επιβεβαιώθηκε · χωρίς νέα δραστηριότητα';
+      }else return;
+    }
+    a.evaluatedAt=Date.now();a.evaluationRule='end_of_selected_half';persistAlertRecord(a);outcomesChanged=true;
+  });
+  if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory();}
   let available=0,newAlerts=0;
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
   for(const m of liveMatches){
@@ -1594,7 +1633,7 @@ async function runSignalCheck(){
     if(candidateValid&&(signalCandidateCounts.get(candidateKey)||0)>=2&&now-last>8*60*1000){
      const reason=[...new Set(reasons)].join(' · ')||'αύξηση live δραστηριότητας';
      const vip=vipAlertsToggle.checked&&market.points>=Math.max(9,sensitivity+5)&&goalEvidence&&cornersAdded>=1&&evidenceKinds>=3;
-     const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',reason:market.key==='corner'?'Σύνολο τώρα: '+totalCorners+' κόρνερ · Εκτίμηση λήξης: '+(projectedCorners==null?'—':projectedCorners.toFixed(1))+' · Γραμμή: Over '+overLine+' · Επιβεβαιωτικές ενδείξεις επίθεσης: '+(attacksAdded>0?'επιθέσεις ':'')+(dangerousAttacksAdded>0?'επικίνδυνες επιθέσεις ':'')+(shotsOnTargetAdded>0?'σουτ στην εστία':'')+' · '+[...new Set(reasons)].join(' · '):reason,market:market.label,overLine:market.key==='corner'?overLine:null,projectedCorners:market.key==='corner'?projectedCorners:null,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShots:live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
+     const signalMinute=Number(String(m.clock||live.minute||'').match(/(\d{1,3})/)?.[1]);const periodAtSignal=Number.isFinite(signalMinute)&&signalMinute>45?'second_half':'first_half';const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,minute:m.clock||'LIVE',minuteNumber:Number.isFinite(signalMinute)?signalMinute:null,periodAtSignal,reason:market.key==='corner'?'Σύνολο τώρα: '+totalCorners+' κόρνερ · Εκτίμηση λήξης: '+(projectedCorners==null?'—':projectedCorners.toFixed(1))+' · Γραμμή: Over '+overLine+' · Επιβεβαιωτικές ενδείξεις επίθεσης: '+(attacksAdded>0?'επιθέσεις ':'')+(dangerousAttacksAdded>0?'επικίνδυνες επιθέσεις ':'')+(shotsOnTargetAdded>0?'σουτ στην εστία':'')+' · '+[...new Set(reasons)].join(' · '):reason,market:market.label,overLine:market.key==='corner'?overLine:null,projectedCorners:market.key==='corner'?projectedCorners:null,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShots:live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
      const aiRecord={...base,level:'AI'};aiRecord.alertId=alertHistoryKey(aiRecord);signalAlertHistory.unshift(aiRecord);persistAlertRecord(aiRecord);
 
      sendGoalPulsePushAlert('AI',m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,base.eventId||m.id);
