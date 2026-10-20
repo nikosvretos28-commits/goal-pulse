@@ -736,11 +736,11 @@ const server = http.createServer(async (req, res) => {
         if (!match.status) match.status = score.status;
         // Convert clocks like "45:00" to a minute number for the alert gate.
         if (match.minute != null && !Number.isFinite(Number(match.minute))) {
-          const clockMatch = String(match.minute).match(/(\\d{1,3})/);
+          const clockMatch = String(match.minute).trim().match(/^([0-9]{1,3})(?::[0-9]{1,2})?\\s*['′’]?$/);
           if (clockMatch) match.minute = Number(clockMatch[1]);
         }
         if ((!Number.isFinite(Number(match.minute)) || Number(match.minute) === 0) && score.minute) {
-          const clockMatch = String(score.minute).match(/(\\d{1,3})/);
+          const clockMatch = String(score.minute).trim().match(/^([0-9]{1,3})(?::[0-9]{1,2})?\\s*['′’]?$/);
           if (clockMatch) match.minute = Number(clockMatch[1]);
         }
       }
