@@ -655,17 +655,18 @@ const server = http.createServer(async (req, res) => {
         const shots = delta("shots"), onTarget = delta("onTarget"), corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
-        // Keep server push thresholds aligned with the page's High Activity detector.
-        // A possible-goal signal needs multiple new shots plus a shot on target;
-        // pressure requires several independent indicators to reduce false positives.
+        // High Activity is only the candidate pool. Push alerts use a separate,
+        // stricter goal-likelihood gate; pressure alone must never trigger a goal alert.
+        // Require multiple new shots, a shot on target, at least three independent
+        // signals, a strong combined score, and corroborating corners/dangerous attacks.
         const goalEvidence = shots >= 2 && onTarget >= 1;
         const points = Math.min(shots, 4) + onTarget * 2 + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5);
-        const isAiGoal = goalEvidence;
-        const isAiPressure = !isAiGoal && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
-        const isVip = goalEvidence && corners >= 1 && evidenceKinds >= 3 && points >= 9;
+        const isAiGoal = goalEvidence && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
+        const isVip = isAiGoal && corners >= 1 && points >= 9;
         const levels = [];
-        if (isAiGoal || isAiPressure) levels.push("AI");
+        // Send one alert only: VIP when the evidence is exceptionally strong, otherwise AI.
         if (isVip) levels.push("VIP");
+        else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
           const cooldownKey = id + ":" + level;
           if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
@@ -678,7 +679,7 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           const result = await sendPushToSubscribers({
             title: level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT",
-            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + formatPushMinute(match) + " · " + (isAiGoal ? "Ένδειξη πιθανού γκολ" : "Αυξημένη επιθετική πίεση") + " · " + reason).slice(0, 180),
+            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + formatPushMinute(match) + " · " + "Ισχυρό σήμα πιθανότητας γκολ" + " · " + reason).slice(0, 180),
             tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
             url: "/"
           });
