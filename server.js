@@ -852,12 +852,16 @@ const server = http.createServer(async (req, res) => {
         sharedRequest = (async () => {
           const feeds = [];
           const espnLeagues = SCOREBOARD_LEAGUES.filter(code => !ESPN_UNSUPPORTED_LEAGUES.has(code));
-          for (let i = 0; i < espnLeagues.length; i += 36) {
-            feeds.push(...await Promise.all(espnLeagues.slice(i, i + 36).map(async code => {
+          // Run the three ESPN league batches concurrently so one slow league batch
+          // cannot make the public scoreboard miss the browser's request deadline.
+          const espnBatches = Array.from({ length: Math.ceil(espnLeagues.length / 36) }, (_, index) =>
+            espnLeagues.slice(index * 36, (index + 1) * 36)
+          );
+          const batchResults = await Promise.all(espnBatches.map(batch => Promise.all(batch.map(async code => {
             try {
               const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
                 headers: { "Accept": "application/json" },
-                signal: AbortSignal.timeout(10000)
+                signal: AbortSignal.timeout(8000)
               });
               if (!response.ok) { if (response.status === 400) ESPN_UNSUPPORTED_LEAGUES.add(code); return { code, events: [], ok: false, error: "HTTP " + response.status }; }
               const body = await response.json();
@@ -865,8 +869,8 @@ const server = http.createServer(async (req, res) => {
             } catch (error) {
               return { code, events: [], ok: false, error: error.message || "request failed" };
             }
-            })));
-          }
+          }))));
+          feeds.push(...batchResults.flat());
           let finalFeeds = feeds;
           let successfulFeeds = feeds.filter(feed => feed.ok).length;
           if (process.env.PITCH_API_KEY && !feeds.some(feed => (feed.events || []).length > 0)) {
