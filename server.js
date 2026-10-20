@@ -1250,8 +1250,11 @@ const server = http.createServer(async (req, res) => {
           const item = work[cursor++];
           const event = item.event;
           try {
-            if (String(event.id).startsWith("sportscore:")) {
-              const suffix = String(event.id).slice("sportscore:".length);
+            const eventId = String(event.id);
+            if (eventId.startsWith("sportscore:") || eventId.startsWith("sportscore-widget:")) {
+              const suffix = eventId.startsWith("sportscore-widget:")
+                ? eventId.slice("sportscore-widget:".length)
+                : eventId.slice("sportscore:".length);
               const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
               const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
               const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
@@ -1420,11 +1423,12 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
-      if (work.some(item => String(item.event.id).startsWith("sportscore:"))) {
+      const isSportScoreEvent = value => String(value || "").startsWith("sportscore:") || String(value || "").startsWith("sportscore-widget:");
+      if (work.some(item => isSportScoreEvent(item.event.id))) {
         console.log("SportScore live metrics detail diagnostic:", JSON.stringify({
-          attempted: work.filter(item => String(item.event.id).startsWith("sportscore:")).length,
+          attempted: work.filter(item => isSportScoreEvent(item.event.id)).length,
           ...sportScoreDetailDiagnostics,
-          statsAvailable: matches.filter(match => String(match.eventId).startsWith("sportscore:") && match.statsAvailable).length
+          statsAvailable: matches.filter(match => isSportScoreEvent(match.eventId) && match.statsAvailable).length
         }));
       }
       const persisted = await persistRollingTrends(matches, date);
