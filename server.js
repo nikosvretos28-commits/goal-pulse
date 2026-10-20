@@ -564,6 +564,23 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, { error: error.message || "Invalid subscription" });
     }
   }
+  if (url.pathname === "/api/push/unsubscribe" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    try {
+      const body = await readJsonBody(req);
+      const endpoint = String(body.endpoint || "");
+      if (!endpoint.startsWith("https://")) return send(res, 400, { error: "Invalid subscription endpoint" });
+      pushSubscriptions.delete(endpoint);
+      let persistent = false;
+      if (await ensurePushDb()) {
+        await analyticsPool.query("DELETE FROM push_subscriptions WHERE endpoint=$1", [endpoint]);
+        persistent = true;
+      }
+      return send(res, 200, { ok: true, persistent });
+    } catch (error) {
+      return send(res, 400, { error: error.message || "Could not unsubscribe" });
+    }
+  }
   if (url.pathname === "/api/push/alert" && req.method === "POST") {
     if (!pushRequestAllowed(req, res)) return;
     try {
