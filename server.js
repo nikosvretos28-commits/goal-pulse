@@ -837,7 +837,7 @@ const server = http.createServer(async (req, res) => {
         if (!raw || /half|period|not started|finished|full.?time|ημίχρονο|τέλος/i.test(raw)) return NaN;
         const numeric = Number(raw);
         if (Number.isFinite(numeric)) return numeric;
-        const clock = raw.match(/^(\\d{1,3})(?::\\d{1,2})?$/);
+        const clock = raw.match(/^([0-9]{1,3})(?::[0-9]{1,2})?\s*['′’]?$/);
         return clock ? Number(clock[1]) : NaN;
       };
       const formatPushMinute = match => {
