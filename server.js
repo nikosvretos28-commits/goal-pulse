@@ -509,6 +509,82 @@ async function pitchGet(apiPath) {
   }
 }
 
+
+const ODDS_PAPI_BASE = "https://api.oddspapi.io/v4";
+const oddsPapiCache = new Map();
+const normalizeOddsTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
+  const apiKey = process.env.ODDSPAPI_API_KEY;
+  if (!apiKey) return null;
+  const query = new URLSearchParams({ ...params, apiKey });
+  const cacheKey = pathname + "?" + query.toString().replace(/apiKey=[^&]+/, "apiKey=[redacted]");
+  const cached = oddsPapiCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < ttlMs) return cached.body;
+  const response = await fetch(ODDS_PAPI_BASE + "/" + pathname + "?" + query.toString(), {
+    headers: { "Accept": "application/json" },
+    signal: AbortSignal.timeout(9000)
+  });
+  if (!response.ok) {
+    const error = new Error("OddsPapi HTTP " + response.status);
+    error.status = response.status;
+    throw error;
+  }
+  const body = await response.json();
+  oddsPapiCache.set(cacheKey, { at: Date.now(), body });
+  if (oddsPapiCache.size > 100) oddsPapiCache.delete(oddsPapiCache.keys().next().value);
+  return body;
+}
+async function getVerifiedFirstHalfOver15(match) {
+  if (!process.env.ODDSPAPI_API_KEY) return null;
+  const now = new Date();
+  const from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const to = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const fixtures = await oddsPapiGet("fixtures", { sportId: "10", from, to }, 20000);
+  if (!Array.isArray(fixtures)) return null;
+  const home = normalizeOddsTeam(match.home || match.homeTeam || match.teams?.[0]?.name);
+  const away = normalizeOddsTeam(match.away || match.awayTeam || match.teams?.[1]?.name);
+  if (!home || !away) return null;
+  const fixture = fixtures.find(item => {
+    const status = String(item.statusName || "").toLowerCase();
+    if (!/in.play|live|1st half|first half|half.time|2nd half|second half/.test(status)) return false;
+    const h = normalizeOddsTeam(item.participant1Name || item.participant1ShortName);
+    const a = normalizeOddsTeam(item.participant2Name || item.participant2ShortName);
+    return h === home && a === away;
+  });
+  if (!fixture || !fixture.fixtureId || fixture.statusName === "Ended") return null;
+  const [markets, odds] = await Promise.all([
+    oddsPapiGet("markets", { language: "en" }, 6 * 60 * 60 * 1000),
+    oddsPapiGet("odds", { fixtureId: fixture.fixtureId, oddsFormat: "decimal" }, 12000)
+  ]);
+  if (!Array.isArray(markets) || !odds || !odds.bookmakerOdds) return null;
+  const firstHalfMarkets = markets.filter(m => Number(m.sportId) === 10 &&
+    /over.?under.*first half|first half.*over.?under/i.test(String(m.marketName || "")) &&
+    Math.abs(Number(m.handicap) - 1.5) < 0.001 &&
+    String(m.period || "").toLowerCase().replace(/[_ -]/g, "").includes("firsthalf") &&
+    String(m.marketType || "").toLowerCase() === "totals");
+  if (!firstHalfMarkets.length) return null;
+  const valid = [];
+  for (const [bookmaker, board] of Object.entries(odds.bookmakerOdds)) {
+    if (board?.bookmakerIsActive === false || board?.suspended === true) continue;
+    for (const marketDef of firstHalfMarkets) {
+      const market = board?.markets?.[String(marketDef.marketId)];
+      if (!market || market.marketActive === false) continue;
+      for (const [outcomeId, outcome] of Object.entries(market.outcomes || {})) {
+        const definition = (marketDef.outcomes || []).find(o => String(o.outcomeId) === String(outcomeId));
+        if (!/over/i.test(String(definition?.outcomeName || ""))) continue;
+        const player = outcome?.players?.["0"];
+        const price = Number(player?.price);
+        if (!player?.active || !Number.isFinite(price) || price < 1.6) continue;
+        const changedAt = Date.parse(player.changedAt || player.bookmakerChangedAt || "");
+        if (!Number.isFinite(changedAt) || Date.now() - changedAt > 90000 || changedAt > Date.now() + 30000) continue;
+        valid.push({ price, bookmaker, line: Number(marketDef.handicap), changedAt });
+      }
+    }
+  }
+  valid.sort((a, b) => b.price - a.price);
+  return valid[0] || null;
+}
+
 const ALLOWED_ORIGINS = new Set([
   "https://goal-pulse.onrender.com",
   "https://goal-pulse-live-2026-2.onrender.com"
@@ -756,6 +832,22 @@ const server = http.createServer(async (req, res) => {
         if (isVip) levels.push("VIP");
         else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
+          // Betting-tip pushes are fail-closed: never publish a market/price unless
+          // a live, correctly matched, active first-half Over 1.5 quote is verified.
+          let verifiedOdds = null;
+          try {
+            const currentGoals = Number(match.homeScore) + Number(match.awayScore);
+            const minuteRaw = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
+            const minute = Number(minuteRaw);
+            const status = String(match.statusText || match.status || match.status_text || "").toLowerCase();
+            const firstHalfNow = Number.isFinite(minute) && minute >= 1 && minute <= 45 && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(status);
+            if (firstHalfNow && Number.isFinite(currentGoals) && currentGoals < 2) {
+              verifiedOdds = await getVerifiedFirstHalfOver15(match);
+            }
+          } catch (oddsError) {
+            console.error("Odds verification unavailable; suppressing unpriced betting alert:", oddsError.message);
+          }
+          if (!verifiedOdds || verifiedOdds.price < 1.6) continue;
           const cooldownKey = id + ":" + level;
           if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
           const reason = [
@@ -767,7 +859,7 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           const result = await sendPushToSubscribers({
             title: level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT",
-            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + formatPushMinute(match) + " · " + "Ισχυρό σήμα πιθανότητας γκολ" + " · " + reason).slice(0, 180),
+            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ": Πρόταση Over 1,5 γκολ 1ου ημιχρόνου · " + formatPushMinute(match) + " · απόδοση " + verifiedOdds.price.toFixed(2) + " (" + verifiedOdds.bookmaker + ") · " + reason).slice(0, 240),
             tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
             url: "/"
           });
@@ -801,7 +893,7 @@ const server = http.createServer(async (req, res) => {
                   createdAt: now, home: homeCompetitor?.team?.displayName || match.home || match.homeTeam || "",
                   away: awayCompetitor?.team?.displayName || match.away || match.awayTeam || "",
                   league: scoreEvent?.competitions?.[0]?.name || match.league || match.competition || "",
-                  minute: rawMinute, minuteNumber, market: "πιθανό γκολ",
+                  minute: rawMinute, minuteNumber, market: "Over 1,5 γκολ 1ου ημιχρόνου", odds: verifiedOdds.price, bookmaker: verifiedOdds.bookmaker, oddsVerifiedAt: new Date(verifiedOdds.changedAt).toISOString(),
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
