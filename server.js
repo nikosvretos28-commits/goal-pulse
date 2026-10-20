@@ -267,9 +267,9 @@ async function persistRollingTrends(matches, date) {
          FROM live_stat_snapshots
          WHERE event_id = ANY($1::text[])
            AND observed_at <= NOW() - ($2::interval)
-           AND observed_at >= NOW() - INTERVAL '11 minutes'
+           AND observed_at >= NOW() - ($2::interval + $3::interval)
          ORDER BY event_id, team_name, observed_at DESC`,
-        [eventIds, minutes + " minutes"]
+        [eventIds, minutes + " minutes", minutes === 5 ? "2 minutes" : "3 minutes"]
       );
       baselines[minutes] = result.rows;
     }
@@ -295,9 +295,16 @@ async function persistRollingTrends(matches, date) {
             dangerousAttacks: delta("dangerousAttacks", "dangerous_attacks")
           };
         });
+        const baselineTimes = baselines[minutes]
+          .filter(row => row.event_id === String(match.eventId))
+          .map(row => new Date(row.observed_at).getTime())
+          .filter(Number.isFinite);
+        const sampleMinutes = baselineTimes.length
+          ? Math.round((Date.now() - Math.max(...baselineTimes)) / 60000)
+          : minutes;
         return {
           available: teams.some(team => team.shots != null || team.shotsOnTarget != null || team.corners != null || team.attacks != null || team.dangerousAttacks != null),
-          sampleMinutes: minutes,
+          sampleMinutes,
           teams
         };
       };
