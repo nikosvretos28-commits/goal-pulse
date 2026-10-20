@@ -806,14 +806,14 @@ nav a{flex:0 0 auto}
  <div class="top-ai-alerts-head"><div><h2 id="topAiAlertsTitle">⚡ AI ALERTS · LIVE ΠΡΟΤΑΣΕΙΣ</h2><p>Οι νεότερες ενδείξεις εμφανίζονται εδώ πρώτες.</p></div><span class="pulse-status" id="topAiAlertCount">0 ALERTS</span></div>
  <div class="top-ai-alert-list" id="topAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων ενδείξεων από πραγματικά live στατιστικά…</div></div>
  <p class="top-ai-alert-privacy">Οι ενδείξεις βασίζονται στα διαθέσιμα στατιστικά και δεν εγγυώνται αποτέλεσμα.</p>
- <div class="notification-optin"><button type="button" id="enablePushNotifications" class="login">🔔 Ενεργοποίηση ειδοποιήσεων</button><span id="pushNotificationStatus" class="subtle">Ενεργοποίησε μία φορά για να λαμβάνεις AI ειδοποιήσεις και με κλειστή σελίδα</span></div>
+ <div class="notification-optin"><button type="button" id="enablePushNotifications" class="login">🔔 Ενεργοποίηση ειδοποιήσεων</button><button type="button" id="disablePushNotifications" class="login">🔕 Απενεργοποίηση ειδοποιήσεων</button><span id="pushNotificationStatus" class="subtle">Ενεργοποίησε μία φορά για να λαμβάνεις AI ειδοποιήσεις και με κλειστή σελίδα</span></div>
 </section>
 
 <section class="top-ai-alerts top-vip-alerts" id="topVipAlerts" aria-labelledby="topVipAlertsTitle">
  <div class="top-ai-alerts-head"><div><h2 id="topVipAlertsTitle">◆ VIP ALERTS · PREMIUM ΠΡΟΤΑΣΕΙΣ</h2><p>Ειδικές ενδείξεις υψηλότερου επιπέδου από τα live στατιστικά.</p></div><span class="pulse-status" id="topVipAlertCount">0 VIP</span></div>
  <div class="top-ai-alert-list" id="topVipAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων VIP ενδείξεων…</div></div>
  <p class="top-ai-alert-privacy">Το περιεχόμενο VIP προορίζεται για συνδρομητές. Οι μη συνδρομητές δεν βλέπουν ανάλυση με το πάτημα.</p>
- <div class="notification-optin"><button type="button" id="enableVipPushNotifications" class="login">🔔 Ενεργοποίηση ειδοποιήσεων</button><span id="vipPushNotificationStatus" class="subtle">Ενεργοποίησε μία φορά για VIP ειδοποιήσεις και με κλειστή σελίδα</span></div>
+ <div class="notification-optin"><button type="button" id="enableVipPushNotifications" class="login">🔔 Ενεργοποίηση ειδοποιήσεων</button><button type="button" id="disableVipPushNotifications" class="login">🔕 Απενεργοποίηση ειδοποιήσεων</button><span id="vipPushNotificationStatus" class="subtle">Ενεργοποίησε μία φορά για VIP ειδοποιήσεις και με κλειστή σελίδα</span></div>
 </section>
 
 
@@ -1879,6 +1879,30 @@ async function enableGoalPulsePush(statusIds){
 }
 document.getElementById('enablePushNotifications')?.addEventListener('click',()=>enableGoalPulsePush(['pushNotificationStatus','vipPushNotificationStatus']));
 document.getElementById('enableVipPushNotifications')?.addEventListener('click',()=>enableGoalPulsePush(['vipPushNotificationStatus','pushNotificationStatus']));
+async function disableGoalPulsePush(){
+ const statuses=['pushNotificationStatus','vipPushNotificationStatus'].map(id=>document.getElementById(id)).filter(Boolean);
+ const setStatus=message=>statuses.forEach(el=>el.textContent=message);
+ const buttons=['disablePushNotifications','disableVipPushNotifications'].map(id=>document.getElementById(id)).filter(Boolean);
+ buttons.forEach(button=>button.disabled=true);
+ try{
+  if(!('serviceWorker' in navigator)){setStatus('Ο browser δεν υποστηρίζει push ειδοποιήσεις.');return}
+  const registration=await navigator.serviceWorker.getRegistration('/sw.js')||await navigator.serviceWorker.getRegistration();
+  const subscription=registration?await registration.pushManager.getSubscription():null;
+  if(!subscription){setStatus('Οι ειδοποιήσεις Goal Pulse δεν είναι ενεργές σε αυτή τη συσκευή.');return}
+  let serverRemoved=false;
+  try{
+   const response=await fetch(ANALYTICS_API+'/api/push/unsubscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:subscription.endpoint})});
+   serverRemoved=response.ok;
+  }catch{}
+  const localRemoved=await subscription.unsubscribe();
+  if(localRemoved&&serverRemoved)setStatus('Οι ειδοποιήσεις Goal Pulse απενεργοποιήθηκαν σε αυτή τη συσκευή.');
+  else if(localRemoved)setStatus('Η συσκευή σταμάτησε να λαμβάνει push ειδοποιήσεις. Δεν επιβεβαιώθηκε η αφαίρεση από τον server· αν συνεχιστούν, κλείσε τις ειδοποιήσεις και από τις ρυθμίσεις Android.');
+  else setStatus('Δεν ολοκληρώθηκε η απενεργοποίηση. Κλείσε τις ειδοποιήσεις από τις ρυθμίσεις Android: Chrome → Ρυθμίσεις ιστοτόπου → Ειδοποιήσεις.');
+ }catch(error){setStatus('Δεν ολοκληρώθηκε η απενεργοποίηση: '+String(error.message||error).slice(0,160))}
+ finally{buttons.forEach(button=>button.disabled=false)}
+}
+document.getElementById('disablePushNotifications')?.addEventListener('click',disableGoalPulsePush);
+document.getElementById('disableVipPushNotifications')?.addEventListener('click',disableGoalPulsePush);
 async function sendGoalPulsePushAlert(level,body,eventId){
  try{await fetch(ANALYTICS_API+'/api/push/alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level,body,eventId})})}catch{}
 }
