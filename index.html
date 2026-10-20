@@ -1408,9 +1408,11 @@ function renderHighActivityMatches(){
   }
   const totalShots=teams.reduce((n,t)=>n+Number(t.shots||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0);
+  const hasRecentData=!!baseline||!!stats.trend?.window5m?.available;
   const score=recentShots+recentOnTarget*2+recentCorners*2;
-  const intensity=Math.max(0,Math.min(100,Math.round(recentShots*10+recentOnTarget*20+recentCorners*10+Math.min(totalShots,12)*2+Math.min(totalOnTarget,6)*4)));
-  const active=score>=3||(totalShots>=6&&totalOnTarget>=2)||(totalShots>=9&&totalOnTarget>=1);
+  // Rank only verified recent changes, never cumulative match totals as if they were live pressure.
+  const intensity=Math.max(0,Math.min(100,Math.round(recentShots*10+recentOnTarget*20+recentCorners*10)));
+  const active=hasRecentData&&(score>=3||(recentShots>=2&&recentOnTarget>=1)||(recentOnTarget>=2));
   return active?{match:m,score,intensity,recentShots,recentOnTarget,recentCorners,totalShots,totalOnTarget,hasRecentBaseline:!!baseline}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
