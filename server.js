@@ -62,7 +62,6 @@ async function ensureAlertHistoryDb() {
   });
   return alertHistoryDbInit;
 }
-ensureAlertHistoryDb().then(ready => console.log('Persistent alert history schema:', ready ? 'ready' : 'unavailable'));
 async function savePushSubscription(subscription) {
   const endpoint = String(subscription?.endpoint || "");
   if (!endpoint.startsWith("https://") || !subscription?.keys?.p256dh || !subscription?.keys?.auth) throw new Error("Invalid push subscription");
@@ -178,6 +177,7 @@ const analyticsPool = resolvedDatabaseUrl && Pool ? new Pool({
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000
 }) : null;
+ensureAlertHistoryDb().then(ready => console.log('Persistent alert history schema:', ready ? 'ready' : 'unavailable')).catch(error => console.error('Persistent alert history initialization failed:', error.message));
 let analyticsDbInit = null;
 let analyticsDbWarningLogged = false;
 
