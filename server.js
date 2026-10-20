@@ -107,11 +107,11 @@ function pushRequestAllowed(req, res) {
   pushRateLimit.set(rateKey, now);
   return true;
 }
-async function readJsonBody(req) {
+async function readJsonBody(req, maxBytes = 20000) {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 20000) throw new Error("Request body too large");
+    if (raw.length > maxBytes) throw new Error("Request body too large");
   }
   return JSON.parse(raw || "{}");
 }
@@ -527,20 +527,23 @@ const server = http.createServer(async (req, res) => {
     }
   }
   if (url.pathname === "/api/alerts/history" && req.method === "POST") {
-    if (!pushRequestAllowed(req, res)) return;
+    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
-      const body = await readJsonBody(req);
-      const a = body.alert;
-      if (!a || !a.eventId || !a.level || !Number.isFinite(Number(a.createdAt))) return send(res, 400, { error: "Invalid alert record" });
-      const level = a.level === "VIP" ? "VIP" : "AI";
-      const alertId = String(a.alertId || (String(a.eventId) + ":" + level + ":" + String(a.createdAt) + ":" + String(a.market || ""))).slice(0, 240);
-      const payload = { ...a, alertId, level };
+      const body = await readJsonBody(req, 4 * 1024 * 1024);
+      const incoming = Array.isArray(body.alerts) ? body.alerts.slice(0, 5000) : body.alert ? [body.alert] : [];
+      if (!incoming.length) return send(res, 400, { error: "No alert records supplied" });
+      const records = incoming.filter(a => a && a.eventId && Number.isFinite(Number(a.createdAt))).map(a => {
+        const level = a.level === "VIP" ? "VIP" : "AI";
+        const alertId = String(a.alertId || [a.eventId, level, a.createdAt, a.market || ""].join(":")).slice(0, 240);
+        return { alert_id: alertId, event_id: String(a.eventId), level, created_at: Number(a.createdAt), payload: { ...a, alertId, level } };
+      });
+      if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
       await analyticsPool.query(
-        "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()",
-        [alertId, String(a.eventId), level, Number(a.createdAt), JSON.stringify(payload)]
+        "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) SELECT x.alert_id,x.event_id,x.level,to_timestamp(x.created_at/1000.0),x.payload,NOW() FROM jsonb_to_recordset($1::jsonb) AS x(alert_id text,event_id text,level text,created_at numeric,payload jsonb) ON CONFLICT(alert_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()",
+        [JSON.stringify(records)]
       );
-      return send(res, 200, { ok: true, persistent: true, alertId });
+      return send(res, 200, { ok: true, persistent: true, saved: records.length });
     } catch (error) {
       console.error("Alert history write failed:", error.message);
       return send(res, 503, { error: "Could not save alert history" });
