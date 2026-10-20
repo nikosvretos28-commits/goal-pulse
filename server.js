@@ -646,10 +646,12 @@ const server = http.createServer(async (req, res) => {
         const shots = delta("shots"), onTarget = delta("onTarget"), corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
-        const goalEvidence = onTarget >= 1 && shots >= 2;
+        // Live providers may increment one shot at a time; accept a confirmed shot on target
+        // with at least one total-shot delta, while keeping pressure alerts multi-signal.
+        const goalEvidence = onTarget >= 1 && shots >= 1;
         const points = onTarget * 4 + Math.min(shots, 4) + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5);
         const isAiGoal = goalEvidence && points >= 5;
-        const isAiPressure = !isAiGoal && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
+        const isAiPressure = !isAiGoal && evidenceKinds >= 3 && points >= 5 && (corners >= 1 || dangerous >= 2);
         const isVip = goalEvidence && corners >= 1 && evidenceKinds >= 3 && points >= 9;
         const levels = [];
         if (isAiGoal || isAiPressure) levels.push("AI");
