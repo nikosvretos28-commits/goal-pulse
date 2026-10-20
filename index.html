@@ -888,7 +888,7 @@ async function loadPersistentAlertHistory(){
   data.alerts.forEach(a=>{if(a&&Number.isFinite(Number(a.createdAt)))merged.set(alertHistoryKey(a),a)});
   signalAlertHistory.forEach(a=>{
    const key=alertHistoryKey(a),saved=merged.get(key);
-   if(!saved||((a.manualOutcome||a.outcome)&&(!saved.manualOutcome||saved.outcome==='εκκρεμεί')))merged.set(key,a);
+   if(!saved||(a.manualOutcome&&!saved.manualOutcome)||(Number(a.betUpdatedAt||0)>Number(saved.betUpdatedAt||0))||(a.outcome&&a.outcome!=='εκκρεμεί'&&(!saved.outcome||saved.outcome==='εκκρεμεί')))merged.set(key,a);
   });
   signalAlertHistory=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt)).slice(0,5000);
   signalAlertHistory.forEach(a=>{if(!a.alertId)a.alertId=alertHistoryKey(a)});
@@ -1611,9 +1611,9 @@ document.getElementById('exportSignalHistory').addEventListener('click',()=>{
  const period=document.getElementById('signalHistoryPeriod')?.value||'all',now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime(),yesterdayStart=todayStart-86400000;
  const rows=signalAlertHistory.filter(a=>{const t=Number(a.createdAt);if(!Number.isFinite(t))return false;if(period==='today')return t>=todayStart;if(period==='yesterday')return t>=yesterdayStart&&t<todayStart;if(period==='7days')return t>=todayStart-6*86400000;if(period==='30days')return t>=todayStart-29*86400000;return true;}).sort((a,b)=>Number(a.createdAt)-Number(b.createdAt));
  if(!rows.length){signalStatus.textContent='Δεν υπάρχουν alerts για εξαγωγή στην επιλεγμένη περίοδο.';return}
- const fields=['Ημερομηνία','Ώρα','Αγώνας','Διοργάνωση','Τύπος','Επίπεδο','Αιτιολογία','Παράθυρο αξιολόγησης (λεπτά)','Αποτέλεσμα','Χειροκίνητη αξιολόγηση'];
+ const fields=['Ημερομηνία','Ώρα','Λεπτό αγώνα','Αγώνας','Διοργάνωση','Τύπος alert','Επίπεδο','Αιτιολογία','Παράθυρο αξιολόγησης (λεπτά)','Αξιολόγηση alert','Χειροκίνητη αξιολόγηση','Απόδοση κατά την καταχώριση','Αποτέλεσμα bet'];
  const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
- const csv=[fields,...rows.map(a=>[new Date(Number(a.createdAt)).toLocaleDateString('el-GR'),new Date(Number(a.createdAt)).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),(a.home||'')+' – '+(a.away||''),a.league,a.market,a.level,a.reason,a.evaluationWindowMinutes,a.outcome,a.manualOutcome?'Ναι':'Όχι'])].map(row=>row.map(cell).join(';')).join('\r\n');
+ const csv=[fields,...rows.map(a=>[new Date(Number(a.createdAt)).toLocaleDateString('el-GR'),new Date(Number(a.createdAt)).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),a.minute,(a.home||'')+' – '+(a.away||''),a.league,a.market,a.level,a.reason,a.evaluationWindowMinutes,a.outcome,a.manualOutcome?'Ναι':'Όχι',a.oddsAtSignal,a.betOutcome==='won'?'Κερδισμένο':a.betOutcome==='lost'?'Χαμένο':a.betOutcome==='void'?'Άκυρο':'Εκκρεμεί'])].map(row=>row.map(cell).join(';')).join('\r\n');
  const blob=new Blob(['\uFEFF',csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),link=document.createElement('a');
  link.href=url;link.download='goal-pulse-alert-history-'+period+'.csv';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
  signalStatus.textContent='Έτοιμο το αρχείο CSV με '+rows.length+' alerts.';
