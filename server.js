@@ -1349,7 +1349,8 @@ const server = http.createServer(async (req, res) => {
       }
       if (sportScoreLiveExists && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
         try {
-          const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&status=live&limit=200&src=goal-pulse", {
+          const liveDateForSlugMap = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+          const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
             headers: { "Accept": "application/json" },
             signal: AbortSignal.timeout(8000)
           });
@@ -1357,26 +1358,30 @@ const server = http.createServer(async (req, res) => {
             const payload = await response.json();
             const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             const map = new Map();
-            for (const match of (payload.matches || [])) {
-              if (!match.home || !match.away) continue;
+            const liveSlugFixtures = Array.isArray(payload) ? payload : (payload.matches || payload.data || payload.fixtures || payload.events || payload.results || []);
+            for (const match of liveSlugFixtures) {
+              const homeName = match.home?.name || match.home_team?.name || match.home_name || (typeof match.home === "string" ? match.home : "");
+              const awayName = match.away?.name || match.away_team?.name || match.away_name || (typeof match.away === "string" ? match.away : "");
+              if (!homeName || !awayName) continue;
               let matchSlug = match.slug || match.match_slug || match.matchSlug || "";
               if (!matchSlug && match.url) {
                 try {
                   const pathname = new URL(String(match.url), "https://sportscore.com").pathname;
                   const segments = pathname.split("/").filter(Boolean);
                   const matchIndex = segments.indexOf("match");
-                  // The widget detail endpoint's "slug" parameter expects the descriptive match slug.
-                  // Keep the unique event ID as a fallback only when no descriptive slug is present.
                   matchSlug = matchIndex >= 0 ? (segments[matchIndex + 1] || segments[matchIndex + 2] || "") : (segments[segments.length - 1] || "");
                 } catch {}
               }
               if (!matchSlug) continue;
-              const home = normalizeTeam(match.home), away = normalizeTeam(match.away);
-              if (home && away) map.set(home + "|" + away, String(matchSlug));
+              const home = normalizeTeam(homeName), away = normalizeTeam(awayName);
+              if (home && away) {
+                map.set(home + "|" + away, String(matchSlug));
+                map.set(away + "|" + home, String(matchSlug));
+              }
             }
             sportScoreWidgetSlugCache.map = map;
             sportScoreWidgetSlugCache.at = Date.now();
-            console.log("SportScore detail slug map refreshed:", JSON.stringify({ rootKeys: Object.keys(payload || {}), matches: (payload.matches || []).length, slugs: map.size, firstMatchKeys: Object.keys((payload.matches || [])[0] || {}), firstMatch: (payload.matches || []).slice(0, 2).map(match => ({ home: match.home, away: match.away, slug: match.slug, id: match.id, url: match.url, status: match.status })) }));
+            console.log("SportScore detail slug map refreshed:", JSON.stringify({ rootKeys: Object.keys(payload || {}), matches: liveSlugFixtures.length, slugs: map.size, firstMatchKeys: Object.keys(liveSlugFixtures[0] || {}), firstMatch: liveSlugFixtures.slice(0, 2).map(match => ({ home: match.home?.name || match.home, away: match.away?.name || match.away, slug: match.slug, id: match.id, url: match.url, status: match.status })) }));
           }
         } catch (error) {
           console.warn("SportScore detail slug map refresh failed:", error.message || "unknown error");
