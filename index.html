@@ -1532,6 +1532,9 @@ renderTopAiAlerts();
 document.getElementById('runSignalCheck').addEventListener('click',runSignalCheck);
 signalMarket.addEventListener('change',runSignalCheck);document.getElementById('cornerOverLine')?.addEventListener('change',runSignalCheck);signalWindow.addEventListener('change',runSignalCheck);signalOutcomeWindow.addEventListener('change',runSignalCheck);scannerMinute.addEventListener('change',runSignalCheck);scannerLeague.addEventListener('change',runSignalCheck);vipAlertsToggle.addEventListener('change',runSignalCheck);
 signalThreshold.addEventListener('change',runSignalCheck);
+// Start the live AI scanner automatically and keep it checking while the page is open.
+setTimeout(()=>{if(!document.hidden)runSignalCheck()},2500);
+setInterval(()=>{if(!document.hidden)runSignalCheck()},60000);
 document.getElementById('showSignalHistory').addEventListener('click',showSignalHistory);
 document.getElementById('exportSignalHistory').addEventListener('click',()=>{
  const period=document.getElementById('signalHistoryPeriod')?.value||'all',now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime(),yesterdayStart=todayStart-86400000;
