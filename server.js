@@ -705,6 +705,8 @@ const server = http.createServer(async (req, res) => {
       // without this join the AI scanner silently sees no eligible first-half matches.
       const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
       const scoreboardByTeams = new Map();
+      let scoreboardJoinedMatches = 0;
+      const scoreboardJoinSamples = [];
       for (const event of scoreboardEvents) {
         const competition = event.competitions?.[0];
         const competitors = competition?.competitors || [];
@@ -726,6 +728,8 @@ const server = http.createServer(async (req, res) => {
         const key = normalizeLiveTeam(match.home) + "|" + normalizeLiveTeam(match.away);
         const score = scoreboardByTeams.get(key);
         if (!score) continue;
+        scoreboardJoinedMatches++;
+        if (scoreboardJoinSamples.length < 3) scoreboardJoinSamples.push({ home: match.home, away: match.away, statsMinute: match.minute ?? "", scoreMinute: score.minute, homeScore: score.homeScore, awayScore: score.awayScore, statusText: score.statusText });
         if (match.homeScore == null) match.homeScore = score.homeScore;
         if (match.awayScore == null) match.awayScore = score.awayScore;
         if (!match.statusText) match.statusText = score.statusText;
@@ -975,7 +979,7 @@ const server = http.createServer(async (req, res) => {
           subscribers = subscriberResult.rows[0].count;
         } catch {}
       }
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(process.env.ODDSPAPI_API_KEY), firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(process.env.ODDSPAPI_API_KEY), scoreboardJoinMatches, scoreboardJoinSamples, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
