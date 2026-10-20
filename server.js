@@ -1726,7 +1726,7 @@ const server = http.createServer(async (req, res) => {
           console.warn("SportScore detail slug map refresh failed:", error.message || "unknown error");
         }
       }
-      const work = liveEvents.slice(0, 36);
+      const work = liveEvents.slice(0, 60);
       let cursor = 0;
       const matches = [];
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], sample: null };
