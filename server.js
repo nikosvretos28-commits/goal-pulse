@@ -537,9 +537,10 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
 async function getVerifiedFirstHalfOver15(match) {
   if (!process.env.ODDSPAPI_API_KEY) return null;
   const now = new Date();
-  const from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const to = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const fixtures = await oddsPapiGet("fixtures", { sportId: "10", from, to }, 20000);
+  // Keep the query window strictly below the API 48-hour limit for sportId + from/to.
+  const from = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  const to = new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString();
+  const fixtures = await oddsPapiGet("fixtures", { sportId: "10", from, to, statusId: "1" }, 20000);
   if (!Array.isArray(fixtures)) return null;
   const home = normalizeOddsTeam(match.home || match.homeTeam || match.teams?.[0]?.name);
   const away = normalizeOddsTeam(match.away || match.awayTeam || match.teams?.[1]?.name);
@@ -575,9 +576,9 @@ async function getVerifiedFirstHalfOver15(match) {
         const player = outcome?.players?.["0"];
         const price = Number(player?.price);
         if (!player?.active || !Number.isFinite(price) || price < 1.6) continue;
+        // changedAt records the last price movement, not feed freshness; an unchanged active quote remains valid.
         const changedAt = Date.parse(player.changedAt || player.bookmakerChangedAt || "");
-        if (!Number.isFinite(changedAt) || Date.now() - changedAt > 90000 || changedAt > Date.now() + 30000) continue;
-        valid.push({ price, bookmaker, line: Number(marketDef.handicap), changedAt });
+        valid.push({ price, bookmaker, line: Number(marketDef.handicap), changedAt: Number.isFinite(changedAt) ? changedAt : null });
       }
     }
   }
