@@ -1025,6 +1025,36 @@ const server = http.createServer(async (req, res) => {
             console.warn("SportScore scoreboard unavailable; keeping existing feeds:", error.message || "request failed");
           }
 
+          // Independent live-now fallback: this endpoint returns live/recent games without a date filter.
+          try {
+            const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&limit=50&src=goal-pulse", { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000) });
+            if (response.ok) {
+              const payload = await response.json();
+              const widgetMatches = Array.isArray(payload.matches) ? payload.matches : [];
+              const normTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const seenPairs = new Set();
+              for (const feed of finalFeeds) for (const event of feed.events || []) { const teams = event.competitions?.[0]?.competitors || []; const h = normTeam((teams.find(t => t.homeAway === "home") || teams[0] || {}).team?.displayName); const a = normTeam((teams.find(t => t.homeAway === "away") || teams[1] || {}).team?.displayName); if (h && a) { seenPairs.add(h + "||" + a); seenPairs.add(a + "||" + h); } }
+              const recovered = [];
+              for (const match of widgetMatches) {
+                const statusText = [match.status, match.status_text, match.state, match.status_name, match.status_short].filter(v => v != null).map(String).join(" ").toLowerCase().replace(/[_-]+/g, " ");
+                if (/finished|full time|ended|complete|\bft\b|\baet\b/.test(statusText) || !/live|in play|in progress|playing|first half|second half|1st half|2nd half|half time|extra time|penalt|\b1h\b|\b2h\b|\bht\b/.test(statusText)) continue;
+                const homeName = String(match.home || match.home_name || match.home_team?.name || "").trim();
+                const awayName = String(match.away || match.away_name || match.away_team?.name || "").trim();
+                const h = normTeam(homeName), a = normTeam(awayName);
+                if (!h || !a || seenPairs.has(h + "||" + a)) continue;
+                const score = value => value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : String(Number(value));
+                const t = match.time || match.start_time || match.date || "";
+                const dateValue = t && Number.isFinite(new Date(t).getTime()) ? new Date(t).toISOString() : new Date().toISOString();
+                const status = { type: { state: "in", completed: false }, displayClock: String(match.minute || match.status_text || "LIVE") };
+                const slug = String(match.slug || match.match_slug || match.id || (h + "-vs-" + a));
+                recovered.push({ id: "sportscore-widget:" + slug, date: dateValue, name: homeName + " vs " + awayName, leagueName: String(match.competition?.name || match.competition || match.league?.name || match.league_name || "Football"), status, competitions: [{ status, competitors: [{ homeAway: "home", team: { displayName: homeName }, score: score(match.home_score ?? match.homeScore ?? match.scores?.home) }, { homeAway: "away", team: { displayName: awayName }, score: score(match.away_score ?? match.awayScore ?? match.scores?.away) }] }] });
+                seenPairs.add(h + "||" + a); seenPairs.add(a + "||" + h);
+              }
+              if (recovered.length) { finalFeeds = finalFeeds.concat([{ code: "sportscore-widget", events: recovered, ok: true }]); successfulFeeds = finalFeeds.filter(feed => feed.ok).length; }
+              console.log("SportScore widget live fallback:", JSON.stringify({ date, received: widgetMatches.length, liveMapped: recovered.length }));
+            } else console.warn("SportScore widget live fallback HTTP:", response.status);
+          } catch (error) { console.warn("SportScore widget live fallback unavailable:", error.message || "request failed"); }
+
           const scoreboardSource = feeds.some(feed => feed.ok && feed.events.length)
             ? (finalFeeds.some(feed => feed.code === "sportscore") ? "ESPN+PitchAPI+SportScore" : "ESPN+PitchAPI")
             : finalFeeds.some(feed => feed.events.length)
