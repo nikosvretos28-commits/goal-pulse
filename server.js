@@ -26,6 +26,7 @@ const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || "";
 const pushScanSnapshots = new Map();
 const pushScanLastAlert = new Map();
 let pushDbInit = null;
+let alertHistoryDbInit = null;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }
@@ -40,6 +41,26 @@ async function ensurePushDb() {
     )
   `).then(() => true).catch(error => { pushDbInit = null; console.error("Push subscription database unavailable:", error.message); return false; });
   return pushDbInit;
+}
+async function ensureAlertHistoryDb() {
+  if (!analyticsPool) return false;
+  if (!alertHistoryDbInit) alertHistoryDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS alert_history (
+      alert_id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      level TEXT NOT NULL CHECK (level IN ('AI','VIP')),
+      created_at TIMESTAMPTZ NOT NULL,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS alert_history_created_at_idx ON alert_history(created_at DESC);
+    CREATE INDEX IF NOT EXISTS alert_history_event_id_idx ON alert_history(event_id);
+  `).then(() => true).catch(error => {
+    alertHistoryDbInit = null;
+    console.error("Alert history database unavailable:", error.message);
+    return false;
+  });
+  return alertHistoryDbInit;
 }
 async function savePushSubscription(subscription) {
   const endpoint = String(subscription?.endpoint || "");
@@ -493,6 +514,38 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
   const url = new URL(req.url, "http://localhost");
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+
+  if (url.pathname === "/api/alerts/history" && req.method === "GET") {
+    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    try {
+      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const result = await analyticsPool.query("SELECT payload FROM alert_history ORDER BY created_at DESC LIMIT $1", [limit]);
+      return send(res, 200, { ok: true, persistent: true, alerts: result.rows.map(row => row.payload) });
+    } catch (error) {
+      return send(res, 503, { error: "Could not load alert history" });
+    }
+  }
+  if (url.pathname === "/api/alerts/history" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    try {
+      const body = await readJsonBody(req);
+      const a = body.alert;
+      if (!a || !a.eventId || !a.level || !Number.isFinite(Number(a.createdAt))) return send(res, 400, { error: "Invalid alert record" });
+      const level = a.level === "VIP" ? "VIP" : "AI";
+      const alertId = String(a.alertId || (String(a.eventId) + ":" + level + ":" + String(a.createdAt) + ":" + String(a.market || ""))).slice(0, 240);
+      const payload = { ...a, alertId, level };
+      await analyticsPool.query(
+        "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()",
+        [alertId, String(a.eventId), level, Number(a.createdAt), JSON.stringify(payload)]
+      );
+      return send(res, 200, { ok: true, persistent: true, alertId });
+    } catch (error) {
+      console.error("Alert history write failed:", error.message);
+      return send(res, 503, { error: "Could not save alert history" });
+    }
+  }
 
   if (url.pathname === "/api/push/vapid-public-key" && req.method === "GET") {
     return send(res, VAPID_PUBLIC_KEY ? 200 : 503, VAPID_PUBLIC_KEY ? { publicKey: VAPID_PUBLIC_KEY } : { error: "Push is not configured" });
