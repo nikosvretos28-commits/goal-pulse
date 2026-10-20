@@ -701,13 +701,13 @@ const server = http.createServer(async (req, res) => {
                 const competitors = scoreEvent?.competitions?.[0]?.competitors || [];
                 const homeCompetitor = competitors.find(team => team.homeAway === "home") || competitors[0];
                 const awayCompetitor = competitors.find(team => team.homeAway === "away") || competitors[1];
-                const homeScore = scoreValue(homeCompetitor?.score);
-                const awayScore = scoreValue(awayCompetitor?.score);
+                const homeScore = scoreValue(match.homeScore ?? homeCompetitor?.score);
+                const awayScore = scoreValue(match.awayScore ?? awayCompetitor?.score);
                 const rawMinute = String(formatPushMinute(match));
                 const minuteMatch = rawMinute.match(/(\d{1,3})(?:\s*\+\s*\d{1,2})?/);
                 const minuteNumber = minuteMatch ? Number(minuteMatch[1]) : null;
-                const statusDetail = String(scoreEvent?.competitions?.[0]?.status?.type?.detail || scoreEvent?.status?.type?.detail || "").toLowerCase();
-                const statusClock = String(scoreEvent?.competitions?.[0]?.status?.displayClock || scoreEvent?.status?.displayClock || "");
+                const statusDetail = String(match.statusText || match.status || scoreEvent?.competitions?.[0]?.status?.type?.detail || scoreEvent?.status?.type?.detail || "").toLowerCase();
+                const statusClock = String(match.minute || scoreEvent?.competitions?.[0]?.status?.displayClock || scoreEvent?.status?.displayClock || "");
                 const halfTime = /half.?time|halftime|ημίχρονο/.test(statusDetail);
                 const secondHalf = /second half|2nd half|2ο ημίχρονο/.test(statusDetail) || (minuteNumber !== null && minuteNumber > 45) || /second half|2nd half/i.test(statusClock);
                 const alertRecord = {
@@ -1567,7 +1567,11 @@ const server = http.createServer(async (req, res) => {
               }
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName,
-                minute: event.status?.displayClock || "",
+                minute: event.live_minute ?? event.status?.displayClock ?? event.time ?? "",
+                homeScore: event.home_score ?? event.homeScore ?? null,
+                awayScore: event.away_score ?? event.awayScore ?? null,
+                status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
+                homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
                 statsAvailable: values.some(value => ["shots","shotsOnTarget","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
