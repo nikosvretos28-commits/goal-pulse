@@ -860,7 +860,7 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           const result = await sendPushToSubscribers({
             title: level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT",
-            body: ((match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ": Πρόταση Over 1,5 γκολ 1ου ημιχρόνου · " + formatPushMinute(match) + " · απόδοση " + verifiedOdds.price.toFixed(2) + " (" + verifiedOdds.bookmaker + ") · " + reason).slice(0, 240),
+            body: ("Πρόταση: Στον αγώνα " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over 1,5 γκολ στο 1ο ημίχρονο, απόδοση " + verifiedOdds.price.toFixed(2) + " (" + verifiedOdds.bookmaker + ").").slice(0, 240),
             tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
             url: "/"
           });
