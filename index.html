@@ -1455,9 +1455,23 @@ function renderHighActivityMatches(){
    })});
   }
   if(!hasRecentData){
-   const trend=stats.trend?.window5m,sampleMinutes=Number(trend?.sampleMinutes);
-   if(trend?.available&&Array.isArray(trend.teams)&&Number.isFinite(sampleMinutes)&&sampleMinutes>=4.5&&sampleMinutes<=8){
-    keys.forEach(key=>trend.teams.forEach(team=>{if(team[key]!=null&&Number.isFinite(Number(team[key]))){delta[key]+=Math.max(0,Number(team[key]));hasRecentData=true}}));
+   // Prefer a true five-minute persisted delta; when it is not available yet,
+   // use a valid ten-minute baseline and normalize rates to a five-minute equivalent.
+   const candidates=[
+    {trend:stats.trend?.window5m,min:4.5,max:8,scale:1},
+    {trend:stats.trend?.window10m,min:8,max:13,scale:0.5}
+   ];
+   const chosen=candidates.find(item=>{
+    const t=item.trend,age=Number(t?.sampleMinutes);
+    return t?.available&&Array.isArray(t.teams)&&t.teams.length>=2&&Number.isFinite(age)&&age>=item.min&&age<=item.max;
+   });
+   if(chosen){
+    keys.forEach(key=>chosen.trend.teams.forEach(team=>{
+     if(team[key]!=null&&Number.isFinite(Number(team[key]))){
+      delta[key]+=Math.max(0,Number(team[key]))*chosen.scale;
+      hasRecentData=true;
+     }
+    }));
    }
   }
   if(!hasRecentData)return null;
