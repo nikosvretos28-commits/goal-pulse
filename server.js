@@ -640,8 +640,15 @@ const server = http.createServer(async (req, res) => {
             const statusClock = String(live.minute || "").toLowerCase();
             const minuteMatch = String(alert.minuteNumber ?? alert.minute ?? "").match(/(\d{1,3})/);
             const signalMinute = Number(alert.minuteNumber ?? (minuteMatch ? minuteMatch[1] : NaN));
-            const firstHalf = alert.periodAtSignal === "first_half" || alert.periodAtSignal === "halftime" || (Number.isFinite(signalMinute) && signalMinute <= 45);
-            const secondHalf = alert.periodAtSignal === "second_half" || (!firstHalf && Number.isFinite(signalMinute) && signalMinute > 45);
+            const explicitPeriod = String(alert.periodAtSignal || "").toLowerCase();
+            // Trust the explicit period captured at signal time over a parsed clock number.
+            // Some feeds expose "2nd half" in a clock field, whose first digit can parse as minute 2.
+            const firstHalf = explicitPeriod
+              ? explicitPeriod === "first_half" || explicitPeriod === "halftime"
+              : Number.isFinite(signalMinute) && signalMinute <= 45;
+            const secondHalf = explicitPeriod
+              ? explicitPeriod === "second_half"
+              : !firstHalf && Number.isFinite(signalMinute) && signalMinute > 45;
             const homeScore = Number(live.homeScore), awayScore = Number(live.awayScore);
             const hasFullScore = live.homeScore != null && live.awayScore != null && Number.isFinite(homeScore) && Number.isFinite(awayScore);
             let outcomeScore = null, finished = false;
