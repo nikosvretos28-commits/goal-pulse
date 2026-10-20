@@ -1141,7 +1141,7 @@ const server = http.createServer(async (req, res) => {
                     const pathname = new URL(String(match.url || match.match_url || match.href), "https://sportscore.com").pathname;
                     const segments = pathname.split("/").filter(Boolean);
                     const matchIndex = segments.indexOf("match");
-                    matchSlug = matchIndex >= 0 ? (segments[matchIndex + 1] || "") : (segments[segments.length - 1] || "");
+                    matchSlug = matchIndex >= 0 ? (segments[matchIndex + 2] || segments[matchIndex + 1] || "") : (segments[segments.length - 1] || "");
                   } catch {}
                 }
                 const slugOrId = matchSlug || match.id || match.fixture_id || (normalizeSlugPart(homeName) + "-vs-" + normalizeSlugPart(awayName));
@@ -1322,7 +1322,7 @@ const server = http.createServer(async (req, res) => {
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       if (sportScoreLiveExists && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
         try {
-          const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&limit=50&src=goal-pulse", {
+          const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&status=live&limit=200&src=goal-pulse", {
             headers: { "Accept": "application/json" },
             signal: AbortSignal.timeout(8000)
           });
