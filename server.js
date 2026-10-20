@@ -242,12 +242,23 @@ async function persistRollingTrends(matches, date) {
       values.push(...row);
       return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8}, $${n+9})`;
     });
-    await analyticsPool.query(
+    const snapshotInsert = await analyticsPool.query(
       `INSERT INTO live_stat_snapshots
        (event_id, match_date, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks, minute)
        VALUES ${tuples.join(", ")}`, values
     );
     const eventIds = [...new Set(matches.map(match => String(match.eventId)).filter(Boolean))];
+    const persistedCheck = await analyticsPool.query(
+      `SELECT COUNT(*)::int AS snapshots, COUNT(DISTINCT event_id)::int AS events
+       FROM live_stat_snapshots
+       WHERE event_id = ANY($1::text[]) AND match_date = $2`,
+      [eventIds, date]
+    );
+    console.log("Goal Pulse live snapshot persistence verified:", JSON.stringify({
+      date, attemptedRows: snapshots.length, insertedRows: snapshotInsert.rowCount,
+      savedSnapshotsForEvents: persistedCheck.rows[0].snapshots,
+      savedEventsForDate: persistedCheck.rows[0].events
+    }));
     const baselines = {};
     for (const minutes of [5, 10]) {
       const result = await analyticsPool.query(
