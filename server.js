@@ -914,7 +914,7 @@ const server = http.createServer(async (req, res) => {
         const goalEvidence = shots >= 2 && onTarget >= 1;
         const points = Math.min(shots, 4) + onTarget * 2 + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5);
         const isAiGoal = scoreAvailable && goalEvidence && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
-        const isVip = isAiGoal && corners >= 1 && points >= 9;
+        const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
         // Send one alert only: VIP when the evidence is exceptionally strong, otherwise AI.
@@ -953,16 +953,14 @@ const server = http.createServer(async (req, res) => {
           // Never invent odds: when a live price cannot be verified, send only a
           // statistical high-activity signal, not a betting recommendation.
           const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.6);
-          const alertTitle = hasVerifiedOdds
-            ? (level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT")
-            : "Goal Pulse · HI ACTIVITY";
+          const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const alertBody = hasVerifiedOdds
             ? ("Επαληθευμένη αγορά: " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over 1,5 γκολ στο 1ο ημίχρονο, απόδοση " + verifiedOdds.price.toFixed(2) + " (" + verifiedOdds.bookmaker + ").")
             : ("Ισχυρό στατιστικό σήμα στον αγώνα " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ". " + reason + ". Δεν υπάρχει επαληθευμένη απόδοση· δεν αποτελεί πρόταση στοιχήματος.");
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
-            tag: "goal-pulse-bg-" + (hasVerifiedOdds ? level.toLowerCase() : "hi-activity") + "-" + id,
+            tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
             url: "/"
           });
           if (result.sent > 0) {
