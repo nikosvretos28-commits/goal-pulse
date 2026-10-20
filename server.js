@@ -787,7 +787,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
       let checked = 0, sent = 0, candidates = 0;
-      let strongSignals = 0, firstHalfOddsChecks = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
+      let strongSignals = 0, firstHalfOddsChecks = 0, firstHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const formatPushMinute = match => {
         const rawMinute = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
         if (rawMinute != null && String(rawMinute).trim() !== "") {
@@ -803,6 +803,11 @@ const server = http.createServer(async (req, res) => {
         const teams = match.teams;
         const total = key => teams.every(team => team[key] != null)
           ? teams.reduce((sum, team) => sum + Number(team[key] || 0), 0) : null;
+        const minuteRawForEligibility = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
+        const minuteForEligibility = Number(minuteRawForEligibility);
+        const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
+        const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
+        if (Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45 && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
         const current = {
           at: now,
           shots: total("shots"),
@@ -930,7 +935,7 @@ const server = http.createServer(async (req, res) => {
           subscribers = subscriberResult.rows[0].count;
         } catch {}
       }
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(process.env.ODDSPAPI_API_KEY), firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
