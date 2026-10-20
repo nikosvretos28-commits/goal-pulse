@@ -1081,7 +1081,7 @@ async function loadScores(){
  for(let attempt=0;attempt<3;attempt++){
   try{
    const sep=ANALYTICS_API+'/api/scoreboard?date='+selectedMatchDate.replace(/-/g,'')+'&_='+Date.now();
-   const scoreboardRes=await fetch(sep,{cache:'no-store',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(45000)});
+   const scoreboardRes=await fetch(sep,{cache:'no-store',signal:AbortSignal.timeout(45000)});
    if(!scoreboardRes.ok)throw new Error('Scoreboard API HTTP '+scoreboardRes.status);
    const payload=await scoreboardRes.json();
    if(!Array.isArray(payload.feeds))throw new Error('Μη έγκυρη απάντηση σκορ');
