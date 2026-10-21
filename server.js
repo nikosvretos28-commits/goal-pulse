@@ -1034,7 +1034,15 @@ const server = http.createServer(async (req, res) => {
           // Accept only the exact non-Asian total line for the active half/market implied by the live score.
           if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
           const cooldownKey = id + ":" + level;
-          if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
+          const lastAlert = pushScanLastAlert.get(cooldownKey);
+          if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
+            const shotsSinceLast = current.shots != null && lastAlert.shots != null ? Number(current.shots) - Number(lastAlert.shots) : 0;
+            const onTargetSinceLast = current.onTarget != null && lastAlert.onTarget != null ? Number(current.onTarget) - Number(lastAlert.onTarget) : 0;
+            const xGSinceLast = current.xG != null && lastAlert.xG != null ? Number(current.xG) - Number(lastAlert.xG) : 0;
+            const oddsImproved = Number(verifiedOdds.price) >= Number(lastAlert.price || 0) + 0.05;
+            // Re-alert only when the match adds meaningful shooting/xG evidence or the verified price improves.
+            if (shotsSinceLast < 2 && onTargetSinceLast < 1 && xGSinceLast < 0.2 && !oddsImproved) continue;
+          }
           const reason = [
             shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία" : "",
@@ -1065,7 +1073,13 @@ const server = http.createServer(async (req, res) => {
             url: "/"
           });
           if (result.sent > 0) {
-            pushScanLastAlert.set(cooldownKey, now);
+            pushScanLastAlert.set(cooldownKey, {
+              at: now,
+              shots: current.shots,
+              onTarget: current.onTarget,
+              xG: current.xG,
+              price: Number(verifiedOdds.price)
+            });
             sent += result.sent;
             // Persist the actual server-generated push, not just browser-side test signals.
             // This record becomes the source of truth for later 10-minute outcome evaluation.
