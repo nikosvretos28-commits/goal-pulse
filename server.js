@@ -767,7 +767,7 @@ const server = http.createServer(async (req, res) => {
       if (await ensureAlertHistoryDb()) {
         try {
           const pending = await analyticsPool.query(
-            "SELECT alert_id,payload FROM alert_history WHERE COALESCE(payload->>'outcome','εκκρεμεί')='εκκρεμεί' AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
+            "SELECT alert_id,payload FROM alert_history WHERE COALESCE(payload->>'outcome','εκκρεμεί')='εκκρεμεί' AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND (payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') AND payload->>'market' NOT ILIKE '%ασιατ%' AND payload->>'market' NOT ILIKE '%asian%' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
           );
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
           const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
