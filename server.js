@@ -1270,9 +1270,14 @@ const server = http.createServer(async (req, res) => {
             const as = event.score_away == null ? null : Number(event.score_away);
             return { id:String(event.id||""), leagueCode:league, season, state, date:event.time_utc||event.date||"", home:{name:event.home_team?.name||"Home",score:Number.isFinite(hs)?hs:null}, away:{name:event.away_team?.name||"Away",score:Number.isFinite(as)?as:null} };
           }).filter(match => match.state === "post" && match.home.score !== null && match.away.score !== null && match.home.name !== "Home" && match.away.name !== "Away");
-          const result = { league, season, seasonStart: "", seasonEnd: "", matches, fetchedAt: new Date().toISOString(), source: "PitchAPI" };
-          cache.set(historyKey, { at: Date.now(), body: result });
-          return send(res, 200, result);
+          // Only accept PitchAPI as the history source when it actually contains
+          // completed, scored matches. A season response containing only scheduled
+          // fixtures must fall through to the ESPN historical fallback.
+          if (matches.length) {
+            const result = { league, season, seasonStart: "", seasonEnd: "", matches, fetchedAt: new Date().toISOString(), source: "PitchAPI" };
+            cache.set(historyKey, { at: Date.now(), body: result });
+            return send(res, 200, result);
+          }
         }
       }
     } catch (providerError) {
