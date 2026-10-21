@@ -89,16 +89,16 @@ async function runProtocolAnalyst() {
       const p = row.payload || {};
       const won = p.betOutcome === "won";
       const minute = Number(p.minuteNumber ?? String(p.minute || "").match(/\\d{1,3}/)?.[0]);
-      const odds = Number(p.odds);
+      const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : NaN;
       const stats = p.statsAtSignal || {};
       return {
         won, minute: Number.isFinite(minute) ? minute : null,
         phase: p.periodAtSignal || "unknown",
         oddsBand: Number.isFinite(odds) ? (odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
         minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
-        shots: Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
-        onTarget: Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
-        xGDelta: Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
+        shots: stats.shots !== null && stats.shots !== undefined && Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
+        onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
+        xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
         createdAt: row.created_at
       };
     });
