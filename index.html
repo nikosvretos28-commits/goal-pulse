@@ -1721,15 +1721,16 @@ async function runSignalCheck(){
 ['topAiAlertList','topVipAlertList'].forEach(id=>document.getElementById(id).addEventListener('click',event=>{
  const card=event.target.closest('button[data-top-alert]');if(!card)return;
  let recent=[];
- try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))recent=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()-Number(a.createdAt)<=30*60*1000&&Date.now()>=Number(a.createdAt))}catch{}
+ try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))recent=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()>=Number(a.createdAt))}catch{}
  const isVip=card.dataset.topAlert==='◆';
- const matches=recent.filter(a=>isVip?a.level==='VIP':a.level!=='VIP');
+ const matches=recent.filter(a=>isVip?a.level==='VIP':a.level!=='VIP').sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).filter(a=>{const settled=['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase());const result=Boolean(a.manualOutcome)||(Boolean(a.outcome)&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;return !(settled||result||(match&&match.state==='post'))});
  const alert=matches[Number(card.dataset.alertIndex)];
  if(!alert)return;
  const modal=document.getElementById('analysisModal');
  document.getElementById('analysisTitle').textContent=(alert.level||'AI')+' ALERT · '+(alert.market||'Live signal');
  document.getElementById('analysisSubtitle').textContent=(alert.home||'')+' – '+(alert.away||'')+' · '+(alert.league||'')+' · '+(alert.minute||'LIVE');
- document.getElementById('analysisContent').innerHTML='<div class="analysis-note"><strong>Γιατί εμφανίστηκε</strong><p>'+esc(alert.reason||'Μεταβολή στα διαθέσιμα live στατιστικά')+'</p><p><strong>Ώρα:</strong> '+esc(alert.time||'—')+'</p><p><strong>Αξιολόγηση:</strong> '+esc(alert.outcome||'Εκκρεμεί')+'</p><p>Η ένδειξη βασίζεται σε μεταβολές στα διαθέσιμα στατιστικά. Δεν αποτελεί βεβαιότητα ούτε εγγύηση αποτελέσματος.</p></div>';
+ const issuedAt=new Date(Number(alert.createdAt));const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
+ document.getElementById('analysisContent').innerHTML='<div class="analysis-note"><strong>Γιατί εμφανίστηκε</strong><p>'+esc(alert.reason||'Μεταβολή στα διαθέσιμα live στατιστικά')+'</p><p><strong>Ώρα έκδοσης:</strong> '+esc(alert.time||issuedTime)+'</p><p><strong>Αξιολόγηση:</strong> '+esc(alert.outcome||'Εκκρεμεί')+'</p><p>Η ένδειξη βασίζεται σε μεταβολές στα διαθέσιμα στατιστικά. Δεν αποτελεί βεβαιότητα ούτε εγγύηση αποτελέσματος.</p></div>';
  modal.classList.add('open');
 }));
 
