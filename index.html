@@ -2027,7 +2027,7 @@ async function enableGoalPulsePush(statusIds){
   let saveResponse=await saveSubscription(subscription);
   if(!saveResponse.ok)throw new Error('Δεν αποθηκεύτηκε η συνδρομή push.');
   let savedData=await saveResponse.json().catch(()=>({persistent:false}));
-  const sendTest=async()=>{const response=await fetch(ANALYTICS_API+'/api/push/alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level:'AI',body:'Δοκιμαστική ειδοποίηση Goal Pulse · η σύνδεση push ελέγχθηκε.',eventId:'push-test'})});return {response,data:await response.json().catch(()=>({}))}};
+  const sendTest=async()=>{const response=await fetch(ANALYTICS_API+'/api/push/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});return {response,data:await response.json().catch(()=>({}))}};
   setStatus('Η συνδρομή καταχωρήθηκε. Δοκιμάζω πραγματική αποστολή push…');
   let test=await sendTest();
   if(!test.response.ok)throw new Error('Η εγγραφή έγινε, αλλά η δοκιμή push απέτυχε (HTTP '+test.response.status+').');
