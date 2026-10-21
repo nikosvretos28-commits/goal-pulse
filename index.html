@@ -787,15 +787,16 @@ nav a{flex:0 0 auto}
 .gp-h2h-preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.gp-h2h-preview-head h4{margin:0 0 10px}.gp-h2h-preview-head>span{font-size:10px;color:#55dfb0;border:1px solid #285c5a;border-radius:20px;padding:4px 8px}.gp-h2h-preview .gp-h2h-summary{margin:10px 0}
 
 /* Compact expandable section buttons: keep long panels closed until requested. */
-.gp-section-buttons{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:14px 0 18px}
+.gp-section-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0 18px}
 .gp-section-button{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:12px 13px;border:1px solid #25465b;border-radius:13px;background:linear-gradient(135deg,#102437,#0a1928);color:#e9f5ff;font-size:12px;font-weight:900;letter-spacing:.25px;cursor:pointer;box-shadow:0 5px 16px #0002}
 .gp-section-button:hover,.gp-section-button[aria-expanded="true"]{border-color:#48d8b0;background:linear-gradient(135deg,#123b42,#102437)}
 .gp-button-count{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:22px;padding:2px 7px;border-radius:8px;background:#1b394b;color:#6de6c1;font-size:11px;font-weight:1000;white-space:nowrap}
 .gp-ai-button .gp-button-count{background:#123e50;color:#5fe4f0}
 .gp-vip-button{border-color:#267c56;background:linear-gradient(135deg,#082f22,#10291f)}
 .gp-vip-button .gp-button-count{background:#164c35;color:#8bffc1}
+.gp-power-button{border-color:#b58c39;background:linear-gradient(135deg,#3a2a0b,#172536)}.gp-power-button .gp-button-count{background:#57411a;color:#ffe39a}.gp-power-panel{border-color:#8d702e;background:linear-gradient(120deg,#2b230f,#0d2232 70%,#102b36)}.gp-power-lock{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px;border:1px solid #725b29;border-radius:12px;background:#171f25}.gp-power-lock p{flex:1 1 240px;margin:0;color:#f4e8c7}.gp-power-lock button{flex:0 0 auto}.gp-power-lock .subtle{flex:1 1 100%}
 .gp-history-toggle{width:100%;margin:10px 0;text-align:left}
-.gp-section-buttons [hidden],#topAiAlerts[hidden],#topVipAlerts[hidden],#trends[hidden],#topTrends[hidden],#signalResults[hidden],#signalHistoryControls[hidden]{display:none!important}
+.gp-section-buttons [hidden],#topAiAlerts[hidden],#topVipAlerts[hidden],#powerGames[hidden],#trends[hidden],#topTrends[hidden],#signalResults[hidden],#signalHistoryControls[hidden]{display:none!important}
 @media(max-width:700px){.gp-section-buttons{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.gp-section-button{padding:10px 9px;font-size:11px}.gp-section-buttons .gp-section-button:last-child{grid-column:1/-1}}
 .notification-optin-global{display:grid;gap:10px;margin:12px 0 18px;padding:14px;border:1px solid #234457;border-radius:14px;background:linear-gradient(120deg,#0d2232,#102b3d)}.notification-optin-global>strong{font-size:14px;color:#f2f7fa}.notification-optin-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.notification-optin-row .subtle{font-size:12px;color:#a5b8c6}.notification-optin-row button{min-height:38px}@media(max-width:600px){.notification-optin-row button{flex:1 1 42%;font-size:12px;padding:9px 8px}.notification-optin-row .subtle{flex:1 1 100%}}
  .gp-forebet-source{display:inline-flex;align-items:center;gap:7px;margin-top:5px;padding:9px 12px;border:1px solid #27c7dd;border-radius:9px;color:#d9fbff;background:#0b2b3b;font-weight:800;text-decoration:none}.gp-forebet-source:hover{background:#123e50;color:#fff}.activity-secondary-badge{display:inline-flex;align-items:center;gap:4px;margin:4px 0 0 6px;padding:3px 7px;border:1px solid rgba(56,189,248,.35);border-radius:6px;background:rgba(56,189,248,.08);color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.03em;white-space:nowrap}.activity-secondary-badge::before{content:"";width:5px;height:5px;border-radius:50%;background:#38bdf8;display:inline-block}@media(max-width:520px){.activity-secondary-badge{font-size:9px;padding:2px 5px;margin-left:2px}}
@@ -835,6 +836,7 @@ nav a{flex:0 0 auto}
  <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
 <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
+ <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button>
 </div>
 <div class="notification-optin notification-optin-global" aria-label="Ρυθμίσεις ειδοποιήσεων">
  <strong>🔔 Ειδοποιήσεις Goal Pulse</strong>
@@ -861,6 +863,12 @@ nav a{flex:0 0 auto}
  <div class="top-ai-alerts-head"><div><h2 id="protocolAnalystTitle">🧠 AI PROTOCOL ANALYST</h2><p>Αξιολόγηση πραγματικών, διακανονισμένων AI alerts και τεκμηριωμένες προτάσεις βελτίωσης.</p></div><button type="button" class="login" id="refreshProtocolAnalyst">↻ Ανανέωση</button></div>
  <div id="protocolAnalystPanel" aria-live="polite"><p>Φόρτωση ανάλυσης πρωτοκόλλων…</p></div>
  <p class="top-ai-alert-privacy">Ο αναλυτής δεν αλλάζει αυτόματα τα live πρωτόκολλα. Προτείνει δοκιμές μόνο όταν υπάρχει επαρκές πραγματικό δείγμα· δεν επινοεί ποσοστά ή αποτελέσματα.</p>
+</section>
+
+<section class="top-ai-alerts gp-power-panel" id="powerGames" hidden aria-labelledby="powerGamesTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="powerGamesTitle">⚡ POWER GAMES · ΙΔΙΩΤΙΚΟ ΕΡΓΑΛΕΙΟ VIP</h2><p>Αγώνες με ισχυρό, πρόσφατο σήμα. Η λίστα ανανεώνεται μαζί με τα live δεδομένα.</p></div><span class="pulse-status" id="powerGamesStatus">ΚΛΕΙΔΩΜΕΝΟ</span></div>
+ <div id="powerGamesLock" class="gp-power-lock"><p>🔒 Ιδιωτική πρόσβαση διαχειριστή. Πληκτρολόγησε τον κωδικό για να ανοίξεις τα POWER GAMES.</p><button type="button" class="login" id="powerGamesUnlock">🔐 Ξεκλείδωμα</button><span id="powerGamesAuthStatus" class="subtle" role="status"></span></div>
+ <div id="powerGamesContent" hidden><p class="top-ai-alert-privacy">Το POWER GAMES δεν στέλνει αυτόματα VIP ειδοποιήσεις. Από εδώ επιλέγεις χειροκίνητα τους αγώνες που αξίζουν VIP ALERT. Απουσία xG δεν αποκλείει αγώνα· δεν εμφανίζονται ανύπαρκτες αποδόσεις.</p><div class="top-ai-alert-list" id="powerGamesRows" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή πραγματικών live σημάτων…</div></div><button type="button" class="login" id="powerGamesLockAgain">🔒 Κλείδωμα</button></div>
 </section>
 
 
@@ -1113,7 +1121,8 @@ function competitionLabel(code){
  return 'ΔΙΟΡΓΑΝΩΣΗ';
 }
 
-let active='live', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null; let goalFlashMatchIds=[];
+let active='live', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null;
+let powerGamesUnlocked=false; let goalFlashMatchIds=[];
 const readFavorites=()=>{try{return new Set(JSON.parse(localStorage.getItem('goalPulseFavorites')||'[]').map(String))}catch{return new Set()}};
 let favoriteMatchIds=readFavorites();
 function setMatchFilter(filter){active=filter;document.querySelectorAll('.filter').forEach(x=>{const selected=x.dataset.filter===filter;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',selected?'true':'false')});document.querySelectorAll('[data-menu-filter]').forEach(x=>x.classList.toggle('selected',x.dataset.menuFilter===filter));render()}
@@ -1587,6 +1596,14 @@ function renderHighActivityMatches(){
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
  // Evaluate every qualifying live match, but display ONLY the five strongest.
  // Recalculate the shortlist on each refresh so matches can enter/leave dynamically.
+ if(powerGamesUnlocked){
+  const powerRows=document.getElementById("powerGamesRows");
+  if(powerRows)powerRows.innerHTML=ranked.length
+   ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+   :'<div class="top-ai-alert-empty">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια ισχυρού, πρόσφατου σήματος.</div>';
+  const status=document.getElementById("powerGamesStatus");if(status)status.textContent=ranked.length+" ΙΣΧΥΡΑ ΣΗΜΑΤΑ";
+  const count=document.getElementById("powerGamesCount");if(count)count.textContent=String(ranked.length);
+ }
  const topFive=ranked.slice(0,5);
  highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
  highActivityTopIds=new Set(topFive.map(x=>String(x.match.id)));
@@ -2157,12 +2174,49 @@ loadPersistentAlertHistory();
 
 // Expand/collapse main panels and show live counts for each alert list.
 (function setupGoalPulseSectionButtons(){
- const panelIds=['trends','topTrends','topAiAlerts','topVipAlerts'];
+ const panelIds=['trends','topTrends','topAiAlerts','topVipAlerts','powerGames'];
  const setButtonState=(button,open)=>{button.setAttribute('aria-expanded',open?'true':'false');};
+ const powerButton=document.getElementById('powerGamesToggle');
+ const powerPanel=document.getElementById('powerGames');
+ const lockPowerGames=()=>{
+  powerGamesUnlocked=false;
+  const content=document.getElementById('powerGamesContent'),lock=document.getElementById('powerGamesLock');
+  if(content)content.hidden=true;if(lock)lock.hidden=false;
+  const count=document.getElementById('powerGamesCount');if(count)count.textContent='ΚΛΕΙΔΩΜΕΝΟ';
+  const status=document.getElementById('powerGamesStatus');if(status)status.textContent='ΚΛΕΙΔΩΜΕΝΟ';
+  const rows=document.getElementById('powerGamesRows');if(rows)rows.innerHTML='<div class="top-ai-alert-empty">Ξεκλείδωσε για να δεις τους ισχυρούς αγώνες.</div>';
+ };
+ document.getElementById('powerGamesUnlock')?.addEventListener('click',async()=>{
+  const status=document.getElementById('powerGamesAuthStatus');
+  const pin=window.prompt('Κωδικός διαχειριστή POWER GAMES:');
+  if(pin===null)return;
+  if(status)status.textContent='Έλεγχος πρόσβασης…';
+  const unlockButton=document.getElementById('powerGamesUnlock');if(unlockButton)unlockButton.disabled=true;
+  try{
+   const response=await fetch(ANALYTICS_API+'/api/power-games/access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin})});
+   const result=await response.json().catch(()=>({}));
+   if(!response.ok||!result.ok)throw new Error(response.status===429?'Πολλές προσπάθειες. Δοκίμασε αργότερα.':response.status===503?'Η ασφαλής πρόσβαση δεν έχει ρυθμιστεί στον server.':'Λανθασμένος κωδικός.');
+   powerGamesUnlocked=true;
+   const content=document.getElementById('powerGamesContent'),lock=document.getElementById('powerGamesLock');
+   if(content)content.hidden=false;if(lock)lock.hidden=true;
+   if(status)status.textContent='Πρόσβαση διαχειριστή ενεργή σε αυτή την καρτέλα.';
+   if(powerButton){const badge=powerButton.querySelector('.gp-button-count');if(badge)badge.textContent='0';}
+   renderHighActivityMatches();
+  }catch(error){if(status)status.textContent=error.message||'Αποτυχία ελέγχου πρόσβασης.';}
+  finally{if(unlockButton)unlockButton.disabled=false;}
+ });
+ document.getElementById('powerGamesLockAgain')?.addEventListener('click',()=>{lockPowerGames();if(powerPanel)powerPanel.hidden=true;if(powerButton)powerButton.setAttribute('aria-expanded','false');});
  document.querySelectorAll('[data-gp-toggle]').forEach(button=>{
   button.setAttribute('aria-expanded','false');
   button.addEventListener('click',()=>{
    const key=button.dataset.gpToggle;
+   if(key==='powerGames'){
+    const open=!!powerPanel?.hidden;
+    if(powerPanel)powerPanel.hidden=!open;
+    button.setAttribute('aria-expanded',open?'true':'false');
+    if(open){powerPanel?.scrollIntoView({behavior:'smooth',block:'start'});if(!powerGamesUnlocked)document.getElementById('powerGamesAuthStatus')?.focus?.();}
+    return;
+   }
    if(key==='history'){
     const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls'),inline=document.getElementById('toggleHistoryPanel');
     const open=!!results?.hidden;
