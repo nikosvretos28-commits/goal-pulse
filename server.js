@@ -1516,7 +1516,7 @@ const server = http.createServer(async (req, res) => {
                 const status = { type: { state, completed: state === "post" }, displayClock: String(liveTime) };
                 sportScoreEvents.push({
                   id: eventId, date: matchDate.toISOString(), name: homeName + " vs " + awayName,
-                  leagueName: String(match.competition?.name || match.league?.name || match.competition_name || match.league_name || "Football"),
+                  leagueName: String((typeof match.competition === "string" ? match.competition : match.competition?.name) || (typeof match.league === "string" ? match.league : match.league?.name) || match.competition_name || match.league_name || "Football"),
                   status, competitions: [{ status, competitors: [
                     { homeAway: "home", team: { displayName: homeName }, score: toScore(homeScore) },
                     { homeAway: "away", team: { displayName: awayName }, score: toScore(awayScore) }
