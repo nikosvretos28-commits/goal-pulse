@@ -1199,7 +1199,14 @@ const server = http.createServer(async (req, res) => {
               const hasHtScore = live.homeHtScore != null && live.awayHtScore != null && Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
               const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\bht\b/.test(statusClock);
               const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
-              if (hasHtScore) {
+              const clearlyFirstHalf = !isAtHalf && Number.isFinite(minuteNow) && minuteNow <= 45 &&
+                !/second half|2nd half|2ο ημίχρονο/.test(statusText);
+              // Settle a first-half Over immediately when a live first-half score confirms
+              // the target goal; do not wait for the halftime score field to appear.
+              if (clearlyFirstHalf && hasFullScore && homeScore + awayScore > startScore) {
+                outcomeScore = homeScore + awayScore;
+                won = true;
+              } else if (hasHtScore) {
                 outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
                 periodEnded = true;
               } else if (isAtHalf && hasFullScore) {
