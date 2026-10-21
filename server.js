@@ -533,7 +533,7 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   if (!response.ok) {
     // Capture a short, sanitized provider error so 403s can be diagnosed as key,
     // account-plan, endpoint-access, or other provider-side failures.
-    const providerErrorText = (await response.text().catch(() => "")).replace(/apiKey=[^&\\s"'<>]+/gi, "apiKey=[redacted]").replace(/Bearer\\s+[^\\s"'<>]+/gi, "Bearer [redacted]").slice(0, 300);
+    const providerErrorText = (await response.text().catch(() => "")).replace(/apiKey=[^&\s"'<>]+/gi, "apiKey=[redacted]").replace(/Bearer\s+[^\s"'<>]+/gi, "Bearer [redacted]").slice(0, 300);
     // Avoid hammering the provider after rate-limit or access-denied responses.
     // Unverified odds remain suppressed; retry only after a cooldown.
     if (response.status === 429 || response.status === 403) {
