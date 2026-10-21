@@ -78,6 +78,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
+// Deployment verification marker: protocol analyst and odds threshold 1.40 are included.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
