@@ -719,13 +719,30 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
   ].filter(Boolean).map(normalizeOddsTeam).filter(Boolean))];
   const sourceHomeAliases = [...new Set([match.home, match.homeTeam, match.teams?.[0]?.name].filter(Boolean).map(normalizeOddsTeam))];
   const sourceAwayAliases = [...new Set([match.away, match.awayTeam, match.teams?.[1]?.name].filter(Boolean).map(normalizeOddsTeam))];
+  // Match provider team aliases safely: exact aliases first, then only when all
+  // meaningful tokens of the shorter name occur in the longer name. This handles
+  // prefixes such as "FK"/"FC" and expanded club names without matching one vague token.
+  const meaningfulTeamTokens = value => normalizeOddsTeam(value)
+    .split(/\\s+/)
+    .filter(token => token && !/^(fc|fk|sc|ac|cf|cd|ud|afc|club|football|soccer|the)$/.test(token));
+  const teamNamesMatch = (left, right) => {
+    const a = meaningfulTeamTokens(left);
+    const b = meaningfulTeamTokens(right);
+    if (!a.length || !b.length) return false;
+    if (a.join(" ") === b.join(" ")) return true;
+    const shorter = a.length <= b.length ? a : b;
+    const longer = a.length <= b.length ? b : a;
+    if (shorter.some(token => token.length < 4)) return false;
+    if (shorter.length === 1 && shorter[0].length < 7) return false;
+    return shorter.every(token => longer.includes(token));
+  };
   const fixture = fixtures.find(item => {
     const status = String(item.statusName || "").toLowerCase();
     if (!/in.play|live|1st half|first half|half.time|2nd half|second half/.test(status)) return false;
-    const fixtureHomeAliases = [...new Set([item.participant1Name, item.participant1ShortName, item.participant1Abbr].filter(Boolean).map(normalizeOddsTeam))];
-    const fixtureAwayAliases = [...new Set([item.participant2Name, item.participant2ShortName, item.participant2Abbr].filter(Boolean).map(normalizeOddsTeam))];
-    return sourceHomeAliases.some(name => fixtureHomeAliases.includes(name)) &&
-      sourceAwayAliases.some(name => fixtureAwayAliases.includes(name));
+    const fixtureHomeAliases = [item.participant1Name, item.participant1ShortName, item.participant1Abbr].filter(Boolean);
+    const fixtureAwayAliases = [item.participant2Name, item.participant2ShortName, item.participant2Abbr].filter(Boolean);
+    return sourceHomeAliases.some(name => fixtureHomeAliases.some(alias => teamNamesMatch(name, alias))) &&
+      sourceAwayAliases.some(name => fixtureAwayAliases.some(alias => teamNamesMatch(name, alias)));
   });
   if (!fixture || !fixture.fixtureId || fixture.statusName === "Ended") {
     console.warn("OddsPapi fixture match missing:", JSON.stringify({
