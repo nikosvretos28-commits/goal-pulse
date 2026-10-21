@@ -1564,13 +1564,15 @@ async function runSignalCheck(){
     const signalMinute=Number(a.minuteNumber??(minuteMatch?minuteMatch[1]:NaN));
     const period=String(a.periodAtSignal||((/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(clock))||(Number.isFinite(signalMinute)&&signalMinute>45)?'second_half':'first_half'));
     const firstHalf=period!=='second_half';
-    const periodFinished=firstHalf?explicitHalfTime:match.state==='post';
-    if(!periodFinished)return;
     const marketText=String(a.market||'');
+    const isAsianBet=String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText);
+    // Asian Over is a full-match total line, regardless of the half when the manual VIP was created.
+    const periodFinished=isAsianBet?match.state==='post':(firstHalf?explicitHalfTime:match.state==='post');
+    if(!periodFinished)return;
     if(a.market==='πιθανό γκολ'||marketText.startsWith('1ο ημίχρονο Over ')||marketText.startsWith('1ο ημίχρονο · Ασιατικό Over ')||marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||/ασιατικ[όο].*over|over.*ασιατικ[όο]/i.test(marketText)){
       const score=Number(match.home.score||0)+Number(match.away.score||0);
       if(a.startScore==null)return;
-      const asian=/ασιατικ[όο]/i.test(marketText);
+      const asian=isAsianBet;
       const lineMatch=marketText.match(/over\s*(\d+(?:[.,]\d+)?)/i);
       const line=Number(a.overLine??(lineMatch?lineMatch[1].replace(',','.'):NaN));
       if(marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||a.market==='πιθανό γκολ'){
