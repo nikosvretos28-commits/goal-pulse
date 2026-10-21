@@ -1323,7 +1323,7 @@ const server = http.createServer(async (req, res) => {
             oddsErrors++;
             console.error("Odds verification unavailable; suppressing unpriced betting alert:", oddsError.message);
           }
-          // Suppress alerts unless the exact market has a real active quote; the temporary odds floor expires automatically at midnight Greece time.
+          // Suppress alerts unless the exact market has a real active quote above 1.00.
           const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
           const targetOverLine = currentGoalsForMarketCheck + 0.5;
           // Accept only the exact non-Asian total line for the active half/market implied by the live score.
