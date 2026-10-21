@@ -1838,7 +1838,7 @@ const server = http.createServer(async (req, res) => {
                   }
                 };
                 inspect(root);
-                sportScoreDetailDiagnostics.sample = { eventId: String(event.id), rootKeys: Object.keys(root || {}), paths: paths.slice(0, 40) };
+                sportScoreDetailDiagnostics.sample = { eventId: String(event.id), rootKeys: Object.keys(root || {}), minuteCandidates: { live_minute: root.live_minute ?? null, minute: root.minute ?? null, elapsed: root.elapsed ?? null, status_text: root.status_text ?? null, time: root.time ?? null, trackerType: Array.isArray(root.tracker) ? "array" : typeof root.tracker, trackerKeys: root.tracker && typeof root.tracker === "object" ? Object.keys(root.tracker).slice(0, 20) : [], incidentKeys: Array.isArray(root.incidents) && root.incidents[0] && typeof root.incidents[0] === "object" ? Object.keys(root.incidents[0]).slice(0, 20) : [] }, paths: paths.slice(0, 40) };
               }
               const statsRows = [];
               const visited = new Set();
