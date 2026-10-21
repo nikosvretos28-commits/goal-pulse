@@ -567,19 +567,41 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
   const home = normalizeOddsTeam(match.home || match.homeTeam || match.teams?.[0]?.name);
   const away = normalizeOddsTeam(match.away || match.awayTeam || match.teams?.[1]?.name);
   if (!home || !away) return null;
+  const teamAliases = value => [...new Set([
+    value?.home, value?.homeTeam, value?.participant1Name, value?.participant1ShortName,
+    value?.away, value?.awayTeam, value?.participant2Name, value?.participant2ShortName
+  ].filter(Boolean).map(normalizeOddsTeam).filter(Boolean))];
+  const sourceHomeAliases = [...new Set([match.home, match.homeTeam, match.teams?.[0]?.name].filter(Boolean).map(normalizeOddsTeam))];
+  const sourceAwayAliases = [...new Set([match.away, match.awayTeam, match.teams?.[1]?.name].filter(Boolean).map(normalizeOddsTeam))];
   const fixture = fixtures.find(item => {
     const status = String(item.statusName || "").toLowerCase();
     if (!/in.play|live|1st half|first half|half.time|2nd half|second half/.test(status)) return false;
-    const h = normalizeOddsTeam(item.participant1Name || item.participant1ShortName);
-    const a = normalizeOddsTeam(item.participant2Name || item.participant2ShortName);
-    return h === home && a === away;
+    const fixtureHomeAliases = [...new Set([item.participant1Name, item.participant1ShortName, item.participant1Abbr].filter(Boolean).map(normalizeOddsTeam))];
+    const fixtureAwayAliases = [...new Set([item.participant2Name, item.participant2ShortName, item.participant2Abbr].filter(Boolean).map(normalizeOddsTeam))];
+    return sourceHomeAliases.some(name => fixtureHomeAliases.includes(name)) &&
+      sourceAwayAliases.some(name => fixtureAwayAliases.includes(name));
   });
-  if (!fixture || !fixture.fixtureId || fixture.statusName === "Ended") return null;
+  if (!fixture || !fixture.fixtureId || fixture.statusName === "Ended") {
+    console.warn("OddsPapi fixture match missing:", JSON.stringify({
+      home, away, fixturesReturned: fixtures.length,
+      liveFixtures: fixtures.filter(item => /in.play|live|1st half|first half|half.time|2nd half|second half/i.test(String(item.statusName || ""))).length,
+      sample: fixtures.slice(0, 4).map(item => ({home: item.participant1Name, homeShort: item.participant1ShortName, away: item.participant2Name, awayShort: item.participant2ShortName, status: item.statusName}))
+    }));
+    return null;
+  }
   const [markets, odds] = await Promise.all([
     oddsPapiGet("markets", { language: "en" }, 6 * 60 * 60 * 1000),
     oddsPapiGet("odds", { fixtureId: fixture.fixtureId, oddsFormat: "decimal" }, 12000)
   ]);
-  if (!Array.isArray(markets) || !odds || !odds.bookmakerOdds) return null;
+  if (!Array.isArray(markets) || !odds || !odds.bookmakerOdds) {
+    console.warn("OddsPapi odds payload missing:", JSON.stringify({
+      home, away, fixtureId: fixture.fixtureId, hasMarkets: Array.isArray(markets),
+      marketCount: Array.isArray(markets) ? markets.length : null,
+      oddsReturned: Boolean(odds), hasBookmakerOdds: Boolean(odds?.bookmakerOdds),
+      hasOdds: fixture.hasOdds ?? odds?.hasOdds ?? null
+    }));
+    return null;
+  }
   const isFirstHalf = period !== "second_half";
   const matchingMarkets = markets.filter(m => {
     if (Number(m.sportId) !== 10 || Math.abs(Number(m.handicap) - line) >= 0.001 || String(m.marketType || "").toLowerCase() !== "totals") return false;
