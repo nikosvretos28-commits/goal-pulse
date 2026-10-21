@@ -707,7 +707,7 @@ const server = http.createServer(async (req, res) => {
       // Join scoreboard score/status fields to the separate live-stat feed by normalized team names.
       // The stats endpoint does not include scores, and displayClock often looks like "45:00";
       // without this join the AI scanner silently sees no eligible first-half matches.
-      const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
       const scoreboardByTeams = new Map();
       let scoreboardJoinedMatches = 0;
       const scoreboardJoinSamples = [];
@@ -850,7 +850,7 @@ const server = http.createServer(async (req, res) => {
             const state = String(event.status?.type?.state || "").toLowerCase();
             const statusLabel = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
             const hs = Number(home?.score), as = Number(away?.score);
-            if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(statusLabel)) || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
+            if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusLabel)) || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
             finalByTeams.set(normalizeSettlementTeam(home.team.displayName) + "|" + normalizeSettlementTeam(away.team.displayName), {homeScore:hs,awayScore:as});
           }
           let settledAsianBets = 0;
