@@ -1551,7 +1551,7 @@ function renderHighActivityMatches(){
   const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
   // Live conversion efficiency is only a ranking tie-breaker/support signal; it cannot create High Activity by itself.
-  const scores=[Number(m.home?.score),Number(m.away?.score)];
+  const scores=[Number(m.homeScore ?? m.home?.score),Number(m.awayScore ?? m.away?.score)];
   const liveConversionSupport=teams.reduce((sum,t,i)=>{
    const sot=Number(t.shotsOnTarget),goals=scores[i];
    if(!Number.isFinite(sot)||sot<2||!Number.isFinite(goals)||goals<0)return sum;
@@ -1563,13 +1563,14 @@ function renderHighActivityMatches(){
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
- // Show every match that passes the actual High Activity protocol; do not cap the list at five.
- // Ranking determines order only, never eligibility or visibility.
+ // Fixed product rule: evaluate every qualifying live match, then display only the best five.
+ // Keep all qualifying IDs available for secondary badges elsewhere on the live list.
  ranked.sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
+ const topFive=ranked.slice(0,5);
  highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
- highActivityTopIds=new Set(ranked.map(x=>String(x.match.id)));
- box.innerHTML=ranked.length
-  ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+ highActivityTopIds=new Set(topFive.map(x=>String(x.match.id)));
+ box.innerHTML=topFive.length
+  ?topFive.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
