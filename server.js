@@ -697,7 +697,7 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
 function minimumLiveAlertOdds() {
   return 1.0;
 }
-async function getVerifiedOver(match, targetLine, period = "first_half") {
+async function getVerifiedOverOddsPapi(match, targetLine, period = "first_half") {
   if (!getOddsPapiApiKey()) return null;
   const line = Number(targetLine);
   if (!Number.isFinite(line) || line < 0.5 || Math.abs(line * 2 - Math.round(line * 2)) > 0.001) return null;
@@ -815,6 +815,87 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
     }));
   }
   return valid[0] || null;
+}
+
+
+const API_FOOTBALL_BASE = "https://apiv3.apifootball.com/";
+const apiFootballOddsCache = { at: 0, body: null };
+function getApiFootballKey() {
+  return process.env.APIFOOTBALL_API_KEY || process.env.API_FOOTBALL_API_KEY || "";
+}
+async function getVerifiedOverApiFootball(match, targetLine, period = "first_half") {
+  const apiKey = getApiFootballKey();
+  const line = Number(targetLine);
+  if (!apiKey || !Number.isFinite(line) || line < 0.5) return null;
+  try {
+    let events = apiFootballOddsCache.body;
+    if (!events || Date.now() - apiFootballOddsCache.at > 12000) {
+      const url = new URL(API_FOOTBALL_BASE);
+      url.searchParams.set("action", "get_live_odds_commnets");
+      url.searchParams.set("APIkey", apiKey);
+      const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+      if (!response.ok) throw new Error("APIfootball live odds HTTP " + response.status);
+      events = await response.json();
+      apiFootballOddsCache.at = Date.now();
+      apiFootballOddsCache.body = events;
+    }
+    const rows = Array.isArray(events) ? events : Object.values(events || {});
+    const norm = value => normalizeOddsTeam(value);
+    const tokens = value => norm(value).split(/\s+/).filter(t => t && !/^(fc|fk|sc|ac|cf|cd|ud|afc|club|football|the)$/.test(t));
+    const namesMatch = (a, b) => {
+      const x = tokens(a), y = tokens(b);
+      if (!x.length || !y.length) return false;
+      if (x.join(" ") === y.join(" ")) return true;
+      const short = x.length <= y.length ? x : y, long = x.length <= y.length ? y : x;
+      return !short.some(t => t.length < 4) && !(short.length === 1 && short[0].length < 7) && short.every(t => long.includes(t));
+    };
+    const home = match.home || match.homeTeam || match.teams?.[0]?.name;
+    const away = match.away || match.awayTeam || match.teams?.[1]?.name;
+    const fixture = rows.find(row =>
+      namesMatch(home, row.match_hometeam_name || row.home_team) &&
+      namesMatch(away, row.match_awayteam_name || row.away_team)
+    );
+    if (!fixture || !Array.isArray(fixture.live_odds)) return null;
+    const firstHalf = period !== "second_half";
+    const candidates = fixture.live_odds.filter(odd => {
+      const market = String(odd.odd_name || odd.market || "").toLowerCase();
+      const type = String(odd.type || odd.name || "").toLowerCase();
+      const label = market + " " + type;
+      if (!/over|total goals|total.*goal|goals total/.test(label)) return false;
+      if (!/^over\b/.test(type) && !/\bover\s*\d/.test(market)) return false;
+      const periodMarked = /first half|1st half|half 1|half-time|halftime/.test(label);
+      if (firstHalf !== periodMarked) return false;
+      const handicapText = String(odd.handicap ?? "").trim();
+      const parsed = handicapText ? Number(handicapText.replace(/^over\s*/i, "")) : NaN;
+      const typeLine = type.match(/over\s*(\d+(?:\.\d+)?)/i);
+      const marketLine = market.match(/over\s*(\d+(?:\.\d+)?)/i);
+      const actualLine = Number.isFinite(parsed) ? parsed : Number(typeLine?.[1] || marketLine?.[1]);
+      if (!Number.isFinite(actualLine) || Math.abs(actualLine - line) > 0.001) return false;
+      if (/yes|suspend|inactive/.test(String(odd.suspended || "").toLowerCase())) return false;
+      const price = Number(odd.value ?? odd.odds ?? odd.price);
+      if (!Number.isFinite(price) || price <= 1) return false;
+      const updated = Date.parse(String(odd.upd || odd.updated_at || odd.odd_date || ""));
+      if (!Number.isFinite(updated) || Date.now() - updated > 5 * 60 * 1000 || updated > Date.now() + 60 * 1000) return false;
+      return true;
+    });
+    if (!candidates.length) return null;
+    const best = candidates.sort((a,b) => Number(b.value ?? b.odds ?? b.price) - Number(a.value ?? a.odds ?? a.price))[0];
+    return {
+      price: Number(best.value ?? best.odds ?? best.price),
+      line,
+      bookmaker: String(best.bookmaker || best.odd_bookmakers || "APIfootball live market"),
+      provider: "APIfootball",
+      verifiedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.warn("APIfootball live odds fallback unavailable:", String(error.message || error).slice(0, 220));
+    return null;
+  }
+}
+async function getVerifiedOver(match, targetLine, period = "first_half") {
+  const primary = await getVerifiedOverOddsPapi(match, targetLine, period);
+  if (primary) return primary;
+  return getVerifiedOverApiFootball(match, targetLine, period);
 }
 
 const ALLOWED_ORIGINS = new Set([
@@ -1438,7 +1519,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const firstHalfSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey()), scoreboardJoinedMatches, scoreboardJoinSamples, firstHalfSamples, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, firstHalfSamples, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
