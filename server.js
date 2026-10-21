@@ -633,7 +633,7 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
         if (!/over/i.test(String(definition?.outcomeName || ""))) continue;
         const player = outcome?.players?.["0"];
         const price = Number(player?.price);
-        if (!player?.active || !Number.isFinite(price) || price < 1.4) continue;
+        if (!player?.active || !Number.isFinite(price) || price < 1.6) continue;
         // changedAt records the last price movement, not feed freshness; an unchanged active quote remains valid.
         const changedAt = Date.parse(player.changedAt || player.bookmakerChangedAt || "");
         valid.push({ price, bookmaker, line: Number(marketDef.handicap), changedAt: Number.isFinite(changedAt) ? changedAt : null });
@@ -755,11 +755,11 @@ const server = http.createServer(async (req, res) => {
     if (!pushRequestAllowed(req, res)) return;
     try {
       const body = await readJsonBody(req);
-      // Hard rule: no betting push is sent without a verified price >= 1.40.
+      // Hard rule: no betting push is sent without a verified price >= 1.60.
       // Client-generated alerts do not carry trusted odds, so fail closed.
       const suppliedOdds = Number(body.odds);
-      if (!Number.isFinite(suppliedOdds) || suppliedOdds < 1.4 || body.oddsVerified !== true) {
-        return send(res, 422, { ok: false, error: "Η ειδοποίηση δεν στάλθηκε: απαιτείται επαληθευμένη απόδοση ≥ 1.40." });
+      if (!Number.isFinite(suppliedOdds) || suppliedOdds < 1.6 || body.oddsVerified !== true) {
+        return send(res, 422, { ok: false, error: "Η ειδοποίηση δεν στάλθηκε: απαιτείται επαληθευμένη απόδοση ≥ 1.60." });
       }
       const level = body.level === "VIP" ? "VIP" : "AI";
       const title = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
@@ -1099,7 +1099,7 @@ const server = http.createServer(async (req, res) => {
             if (marketPeriod && Number.isFinite(currentGoals) && currentGoals >= 0) {
               firstHalfOddsChecks++;
               verifiedOdds = await getVerifiedOver(match, currentGoals + 0.5, marketPeriod);
-              if (verifiedOdds && verifiedOdds.price >= 1.4) oddsVerifiedCount++;
+              if (verifiedOdds && verifiedOdds.price >= 1.6) oddsVerifiedCount++;
               else oddsMissingCount++;
             }
           } catch (oddsError) {
@@ -1107,11 +1107,11 @@ const server = http.createServer(async (req, res) => {
             console.error("Odds verification unavailable; suppressing unpriced betting alert:", oddsError.message);
           }
           // Strict minimum-odds rule: suppress the entire alert if a live price
-          // for the exact market cannot be verified at 1.40 or better.
+          // for the exact market cannot be verified at 1.60 or better.
           const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
           const targetOverLine = currentGoalsForMarketCheck + 0.5;
           // Accept only the exact non-Asian total line for the active half/market implied by the live score.
-          if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.4) continue;
+          if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
@@ -1130,8 +1130,8 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           // Notification wording must be the actual match and a concrete non-Asian market.
           // Target one additional first-half goal: 0 goals -> Over 0.5, 1 goal -> Over 1.5.
-          // The quote must match this exact line and be at least 1.40.
-          const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.4);
+          // The quote must match this exact line and be at least 1.60.
+          const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.6);
           const currentGoalsForMarket = Number(match.homeScore) + Number(match.awayScore);
           if (!Number.isFinite(currentGoalsForMarket)) continue;
           const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
