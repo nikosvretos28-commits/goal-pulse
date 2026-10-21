@@ -692,6 +692,11 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   if (oddsPapiCache.size > 100) oddsPapiCache.delete(oddsPapiCache.keys().next().value);
   return body;
 }
+// Temporary odds-floor test: accepts any real decimal quote above 1.00 until midnight in Greece (21:00 UTC) on 21 Oct 2026. After that, the agreed 1.40 floor automatically returns.
+function minimumLiveAlertOdds() {
+  const testEndsAt = Date.parse("2026-10-21T21:00:00Z");
+  return Date.now() < testEndsAt ? 1.01 : 1.4;
+}
 async function getVerifiedOver(match, targetLine, period = "first_half") {
   if (!getOddsPapiApiKey()) return null;
   const line = Number(targetLine);
@@ -774,7 +779,7 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
         if (!/over/i.test(String(definition?.outcomeName || ""))) continue;
         const player = outcome?.players?.["0"];
         const price = Number(player?.price);
-        if (!player?.active || !Number.isFinite(price) || price < 1.4) continue;
+        if (!player?.active || !Number.isFinite(price) || price < minimumLiveAlertOdds()) continue;
         // changedAt records the last price movement, not feed freshness; an unchanged active quote remains valid.
         const changedAt = Date.parse(player.changedAt || player.bookmakerChangedAt || "");
         valid.push({ price, bookmaker, line: Number(marketDef.handicap), changedAt: Number.isFinite(changedAt) ? changedAt : null });
@@ -909,11 +914,10 @@ const server = http.createServer(async (req, res) => {
     if (!pushRequestAllowed(req, res)) return;
     try {
       const body = await readJsonBody(req);
-      // Hard rule: no betting push is sent without a verified price >= 1.40.
-      // Client-generated alerts do not carry trusted odds, so fail closed.
+      // Require a real verified decimal price. The minimum temporarily drops for tonight's controlled test, then automatically returns to 1.40.
       const suppliedOdds = Number(body.odds);
-      if (!Number.isFinite(suppliedOdds) || suppliedOdds < 1.4 || body.oddsVerified !== true) {
-        return send(res, 422, { ok: false, error: "Η ειδοποίηση δεν στάλθηκε: απαιτείται επαληθευμένη απόδοση ≥ 1.40." });
+      if (!Number.isFinite(suppliedOdds) || suppliedOdds < minimumLiveAlertOdds() || body.oddsVerified !== true) {
+        return send(res, 422, { ok: false, error: "Η ειδοποίηση δεν στάλθηκε: απαιτείται πραγματική, επαληθευμένη απόδοση." });
       }
       const level = body.level === "VIP" ? "VIP" : "AI";
       const title = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
@@ -1045,29 +1049,39 @@ const server = http.createServer(async (req, res) => {
             const statusClock = String(live.minute || "").toLowerCase();
             const homeScore = Number(live.homeScore), awayScore = Number(live.awayScore);
             const hasFullScore = live.homeScore != null && live.awayScore != null && Number.isFinite(homeScore) && Number.isFinite(awayScore);
-            let outcomeScore = null, finished = false;
+            let outcomeScore = null, periodEnded = false, won = false;
+            const startScore = Number(alert.startScore);
+            if (!Number.isFinite(startScore)) continue;
             if (firstHalf) {
               const hasHtScore = live.homeHtScore != null && live.awayHtScore != null && Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
               const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\bht\b/.test(statusClock);
               const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
               if (hasHtScore) {
                 outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
-                finished = true;
+                periodEnded = true;
               } else if (isAtHalf && hasFullScore) {
                 outcomeScore = homeScore + awayScore;
-                finished = true;
-              } else if (Number.isFinite(minuteNow) && minuteNow >= 46) {
-                // Do not infer a first-half result from a second-half score.
+                periodEnded = true;
+              } else if (Number.isFinite(minuteNow) && minuteNow > 45) {
+                // Do not infer a first-half result from second-half full-time score.
                 continue;
-              } else if (/finished|full.?time|ended|final|ft/.test(statusText) && !hasHtScore) {
+              } else if (hasFullScore && homeScore + awayScore > startScore) {
+                // Settle as won immediately when the target goal arrives in the first half.
+                outcomeScore = homeScore + awayScore;
+                won = true;
+              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && !hasHtScore) {
                 continue;
               }
             } else if (secondHalf) {
-              finished = /finished|full.?time|ended|final|ft/.test(statusText) || live.status === "post";
-              if (finished && hasFullScore) outcomeScore = homeScore + awayScore;
+              periodEnded = /finished|full.?time|ended|final|\bft\b/.test(statusText) || live.status === "post";
+              if (hasFullScore) {
+                outcomeScore = homeScore + awayScore;
+                // A second-half full-match Over is a win as soon as one more goal is scored.
+                if (outcomeScore > startScore) won = true;
+              }
             }
-            if (!finished || outcomeScore == null || alert.startScore == null) continue;
-            const won = outcomeScore > Number(alert.startScore);
+            if (outcomeScore == null || (!won && !periodEnded)) continue;
+            if (!won) won = outcomeScore > startScore;
             alert.outcome = won
               ? "Επιβεβαιώθηκε · επιτεύχθηκε ο στόχος γκολ"
               : "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ";
@@ -1076,7 +1090,9 @@ const server = http.createServer(async (req, res) => {
             alert.betFinalScore = hasFullScore ? homeScore + "-" + awayScore : null;
             alert.betSettledAt = now;
             alert.evaluatedAt = now;
-            alert.evaluationRule = firstHalf ? "end_of_first_half_score" : "end_of_second_half_or_match_score";
+            alert.evaluationRule = won
+              ? (firstHalf ? "goal_scored_during_first_half" : "goal_scored_before_full_time")
+              : (firstHalf ? "end_of_first_half_score" : "end_of_match_score");
             await analyticsPool.query(
               "UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1",
               [row.alert_id, JSON.stringify(alert)]
@@ -1259,19 +1275,18 @@ const server = http.createServer(async (req, res) => {
             if (marketPeriod && Number.isFinite(currentGoals) && currentGoals >= 0) {
               firstHalfOddsChecks++;
               verifiedOdds = await getVerifiedOver(match, currentGoals + 0.5, marketPeriod);
-              if (verifiedOdds && verifiedOdds.price >= 1.4) oddsVerifiedCount++;
+              if (verifiedOdds && verifiedOdds.price >= minimumLiveAlertOdds()) oddsVerifiedCount++;
               else oddsMissingCount++;
             }
           } catch (oddsError) {
             oddsErrors++;
             console.error("Odds verification unavailable; suppressing unpriced betting alert:", oddsError.message);
           }
-          // Strict minimum-odds rule: suppress the entire alert if a live price
-          // for the exact market cannot be verified at 1.40 or better.
+          // Suppress alerts unless the exact market has a real active quote; the temporary odds floor expires automatically at midnight Greece time.
           const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
           const targetOverLine = currentGoalsForMarketCheck + 0.5;
           // Accept only the exact non-Asian total line for the active half/market implied by the live score.
-          if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.4) continue;
+          if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < minimumLiveAlertOdds()) continue;
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
@@ -1290,8 +1305,8 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           // Notification wording must be the actual match and a concrete non-Asian market.
           // Target one additional first-half goal: 0 goals -> Over 0.5, 1 goal -> Over 1.5.
-          // The quote must match this exact line and be at least 1.40.
-          const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.4);
+          // The quote must match this exact line and remain a real verified decimal price.
+          const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && verifiedOdds.price >= minimumLiveAlertOdds());
           const currentGoalsForMarket = Number(match.homeScore) + Number(match.awayScore);
           if (!Number.isFinite(currentGoalsForMarket)) continue;
           const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
