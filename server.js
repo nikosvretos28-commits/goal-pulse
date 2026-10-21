@@ -844,7 +844,16 @@ async function getVerifiedOverApiFootball(match, targetLine, period = "first_hal
         eventCount: Array.isArray(events) ? events.length : Object.keys(events || {}).length,
         sampleFields: sample && typeof sample === "object" ? Object.keys(sample).slice(0, 24) : [],
         sampleHasLiveOdds: Array.isArray(sample?.live_odds),
-        sampleLeague: sample?.league_name || sample?.country_name || null
+        sampleLeague: sample?.league_name || sample?.country_name || null,
+        sampleOdds: Array.isArray(sample?.live_odds) ? sample.live_odds.slice(0, 4).map(odd => ({
+          keys: Object.keys(odd || {}).slice(0, 20),
+          odd_name: odd?.odd_name || null,
+          type: odd?.type || null,
+          handicap: odd?.handicap || null,
+          valuePresent: odd?.value != null || odd?.odds != null || odd?.price != null,
+          updatedFieldPresent: odd?.upd != null || odd?.updated_at != null || odd?.odd_date != null,
+          bookmakerPresent: odd?.bookmaker != null || odd?.odd_bookmakers != null
+        })) : []
       }));
     }
     const rows = Array.isArray(events) ? events : Object.values(events || {});
