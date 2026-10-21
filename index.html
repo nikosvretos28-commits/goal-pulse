@@ -1360,8 +1360,9 @@ function showSignalHistory(){
   const filtered=signalAlertHistory.filter(a=>{const t=Number(a.createdAt);if(!Number.isFinite(t))return false;if(period==='today')return t>=todayStart;if(period==='yesterday')return t>=yesterdayStart&&t<todayStart;if(period==='7days')return t>=todayStart-6*86400000;if(period==='30days')return t>=todayStart-29*86400000;return true;}).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
   const ai=filtered.filter(a=>a.level!=='VIP'),vip=filtered.filter(a=>a.level==='VIP');
   const resolved=list=>list.filter(a=>!a.manualOutcome&&a.outcome&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
-  const rate=list=>{const done=resolved(list),hits=done.filter(a=>String(a.outcome).startsWith('Επιβεβαιώθηκε')).length;return done.length?Math.round(hits/done.length*100)+'% ('+hits+'/'+done.length+')':'— (0/0)'};
-  const judged=resolved(ai),hits=judged.filter(a=>String(a.outcome).startsWith('Επιβεβαιώθηκε')).length;const judgedVip=resolved(vip),vipHits=judgedVip.filter(a=>String(a.outcome).startsWith('Επιβεβαιώθηκε')).length;
+  const isHit=a=>a.betOutcome==='won'||String(a.outcome||'').startsWith('Επιβεβαιώθηκε')||String(a.outcome||'').startsWith('ΚΕΡΔΙΣΜΕΝΟ');
+  const rate=list=>{const done=resolved(list),hits=done.filter(isHit).length;return done.length?Math.round(hits/done.length*100)+'% ('+hits+'/'+done.length+')':'— (0/0)'};
+  const judged=resolved(ai),hits=judged.filter(isHit).length;const judgedVip=resolved(vip),vipHits=judgedVip.filter(isHit).length;
   document.getElementById('aiCount').textContent=ai.length;document.getElementById('vipCount').textContent=vip.length;document.getElementById('historyCount').textContent=filtered.length;
   document.getElementById('hitRate').textContent=judged.length?Math.round(hits/judged.length*100)+'% ('+hits+'/'+judged.length+')':'— (0/0)';const vipRate=document.getElementById('vipHitRate');if(vipRate)vipRate.textContent=judgedVip.length?Math.round(vipHits/judgedVip.length*100)+'% ('+vipHits+'/'+judgedVip.length+')':'— (0/0)';
   const goalRate=document.getElementById('goalHitRate'),cornerRate=document.getElementById('cornerHitRate');if(goalRate)goalRate.textContent=rate(ai.filter(a=>a.market==='πιθανό γκολ'));if(cornerRate)cornerRate.textContent=rate(ai.filter(a=>a.market==='πιθανό κόρνερ'));
@@ -1559,10 +1560,28 @@ async function runSignalCheck(){
     const firstHalf=period!=='second_half';
     const periodFinished=firstHalf?explicitHalfTime:match.state==='post';
     if(!periodFinished)return;
-    if(a.market==='πιθανό γκολ'||String(a.market||'').startsWith('1ο ημίχρονο Over ')||String(a.market||'').startsWith('2ο ημίχρονο · επόμενο γκολ')){
+    const marketText=String(a.market||'');
+    if(a.market==='πιθανό γκολ'||marketText.startsWith('1ο ημίχρονο Over ')||marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||/ασιατικ[όο].*over|over.*ασιατικ[όο]/i.test(marketText)){
       const score=Number(match.home.score||0)+Number(match.away.score||0);
       if(a.startScore==null)return;
-      a.outcome=score>Number(a.startScore)?'ΚΕΡΔΙΣΜΕΝΟ · σημειώθηκε τουλάχιστον 1 επιπλέον γκολ':'ΧΑΜΕΝΟ · δεν σημειώθηκε επιπλέον γκολ';
+      const asian=/ασιατικ[όο]/i.test(marketText);
+      const lineMatch=marketText.match(/over\\s*(\\d+(?:[.,]\\d+)?)/i);
+      const line=Number(a.overLine??(lineMatch?lineMatch[1].replace(',','.'):NaN));
+      if(marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||a.market==='πιθανό γκολ'){
+        const won=score>Number(a.startScore);
+        a.betOutcome=won?'won':'lost';
+        a.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · σημειώθηκε τουλάχιστον 1 επιπλέον γκολ':'ΧΑΜΕΝΟ · δεν σημειώθηκε επιπλέον γκολ';
+      }else if(Number.isFinite(line)){
+        const won=score>line, push=asian&&score===line;
+        a.betOutcome=won?'won':push?'push':'lost';
+        a.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · τελικό σύνολο '+score+' γκολ, γραμμή Over '+line
+          :push?'ΕΠΙΣΤΡΟΦΗ · ακριβώς '+line+' γκολ στην ασιατική γραμμή'
+          :'ΧΑΜΕΝΟ · τελικό σύνολο '+score+' γκολ, γραμμή Over '+line;
+      }else{
+        const won=score>Number(a.startScore);
+        a.betOutcome=won?'won':'lost';
+        a.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · σημειώθηκε τουλάχιστον 1 επιπλέον γκολ':'ΧΑΜΕΝΟ · δεν σημειώθηκε επιπλέον γκολ';
+      }
     }else{
       const live=liveMetricsCache.get(String(a.eventId));
       if(!live?.statsAvailable||!Array.isArray(live.teams)||live.teams.length!==2)return;
