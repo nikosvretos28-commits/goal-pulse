@@ -798,7 +798,7 @@ nav a{flex:0 0 auto}
 .gp-section-buttons [hidden],#topAiAlerts[hidden],#topVipAlerts[hidden],#trends[hidden],#topTrends[hidden],#signalResults[hidden],#signalHistoryControls[hidden]{display:none!important}
 @media(max-width:700px){.gp-section-buttons{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.gp-section-button{padding:10px 9px;font-size:11px}.gp-section-buttons .gp-section-button:last-child{grid-column:1/-1}}
 .notification-optin-global{display:grid;gap:10px;margin:12px 0 18px;padding:14px;border:1px solid #234457;border-radius:14px;background:linear-gradient(120deg,#0d2232,#102b3d)}.notification-optin-global>strong{font-size:14px;color:#f2f7fa}.notification-optin-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.notification-optin-row .subtle{font-size:12px;color:#a5b8c6}.notification-optin-row button{min-height:38px}@media(max-width:600px){.notification-optin-row button{flex:1 1 42%;font-size:12px;padding:9px 8px}.notification-optin-row .subtle{flex:1 1 100%}}
- .gp-forebet-source{display:inline-flex;align-items:center;gap:7px;margin-top:5px;padding:9px 12px;border:1px solid #27c7dd;border-radius:9px;color:#d9fbff;background:#0b2b3b;font-weight:800;text-decoration:none}.gp-forebet-source:hover{background:#123e50;color:#fff}</style>
+ .gp-forebet-source{display:inline-flex;align-items:center;gap:7px;margin-top:5px;padding:9px 12px;border:1px solid #27c7dd;border-radius:9px;color:#d9fbff;background:#0b2b3b;font-weight:800;text-decoration:none}.gp-forebet-source:hover{background:#123e50;color:#fff}.activity-secondary-badge{display:inline-flex;align-items:center;gap:4px;margin:4px 0 0 6px;padding:3px 7px;border:1px solid rgba(56,189,248,.35);border-radius:6px;background:rgba(56,189,248,.08);color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.03em;white-space:nowrap}.activity-secondary-badge::before{content:"";width:5px;height:5px;border-radius:50%;background:#38bdf8;display:inline-block}@media(max-width:520px){.activity-secondary-badge{font-size:9px;padding:2px 5px;margin-left:2px}}</style>
 </head>
 <body>
 <div class="wrap">
@@ -1423,6 +1423,8 @@ function updateIntervalStats(match,trail,current,now){
  node.textContent=delta(5)+'  |  '+delta(10);
 }
 
+let highActivityEligibleIds = new Set();
+let highActivityTopIds = new Set();
 function liveMatchLine(m,highActivity=false,activityLevel=0){
  const recentAlert=signalAlertHistory.find(a=>String(a.eventId)===String(m.id)&&a.market==="πιθανό γκολ"&&a.createdAt&&Date.now()-a.createdAt<8*60*1000);
  const waveLevel=Math.max(0,Math.min(100,Number(activityLevel)||0));
@@ -1438,6 +1440,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const waveSvg='<svg class="activity-ecg" viewBox="0 0 140 38" preserveAspectRatio="none" aria-hidden="true"><polyline class="ecg-trace" points="'+wavePoints+'"/></svg>';
  const waveHtml='<span class="activity-wave" style="--wave-color:'+waveColor+';--wave-level:'+waveLevel+'%" role="img" aria-label="Ένταση επιθετικής δραστηριότητας '+waveLevel+' στα 100" title="Δείκτης επιθετικής δραστηριότητας: '+waveLevel+'/100">'+waveSvg+'<span class="ecg-glow"></span></span>';
   const alertHtml=recentAlert?'<div class="activity-alert-row"><span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>'+(highActivity?waveHtml:'')+'</div>':(highActivity?'<div class="activity-alert-row"><span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>'+waveHtml+'</div>':"");
+ const secondaryActivityHtml=(!highActivity&&highActivityEligibleIds.has(String(m.id))?'<span class="activity-secondary-badge" title="Πληροί τα κριτήρια High Activity, αλλά βρίσκεται εκτός της κορυφαίας πεντάδας">⚡ HI ACTIVITY</span>':"");
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams[0]||{},away=teams[1]||{};
@@ -1486,7 +1489,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const fmtPair=(key)=>pair(key);
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
  const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',fmtPair('shots'),'shot')+statCell('ΕΝΤΟΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',fmtPair('shotsOffTarget'),'shot')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
- return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="crest">'+teamBadge(m.home)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="crest">'+teamBadge(m.away)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></button>'+alertHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
+ return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="crest">'+teamBadge(m.home)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span><span class="crest">'+teamBadge(m.away)+'</span><span class="minute">'+esc(m.clock||'LIVE')+'</span></button>'+alertHtml+secondaryActivityHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
 }
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
@@ -1553,8 +1556,11 @@ function renderHighActivityMatches(){
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
- box.innerHTML=ranked.length
-  ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+ const topFive=ranked.slice(0,5);
+ highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
+ highActivityTopIds=new Set(topFive.map(x=>String(x.match.id)));
+ box.innerHTML=topFive.length
+  ?topFive.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
