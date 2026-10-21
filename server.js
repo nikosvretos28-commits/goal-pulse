@@ -1636,7 +1636,8 @@ const server = http.createServer(async (req, res) => {
                 if (/finished|full time|ended|complete|not started|upcoming|scheduled|postponed|cancelled/.test(statusText)) continue;
                 const matchUrlSlug = (() => { try { const segments = new URL(String(match.url || ""), "https://sportscore.com").pathname.split("/").filter(Boolean); const matchIndex = segments.indexOf("match"); return matchIndex >= 0 ? (segments[matchIndex + 2] || segments[matchIndex + 1] || "") : ""; } catch { return ""; } })();
                 const slug = String(match.slug || match.match_slug || match.matchSlug || match.id || match.event_id || matchUrlSlug || (normalizeLiveTeam(homeName) + "-vs-" + normalizeLiveTeam(awayName)));
-                const status = { type: { state: "in", completed: false }, displayClock: String(match.minute ?? match.elapsed ?? match.status_text ?? "LIVE") };
+                const liveClock = match.live_minute ?? match.liveMinute ?? match.elapsed ?? match.time?.elapsed ?? match.minute ?? match.time?.minute;
+                const status = { type: { state: "in", completed: false }, displayClock: String(liveClock ?? match.status_text ?? "LIVE") };
                 const score = value => value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : String(Number(value));
                 const homeScore = score(match.home_score ?? match.score_home ?? match.home?.score ?? match.home_team?.score ?? match.scores?.home);
                 const awayScore = score(match.away_score ?? match.score_away ?? match.away?.score ?? match.away_team?.score ?? match.scores?.away);
