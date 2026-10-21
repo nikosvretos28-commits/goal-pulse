@@ -906,10 +906,20 @@ const server = http.createServer(async (req, res) => {
         const clock = raw.match(/^([0-9]{1,3})(?::[0-9]{1,2})?\s*['′’]?$/);
         return clock ? Number(clock[1]) : NaN;
       };
+      // Some feeds put a status label such as "1st half" in match.minute while
+      // the actual numeric clock is in live_minute. Prefer a parseable clock.
+      const getMatchMinute = match => {
+        const candidates = [match.live_minute, match.liveMinute, match.elapsed, match.time?.elapsed, match.minute, match.time?.minute];
+        for (const candidate of candidates) {
+          if (candidate == null || String(candidate).trim() === "") continue;
+          if (Number.isFinite(parseLiveMinute(candidate))) return candidate;
+        }
+        return null;
+      };
       const formatPushMinute = match => {
-        const rawMinute = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
+        const rawMinute = getMatchMinute(match);
         if (rawMinute != null && String(rawMinute).trim() !== "") {
-          const numericMinute = Number(rawMinute);
+          const numericMinute = parseLiveMinute(rawMinute);
           if (Number.isFinite(numericMinute) && numericMinute >= 0) return String(Math.floor(numericMinute)) + "′";
           return String(rawMinute).trim().slice(0, 24);
         }
@@ -921,7 +931,7 @@ const server = http.createServer(async (req, res) => {
         const teams = match.teams;
         const total = key => teams.every(team => team[key] != null)
           ? teams.reduce((sum, team) => sum + Number(team[key] || 0), 0) : null;
-        const minuteRawForEligibility = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
+        const minuteRawForEligibility = getMatchMinute(match);
         const minuteForEligibility = parseLiveMinute(minuteRawForEligibility);
         const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
@@ -969,7 +979,7 @@ const server = http.createServer(async (req, res) => {
           let verifiedOdds = null;
           try {
             const currentGoals = Number(match.homeScore) + Number(match.awayScore);
-            const minuteRaw = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
+            const minuteRaw = getMatchMinute(match);
             const minute = parseLiveMinute(minuteRaw);
             const status = String(match.statusText || match.status || match.status_text || "").toLowerCase();
             const firstHalfStatus = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(status);
