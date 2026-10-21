@@ -1510,7 +1510,9 @@ const server = http.createServer(async (req, res) => {
                 const eventId = "sportscore:" + String(slugOrId);
                 if (seenSportScore.has(eventId)) continue;
                 seenSportScore.add(eventId);
-                const liveTime = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? (typeof match.time === "string" || typeof match.time === "number" ? match.time : match.time?.elapsed ?? match.time?.minute) ?? match.status_text ?? match.statusText ?? (state === "in" ? "LIVE" : "");
+                const rawLiveMinute = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
+                const normalizedLiveMinute = rawLiveMinute != null && /^(?:\\d{1,3})(?:\\s*[+’′]\\s*\\d{1,2})?$/.test(String(rawLiveMinute).trim()) ? String(rawLiveMinute).trim() : null;
+                const liveTime = normalizedLiveMinute ?? match.status_text ?? match.statusText ?? (state === "in" ? "LIVE" : "");
                 const status = { type: { state, completed: state === "post" }, displayClock: String(liveTime) };
                 sportScoreEvents.push({
                   id: eventId, date: matchDate.toISOString(), name: homeName + " vs " + awayName,
