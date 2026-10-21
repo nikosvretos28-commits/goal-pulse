@@ -838,6 +838,14 @@ async function getVerifiedOverApiFootball(match, targetLine, period = "first_hal
       events = await response.json();
       apiFootballOddsCache.at = Date.now();
       apiFootballOddsCache.body = events;
+      const sample = Array.isArray(events) ? events[0] : Object.values(events || {})[0];
+      console.info("APIfootball live odds feed fetched:", JSON.stringify({
+        responseType: Array.isArray(events) ? "array" : typeof events,
+        eventCount: Array.isArray(events) ? events.length : Object.keys(events || {}).length,
+        sampleFields: sample && typeof sample === "object" ? Object.keys(sample).slice(0, 24) : [],
+        sampleHasLiveOdds: Array.isArray(sample?.live_odds),
+        sampleLeague: sample?.league_name || sample?.country_name || null
+      }));
     }
     const rows = Array.isArray(events) ? events : Object.values(events || {});
     const norm = value => normalizeOddsTeam(value);
