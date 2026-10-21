@@ -79,7 +79,7 @@ async function ensureProtocolAnalystDb() {
 }
 
 // Deployment verification marker: protocol analyst and odds threshold 1.40 are included.
-// Latest deployment request: ensure the backend uses the current main branch revision.
+// Deployment sync check: current main includes the protocol analyst and the agreed 1.40 minimum odds.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
