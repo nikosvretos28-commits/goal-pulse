@@ -62,6 +62,123 @@ async function ensureAlertHistoryDb() {
   });
   return alertHistoryDbInit;
 }
+
+let protocolAnalystDbInit = null;
+let protocolAnalystRunInFlight = null;
+
+async function ensureProtocolAnalystDb() {
+  if (!analyticsPool) return false;
+  if (!protocolAnalystDbInit) protocolAnalystDbInit = analyticsPool.query(
+    "CREATE TABLE IF NOT EXISTS protocol_analyst_reports (id BIGSERIAL PRIMARY KEY, generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), report JSONB NOT NULL); CREATE INDEX IF NOT EXISTS protocol_analyst_reports_generated_at_idx ON protocol_analyst_reports(generated_at DESC)"
+  ).then(() => true).catch(error => {
+    protocolAnalystDbInit = null;
+    console.error("Protocol analyst database unavailable:", error.message);
+    return false;
+  });
+  return protocolAnalystDbInit;
+}
+
+async function runProtocolAnalyst() {
+  if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
+  protocolAnalystRunInFlight = (async () => {
+    if (!await ensureAlertHistoryDb() || !await ensureProtocolAnalystDb()) return null;
+    const result = await analyticsPool.query(
+      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+    );
+    const records = result.rows.map(row => {
+      const p = row.payload || {};
+      const won = p.betOutcome === "won";
+      const minute = Number(p.minuteNumber ?? String(p.minute || "").match(/\\d{1,3}/)?.[0]);
+      const odds = Number(p.odds);
+      const stats = p.statsAtSignal || {};
+      return {
+        won, minute: Number.isFinite(minute) ? minute : null,
+        phase: p.periodAtSignal || "unknown",
+        oddsBand: Number.isFinite(odds) ? (odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
+        minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
+        shots: Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
+        onTarget: Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
+        xGDelta: Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
+        createdAt: row.created_at
+      };
+    });
+    const summarize = rows => {
+      const wins = rows.filter(row => row.won).length;
+      return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
+    };
+    const overall = summarize(records);
+    const segment = (field, label) => {
+      const values = [...new Set(records.map(row => row[field]))].sort();
+      return values.map(value => ({ [label]: value, ...summarize(records.filter(row => row[field] === value)) }))
+        .filter(row => row.settled >= 5)
+        .sort((a,b) => b.settled - a.settled);
+    };
+    const recommendations = [];
+    if (records.length < 20) {
+      recommendations.push({
+        priority: "data",
+        title: "Συγκέντρωση επαρκούς ιστορικού",
+        detail: "Υπάρχουν " + records.length + " πραγματικά διακανονισμένα AI alerts στο δείγμα των τελευταίων 180 ημερών. Χρειάζονται τουλάχιστον 20 συνολικά και 20 ανά ομάδα πριν προταθεί αλλαγή κανόνα."
+      });
+    } else {
+      for (const item of segment("oddsBand", "oddsBand")) {
+        if (item.settled < 20 || item.successRate == null) continue;
+        const difference = item.successRate - overall.successRate;
+        if (difference <= -10) recommendations.push({
+          priority: "review",
+          title: "Επανέλεγχος alerts με απόδοση " + item.oddsBand,
+          detail: "Το ποσοστό επιτυχίας είναι " + item.successRate + "% σε " + item.settled + " περιπτώσεις, " + Math.abs(difference).toFixed(1) + " μονάδες κάτω από το συνολικό " + overall.successRate + "%. Να ελεγχθούν τα συγκεκριμένα ματς και οι αποδόσεις πριν αλλάξει ο κανόνας."
+        });
+        if (difference >= 8) recommendations.push({
+          priority: "test",
+          title: "Υποψήφια ομάδα για δοκιμή: " + item.oddsBand,
+          detail: "Η ομάδα έχει " + item.successRate + "% σε " + item.settled + " περιπτώσεις, πάνω από τη συνολική επίδοση. Να ελεγχθεί σε ανεξάρτητο ιστορικό δείγμα· δεν αλλάζει αυτόματα το live πρωτόκολλο."
+        });
+      }
+      for (const item of segment("minuteBand", "minuteBand")) {
+        if (item.settled < 20 || item.successRate == null) continue;
+        const difference = item.successRate - overall.successRate;
+        if (difference <= -12) recommendations.push({
+          priority: "review",
+          title: "Έλεγχος χρονικού παραθύρου " + item.minuteBand,
+          detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts. Να εξεταστεί αν τα σήματα αυτού του χρονικού παραθύρου χρειάζονται αυστηρότερα κριτήρια."
+        });
+      }
+      if (!recommendations.length) recommendations.push({
+        priority: "observe",
+        title: "Δεν τεκμηριώνεται ακόμη αλλαγή",
+        detail: "Το τρέχον δείγμα δεν δείχνει αρκετά μεγάλη, επαρκώς τεκμηριωμένη διαφορά ανά ομάδα. Διατηρούμε τους κανόνες και συνεχίζουμε τη μέτρηση."
+      });
+    }
+    const report = {
+      generatedAt: new Date().toISOString(),
+      windowDays: 180,
+      method: "statistical_review_of_settled_server_generated_ai_alerts",
+      automaticRuleChanges: false,
+      sample: overall,
+      dataQuality: {
+        recordsAnalyzed: records.length,
+        alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
+        alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
+        minimumRecommendedSamplePerSegment: 20,
+        note: "Μόνο πραγματικά server-generated AI alerts με καταγεγραμμένο αποτέλεσμα· δεν κατασκευάζονται αποτελέσματα."
+      },
+      byOdds: segment("oddsBand", "oddsBand"),
+      byMinute: segment("minuteBand", "minuteBand"),
+      byPeriod: segment("phase", "period"),
+      recommendations
+    };
+    await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
+    await analyticsPool.query("DELETE FROM protocol_analyst_reports WHERE id NOT IN (SELECT id FROM protocol_analyst_reports ORDER BY generated_at DESC LIMIT 50)").catch(() => {});
+    console.log("Goal Pulse protocol analyst completed:", JSON.stringify({ settledAlerts: overall.settled, successRate: overall.successRate, recommendations: recommendations.length }));
+    return report;
+  })().catch(error => {
+    console.error("Goal Pulse protocol analyst failed:", error.message);
+    return null;
+  }).finally(() => { protocolAnalystRunInFlight = null; });
+  return protocolAnalystRunInFlight;
+}
+
 async function savePushSubscription(subscription) {
   const endpoint = String(subscription?.endpoint || "");
   if (!endpoint.startsWith("https://") || !subscription?.keys?.p256dh || !subscription?.keys?.auth) throw new Error("Invalid push subscription");
@@ -669,6 +786,19 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
   const url = new URL(req.url, "http://localhost");
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+
+  if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
+    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
+    try {
+      const latest = await analyticsPool.query("SELECT report FROM protocol_analyst_reports ORDER BY generated_at DESC LIMIT 1");
+      const report = latest.rows[0]?.report || await runProtocolAnalyst();
+      return send(res, 200, { ok: true, report: report || null });
+    } catch (error) {
+      console.error("Protocol analyst read failed:", error.message);
+      return send(res, 503, { error: "Could not load protocol analysis" });
+    }
+  }
 
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
@@ -2262,4 +2392,9 @@ if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
   }, 60000);
   backgroundScanTimer.unref();
 }
+// Re-evaluate settled AI alert performance hourly; the report recommends tests but never mutates live rules.
+const protocolAnalystTimer = setInterval(() => { runProtocolAnalyst().catch(() => {}); }, 60 * 60 * 1000);
+protocolAnalystTimer.unref();
+setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
+
 server.listen(PORT, "0.0.0.0", () => console.log("Goal Pulse listening on " + PORT));
