@@ -1633,7 +1633,7 @@ async function runSignalCheck(){
         a.outcome=continued?'Επιβεβαιώθηκε · νέα δραστηριότητα':'Δεν επιβεβαιώθηκε · χωρίς νέα δραστηριότητα';
       }else return;
     }
-    a.evaluatedAt=Date.now();a.evaluationRule='end_of_selected_half';persistAlertRecord(a);outcomesChanged=true;
+    a.evaluatedAt=Date.now();a.recordUpdatedAt=a.evaluatedAt;a.evaluationRule='end_of_selected_half';persistAlertRecord(a);outcomesChanged=true;
   });
   if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory();}
   let available=0,newAlerts=0;
