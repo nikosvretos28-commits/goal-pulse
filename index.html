@@ -797,6 +797,7 @@ nav a{flex:0 0 auto}
 .gp-history-toggle{width:100%;margin:10px 0;text-align:left}
 .gp-section-buttons [hidden],#topAiAlerts[hidden],#topVipAlerts[hidden],#trends[hidden],#topTrends[hidden],#signalResults[hidden],#signalHistoryControls[hidden]{display:none!important}
 @media(max-width:700px){.gp-section-buttons{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.gp-section-button{padding:10px 9px;font-size:11px}.gp-section-buttons .gp-section-button:last-child{grid-column:1/-1}}
+.notification-optin-global{display:grid;gap:10px;margin:12px 0 18px;padding:14px;border:1px solid #234457;border-radius:14px;background:linear-gradient(120deg,#0d2232,#102b3d)}.notification-optin-global>strong{font-size:14px;color:#f2f7fa}.notification-optin-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.notification-optin-row .subtle{font-size:12px;color:#a5b8c6}.notification-optin-row button{min-height:38px}@media(max-width:600px){.notification-optin-row button{flex:1 1 42%;font-size:12px;padding:9px 8px}.notification-optin-row .subtle{flex:1 1 100%}}
 </style>
 </head>
 <body>
@@ -821,19 +822,24 @@ nav a{flex:0 0 auto}
  <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
 </div>
+<div class="notification-optin notification-optin-global" aria-label="Ρυθμίσεις ειδοποιήσεων">
+ <strong>🔔 Ειδοποιήσεις Goal Pulse</strong>
+ <div class="notification-optin-row"><button type="button" id="enablePushNotifications" class="login">🔔 Ενεργοποίηση AI</button><button type="button" id="disablePushNotifications" class="login">🔕 Απενεργοποίηση AI</button><span id="pushNotificationStatus" class="subtle">AI ειδοποιήσεις</span></div>
+ <div class="notification-optin-row"><button type="button" id="enableVipPushNotifications" class="login">🔔 Ενεργοποίηση VIP</button><button type="button" id="disableVipPushNotifications" class="login">🔕 Απενεργοποίηση VIP</button><span id="vipPushNotificationStatus" class="subtle">VIP ειδοποιήσεις</span></div>
+</div>
 
 <section class="top-ai-alerts" id="topAiAlerts" hidden aria-labelledby="topAiAlertsTitle">
  <div class="top-ai-alerts-head"><div><h2 id="topAiAlertsTitle">⚡ AI ALERTS · LIVE ΠΡΟΤΑΣΕΙΣ</h2><p>Οι νεότερες ενδείξεις εμφανίζονται εδώ πρώτες.</p></div><span class="pulse-status" id="topAiAlertCount">0 ALERTS</span></div>
  <div class="top-ai-alert-list" id="topAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων ενδείξεων από πραγματικά live στατιστικά…</div></div>
  <p class="top-ai-alert-privacy">Οι ενδείξεις βασίζονται στα διαθέσιμα στατιστικά και δεν εγγυώνται αποτέλεσμα.</p>
- <div class="notification-optin"><button type="button" id="enablePushNotifications" class="login">🔔 Ενεργοποίηση ειδοποιήσεων</button><button type="button" id="disablePushNotifications" class="login">🔕 Απενεργοποίηση ειδοποιήσεων</button><span id="pushNotificationStatus" class="subtle">Ενεργοποίησε μία φορά για να λαμβάνεις AI ειδοποιήσεις και με κλειστή σελίδα</span></div>
+ 
 </section>
 
 <section class="top-ai-alerts top-vip-alerts" id="topVipAlerts" hidden aria-labelledby="topVipAlertsTitle">
  <div class="top-ai-alerts-head"><div><h2 id="topVipAlertsTitle">◆ VIP ALERTS · PREMIUM ΠΡΟΤΑΣΕΙΣ</h2><p>Ειδικές ενδείξεις υψηλότερου επιπέδου από τα live στατιστικά.</p></div><span class="pulse-status" id="topVipAlertCount">0 VIP</span></div>
  <div class="top-ai-alert-list" id="topVipAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων VIP ενδείξεων…</div></div>
  <p class="top-ai-alert-privacy">Το περιεχόμενο VIP προορίζεται για συνδρομητές. Οι μη συνδρομητές δεν βλέπουν ανάλυση με το πάτημα.</p>
- <div class="notification-optin"><button type="button" id="enableVipPushNotifications" class="login">🔔 Ενεργοποίηση ειδοποιήσεων</button><button type="button" id="disableVipPushNotifications" class="login">🔕 Απενεργοποίηση ειδοποιήσεων</button><span id="vipPushNotificationStatus" class="subtle">Ενεργοποίησε μία φορά για VIP ειδοποιήσεις και με κλειστή σελίδα</span></div>
+ 
 </section>
 
 
