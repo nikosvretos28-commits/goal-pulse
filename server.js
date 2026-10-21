@@ -531,15 +531,18 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
     signal: AbortSignal.timeout(9000)
   });
   if (!response.ok) {
+    // Capture a short, sanitized provider error so 403s can be diagnosed as key,
+    // account-plan, endpoint-access, or other provider-side failures.
+    const providerErrorText = (await response.text().catch(() => "")).replace(/apiKey=[^&\\s"'<>]+/gi, "apiKey=[redacted]").replace(/Bearer\\s+[^\\s"'<>]+/gi, "Bearer [redacted]").slice(0, 300);
     // Avoid hammering the provider after rate-limit or access-denied responses.
     // Unverified odds remain suppressed; retry only after a cooldown.
     if (response.status === 429 || response.status === 403) {
       oddsPapiBlockedStatus = response.status;
       oddsPapiBlockedUntil = Date.now() + (response.status === 429 ? 5 * 60 * 1000 : 15 * 60 * 1000);
-      console.warn("OddsPapi temporarily paused after HTTP " + oddsPapiBlockedStatus + "; retrying after cooldown");
+      console.warn("OddsPapi temporarily paused after HTTP " + oddsPapiBlockedStatus + "; retrying after cooldown; provider detail: " + (providerErrorText || "empty response"));
       return null;
     }
-    const error = new Error("OddsPapi HTTP " + response.status);
+    const error = new Error("OddsPapi HTTP " + response.status + (providerErrorText ? ": " + providerErrorText : ""));
     error.status = response.status;
     throw error;
   }
