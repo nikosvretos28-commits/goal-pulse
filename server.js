@@ -693,9 +693,9 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   if (oddsPapiCache.size > 100) oddsPapiCache.delete(oddsPapiCache.keys().next().value);
   return body;
 }
-// No arbitrary odds floor: accept any real, active decimal quote strictly above 1.00.
+// Goal Pulse rule: publish only real, active decimal odds of 1.60 or higher.
 function minimumLiveAlertOdds() {
-  return 1.0;
+  return 1.60;
 }
 async function getVerifiedOverOddsPapi(match, targetLine, period = "first_half") {
   if (!getOddsPapiApiKey()) return null;
@@ -723,7 +723,7 @@ async function getVerifiedOverOddsPapi(match, targetLine, period = "first_half")
   // meaningful tokens of the shorter name occur in the longer name. This handles
   // prefixes such as "FK"/"FC" and expanded club names without matching one vague token.
   const meaningfulTeamTokens = value => normalizeOddsTeam(value)
-    .split(/\\s+/)
+    .split(/\s+/)
     .filter(token => token && !/^(fc|fk|sc|ac|cf|cd|ud|afc|club|football|soccer|the)$/.test(token));
   const teamNamesMatch = (left, right) => {
     const a = meaningfulTeamTokens(left);
@@ -796,7 +796,7 @@ async function getVerifiedOverOddsPapi(match, targetLine, period = "first_half")
         if (!/over/i.test(String(definition?.outcomeName || ""))) continue;
         const player = outcome?.players?.["0"];
         const price = Number(player?.price);
-        if (!player?.active || !Number.isFinite(price) || price <= minimumLiveAlertOdds()) continue;
+        if (!player?.active || !Number.isFinite(price) || price < minimumLiveAlertOdds()) continue;
         // changedAt records the last price movement, not feed freshness; an unchanged active quote remains valid.
         const changedAt = Date.parse(player.changedAt || player.bookmakerChangedAt || "");
         valid.push({ price, bookmaker, line: Number(marketDef.handicap), changedAt: Number.isFinite(changedAt) ? changedAt : null });
@@ -1053,9 +1053,9 @@ const server = http.createServer(async (req, res) => {
     if (!pushRequestAllowed(req, res)) return;
     try {
       const body = await readJsonBody(req);
-      // Require a real, verified decimal price strictly above 1.00; there is no 1.40/1.60 odds floor.
+      // Require a real, verified decimal price of at least 1.60.
       const suppliedOdds = Number(body.odds);
-      if (!Number.isFinite(suppliedOdds) || suppliedOdds <= minimumLiveAlertOdds() || body.oddsVerified !== true) {
+      if (!Number.isFinite(suppliedOdds) || suppliedOdds < minimumLiveAlertOdds() || body.oddsVerified !== true) {
         return send(res, 422, { ok: false, error: "Η ειδοποίηση δεν στάλθηκε: απαιτείται πραγματική, επαληθευμένη απόδοση." });
       }
       const level = body.level === "VIP" ? "VIP" : "AI";
