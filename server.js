@@ -678,6 +678,22 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, { error: error.message || "Could not unsubscribe" });
     }
   }
+  if (url.pathname === "/api/push/test" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    try {
+      // Explicitly labelled connectivity test: never a betting tip and never stored in alert history.
+      const result = await sendPushToSubscribers({
+        title: "TEST — Goal Pulse",
+        body: "Δοκιμαστική ειδοποίηση. Δεν είναι πρόταση στοιχήματος.",
+        tag: "goal-pulse-push-test",
+        url: "/"
+      });
+      return send(res, result.configured === false ? 503 : 200, { ok: result.sent > 0, test: true, ...result });
+    } catch (error) {
+      return send(res, 503, { ok: false, test: true, error: error.message || "Push test failed" });
+    }
+  }
+
   if (url.pathname === "/api/push/alert" && req.method === "POST") {
     if (!pushRequestAllowed(req, res)) return;
     try {
