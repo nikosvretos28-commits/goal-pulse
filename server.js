@@ -80,8 +80,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst and odds threshold 1.40 are included.
-// Deployment sync check: current main includes the protocol analyst and the agreed 1.40 minimum odds.
+// Deployment verification marker: protocol analyst is included; no arbitrary minimum odds threshold is used.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
@@ -98,7 +97,7 @@ async function runProtocolAnalyst() {
       return {
         won, minute: Number.isFinite(minute) ? minute : null,
         phase: p.periodAtSignal || "unknown",
-        oddsBand: Number.isFinite(odds) ? (odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
+        oddsBand: Number.isFinite(odds) ? (odds < 1.2 ? "1.01–1.19" : odds < 1.4 ? "1.20–1.39" : odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
         minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
         shots: stats.shots !== null && stats.shots !== undefined && Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
@@ -694,10 +693,9 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   if (oddsPapiCache.size > 100) oddsPapiCache.delete(oddsPapiCache.keys().next().value);
   return body;
 }
-// Temporary odds-floor test: accepts any real decimal quote above 1.00 until midnight in Greece (21:00 UTC) on 21 Oct 2026. After that, the agreed 1.40 floor automatically returns.
+// No arbitrary odds floor: accept any real, active decimal quote strictly above 1.00.
 function minimumLiveAlertOdds() {
-  const testEndsAt = Date.parse("2026-10-21T21:00:00Z");
-  return Date.now() < testEndsAt ? 1.01 : 1.4;
+  return 1.0;
 }
 async function getVerifiedOver(match, targetLine, period = "first_half") {
   if (!getOddsPapiApiKey()) return null;
@@ -798,7 +796,7 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
         if (!/over/i.test(String(definition?.outcomeName || ""))) continue;
         const player = outcome?.players?.["0"];
         const price = Number(player?.price);
-        if (!player?.active || !Number.isFinite(price) || price < minimumLiveAlertOdds()) continue;
+        if (!player?.active || !Number.isFinite(price) || price <= minimumLiveAlertOdds()) continue;
         // changedAt records the last price movement, not feed freshness; an unchanged active quote remains valid.
         const changedAt = Date.parse(player.changedAt || player.bookmakerChangedAt || "");
         valid.push({ price, bookmaker, line: Number(marketDef.handicap), changedAt: Number.isFinite(changedAt) ? changedAt : null });
@@ -957,9 +955,9 @@ const server = http.createServer(async (req, res) => {
     if (!pushRequestAllowed(req, res)) return;
     try {
       const body = await readJsonBody(req);
-      // Require a real verified decimal price. The minimum temporarily drops for tonight's controlled test, then automatically returns to 1.40.
+      // Require a real, verified decimal price strictly above 1.00; there is no 1.40/1.60 odds floor.
       const suppliedOdds = Number(body.odds);
-      if (!Number.isFinite(suppliedOdds) || suppliedOdds < minimumLiveAlertOdds() || body.oddsVerified !== true) {
+      if (!Number.isFinite(suppliedOdds) || suppliedOdds <= minimumLiveAlertOdds() || body.oddsVerified !== true) {
         return send(res, 422, { ok: false, error: "Η ειδοποίηση δεν στάλθηκε: απαιτείται πραγματική, επαληθευμένη απόδοση." });
       }
       const level = body.level === "VIP" ? "VIP" : "AI";
