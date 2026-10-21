@@ -1875,7 +1875,7 @@ const server = http.createServer(async (req, res) => {
                 sportScoreDetailDiagnostics.ok++;
               }
               const root = detail.match || detail.data || detail.fixture || detail;
-              if (sportScoreDetailDiagnostics.minuteSamples.length < 8) sportScoreDetailDiagnostics.minuteSamples.push({ home: root.home || homeName, away: root.away || awayName, live_minute: root.live_minute ?? null, minute: root.minute ?? null, elapsed: root.elapsed ?? null, status_text: root.status_text ?? null, time: root.time ?? null, trackerKeys: root.tracker && typeof root.tracker === "object" ? Object.keys(root.tracker).slice(0, 10) : [] });
+              if (sportScoreDetailDiagnostics.minuteSamples.length < 8) sportScoreDetailDiagnostics.minuteSamples.push({ home: root.home || homeName, away: root.away || awayName, live_minute: root.live_minute ?? null, minute: root.minute ?? null, elapsed: root.elapsed ?? null, status_text: root.status_text ?? null, time: root.time ?? null, trackerKeys: root.tracker && typeof root.tracker === "object" ? Object.keys(root.tracker).slice(0, 10) : [], statsCount: Array.isArray(root.stats) ? root.stats.length : null, statsSample: Array.isArray(root.stats) ? root.stats.slice(0, 4).map(stat => stat && typeof stat === "object" ? Object.fromEntries(Object.entries(stat).slice(0, 8)) : stat) : null });
               if (!sportScoreDetailDiagnostics.sample) {
                 const paths = [];
                 const inspect = (node, path = "", depth = 0) => {
