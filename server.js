@@ -1100,6 +1100,7 @@ const server = http.createServer(async (req, res) => {
       persistentAnalyticsConfigured: Boolean(analyticsPool),
       databaseConnected,
       pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
+      oddsProviderConfigured: Boolean(getOddsPapiApiKey()),
       pushScannerEnabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true")
     });
   }
