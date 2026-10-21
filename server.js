@@ -1032,8 +1032,14 @@ const server = http.createServer(async (req, res) => {
           xG: total("xG")
         };
         const id = String(match.eventId);
-        const previous = pushScanSnapshots.get(id);
-        pushScanSnapshots.set(id, current);
+        // Keep a rolling five-minute window so activity spread across scanner cycles
+        // is measured together, instead of comparing only with the immediately prior scan.
+        const snapshots = pushScanSnapshots.get(id) || [];
+        snapshots.push(current);
+        const windowStart = now - 5 * 60 * 1000;
+        const rollingSnapshots = snapshots.filter(snapshot => snapshot.at >= windowStart);
+        pushScanSnapshots.set(id, rollingSnapshots);
+        const previous = rollingSnapshots.length > 1 ? rollingSnapshots[0] : null;
         checked++;
         if (!previous || now - previous.at < 35000) continue;
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
