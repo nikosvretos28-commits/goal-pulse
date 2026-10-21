@@ -2027,10 +2027,10 @@ async function enableGoalPulsePush(statusIds){
   let saveResponse=await saveSubscription(subscription);
   if(!saveResponse.ok)throw new Error('Δεν αποθηκεύτηκε η συνδρομή push.');
   let savedData=await saveResponse.json().catch(()=>({persistent:false}));
-  const sendTest=async()=>{const response=await fetch(ANALYTICS_API+'/api/push/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});return {response,data:await response.json().catch(()=>({}))}};
+  const sendTest=async()=>{const response=await fetch(ANALYTICS_API+'/api/push/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});const raw=await response.text().catch(()=> '');let data={};try{data=JSON.parse(raw||'{}')}catch{}return {response,data,raw:raw.slice(0,180)}};
   setStatus('Η συνδρομή καταχωρήθηκε. Δοκιμάζω πραγματική αποστολή push…');
   let test=await sendTest();
-  if(!test.response.ok)throw new Error('Η εγγραφή έγινε, αλλά η δοκιμή push απέτυχε (HTTP '+test.response.status+').');
+  if(!test.response.ok)throw new Error('Η εγγραφή έγινε, αλλά η δοκιμή push απέτυχε (HTTP '+test.response.status+(test.data.error?': '+test.data.error:(test.raw?': '+test.raw.replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim().slice(0,100):''))+').');
   if(Number(test.data.sent)===0&&Number(test.data.failed)>0&&subscription){
    setStatus('Η παλιά συνδρομή δεν παρέδωσε ειδοποίηση. Γίνεται ασφαλής ανανέωση…');
    const oldEndpoint=subscription.endpoint;
@@ -2042,7 +2042,7 @@ async function enableGoalPulsePush(statusIds){
    savedData=await saveResponse.json().catch(()=>({persistent:false}));
    repairedExpiredSubscription=true;
    test=await sendTest();
-   if(!test.response.ok)throw new Error('Η νέα συνδρομή δημιουργήθηκε, αλλά η δοκιμή απέτυχε (HTTP '+test.response.status+').');
+   if(!test.response.ok)throw new Error('Η νέα συνδρομή δημιουργήθηκε, αλλά η δοκιμή απέτυχε (HTTP '+test.response.status+(test.data.error?': '+test.data.error:(test.raw?': '+test.raw.replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim().slice(0,100):''))+').');
   }
   if(Number(test.data.sent)>0){
    setStatus((repairedExpiredSubscription?'Επιτυχία: ανανεώθηκε η ληγμένη συνδρομή και ':'Επιτυχία: ο server έστειλε δοκιμαστική push ειδοποίηση. ')+(savedData.persistent?'Η συνδρομή αποθηκεύτηκε μόνιμα.':'Προσοχή: η συνδρομή είναι προσωρινή και μπορεί να χαθεί μετά από επανεκκίνηση.'));
