@@ -671,6 +671,12 @@ const server = http.createServer(async (req, res) => {
     if (!pushRequestAllowed(req, res)) return;
     try {
       const body = await readJsonBody(req);
+      // Hard rule: no betting push is sent without a verified price >= 1.60.
+      // Client-generated alerts do not carry trusted odds, so fail closed.
+      const suppliedOdds = Number(body.odds);
+      if (!Number.isFinite(suppliedOdds) || suppliedOdds < 1.6 || body.oddsVerified !== true) {
+        return send(res, 422, { ok: false, error: "Η ειδοποίηση δεν στάλθηκε: απαιτείται επαληθευμένη απόδοση ≥ 1.60." });
+      }
       const level = body.level === "VIP" ? "VIP" : "AI";
       const title = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
       const alertBody = String(body.body || "Νέα live ένδειξη στο Goal Pulse").slice(0, 180);
@@ -964,6 +970,9 @@ const server = http.createServer(async (req, res) => {
             oddsErrors++;
             console.error("Odds verification unavailable; suppressing unpriced betting alert:", oddsError.message);
           }
+          // Strict minimum-odds rule: suppress the entire alert if a live price
+          // for the exact market cannot be verified at 1.60 or better.
+          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
           const cooldownKey = id + ":" + level;
           if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
           const reason = [
