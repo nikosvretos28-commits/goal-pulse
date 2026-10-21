@@ -1550,9 +1550,16 @@ function renderHighActivityMatches(){
   const xGSupport=recentXG==null?0:Math.min(2,recentXG*2);
   const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
-  const score=pressureScore+xGSupport;
-  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20)))));
-  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget}:null;
+  // Live conversion efficiency is only a ranking tie-breaker/support signal; it cannot create High Activity by itself.
+  const scores=[Number(m.home?.score),Number(m.away?.score)];
+  const liveConversionSupport=teams.reduce((sum,t,i)=>{
+   const sot=Number(t.shotsOnTarget),goals=scores[i];
+   if(!Number.isFinite(sot)||sot<2||!Number.isFinite(goals)||goals<0)return sum;
+   return sum+Math.min(1,goals/sot*1.5);
+  },0);
+  const score=pressureScore+xGSupport+liveConversionSupport;
+  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3)));
+  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
