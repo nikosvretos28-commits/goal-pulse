@@ -798,7 +798,20 @@ nav a{flex:0 0 auto}
 .gp-section-buttons [hidden],#topAiAlerts[hidden],#topVipAlerts[hidden],#trends[hidden],#topTrends[hidden],#signalResults[hidden],#signalHistoryControls[hidden]{display:none!important}
 @media(max-width:700px){.gp-section-buttons{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.gp-section-button{padding:10px 9px;font-size:11px}.gp-section-buttons .gp-section-button:last-child{grid-column:1/-1}}
 .notification-optin-global{display:grid;gap:10px;margin:12px 0 18px;padding:14px;border:1px solid #234457;border-radius:14px;background:linear-gradient(120deg,#0d2232,#102b3d)}.notification-optin-global>strong{font-size:14px;color:#f2f7fa}.notification-optin-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.notification-optin-row .subtle{font-size:12px;color:#a5b8c6}.notification-optin-row button{min-height:38px}@media(max-width:600px){.notification-optin-row button{flex:1 1 42%;font-size:12px;padding:9px 8px}.notification-optin-row .subtle{flex:1 1 100%}}
- .gp-forebet-source{display:inline-flex;align-items:center;gap:7px;margin-top:5px;padding:9px 12px;border:1px solid #27c7dd;border-radius:9px;color:#d9fbff;background:#0b2b3b;font-weight:800;text-decoration:none}.gp-forebet-source:hover{background:#123e50;color:#fff}.activity-secondary-badge{display:inline-flex;align-items:center;gap:4px;margin:4px 0 0 6px;padding:3px 7px;border:1px solid rgba(56,189,248,.35);border-radius:6px;background:rgba(56,189,248,.08);color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.03em;white-space:nowrap}.activity-secondary-badge::before{content:"";width:5px;height:5px;border-radius:50%;background:#38bdf8;display:inline-block}@media(max-width:520px){.activity-secondary-badge{font-size:9px;padding:2px 5px;margin-left:2px}}</style>
+ .gp-forebet-source{display:inline-flex;align-items:center;gap:7px;margin-top:5px;padding:9px 12px;border:1px solid #27c7dd;border-radius:9px;color:#d9fbff;background:#0b2b3b;font-weight:800;text-decoration:none}.gp-forebet-source:hover{background:#123e50;color:#fff}.activity-secondary-badge{display:inline-flex;align-items:center;gap:4px;margin:4px 0 0 6px;padding:3px 7px;border:1px solid rgba(56,189,248,.35);border-radius:6px;background:rgba(56,189,248,.08);color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.03em;white-space:nowrap}.activity-secondary-badge::before{content:"";width:5px;height:5px;border-radius:50%;background:#38bdf8;display:inline-block}@media(max-width:520px){.activity-secondary-badge{font-size:9px;padding:2px 5px;margin-left:2px}}
+.protocol-analyst-panel{margin:16px 0;padding:18px;border:1px solid rgba(72,201,232,.28);border-radius:18px;background:linear-gradient(145deg,rgba(9,31,48,.96),rgba(7,20,34,.96))}
+.protocol-analyst-panel h3{margin:18px 0 10px;font-size:1rem}
+.protocol-analyst-summary,.protocol-analyst-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}
+.protocol-analyst-summary>div,.protocol-analyst-stat,.protocol-analyst-recommendation{padding:13px;border:1px solid rgba(130,180,200,.18);border-radius:12px;background:rgba(255,255,255,.025)}
+.protocol-analyst-summary small,.protocol-analyst-stat small{display:block;color:#9eb5c5;font-size:.72rem}
+.protocol-analyst-summary strong{display:block;font-size:1.35rem;margin-top:5px;color:#70e4d0}
+.protocol-analyst-stat strong,.protocol-analyst-stat span{display:block}
+.protocol-analyst-stat span{font-size:1.2rem;font-weight:750;margin:6px 0;color:#70e4d0}
+.protocol-analyst-recommendations{display:grid;gap:9px}
+.protocol-analyst-recommendation p{margin:7px 0 0;color:#c3d2de;line-height:1.5}
+.protocol-analyst-panel details{margin-top:10px;padding:10px;border:1px solid rgba(130,180,200,.18);border-radius:10px}
+.protocol-analyst-panel summary{cursor:pointer;font-weight:650}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -821,6 +834,7 @@ nav a{flex:0 0 auto}
  <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
+<button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
 </div>
 <div class="notification-optin notification-optin-global" aria-label="Ρυθμίσεις ειδοποιήσεων">
  <strong>🔔 Ειδοποιήσεις Goal Pulse</strong>
@@ -840,6 +854,13 @@ nav a{flex:0 0 auto}
  <div class="top-ai-alert-list" id="topVipAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων VIP ενδείξεων…</div></div>
  <p class="top-ai-alert-privacy">Το περιεχόμενο VIP προορίζεται για συνδρομητές. Οι μη συνδρομητές δεν βλέπουν ανάλυση με το πάτημα.</p>
  
+</section>
+
+
+<section class="top-ai-alerts protocol-analyst-panel" id="protocolAnalyst" hidden aria-labelledby="protocolAnalystTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="protocolAnalystTitle">🧠 AI PROTOCOL ANALYST</h2><p>Αξιολόγηση πραγματικών, διακανονισμένων AI alerts και τεκμηριωμένες προτάσεις βελτίωσης.</p></div><button type="button" class="login" id="refreshProtocolAnalyst">↻ Ανανέωση</button></div>
+ <div id="protocolAnalystPanel" aria-live="polite"><p>Φόρτωση ανάλυσης πρωτοκόλλων…</p></div>
+ <p class="top-ai-alert-privacy">Ο αναλυτής δεν αλλάζει αυτόματα τα live πρωτόκολλα. Προτείνει δοκιμές μόνο όταν υπάρχει επαρκές πραγματικό δείγμα· δεν επινοεί ποσοστά ή αποτελέσματα.</p>
 </section>
 
 
@@ -2106,6 +2127,23 @@ document.getElementById('disableVipPushNotifications')?.addEventListener('click'
 async function sendGoalPulsePushAlert(level,body,eventId){
  try{await fetch(ANALYTICS_API+'/api/push/alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level,body,eventId})})}catch{}
 }
+
+function escapeProtocolText(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+async function loadProtocolAnalyst(){
+ const root=document.getElementById('protocolAnalystPanel');if(!root)return;
+ root.innerHTML='<p>Έλεγχος αποθηκευμένων αποτελεσμάτων…</p>';
+ try{
+  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst',{cache:'no-store',signal:AbortSignal.timeout(20000)});
+  const data=await response.json();if(!response.ok||!data.report)throw new Error(data.error||('HTTP '+response.status));
+  const report=data.report,sample=report.sample||{},quality=report.dataQuality||{};
+  const recommendations=Array.isArray(report.recommendations)?report.recommendations:[];
+  const rows=items=>items.length?'<div class="protocol-analyst-grid">'+items.map(item=>'<div class="protocol-analyst-stat"><strong>'+escapeProtocolText(item.oddsBand||item.minuteBand||item.period||'Άλλο')+'</strong><span>'+escapeProtocolText(item.successRate==null?'—':item.successRate+'%')+'</span><small>'+escapeProtocolText(item.settled)+' settled · '+escapeProtocolText(item.wins)+' νίκες / '+escapeProtocolText(item.losses)+' ήττες</small></div>').join('')+'</div>':'<p>Δεν υπάρχει ακόμη επαρκές δείγμα για αυτή την ανάλυση.</p>';
+  root.innerHTML='<div class="protocol-analyst-summary"><div><small>ΠΡΑΓΜΑΤΙΚΑ SETTLED AI ALERTS</small><strong>'+escapeProtocolText(sample.settled||0)+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(sample.successRate==null?'—':escapeProtocolText(sample.successRate)+'%')+'</strong></div><div><small>ΠΑΡΑΘΥΡΟ</small><strong>180 ημέρες</strong></div></div><h3>Προτάσεις βελτίωσης</h3>'+(recommendations.length?'<div class="protocol-analyst-recommendations">'+recommendations.map(item=>'<article class="protocol-analyst-recommendation"><strong>'+escapeProtocolText(item.title)+'</strong><p>'+escapeProtocolText(item.detail)+'</p></article>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη προτάσεις.</p>')+'<details><summary>Ανάλυση ανά απόδοση</summary>'+rows(report.byOdds||[])+'</details><details><summary>Ανάλυση ανά λεπτό αγώνα</summary>'+rows(report.byMinute||[])+'</details><details><summary>Ανάλυση ανά ημίχρονο</summary>'+rows(report.byPeriod||[])+'</details><p class="subtle">Ενημερώθηκε: '+escapeProtocolText(report.generatedAt?new Date(report.generatedAt).toLocaleString('el-GR'):'—')+' · Alerts χωρίς στατιστικά σήματος: '+escapeProtocolText(quality.alertsMissingSignalStats||0)+'.</p>';
+ }catch(error){root.innerHTML='<p>Η ανάλυση δεν είναι διαθέσιμη αυτή τη στιγμή. '+escapeProtocolText(error.message||error)+'</p>';}
+}
+document.getElementById('refreshProtocolAnalyst')?.addEventListener('click',loadProtocolAnalyst);
+loadProtocolAnalyst();
+setInterval(loadProtocolAnalyst,60*60*1000);
 
 loadScores();
 setInterval(loadScores,60000);
