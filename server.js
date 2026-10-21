@@ -516,10 +516,12 @@ function getOddsPapiApiKey() {
   return process.env.ODDSPAPI_API_KEY || process.env.ODDSPAPI_KEY || process.env.ODDS_PAPI_API_KEY || process.env.ODDS_API_KEY || "";
 }
 const oddsPapiCache = new Map();
+let oddsPapiBlockedUntil = 0;
+let oddsPapiBlockedStatus = 0;
 const normalizeOddsTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   const apiKey = getOddsPapiApiKey();
-  if (!apiKey) return null;
+  if (!apiKey || Date.now() < oddsPapiBlockedUntil) return null;
   const query = new URLSearchParams({ ...params, apiKey });
   const cacheKey = pathname + "?" + query.toString().replace(/apiKey=[^&]+/, "apiKey=[redacted]");
   const cached = oddsPapiCache.get(cacheKey);
@@ -529,6 +531,14 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
     signal: AbortSignal.timeout(9000)
   });
   if (!response.ok) {
+    // Avoid hammering the provider after rate-limit or access-denied responses.
+    // Unverified odds remain suppressed; retry only after a cooldown.
+    if (response.status === 429 || response.status === 403) {
+      oddsPapiBlockedStatus = response.status;
+      oddsPapiBlockedUntil = Date.now() + (response.status === 429 ? 5 * 60 * 1000 : 15 * 60 * 1000);
+      console.warn("OddsPapi temporarily paused after HTTP " + oddsPapiBlockedStatus + "; retrying after cooldown");
+      return null;
+    }
     const error = new Error("OddsPapi HTTP " + response.status);
     error.status = response.status;
     throw error;
