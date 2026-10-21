@@ -1774,7 +1774,7 @@ async function runSignalCheck(){
    for(const market of marketsToCheck){
     const candidateKey=key+':'+market.key;
     const last=signalLastAlertAt.get(candidateKey)||0;
-    const candidateValid=false; // Do not publish local statistical signals as betting alerts: only the server-side scanner may send alerts after verifying the exact market and odds >= 1.60.
+    const candidateValid=false; // Local signals are not betting tips; only the server scanner may send alerts after verifying the exact market and real odds.
     const previousCandidateAt=signalCandidateLastAt.get(candidateKey)||0;
     if(candidateValid){const consecutive=previousCandidateAt>0&&now-previousCandidateAt<=90000;signalCandidateCounts.set(candidateKey,consecutive?(signalCandidateCounts.get(candidateKey)||0)+1:1);signalCandidateLastAt.set(candidateKey,now)}
     else{signalCandidateCounts.delete(candidateKey);signalCandidateLastAt.delete(candidateKey)}
