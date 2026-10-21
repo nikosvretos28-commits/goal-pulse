@@ -993,7 +993,7 @@ const server = http.createServer(async (req, res) => {
         const totalDangerous = current.dangerous == null ? 0 : Number(current.dangerous);
         const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
         const recentGoalEvidence = shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && (corners >= 1 || dangerous >= 3);
-        const sustainedGoalEvidence = totalShots >= 20 && totalOnTarget >= 4 && totalCorners >= 8 && totalDangerous >= 20;
+        const sustainedGoalEvidence = totalShots >= 20 && totalOnTarget >= 4 && (totalCorners >= 8 || totalDangerous >= 20);
         // xG strengthens the candidate when available; missing xG never blocks evaluation.
         const points = Math.min(shots, 4) + onTarget * 2 + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
         const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 3) + Math.min(totalDangerous * 0.05, 3);
