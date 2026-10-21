@@ -1051,9 +1051,32 @@ const server = http.createServer(async (req, res) => {
         const recentGoalEvidence = shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && dangerous >= 3;
         const sustainedGoalEvidence = totalShots >= 20 && totalOnTarget >= 4 && totalDangerous >= 20;
         // xG strengthens the candidate when available; missing xG never blocks evaluation.
+        // Current-match shot quality is a supplemental signal, never a standalone trigger.
+        // Use goals/SOT as a conservative live conversion indicator when the feed provides valid values.
+        const homeGoalsLive = Number(match.homeScore);
+        const awayGoalsLive = Number(match.awayScore);
+        const goalsLiveAvailable = Number.isFinite(homeGoalsLive) && Number.isFinite(awayGoalsLive);
+        const teamShotProfiles = teams.map((team, index) => {
+          const teamGoals = goalsLiveAvailable ? (index === 0 ? homeGoalsLive : awayGoalsLive) : null;
+          const teamShots = Number(team.shots);
+          const teamOnTarget = Number(team.shotsOnTarget);
+          return {
+            shots: Number.isFinite(teamShots) ? teamShots : null,
+            onTarget: Number.isFinite(teamOnTarget) ? teamOnTarget : null,
+            goals: teamGoals,
+            conversionOnTarget: teamGoals != null && Number.isFinite(teamOnTarget) && teamOnTarget > 0
+              ? Math.min(1, teamGoals / teamOnTarget) : null
+          };
+        });
+        const liveConversionSupport = teamShotProfiles.reduce((sum, profile) => {
+          if (profile.conversionOnTarget == null || profile.onTarget < 2) return sum;
+          // Cap this bonus and require at least two shots on target to reduce tiny-sample noise.
+          return sum + Math.min(1, profile.conversionOnTarget * 1.5);
+        }, 0);
         const points = Math.min(shots, 4) + onTarget * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
         const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalDangerous * 0.05, 3);
-        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points >= 7) || (sustainedGoalEvidence && sustainedPoints >= 10));
+        // Do not let conversion alone create an alert; it only strengthens already-qualified live pressure.
+        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 10));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
