@@ -914,6 +914,7 @@ async function loadPersistentAlertHistory(){
   signalAlertHistory.forEach(a=>{if(!a.alertId)a.alertId=alertHistoryKey(a)});
   try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
   showSignalHistory();
+  renderTopAiAlerts();
   await persistAlertBatch(signalAlertHistory);
   const status=document.getElementById('signalStatus');if(status)status.textContent+=' · ιστορικό μόνιμης βάσης συγχρονισμένο';
  }catch(error){console.warn('Persistent alert history unavailable:',error.message)}
