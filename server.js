@@ -840,7 +840,7 @@ const server = http.createServer(async (req, res) => {
           const pendingAsian = await analyticsPool.query(
             "SELECT alert_id,payload FROM alert_history WHERE payload->>'lineType'='asian' AND COALESCE(payload->>'betOutcome','pending') IN ('pending','') AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
           );
-          const normalizeSettlementTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const normalizeSettlementTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
           const finalByTeams = new Map();
           for (const event of scoreboardEvents) {
             const competition = event.competitions?.[0];
@@ -1693,7 +1693,7 @@ const server = http.createServer(async (req, res) => {
           if (liveResponse.ok) {
             const livePayload = await liveResponse.json();
             const liveFixtures = Array.isArray(livePayload) ? livePayload : (livePayload.matches || livePayload.data || livePayload.fixtures || livePayload.events || livePayload.results || []);
-            const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+            const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             for (const fixture of liveFixtures) {
               const statusText = [fixture.status, fixture.status_text, fixture.status_name, fixture.state, fixture.minute, fixture.elapsed].filter(v => v != null).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(" ").toLowerCase();
               if (/finished|full time|ended|complete|not started|upcoming|scheduled|postponed|cancelled/.test(statusText)) continue;
