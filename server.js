@@ -23,6 +23,8 @@ const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:nikosvretos28@gmail.c
 const pushSubscriptions = new Map();
 const pushRateLimit = new Map();
 const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || "";
+const POWER_GAMES_ADMIN_PIN = process.env.POWER_GAMES_ADMIN_PIN || "";
+const powerGamesAuthAttempts = new Map();
 const pushScanSnapshots = new Map();
 const pushScanLastAlert = new Map();
 let pushDbInit = null;
@@ -832,6 +834,30 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
   const url = new URL(req.url, "http://localhost");
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+
+  if (url.pathname === "/api/power-games/access" && req.method === "POST") {
+    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Power Games admin access is not configured" });
+    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+    const now = Date.now();
+    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
+    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
+    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+    try {
+      const body = await readJsonBody(req, 4096);
+      const supplied = String(body.pin || "");
+      if (supplied !== POWER_GAMES_ADMIN_PIN) {
+        attempt.count += 1;
+        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+        powerGamesAuthAttempts.set(ip, attempt);
+        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
+      }
+      powerGamesAuthAttempts.delete(ip);
+      return send(res, 200, { ok: true });
+    } catch (error) {
+      return send(res, 400, { ok: false, error: "Invalid request" });
+    }
+  }
 
   if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
     if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
