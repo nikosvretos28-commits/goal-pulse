@@ -1556,23 +1556,13 @@ function renderHighActivityMatches(){
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
- // Keep the current top five stable; replace the weakest only when a newcomer is materially stronger.
- let topFive=ranked.filter(x=>highActivityTopIds.has(String(x.match.id)));
- for(const candidate of ranked){
-  if(topFive.some(x=>String(x.match.id)===String(candidate.match.id)))continue;
-  if(topFive.length<5){topFive.push(candidate);continue;}
-  const weakest=topFive.reduce((a,b)=>a.score<=b.score?a:b);
-  const replacementMargin=Math.max(1.5,Math.abs(weakest.score)*0.15);
-  if(candidate.score>weakest.score+replacementMargin){
-   topFive=topFive.filter(x=>String(x.match.id)!==String(weakest.match.id));
-   topFive.push(candidate);
-  }
- }
- topFive.sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
+ // Show every match that passes the actual High Activity protocol; do not cap the list at five.
+ // Ranking determines order only, never eligibility or visibility.
+ ranked.sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
  highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
- highActivityTopIds=new Set(topFive.map(x=>String(x.match.id)));
- box.innerHTML=topFive.length
-  ?topFive.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+ highActivityTopIds=new Set(ranked.map(x=>String(x.match.id)));
+ box.innerHTML=ranked.length
+  ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
