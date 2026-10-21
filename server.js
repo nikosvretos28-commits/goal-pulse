@@ -511,10 +511,14 @@ async function pitchGet(apiPath) {
 
 
 const ODDS_PAPI_BASE = "https://api.oddspapi.io/v4";
+// Accept common existing Render secret names, while keeping OddsPapi authentication server-side.
+function getOddsPapiApiKey() {
+  return process.env.ODDSPAPI_API_KEY || process.env.ODDSPAPI_KEY || process.env.ODDS_PAPI_API_KEY || process.env.ODDS_API_KEY || "";
+}
 const oddsPapiCache = new Map();
 const normalizeOddsTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
-  const apiKey = process.env.ODDSPAPI_API_KEY;
+  const apiKey = getOddsPapiApiKey();
   if (!apiKey) return null;
   const query = new URLSearchParams({ ...params, apiKey });
   const cacheKey = pathname + "?" + query.toString().replace(/apiKey=[^&]+/, "apiKey=[redacted]");
@@ -535,7 +539,7 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   return body;
 }
 async function getVerifiedFirstHalfOver(match, targetLine) {
-  if (!process.env.ODDSPAPI_API_KEY) return null;
+  if (!getOddsPapiApiKey()) return null;
   const line = Number(targetLine);
   if (!Number.isFinite(line) || line < 0.5 || Math.abs(line * 2 - Math.round(line * 2)) > 0.001) return null;
   const now = new Date();
@@ -1076,7 +1080,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const firstHalfSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(process.env.ODDSPAPI_API_KEY), scoreboardJoinedMatches, scoreboardJoinSamples, firstHalfSamples, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey()), scoreboardJoinedMatches, scoreboardJoinSamples, firstHalfSamples, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
