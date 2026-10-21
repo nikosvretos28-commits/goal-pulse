@@ -806,6 +806,7 @@ const server = http.createServer(async (req, res) => {
               const completed = completedScoreboardByTeams.get(normalizeTeam(alert.home) + "|" + normalizeTeam(alert.away));
               if (completed) live = completed;
             }
+            if (/κόρνερ|corner/i.test(String(alert.market || ""))) continue;
             if (!live) continue;
             const statusText = String(live.statusText || live.status || "").toLowerCase();
             const statusClock = String(live.minute || "").toLowerCase();
@@ -833,11 +834,16 @@ const server = http.createServer(async (req, res) => {
               if (finished && hasFullScore) outcomeScore = homeScore + awayScore;
             }
             if (!finished || outcomeScore == null || alert.startScore == null) continue;
-            alert.outcome = outcomeScore > Number(alert.startScore)
-              ? "Επιβεβαιώθηκε · γκολ μέχρι τη λήξη του ημιχρόνου"
-              : "Δεν επιβεβαιώθηκε · χωρίς γκολ μέχρι τη λήξη του ημιχρόνου";
+            const won = outcomeScore > Number(alert.startScore);
+            alert.outcome = won
+              ? "Επιβεβαιώθηκε · επιτεύχθηκε ο στόχος γκολ"
+              : "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ";
+            alert.betOutcome = won ? "won" : "lost";
+            alert.betSettlementLabel = won ? "Κερδισμένο" : "Χαμένο";
+            alert.betFinalScore = hasFullScore ? homeScore + "-" + awayScore : null;
+            alert.betSettledAt = now;
             alert.evaluatedAt = now;
-            alert.evaluationRule = "end_of_relevant_half";
+            alert.evaluationRule = firstHalf ? "end_of_first_half_score" : "end_of_second_half_or_match_score";
             await analyticsPool.query(
               "UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1",
               [row.alert_id, JSON.stringify(alert)]
