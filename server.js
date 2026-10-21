@@ -542,12 +542,14 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
   if (!getOddsPapiApiKey()) return null;
   const line = Number(targetLine);
   if (!Number.isFinite(line) || line < 0.5 || Math.abs(line * 2 - Math.round(line * 2)) > 0.001) return null;
-  const now = new Date();
-  // Keep the query window strictly below the API 48-hour limit for sportId + from/to.
-  const from = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
-  const to = new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString();
-  // OddsPapi v4 docs: statusId 1 = Live, statusId 2 = Finished; restrict lookup to live fixtures.
-  const fixtures = await oddsPapiGet("fixtures", { sportId: "10", from, to, statusId: "1" }, 20000);
+  // Use a stable, hour-aligned fixture window so identical live scans share the cache
+  // instead of generating a fresh from/to query (and API request) for every candidate.
+  const hourMs = 60 * 60 * 1000;
+  const windowBase = Math.floor(Date.now() / hourMs) * hourMs;
+  const from = new Date(windowBase - 12 * hourMs).toISOString();
+  const to = new Date(windowBase + 13 * hourMs).toISOString();
+  // Keep the query window below the API 48-hour limit and reuse the live-fixture list.
+  const fixtures = await oddsPapiGet("fixtures", { sportId: "10", from, to, statusId: "1" }, 60 * 1000);
   if (!Array.isArray(fixtures)) return null;
   const home = normalizeOddsTeam(match.home || match.homeTeam || match.teams?.[0]?.name);
   const away = normalizeOddsTeam(match.away || match.awayTeam || match.teams?.[1]?.name);
