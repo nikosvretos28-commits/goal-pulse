@@ -972,7 +972,10 @@ const server = http.createServer(async (req, res) => {
           }
           // Strict minimum-odds rule: suppress the entire alert if a live price
           // for the exact market cannot be verified at 1.60 or better.
-          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
+          const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
+          // This provider helper verifies only first-half Over 1.5. Do not reuse its
+          // price for a different total-goals line or a different period.
+          if (currentGoalsForMarketCheck !== 0 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
           const cooldownKey = id + ":" + level;
           if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
           const reason = [
@@ -990,7 +993,7 @@ const server = http.createServer(async (req, res) => {
           if (!Number.isFinite(currentGoalsForMarket)) continue;
           const overLine = (currentGoalsForMarket + 1.5).toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
-          const alertBody = (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over " + overLine;
+          const alertBody = (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over 1.5 · Απόδοση " + Number(verifiedOdds.price).toFixed(2) + " (" + verifiedOdds.bookmaker + ")";
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
