@@ -99,6 +99,9 @@ async function runProtocolAnalyst() {
         shots: stats.shots !== null && stats.shots !== undefined && Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
+        shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
+        onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
+        xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
         createdAt: row.created_at
       };
     });
@@ -135,6 +138,22 @@ async function runProtocolAnalyst() {
           detail: "Η ομάδα έχει " + item.successRate + "% σε " + item.settled + " περιπτώσεις, πάνω από τη συνολική επίδοση. Να ελεγχθεί σε ανεξάρτητο ιστορικό δείγμα· δεν αλλάζει αυτόματα το live πρωτόκολλο."
         });
       }
+      for (const [field, label] of [["shotBand", "τελικές στο 5λεπτο"], ["onTargetBand", "σουτ στην εστία στο 5λεπτο"], ["xGBand", "μεταβολή xG στο 5λεπτο"]]) {
+        for (const item of segment(field, field)) {
+          if (item.settled < 20 || item.successRate == null || item[field] === "missing") continue;
+          const difference = item.successRate - overall.successRate;
+          if (difference <= -10) recommendations.push({
+            priority: "review",
+            title: "Επανέλεγχος σήματος: " + label + " (" + item[field] + ")",
+            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, " + Math.abs(difference).toFixed(1) + " μονάδες κάτω από τη συνολική επίδοση. Να ελεγχθεί αν χρειάζεται αυστηρότερο κατώφλι."
+          });
+          if (difference >= 8) recommendations.push({
+            priority: "test",
+            title: "Δοκιμή σήματος: " + label + " (" + item[field] + ")",
+            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, πάνω από τη συνολική επίδοση. Απαιτείται ανεξάρτητος ιστορικός έλεγχος πριν από αλλαγή."
+          });
+        }
+      }
       for (const item of segment("minuteBand", "minuteBand")) {
         if (item.settled < 20 || item.successRate == null) continue;
         const difference = item.successRate - overall.successRate;
@@ -166,6 +185,9 @@ async function runProtocolAnalyst() {
       byOdds: segment("oddsBand", "oddsBand"),
       byMinute: segment("minuteBand", "minuteBand"),
       byPeriod: segment("phase", "period"),
+      byShots: segment("shotBand", "shotBand"),
+      byOnTarget: segment("onTargetBand", "onTargetBand"),
+      byXG: segment("xGBand", "xGBand"),
       recommendations
     };
     await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
