@@ -538,7 +538,7 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   if (oddsPapiCache.size > 100) oddsPapiCache.delete(oddsPapiCache.keys().next().value);
   return body;
 }
-async function getVerifiedFirstHalfOver(match, targetLine) {
+async function getVerifiedOver(match, targetLine, period = "first_half") {
   if (!getOddsPapiApiKey()) return null;
   const line = Number(targetLine);
   if (!Number.isFinite(line) || line < 0.5 || Math.abs(line * 2 - Math.round(line * 2)) > 0.001) return null;
@@ -565,16 +565,20 @@ async function getVerifiedFirstHalfOver(match, targetLine) {
     oddsPapiGet("odds", { fixtureId: fixture.fixtureId, oddsFormat: "decimal" }, 12000)
   ]);
   if (!Array.isArray(markets) || !odds || !odds.bookmakerOdds) return null;
-  const firstHalfMarkets = markets.filter(m => Number(m.sportId) === 10 &&
-    /over.?under.*first half|first half.*over.?under/i.test(String(m.marketName || "")) &&
-    Math.abs(Number(m.handicap) - line) < 0.001 &&
-    String(m.period || "").toLowerCase().replace(/[_ -]/g, "").includes("firsthalf") &&
-    String(m.marketType || "").toLowerCase() === "totals");
-  if (!firstHalfMarkets.length) return null;
+  const isFirstHalf = period !== "second_half";
+  const matchingMarkets = markets.filter(m => {
+    if (Number(m.sportId) !== 10 || Math.abs(Number(m.handicap) - line) >= 0.001 || String(m.marketType || "").toLowerCase() !== "totals") return false;
+    const marketName = String(m.marketName || "");
+    const normalizedPeriod = String(m.period || "").toLowerCase().replace(/[_ -]/g, "");
+    if (isFirstHalf) return /over.?under.*first half|first half.*over.?under/i.test(marketName) && normalizedPeriod.includes("firsthalf");
+    // In the second half, recommend a non-Asian full-match total, settled at full time.
+    return !/first half|second half|asian/i.test(marketName) && !normalizedPeriod.includes("firsthalf") && !normalizedPeriod.includes("secondhalf") && /(fulltime|fullmatch|match|regular time|ft)/i.test(normalizedPeriod);
+  });
+  if (!matchingMarkets.length) return null;
   const valid = [];
   for (const [bookmaker, board] of Object.entries(odds.bookmakerOdds)) {
     if (board?.bookmakerIsActive === false || board?.suspended === true) continue;
-    for (const marketDef of firstHalfMarkets) {
+    for (const marketDef of matchingMarkets) {
       const market = board?.markets?.[String(marketDef.marketId)];
       if (!market || market.marketActive === false) continue;
       for (const [outcomeId, outcome] of Object.entries(market.outcomes || {})) {
@@ -990,9 +994,11 @@ const server = http.createServer(async (req, res) => {
             const status = String(match.statusText || match.status || match.status_text || "").toLowerCase();
             const firstHalfStatus = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(status);
             const firstHalfNow = ((Number.isFinite(minute) && minute >= 1 && minute <= 45) || (firstHalfStatus && !Number.isFinite(minute))) && !/second half|2nd half|halftime|half.?time/.test(status);
-            if (firstHalfNow && Number.isFinite(currentGoals) && currentGoals >= 0) {
+            const secondHalfNow = !firstHalfNow && ((Number.isFinite(minute) && minute > 45) || /second half|2nd half|2ο ημίχρονο/.test(status)) && !/half.?time|halftime|finished|full.?time|ended|final/.test(status);
+            const marketPeriod = firstHalfNow ? "first_half" : secondHalfNow ? "second_half" : null;
+            if (marketPeriod && Number.isFinite(currentGoals) && currentGoals >= 0) {
               firstHalfOddsChecks++;
-              verifiedOdds = await getVerifiedFirstHalfOver(match, currentGoals + 0.5);
+              verifiedOdds = await getVerifiedOver(match, currentGoals + 0.5, marketPeriod);
               if (verifiedOdds && verifiedOdds.price >= 1.6) oddsVerifiedCount++;
               else oddsMissingCount++;
             }
@@ -1004,7 +1010,7 @@ const server = http.createServer(async (req, res) => {
           // for the exact market cannot be verified at 1.60 or better.
           const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
           const targetOverLine = currentGoalsForMarketCheck + 0.5;
-          // Only accept a quote for the exact first-half total line implied by the live score.
+          // Accept only the exact non-Asian total line for the active half/market implied by the live score.
           if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
           const cooldownKey = id + ":" + level;
           if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
@@ -1026,7 +1032,11 @@ const server = http.createServer(async (req, res) => {
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
           const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", 1ο ημίχ. Over " + overLine + " · Απόδοση " + Number(verifiedOdds.price).toFixed(2) + " (" + verifiedOdds.bookmaker + ")";
+          const statusForMarket = String(match.statusText || match.status || match.status_text || "").toLowerCase();
+          const parsedMarketMinute = parseLiveMinute(getMatchMinute(match));
+          const alertIsSecondHalf = (Number.isFinite(parsedMarketMinute) && parsedMarketMinute > 45) || /second half|2nd half|2ο ημίχρονο/.test(statusForMarket);
+          const marketLabel = alertIsSecondHalf ? "Τελικό σύνολο Over " : "1ο ημίχ. Over ";
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · Απόδοση " + Number(verifiedOdds.price).toFixed(2) + " (" + verifiedOdds.bookmaker + ")";
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
