@@ -611,7 +611,17 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
     // In the second half, recommend a non-Asian full-match total, settled at full time.
     return !/first half|second half|asian/i.test(marketName) && !normalizedPeriod.includes("firsthalf") && !normalizedPeriod.includes("secondhalf") && /(fulltime|fullmatch|match|regular time|ft)/i.test(normalizedPeriod);
   });
-  if (!matchingMarkets.length) return null;
+  if (!matchingMarkets.length) {
+    console.warn("OddsPapi target market missing:", JSON.stringify({
+      home, away, fixtureId: fixture.fixtureId, period, targetLine: line,
+      marketCount: markets.length,
+      totalsSamples: markets.filter(m => Number(m.sportId) === 10 && String(m.marketType || "").toLowerCase() === "totals").slice(0, 12).map(m => ({
+        marketId: m.marketId, marketName: m.marketName, period: m.period, handicap: m.handicap,
+        outcomes: (m.outcomes || []).map(o => o.outcomeName)
+      }))
+    }));
+    return null;
+  }
   const valid = [];
   for (const [bookmaker, board] of Object.entries(odds.bookmakerOdds)) {
     if (board?.bookmakerIsActive === false || board?.suspended === true) continue;
@@ -631,6 +641,16 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
     }
   }
   valid.sort((a, b) => b.price - a.price);
+  if (!valid.length) {
+    console.warn("OddsPapi target market has no valid active Over quote:", JSON.stringify({
+      home, away, fixtureId: fixture.fixtureId, period, targetLine: line,
+      matchingMarkets: matchingMarkets.map(m => ({marketId: m.marketId, marketName: m.marketName, period: m.period, handicap: m.handicap})),
+      bookmakerCount: Object.keys(odds.bookmakerOdds || {}).length,
+      sampleBookmakers: Object.entries(odds.bookmakerOdds || {}).slice(0, 3).map(([name, board]) => ({
+        name, active: board?.bookmakerIsActive, marketKeys: Object.keys(board?.markets || {}).slice(0, 8)
+      }))
+    }));
+  }
   return valid[0] || null;
 }
 
