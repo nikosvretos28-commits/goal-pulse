@@ -1247,6 +1247,15 @@ const server = http.createServer(async (req, res) => {
               "UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1",
               [row.alert_id, JSON.stringify(alert)]
             );
+            console.info("AI alert auto-settled:", JSON.stringify({
+              alertId: row.alert_id,
+              eventId: alert.eventId || null,
+              market: alert.market || null,
+              outcome: alert.betOutcome,
+              score: alert.betFinalScore,
+              minute: alert.minute ?? null,
+              rule: alert.evaluationRule
+            }));
           }
         } catch (evaluationError) {
           console.error("AI alert halftime outcome evaluation failed:", evaluationError.message);
