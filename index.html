@@ -1359,7 +1359,7 @@ function showSignalHistory(){
   const now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime(),yesterdayStart=todayStart-86400000;
   const filtered=signalAlertHistory.filter(a=>{const t=Number(a.createdAt);if(!Number.isFinite(t))return false;if(period==='today')return t>=todayStart;if(period==='yesterday')return t>=yesterdayStart&&t<todayStart;if(period==='7days')return t>=todayStart-6*86400000;if(period==='30days')return t>=todayStart-29*86400000;return true;}).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
   const ai=filtered.filter(a=>a.level!=='VIP'),vip=filtered.filter(a=>a.level==='VIP');
-  const resolved=list=>list.filter(a=>!a.manualOutcome&&a.outcome&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
+  const resolved=list=>list.filter(a=>!a.manualOutcome&&a.betOutcome!=='push'&&a.outcome&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
   const isHit=a=>a.betOutcome==='won'||String(a.outcome||'').startsWith('Επιβεβαιώθηκε')||String(a.outcome||'').startsWith('ΚΕΡΔΙΣΜΕΝΟ');
   const rate=list=>{const done=resolved(list),hits=done.filter(isHit).length;return done.length?Math.round(hits/done.length*100)+'% ('+hits+'/'+done.length+')':'— (0/0)'};
   const judged=resolved(ai),hits=judged.filter(isHit).length;const judgedVip=resolved(vip),vipHits=judgedVip.filter(isHit).length;
