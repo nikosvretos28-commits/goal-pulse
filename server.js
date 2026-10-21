@@ -1025,7 +1025,6 @@ const server = http.createServer(async (req, res) => {
           at: now,
           shots: total("shots"),
           onTarget: total("shotsOnTarget"),
-          corners: total("corners"),
           attacks: total("attacks"),
           dangerous: total("dangerousAttacks"),
           xG: total("xG")
@@ -1036,24 +1035,22 @@ const server = http.createServer(async (req, res) => {
         checked++;
         if (!previous || now - previous.at < 35000) continue;
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
-        const shots = delta("shots"), onTarget = delta("onTarget"), corners = delta("corners");
+        const shots = delta("shots"), onTarget = delta("onTarget");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const xGDelta = current.xG != null && previous.xG != null ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
-        const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
-        // Evaluate both fresh momentum and sustained match pressure. A match with strong
-        // cumulative shooting/corner numbers must not be ignored just because no new
-        // shot happened during the last polling interval. Corners alone never qualify.
+        const evidenceKinds = [shots, onTarget, attacks, dangerous].filter(value => value > 0).length;
+        // AI goal pressure uses shots, dangerous attacks and xG only.
+        // Corners and clean-sheet rates do not affect alert eligibility or scoring.
         const totalShots = current.shots == null ? 0 : Number(current.shots);
         const totalOnTarget = current.onTarget == null ? 0 : Number(current.onTarget);
-        const totalCorners = current.corners == null ? 0 : Number(current.corners);
         const totalDangerous = current.dangerous == null ? 0 : Number(current.dangerous);
         const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
-        const recentGoalEvidence = shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && (corners >= 1 || dangerous >= 3);
-        const sustainedGoalEvidence = totalShots >= 20 && totalOnTarget >= 4 && (totalCorners >= 8 || totalDangerous >= 20);
+        const recentGoalEvidence = shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && dangerous >= 3;
+        const sustainedGoalEvidence = totalShots >= 20 && totalOnTarget >= 4 && totalDangerous >= 20;
         // xG strengthens the candidate when available; missing xG never blocks evaluation.
-        const points = Math.min(shots, 4) + onTarget * 2 + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
-        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 3) + Math.min(totalDangerous * 0.05, 3);
+        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
+        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalDangerous * 0.05, 3);
         const isAiGoal = scoreAvailable && ((recentGoalEvidence && points >= 7) || (sustainedGoalEvidence && sustainedPoints >= 10));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -1103,7 +1100,6 @@ const server = http.createServer(async (req, res) => {
           const reason = [
             shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία" : "",
-            corners ? corners + " νέα κόρνερ" : "",
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
@@ -1173,7 +1169,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
+                  statsAtSignal: { shots, onTarget, attacks, dangerous, ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
