@@ -88,7 +88,7 @@ async function runProtocolAnalyst() {
     const records = result.rows.map(row => {
       const p = row.payload || {};
       const won = p.betOutcome === "won";
-      const minute = Number(p.minuteNumber ?? String(p.minute || "").match(/\\d{1,3}/)?.[0]);
+      const minute = Number(p.minuteNumber ?? String(p.minute || "").match(/\d{1,3}/)?.[0]);
       const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : NaN;
       const stats = p.statsAtSignal || {};
       return {
