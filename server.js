@@ -546,7 +546,8 @@ async function getVerifiedFirstHalfOver(match, targetLine) {
   // Keep the query window strictly below the API 48-hour limit for sportId + from/to.
   const from = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
   const to = new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString();
-  const fixtures = await oddsPapiGet("fixtures", { sportId: "10", from, to, statusId: "1" }, 20000);
+  // OddsPapi statusId 2 is In-Play; statusId 1 is Scheduled, so use 2 for live betting prices.
+  const fixtures = await oddsPapiGet("fixtures", { sportId: "10", from, to, statusId: "2" }, 20000);
   if (!Array.isArray(fixtures)) return null;
   const home = normalizeOddsTeam(match.home || match.homeTeam || match.teams?.[0]?.name);
   const away = normalizeOddsTeam(match.away || match.awayTeam || match.teams?.[1]?.name);
