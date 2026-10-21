@@ -834,6 +834,52 @@ const server = http.createServer(async (req, res) => {
           console.error("AI alert halftime outcome evaluation failed:", evaluationError.message);
         }
       }
+      // Automatically settle Asian Over bets from the final score. An exact integer line is a push/refund.
+      if (await ensureAlertHistoryDb()) {
+        try {
+          const pendingAsian = await analyticsPool.query(
+            "SELECT alert_id,payload FROM alert_history WHERE payload->>'lineType'='asian' AND COALESCE(payload->>'betOutcome','pending') IN ('pending','') AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
+          );
+          const normalizeSettlementTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const finalByTeams = new Map();
+          for (const event of scoreboardEvents) {
+            const competition = event.competitions?.[0];
+            const competitors = competition?.competitors || [];
+            const home = competitors.find(team => team.homeAway === "home") || competitors[0];
+            const away = competitors.find(team => team.homeAway === "away") || competitors[1];
+            const state = String(event.status?.type?.state || "").toLowerCase();
+            const statusLabel = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
+            const hs = Number(home?.score), as = Number(away?.score);
+            if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(statusLabel)) || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
+            finalByTeams.set(normalizeSettlementTeam(home.team.displayName) + "|" + normalizeSettlementTeam(away.team.displayName), {homeScore:hs,awayScore:as});
+          }
+          let settledAsianBets = 0;
+          for (const row of pendingAsian.rows) {
+            const bet = row.payload || {};
+            if (!bet.home || !bet.away || !Number.isFinite(Number(bet.overLine))) continue;
+            const final = finalByTeams.get(normalizeSettlementTeam(bet.home) + "|" + normalizeSettlementTeam(bet.away));
+            if (!final) continue;
+            const finalTotal = final.homeScore + final.awayScore;
+            const line = Number(bet.overLine);
+            const result = finalTotal > line ? "won" : finalTotal === line ? "void" : "lost";
+            bet.betOutcome = result;
+            bet.betSettlementLabel = result === "won" ? "Κερδισμένο" : result === "lost" ? "Χαμένο" : "Επιστροφή (ασιατικό push)";
+            bet.betFinalScore = final.homeScore + "-" + final.awayScore;
+            bet.betSettledAt = now;
+            bet.betSettlementRule = "asian_over_final_total_vs_line";
+            bet.betUpdatedAt = now;
+            bet.recordUpdatedAt = now;
+            await analyticsPool.query(
+              "UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1",
+              [row.alert_id, JSON.stringify(bet)]
+            );
+            settledAsianBets++;
+          }
+          if (settledAsianBets) console.log("Asian bet history auto-settled:", JSON.stringify({settled: settledAsianBets}));
+        } catch (settlementError) {
+          console.error("Asian bet history auto-settlement failed:", settlementError.message);
+        }
+      }
       let checked = 0, sent = 0, candidates = 0;
       let strongSignals = 0, firstHalfOddsChecks = 0, firstHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const parseLiveMinute = value => {
