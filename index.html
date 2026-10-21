@@ -1530,9 +1530,9 @@ function renderHighActivityMatches(){
    }
   }
   if(!hasRecentData)return null;
-  const evidenceKinds=keys.filter(key=>delta[key]>0).length;
+  const evidenceKinds=[delta.shots>0||delta.shotsOnTarget>0,delta.attacks>0,delta.dangerousAttacks>0].filter(Boolean).length;
   const goalEvidence=delta.shots>=2&&delta.shotsOnTarget>=1;
-  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget*2+Math.min(delta.attacks*.25,3)+Math.min(delta.dangerousAttacks*.75,5);
+  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.attacks*.25,3)+Math.min(delta.dangerousAttacks*.75,5);
   const pressureEvidence=evidenceKinds>=3&&pressureScore>=7&&delta.dangerousAttacks>=3;
   const active=goalEvidence||pressureEvidence;
   // xG supports ranking only when two comparable live measurements exist.
@@ -1547,8 +1547,8 @@ function renderHighActivityMatches(){
   const xGSupport=recentXG==null?0:Math.min(2,recentXG*2);
   const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
-  const score=pressureScore+delta.shotsOnTarget*2+xGSupport;
-  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*18+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20)))));
+  const score=pressureScore+xGSupport;
+  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20)))));
   return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
@@ -1700,7 +1700,7 @@ async function runSignalCheck(){
    if(xGAvailable&&xGAdded>=0.15){goalPoints+=Math.min(2,xGAdded*2);reasons.push('αύξηση xG '+xGAdded.toFixed(2));}
    const sensitivity=Number(signalThreshold.value);
    const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
-   const evidenceKinds=(totalShotsAdded>0?1:0)+(shotsOnTargetAdded>0?1:0)+(cornersAdded>0?1:0)+(attacksAdded>0?1:0)+(dangerousAttacksAdded>0?1:0);
+   const evidenceKinds=[totalShotsAdded>0||shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
    const matchMinute=minuteMatch?Number(minuteMatch[0]):null;
    const totalCorners=live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null;
    const overLine=Number(document.getElementById('cornerOverLine')?.value||10.5);
