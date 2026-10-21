@@ -1565,7 +1565,7 @@ async function runSignalCheck(){
       const score=Number(match.home.score||0)+Number(match.away.score||0);
       if(a.startScore==null)return;
       const asian=/ασιατικ[όο]/i.test(marketText);
-      const lineMatch=marketText.match(/over\\s*(\\d+(?:[.,]\\d+)?)/i);
+      const lineMatch=marketText.match(/over\s*(\d+(?:[.,]\d+)?)/i);
       const line=Number(a.overLine??(lineMatch?lineMatch[1].replace(',','.'):NaN));
       if(marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||a.market==='πιθανό γκολ'){
         const won=score>Number(a.startScore);
