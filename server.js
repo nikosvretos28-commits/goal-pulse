@@ -973,13 +973,15 @@ const server = http.createServer(async (req, res) => {
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
-          // Never invent odds: when a live price cannot be verified, send only a
-          // statistical high-activity signal, not a betting recommendation.
+          // Notification wording must be the actual match and a concrete non-Asian market.
+          // Select the next-goal total line from the live score: 0 goals -> Over 0.5,
+          // 1 goal -> Over 1.5, 3 goals -> Over 3.5. Never send vague statistics-only text.
           const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.6);
+          const currentGoalsForMarket = Number(match.homeScore) + Number(match.awayScore);
+          if (!Number.isFinite(currentGoalsForMarket)) continue;
+          const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
-          const alertBody = hasVerifiedOdds
-            ? ("Επαληθευμένη αγορά: " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over 1,5 γκολ στο 1ο ημίχρονο, απόδοση " + verifiedOdds.price.toFixed(2) + " (" + verifiedOdds.bookmaker + ").")
-            : ("Ισχυρό στατιστικό σήμα στον αγώνα " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ". " + reason + ". Δεν υπάρχει επαληθευμένη απόδοση· δεν αποτελεί πρόταση στοιχήματος.");
+          const alertBody = (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over " + overLine;
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
@@ -1017,7 +1019,10 @@ const server = http.createServer(async (req, res) => {
                   away: awayCompetitor?.team?.displayName || match.away || match.awayTeam || "",
                   league: scoreEvent?.competitions?.[0]?.name || match.league || match.competition || "",
                   minute: rawMinute, minuteNumber,
-                  ...(hasVerifiedOdds ? { market: "Over 1,5 γκολ 1ου ημιχρόνου", odds: verifiedOdds.price, bookmaker: verifiedOdds.bookmaker, oddsVerifiedAt: new Date(now).toISOString() } : { market: null, odds: null, bookmaker: null, oddsVerifiedAt: null, alertType: "hi_activity_statistics_only" }),
+                  market: "Over " + overLine,
+                  odds: hasVerifiedOdds ? verifiedOdds.price : null,
+                  bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
+                  ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null, alertType: "goal_market_signal" }),
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
