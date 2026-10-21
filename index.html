@@ -1563,9 +1563,8 @@ function renderHighActivityMatches(){
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
- // Fixed product rule: evaluate every qualifying live match, then display only the best five.
- // Keep all qualifying IDs available for secondary badges elsewhere on the live list.
- ranked.sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
+ // Evaluate every qualifying live match, but display ONLY the five strongest.
+ // Recalculate the shortlist on each refresh so matches can enter/leave dynamically.
  const topFive=ranked.slice(0,5);
  highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
  highActivityTopIds=new Set(topFive.map(x=>String(x.match.id)));
