@@ -1422,8 +1422,36 @@ const server = http.createServer(async (req, res) => {
           // Odds are deliberately optional: AI eligibility comes from live match evidence,
           // not from an odds provider being available. Never fabricate or require a price.
           let verifiedOdds = null;
-          const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
-          if (!Number.isFinite(currentGoalsForMarketCheck)) continue;
+          // Compare the stats-feed score with the freshest joined scoreboard before
+          // issuing a market. If the sources disagree, skip this scan rather than
+          // sending a stale Over line after the target may already have been reached.
+          const scoreValueForAlert = value => {
+            if (value === null || value === undefined || value === "") return null;
+            const n = Number(value);
+            return Number.isFinite(n) ? n : null;
+          };
+          const scoreEventForAlert = scoreboardEvents.find(event => String(event.id || "") === id);
+          const competitorsForAlert = scoreEventForAlert?.competitions?.[0]?.competitors || [];
+          const homeCompetitorForAlert = competitorsForAlert.find(team => team.homeAway === "home") || competitorsForAlert[0];
+          const awayCompetitorForAlert = competitorsForAlert.find(team => team.homeAway === "away") || competitorsForAlert[1];
+          const statsHomeScore = scoreValueForAlert(match.homeScore);
+          const statsAwayScore = scoreValueForAlert(match.awayScore);
+          const boardHomeScore = scoreValueForAlert(homeCompetitorForAlert?.score);
+          const boardAwayScore = scoreValueForAlert(awayCompetitorForAlert?.score);
+          if (statsHomeScore !== null && statsAwayScore !== null &&
+              boardHomeScore !== null && boardAwayScore !== null &&
+              (statsHomeScore !== boardHomeScore || statsAwayScore !== boardAwayScore)) {
+            console.info("AI alert skipped: live score sources disagree", JSON.stringify({
+              eventId: id, match: match.home + " – " + match.away,
+              statsScore: statsHomeScore + "-" + statsAwayScore,
+              scoreboardScore: boardHomeScore + "-" + boardAwayScore
+            }));
+            continue;
+          }
+          const currentHomeScore = statsHomeScore ?? boardHomeScore;
+          const currentAwayScore = statsAwayScore ?? boardAwayScore;
+          if (currentHomeScore === null || currentAwayScore === null) continue;
+          const currentGoalsForMarketCheck = currentHomeScore + currentAwayScore;
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
@@ -1442,8 +1470,8 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           // Alerts are sent without odds. Keep the suggested goal line grounded in the live score.
           const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1.0);
-          const currentGoalsForMarket = Number(match.homeScore) + Number(match.awayScore);
-          if (!Number.isFinite(currentGoalsForMarket)) continue;
+          // Reuse the same validated score snapshot for the alert line and history.
+          const currentGoalsForMarket = currentHomeScore + currentAwayScore;
           const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
@@ -1481,8 +1509,8 @@ const server = http.createServer(async (req, res) => {
                 const competitors = scoreEvent?.competitions?.[0]?.competitors || [];
                 const homeCompetitor = competitors.find(team => team.homeAway === "home") || competitors[0];
                 const awayCompetitor = competitors.find(team => team.homeAway === "away") || competitors[1];
-                const homeScore = scoreValue(match.homeScore ?? homeCompetitor?.score);
-                const awayScore = scoreValue(match.awayScore ?? awayCompetitor?.score);
+                const homeScore = currentHomeScore;
+                const awayScore = currentAwayScore;
                 const rawMinute = String(formatPushMinute(match));
                 const minuteMatch = rawMinute.match(/(\d{1,3})(?:\s*\+\s*\d{1,2})?/);
                 const minuteNumber = minuteMatch ? Number(minuteMatch[1]) : null;
