@@ -1024,7 +1024,9 @@ const server = http.createServer(async (req, res) => {
           const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
           if (!hasVerifiedOdds || Math.abs(Number(verifiedOdds.line) - Number(overLine)) > 0.001) continue;
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
-          const alertBody = (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", 1ο ημίχ. Over " + overLine + " · Απόδοση " + Number(verifiedOdds.price).toFixed(2) + " (" + verifiedOdds.bookmaker + ")";
+          const notificationMinute = parseLiveMinute(getMatchMinute(match));
+          const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", 1ο ημίχ. Over " + overLine + " · Απόδοση " + Number(verifiedOdds.price).toFixed(2) + " (" + verifiedOdds.bookmaker + ")";
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
