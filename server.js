@@ -1755,7 +1755,7 @@ const server = http.createServer(async (req, res) => {
       const work = liveEvents.slice(0, 60);
       let cursor = 0;
       const matches = [];
-      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], sample: null };
+      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
       const workers = Array.from({ length: Math.min(4, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
@@ -1821,6 +1821,7 @@ const server = http.createServer(async (req, res) => {
                 sportScoreDetailDiagnostics.ok++;
               }
               const root = detail.match || detail.data || detail.fixture || detail;
+              if (sportScoreDetailDiagnostics.minuteSamples.length < 8) sportScoreDetailDiagnostics.minuteSamples.push({ home: root.home || homeName, away: root.away || awayName, live_minute: root.live_minute ?? null, minute: root.minute ?? null, elapsed: root.elapsed ?? null, status_text: root.status_text ?? null, time: root.time ?? null, trackerKeys: root.tracker && typeof root.tracker === "object" ? Object.keys(root.tracker).slice(0, 10) : [] });
               if (!sportScoreDetailDiagnostics.sample) {
                 const paths = [];
                 const inspect = (node, path = "", depth = 0) => {
