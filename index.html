@@ -1611,7 +1611,8 @@ async function runSignalCheck(){
   if(Date.now()-lastPersistentAlertRefresh>60000){lastPersistentAlertRefresh=Date.now();loadPersistentAlertHistory();}
    updateInsightSummary();
    if(active==='signals')render();
-  const liveBox=document.getElementById('liveRows');if(liveBox)liveBox.innerHTML=allMatches.filter(m=>m.state==='in').map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';renderHighActivityMatches();
+  renderHighActivityMatches();
+  const liveBox=document.getElementById('liveRows');if(liveBox)liveBox.innerHTML=allMatches.filter(m=>m.state==='in').map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
  
   // Evaluate alerts only when the selected half has ended. Server push goal alerts are evaluated by the backend using persisted halftime/final scores.
   let outcomesChanged=false;
