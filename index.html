@@ -1499,8 +1499,8 @@ function renderHighActivityMatches(){
   if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   const teams=stats.teams,trail=signalTrails.get(String(m.id))||[];
   const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
-  const keys=["shots","shotsOnTarget","corners","attacks","dangerousAttacks"];
-  const delta={shots:0,shotsOnTarget:0,corners:0,attacks:0,dangerousAttacks:0};
+  const keys=["shots","shotsOnTarget","attacks","dangerousAttacks"];
+  const delta={shots:0,shotsOnTarget:0,attacks:0,dangerousAttacks:0};
   let hasRecentData=false;
   if(baseline&&Array.isArray(baseline.values)){
    teams.forEach((team,i)=>{const prev=baseline.values[i]||{};keys.forEach(key=>{
@@ -1532,20 +1532,20 @@ function renderHighActivityMatches(){
   if(!hasRecentData)return null;
   const evidenceKinds=keys.filter(key=>delta[key]>0).length;
   const goalEvidence=delta.shots>=2&&delta.shotsOnTarget>=1;
-  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget*2+delta.corners*2+Math.min(delta.attacks*.25,3)+Math.min(delta.dangerousAttacks*.75,5);
-  const pressureEvidence=evidenceKinds>=3&&pressureScore>=7&&(delta.corners>=1||delta.dangerousAttacks>=3);
+  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget*2+Math.min(delta.attacks*.25,3)+Math.min(delta.dangerousAttacks*.75,5);
+  const pressureEvidence=evidenceKinds>=3&&pressureScore>=7&&delta.dangerousAttacks>=3;
   const active=goalEvidence||pressureEvidence;
   const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
   const score=pressureScore+delta.shotsOnTarget*2;
-  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*18+delta.corners*10+delta.attacks*.3+delta.dangerousAttacks*.8)));
-  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentCorners:delta.corners,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,totalShots,totalOnTarget}:null;
+  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*18+delta.attacks*.3+delta.dangerousAttacks*.8)));
+  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,totalShots,totalOnTarget}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
  box.innerHTML=ranked.length
   ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
-  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, κόρνερ, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
  const button=event.target.closest('button[data-manual-vip]');if(!button)return;
