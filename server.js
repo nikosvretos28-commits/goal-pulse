@@ -1088,7 +1088,7 @@ const server = http.createServer(async (req, res) => {
           const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
           const targetOverLine = currentGoalsForMarketCheck + 0.5;
           // Accept only the exact non-Asian total line for the active half/market implied by the live score.
-          if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
+          if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.4) continue;
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
@@ -1107,7 +1107,7 @@ const server = http.createServer(async (req, res) => {
           ].filter(Boolean).join(" · ");
           // Notification wording must be the actual match and a concrete non-Asian market.
           // Target one additional first-half goal: 0 goals -> Over 0.5, 1 goal -> Over 1.5.
-          // The quote must match this exact line and be at least 1.60.
+          // The quote must match this exact line and be at least 1.40.
           const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.4);
           const currentGoalsForMarket = Number(match.homeScore) + Number(match.awayScore);
           if (!Number.isFinite(currentGoalsForMarket)) continue;
