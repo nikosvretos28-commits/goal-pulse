@@ -1614,7 +1614,7 @@ const server = http.createServer(async (req, res) => {
                 checkedAt: new Date().toISOString(), httpStatus: response.status, rootKeys: Object.keys(payload || {}),
                 count: liveFixtures.length, mappedLive: liveEventsFromApi.length + replacedLive,
                 addedLive: liveEventsFromApi.length, replacedLive,
-                sample: liveFixtures.slice(0, 3).map(match => ({ keys: Object.keys(match || {}), id: match.id, slug: match.slug, status: match.status, status_text: match.status_text, home: match.home, away: match.away }))
+                sample: liveFixtures.slice(0, 3).map(match => ({ keys: Object.keys(match || {}), id: match.id, slug: match.slug, status: match.status, status_text: match.status_text, home: match.home, away: match.away, minute: match.minute, elapsed: match.elapsed, liveMinute: match.liveMinute, live_minute: match.live_minute, time: match.time, tracker: match.tracker }))
               }));
             } else console.warn("SportScore dedicated live endpoint HTTP:", response.status);
           } catch (error) { console.warn("SportScore dedicated live endpoint unavailable:", error.message || "request failed"); }
