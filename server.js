@@ -1152,8 +1152,12 @@ const server = http.createServer(async (req, res) => {
             const state = String(event.status?.type?.state || "").toLowerCase();
             const statusLabel = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
             if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusLabel))) continue;
+            const homeFirstPeriod = Number(home.linescores?.[0]?.value ?? home.linescores?.[0]?.displayValue);
+            const awayFirstPeriod = Number(away.linescores?.[0]?.value ?? away.linescores?.[0]?.displayValue);
             completedScoreboardByTeams.set(normalizeTeam(home.team.displayName) + "|" + normalizeTeam(away.team.displayName), {
-              status: "post", statusText: "finished", homeScore: home.score, awayScore: away.score
+              status: "post", statusText: "finished", homeScore: home.score, awayScore: away.score,
+              homeHtScore: Number.isFinite(homeFirstPeriod) ? homeFirstPeriod : null,
+              awayHtScore: Number.isFinite(awayFirstPeriod) ? awayFirstPeriod : null
             });
           }
           for (const row of pending.rows) {
@@ -1170,13 +1174,17 @@ const server = http.createServer(async (req, res) => {
               ? explicitPeriod === "second_half"
               : !firstHalf && Number.isFinite(signalMinute) && signalMinute > 45;
             let live = metricById.get(String(alert.eventId));
-            // Live-metrics drops fixtures after full time. For second-half alerts only,
-            // recover a completed final score from the scoreboard by exact home/away team order.
-            // This is deliberately not used for first-half alerts: full-time scores cannot
-            // establish what happened before halftime.
-            if (secondHalf && (!live || !/finished|full.?time|ended|final|\bft\b/.test(String(live.statusText || live.status || "").toLowerCase())) && alert.home && alert.away) {
-              const completed = completedScoreboardByTeams.get(normalizeTeam(alert.home) + "|" + normalizeTeam(alert.away));
-              if (completed) live = completed;
+            // Completed scoreboard entries can recover final scores and, when supplied by
+            // the provider, the first-period (half-time) score. Never substitute full-time
+            // goals for a missing half-time score.
+            const completed = alert.home && alert.away
+              ? completedScoreboardByTeams.get(normalizeTeam(alert.home) + "|" + normalizeTeam(alert.away))
+              : null;
+            if (secondHalf && (!live || !/finished|full.?time|ended|final|\bft\b/.test(String(live.statusText || live.status || "").toLowerCase())) && completed) {
+              live = completed;
+            } else if (firstHalf && live && completed && live.homeHtScore == null && live.awayHtScore == null &&
+                       completed.homeHtScore != null && completed.awayHtScore != null) {
+              live = { ...live, homeHtScore: completed.homeHtScore, awayHtScore: completed.awayHtScore };
             }
             if (/κόρνερ|corner/i.test(String(alert.market || ""))) continue;
             if (!live) continue;
