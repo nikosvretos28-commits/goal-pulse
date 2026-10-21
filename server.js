@@ -866,13 +866,16 @@ const server = http.createServer(async (req, res) => {
             const final = finalByTeams.get(normalizeSettlementTeam(bet.home) + "|" + normalizeSettlementTeam(bet.away));
             if (!final) continue;
             const finalTotal = final.homeScore + final.awayScore;
+            const isSecondHalfAsian = bet.lineType === "asian" && bet.asianPeriod === "second_half" && Number.isFinite(Number(bet.startScore));
+            const settledTotal = isSecondHalfAsian ? finalTotal - Number(bet.startScore) : finalTotal;
             const line = Number(bet.overLine);
-            const result = finalTotal > line ? "won" : finalTotal === line ? "void" : "lost";
+            const result = settledTotal > line ? "won" : settledTotal === line ? "void" : "lost";
             bet.betOutcome = result;
             bet.betSettlementLabel = result === "won" ? "Κερδισμένο" : result === "lost" ? "Χαμένο" : "Επιστροφή (ασιατικό push)";
             bet.betFinalScore = final.homeScore + "-" + final.awayScore;
             bet.betSettledAt = now;
-            bet.betSettlementRule = "asian_over_final_total_vs_line";
+            bet.betSettlementRule = isSecondHalfAsian ? "asian_over_second_half_goals_vs_line" : "asian_over_final_total_vs_line";
+            if (isSecondHalfAsian) bet.betSecondHalfGoals = settledTotal;
             bet.betUpdatedAt = now;
             bet.recordUpdatedAt = now;
             await analyticsPool.query(
