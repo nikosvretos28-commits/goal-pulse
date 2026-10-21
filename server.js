@@ -1511,7 +1511,7 @@ const server = http.createServer(async (req, res) => {
                 if (seenSportScore.has(eventId)) continue;
                 seenSportScore.add(eventId);
                 const rawLiveMinute = match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute;
-                const normalizedLiveMinute = rawLiveMinute != null && /^(?:\d{1,3})(?:\s*[+’′]\s*\d{1,2})?$/.test(String(rawLiveMinute).trim()) ? String(rawLiveMinute).trim() : null;
+                const normalizedLiveMinute = rawLiveMinute != null && /^(?:\d{1,3})(?:\s*[+’′]\s*\d{0,2})?$/.test(String(rawLiveMinute).trim()) ? String(rawLiveMinute).trim() : null;
                 const liveTime = normalizedLiveMinute ?? match.status_text ?? match.statusText ?? (state === "in" ? "LIVE" : "");
                 const status = { type: { state, completed: state === "post" }, displayClock: String(liveTime) };
                 sportScoreEvents.push({
