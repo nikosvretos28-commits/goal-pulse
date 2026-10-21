@@ -979,7 +979,7 @@ const server = http.createServer(async (req, res) => {
           const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.6);
           const currentGoalsForMarket = Number(match.homeScore) + Number(match.awayScore);
           if (!Number.isFinite(currentGoalsForMarket)) continue;
-          const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
+          const overLine = (currentGoalsForMarket + 1.5).toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const alertBody = (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over " + overLine;
           const result = await sendPushToSubscribers({
