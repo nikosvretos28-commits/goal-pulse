@@ -1556,9 +1556,9 @@ document.getElementById('highActivityRows')?.addEventListener('click',async even
  const asian=document.getElementById('goalLineType')?.value==='asian';
  if(asian&&!isHalfTime){const status=document.getElementById('signalStatus');if(status)status.textContent='Το Ασιατικό Over VIP δίνεται μόνο στο τέλος του 1ου ημιχρόνου και αφορά το 2ο ημίχρονο. Περιμένουμε το ημίχρονο.';return;}
  
- const overLine=asian?score+2:(periodAtSignal==='first_half'?score+0.5:null);
- const market=asian?'Ασιατικό Over '+overLine:(periodAtSignal==='first_half'?'1ο ημίχρονο Over '+overLine:'2ο ημίχρονο · επόμενο γκολ');
- const record={eventId:match.id,home:match.home.name,away:match.away.name,league:match.league,country:match.country||'Διεθνής',minute:clock,minuteNumber:minute,periodAtSignal,market,overLine,lineType:asian?'asian':(periodAtSignal==='first_half'?'standard':'next_goal'),reason:'Επιλέχθηκε χειροκίνητα ως VIP από τα HI ACTIVITY. Σκορ επιλογής: '+(match.home.score??'–')+'–'+(match.away.score??'–')+'. '+(asian?'Ασιατικό Over πλήρους αγώνα: γραμμή = σύνολο γκολ κατά την καταχώριση + 2· ακριβώς στη γραμμή γίνεται επιστροφή.':(periodAtSignal==='first_half'?'Κανονικό Over: απαιτείται τουλάχιστον ένα ακόμη γκολ μέχρι το ημίχρονο.':'Στόχος: τουλάχιστον ένα ακόμη γκολ στο δεύτερο ημίχρονο.'))+' Η επιλογή VIP δεν εγγυάται αποτέλεσμα.',time:new Date(now).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:score,startCorners:corners,startShots:shots,startShotsOnTarget:shotsOnTarget,evaluationWindowMinutes:Number(document.getElementById('signalOutcomeWindow')?.value||15),outcome:'εκκρεμεί',level:'VIP',source:'manual-high-activity',betOutcome:'pending'};
+ const overLine=asian?2.0:(periodAtSignal==='first_half'?score+0.5:null);
+ const market=asian?'Ασιατικό Over 2.0 (2ο ημίχρονο)':(periodAtSignal==='first_half'?'1ο ημίχρονο Over '+overLine:'2ο ημίχρονο · επόμενο γκολ');
+ const record={eventId:match.id,home:match.home.name,away:match.away.name,league:match.league,country:match.country||'Διεθνής',minute:clock,minuteNumber:minute,periodAtSignal,market,overLine,lineType:asian?'asian':(periodAtSignal==='first_half'?'standard':'next_goal'),...(asian?{asianPeriod:'second_half'}:{}),reason:'Επιλέχθηκε χειροκίνητα ως VIP από τα HI ACTIVITY. Σκορ επιλογής: '+(match.home.score??'–')+'–'+(match.away.score??'–')+'. '+(asian?'Ασιατικό Over 2.0 αποκλειστικά για τα γκολ του 2ου ημιχρόνου· ακριβώς 2 γκολ στο 2ο ημίχρονο σημαίνουν επιστροφή.':(periodAtSignal==='first_half'?'Κανονικό Over: απαιτείται τουλάχιστον ένα ακόμη γκολ μέχρι το ημίχρονο.':'Στόχος: τουλάχιστον ένα ακόμη γκολ στο δεύτερο ημίχρονο.'))+' Η επιλογή VIP δεν εγγυάται αποτέλεσμα.',time:new Date(now).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:score,startCorners:corners,startShots:shots,startShotsOnTarget:shotsOnTarget,evaluationWindowMinutes:Number(document.getElementById('signalOutcomeWindow')?.value||15),outcome:'εκκρεμεί',level:'VIP',source:'manual-high-activity',betOutcome:'pending'};
  record.alertId=alertHistoryKey(record);signalAlertHistory.unshift(record);signalAlertHistory=signalAlertHistory.slice(0,5000);
  try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
  button.textContent='◆ VIP ALERT καταχωρίστηκε';button.disabled=true;
@@ -1597,13 +1597,15 @@ async function runSignalCheck(){
     const firstHalf=period!=='second_half';
     const marketText=String(a.market||'');
     const isAsianBet=String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText);
-    // Asian Over is a full-match total line, regardless of the half when the manual VIP was created.
+    // New Asian alerts are evaluated only on second-half goals, after full time.
     const periodFinished=isAsianBet?match.state==='post':(firstHalf?explicitHalfTime:match.state==='post');
     if(!periodFinished)return;
     if(a.market==='πιθανό γκολ'||marketText.startsWith('1ο ημίχρονο Over ')||marketText.startsWith('1ο ημίχρονο · Ασιατικό Over ')||marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||/ασιατικ[όο].*over|over.*ασιατικ[όο]/i.test(marketText)){
-      const score=Number(match.home.score||0)+Number(match.away.score||0);
+      const finalScore=Number(match.home.score||0)+Number(match.away.score||0);
       if(a.startScore==null)return;
       const asian=isAsianBet;
+      const secondHalfAsian=asian&&a.asianPeriod==='second_half';
+      const score=secondHalfAsian?finalScore-Number(a.startScore):finalScore;
       const lineMatch=marketText.match(/over\s*(\d+(?:[.,]\d+)?)/i);
       const line=Number(a.overLine??(lineMatch?lineMatch[1].replace(',','.'):NaN));
       if(marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||a.market==='πιθανό γκολ'){
@@ -1613,9 +1615,10 @@ async function runSignalCheck(){
       }else if(Number.isFinite(line)){
         const won=score>line, push=asian&&score===line;
         a.betOutcome=won?'won':push?'push':'lost';
-        a.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · τελικό σύνολο '+score+' γκολ, γραμμή Over '+line
-          :push?'ΕΠΙΣΤΡΟΦΗ · ακριβώς '+line+' γκολ στην ασιατική γραμμή'
-          :'ΧΑΜΕΝΟ · τελικό σύνολο '+score+' γκολ, γραμμή Over '+line;
+        const periodLabel=secondHalfAsian?'2ου ημιχρόνου':'αγώνα';
+        a.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · '+periodLabel+' σύνολο '+score+' γκολ, γραμμή Over '+line
+          :push?'ΕΠΙΣΤΡΟΦΗ · ακριβώς '+line+' γκολ στην ασιατική γραμμή του 2ου ημιχρόνου'
+          :'ΧΑΜΕΝΟ · '+periodLabel+' σύνολο '+score+' γκολ, γραμμή Over '+line;
       }else{
         const won=score>Number(a.startScore);
         a.betOutcome=won?'won':'lost';
