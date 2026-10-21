@@ -793,7 +793,7 @@ const server = http.createServer(async (req, res) => {
       if (!metricsResponse.ok) throw new Error("Live metrics unavailable: " + metricsResponse.status);
       const metrics = await metricsResponse.json();
       const scoreboard = await scoreboardResponse.json();
-      const scoreboardEvents = (scoreboard.feeds || []).flatMap(feed => feed.events || []);
+      const scoreboardEvents = (scoreboard.feeds || []).flatMap(feed => (feed.events || []).map(event => ({ ...event, __goalPulseLeagueCode: feed.code || "" })));
       // Join scoreboard score/status fields to the separate live-stat feed by normalized team names.
       // The stats endpoint does not include scores, and displayClock often looks like "45:00";
       // without this join the AI scanner silently sees no eligible first-half matches.
@@ -815,7 +815,8 @@ const server = http.createServer(async (req, res) => {
           awayScore: away.score != null ? Number(away.score) : null,
           statusText,
           status: String(status.type?.state || status.type?.name || ""),
-          minute: status.displayClock || status.type?.displayClock || ""
+          minute: status.displayClock || status.type?.displayClock || "",
+          leagueCode: String(event.__goalPulseLeagueCode || "")
         });
       }
       for (const match of (metrics.matches || [])) {
@@ -828,6 +829,7 @@ const server = http.createServer(async (req, res) => {
         if (match.awayScore == null) match.awayScore = score.awayScore;
         if (!match.statusText) match.statusText = score.statusText;
         if (!match.status) match.status = score.status;
+        if (!match.leagueCode && score.leagueCode) match.leagueCode = score.leagueCode;
         // Convert clocks like "45:00" to a minute number for the alert gate.
         if (match.minute != null && !Number.isFinite(Number(match.minute))) {
           const clockMatch = String(match.minute).trim().match(/^([0-9]{1,3})(?::[0-9]{1,2})?[ ]*['′’]?$/);
