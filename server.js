@@ -534,8 +534,10 @@ async function oddsPapiGet(pathname, params = {}, ttlMs = 15000) {
   if (oddsPapiCache.size > 100) oddsPapiCache.delete(oddsPapiCache.keys().next().value);
   return body;
 }
-async function getVerifiedFirstHalfOver15(match) {
+async function getVerifiedFirstHalfOver(match, targetLine) {
   if (!process.env.ODDSPAPI_API_KEY) return null;
+  const line = Number(targetLine);
+  if (!Number.isFinite(line) || line < 0.5 || Math.abs(line * 2 - Math.round(line * 2)) > 0.001) return null;
   const now = new Date();
   // Keep the query window strictly below the API 48-hour limit for sportId + from/to.
   const from = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
@@ -560,7 +562,7 @@ async function getVerifiedFirstHalfOver15(match) {
   if (!Array.isArray(markets) || !odds || !odds.bookmakerOdds) return null;
   const firstHalfMarkets = markets.filter(m => Number(m.sportId) === 10 &&
     /over.?under.*first half|first half.*over.?under/i.test(String(m.marketName || "")) &&
-    Math.abs(Number(m.handicap) - 1.5) < 0.001 &&
+    Math.abs(Number(m.handicap) - line) < 0.001 &&
     String(m.period || "").toLowerCase().replace(/[_ -]/g, "").includes("firsthalf") &&
     String(m.marketType || "").toLowerCase() === "totals");
   if (!firstHalfMarkets.length) return null;
@@ -967,9 +969,9 @@ const server = http.createServer(async (req, res) => {
             const status = String(match.statusText || match.status || match.status_text || "").toLowerCase();
             const firstHalfStatus = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(status);
             const firstHalfNow = ((Number.isFinite(minute) && minute >= 1 && minute <= 45) || (firstHalfStatus && !Number.isFinite(minute))) && !/second half|2nd half|halftime|half.?time/.test(status);
-            if (firstHalfNow && Number.isFinite(currentGoals) && currentGoals < 2) {
+            if (firstHalfNow && Number.isFinite(currentGoals) && currentGoals >= 0) {
               firstHalfOddsChecks++;
-              verifiedOdds = await getVerifiedFirstHalfOver15(match);
+              verifiedOdds = await getVerifiedFirstHalfOver(match, currentGoals + 0.5);
               if (verifiedOdds && verifiedOdds.price >= 1.6) oddsVerifiedCount++;
               else oddsMissingCount++;
             }
@@ -980,9 +982,9 @@ const server = http.createServer(async (req, res) => {
           // Strict minimum-odds rule: suppress the entire alert if a live price
           // for the exact market cannot be verified at 1.60 or better.
           const currentGoalsForMarketCheck = Number(match.homeScore) + Number(match.awayScore);
-          // This provider helper verifies only first-half Over 1.5. Do not reuse its
-          // price for a different total-goals line or a different period.
-          if (currentGoalsForMarketCheck !== 0 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
+          const targetOverLine = currentGoalsForMarketCheck + 0.5;
+          // Only accept a quote for the exact first-half total line implied by the live score.
+          if (!Number.isFinite(currentGoalsForMarketCheck) || !Number.isFinite(Number(verifiedOdds?.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001 || !verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.6) continue;
           const cooldownKey = id + ":" + level;
           if (now - (pushScanLastAlert.get(cooldownKey) || 0) < 8 * 60 * 1000) continue;
           const reason = [
@@ -993,14 +995,15 @@ const server = http.createServer(async (req, res) => {
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
           // Notification wording must be the actual match and a concrete non-Asian market.
-          // Select the next-goal total line from the live score: 0 goals -> Over 0.5,
-          // 1 goal -> Over 1.5, 3 goals -> Over 3.5. Never send vague statistics-only text.
+          // Target one additional first-half goal: 0 goals -> Over 0.5, 1 goal -> Over 1.5.
+          // The quote must match this exact line and be at least 1.60.
           const hasVerifiedOdds = Boolean(verifiedOdds && verifiedOdds.price >= 1.6);
           const currentGoalsForMarket = Number(match.homeScore) + Number(match.awayScore);
           if (!Number.isFinite(currentGoalsForMarket)) continue;
-          const overLine = (currentGoalsForMarket + 1.5).toFixed(1);
+          const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
+          if (!hasVerifiedOdds || Math.abs(Number(verifiedOdds.line) - Number(overLine)) > 0.001) continue;
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
-          const alertBody = (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", Over 1.5 · Απόδοση " + Number(verifiedOdds.price).toFixed(2) + " (" + verifiedOdds.bookmaker + ")";
+          const alertBody = (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", 1ο ημίχ. Over " + overLine + " · Απόδοση " + Number(verifiedOdds.price).toFixed(2) + " (" + verifiedOdds.bookmaker + ")";
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
