@@ -1926,7 +1926,7 @@ const server = http.createServer(async (req, res) => {
               }
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName,
-                minute: event.live_minute ?? event.status?.displayClock ?? event.time ?? "",
+                minute: root.live_minute ?? root.liveMinute ?? root.elapsed ?? root.time?.elapsed ?? event.live_minute ?? event.status?.displayClock ?? event.time ?? "",
                 homeScore: event.home_score ?? event.homeScore ?? null,
                 awayScore: event.away_score ?? event.awayScore ?? null,
                 status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
