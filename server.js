@@ -927,7 +927,8 @@ const server = http.createServer(async (req, res) => {
           onTarget: total("shotsOnTarget"),
           corners: total("corners"),
           attacks: total("attacks"),
-          dangerous: total("dangerousAttacks")
+          dangerous: total("dangerousAttacks"),
+          xG: total("xG")
         };
         const id = String(match.eventId);
         const previous = pushScanSnapshots.get(id);
@@ -937,6 +938,8 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget"), corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
+        const xGDelta = current.xG != null && previous.xG != null ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
+        const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
         // High Activity is only the candidate pool. Push alerts use a separate,
         // stricter goal-likelihood gate; pressure alone must never trigger a goal alert.
@@ -944,7 +947,8 @@ const server = http.createServer(async (req, res) => {
         // signals, a strong combined score, and corroborating corners/dangerous attacks.
         const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
         const goalEvidence = shots >= 2 && onTarget >= 1;
-        const points = Math.min(shots, 4) + onTarget * 2 + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5);
+        // xG can strengthen a candidate when the provider supplies it; absent xG contributes zero and never blocks evaluation.
+        const points = Math.min(shots, 4) + onTarget * 2 + corners * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
         const isAiGoal = scoreAvailable && goalEvidence && evidenceKinds >= 3 && points >= 7 && (corners >= 1 || dangerous >= 3);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -1041,7 +1045,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, evidenceKinds, points }
+                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
