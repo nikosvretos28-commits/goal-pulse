@@ -1478,6 +1478,23 @@ const server = http.createServer(async (req, res) => {
           const currentAwayScore = statsAwayScore ?? boardAwayScore;
           if (currentHomeScore === null || currentAwayScore === null) continue;
           const currentGoalsForMarketCheck = currentHomeScore + currentAwayScore;
+          // Query real live Over odds for the exact score-derived line and period.
+          // If no trustworthy quote is available, keep odds unknown rather than inventing a price.
+          const targetOverLine = Number((currentGoalsForMarketCheck + 0.5).toFixed(1));
+          const oddsMinute = parseLiveMinute(getMatchMinute(match));
+          const oddsStatus = String(match.statusText || match.status || match.status_text || "").toLowerCase();
+          const oddsPeriod = (Number.isFinite(oddsMinute) && oddsMinute > 45) || /second half|2nd half|2ο ημίχρονο/.test(oddsStatus)
+            ? "second_half" : "first_half";
+          if (oddsPeriod === "first_half") firstHalfOddsChecks++;
+          try {
+            verifiedOdds = await getVerifiedOver(match, targetOverLine, oddsPeriod);
+            if (verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1) oddsVerifiedCount++;
+            else oddsMissingCount++;
+          } catch (oddsError) {
+            oddsErrors++;
+            oddsMissingCount++;
+            console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
+          }
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
@@ -1497,16 +1514,14 @@ const server = http.createServer(async (req, res) => {
           // Alerts are sent without odds. Keep the suggested goal line grounded in the live score.
           const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1.0);
           // Reuse the same validated score snapshot for the alert line and history.
-          const currentGoalsForMarket = currentHomeScore + currentAwayScore;
-          const overLine = (currentGoalsForMarket + 0.5).toFixed(1);
+          const overLine = targetOverLine.toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
           const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
-          const statusForMarket = String(match.statusText || match.status || match.status_text || "").toLowerCase();
-          const parsedMarketMinute = parseLiveMinute(getMatchMinute(match));
-          const alertIsSecondHalf = (Number.isFinite(parsedMarketMinute) && parsedMarketMinute > 45) || /second half|2nd half|2ο ημίχρονο/.test(statusForMarket);
-          const marketLabel = alertIsSecondHalf ? "Τελικό σύνολο Over " : "1ο ημίχ. Over ";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine;
+          const marketLabel = oddsPeriod === "second_half" ? "Τελικό σύνολο Over " : "1ο ημίχ. Over ";
+          const priceSuffix = verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1
+            ? " @" + Number(verifiedOdds.price).toFixed(2) : "";
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix;
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
