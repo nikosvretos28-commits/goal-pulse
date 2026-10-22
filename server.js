@@ -1269,26 +1269,21 @@ const server = http.createServer(async (req, res) => {
                 outcomeScore = homeScore + awayScore;
               }
             }
-            if (outcomeScore == null || (!won && !periodEnded)) continue;
-            if (!won) {
-              const marketText = String(alert.market || "");
-              const overMarketMatch = marketText.match(/\bover\s*(\d+(?:[.,]\d+)?)/i);
-              if (/\bover\b/i.test(marketText) && !/corner|κόρνερ/i.test(marketText)) {
-                // Over markets are graded against the published line, not merely against
-                // the score at signal time. Example: Over 1.5 at FT 1-0 is a loss.
-                if (!overMarketMatch) {
-                  console.warn("AI alert settlement skipped: could not parse Over line", JSON.stringify({
-                    alertId: row.alert_id, market: marketText, outcomeScore
-                  }));
-                  continue;
-                }
-                const overLine = Number(overMarketMatch[1].replace(",", "."));
-                if (!Number.isFinite(overLine)) continue;
-                won = outcomeScore > overLine;
-              } else {
-                // Generic goal alert: at least one additional goal after the signal.
-                won = outcomeScore > startScore;
+            if (outcomeScore == null || !periodEnded) continue;
+            const marketText = String(alert.market || "");
+            const overMarketMatch = marketText.match(/\bover\s*(\d+(?:[.,]\d+)?)/i);
+            if (/\bover\b/i.test(marketText) && !/corner|κόρνερ/i.test(marketText)) {
+              // Always grade Over bets against their actual line, even if a goal was scored after the alert.
+              if (!overMarketMatch) {
+                console.warn("AI alert settlement skipped: could not parse Over line", JSON.stringify({ alertId: row.alert_id, market: marketText, outcomeScore }));
+                continue;
               }
+              const overLine = Number(overMarketMatch[1].replace(",", "."));
+              if (!Number.isFinite(overLine)) continue;
+              won = outcomeScore > overLine;
+            } else {
+              // Generic goal alert: at least one additional goal after the signal.
+              won = outcomeScore > startScore;
             }
             alert.outcome = won
               ? "Επιβεβαιώθηκε · επιτεύχθηκε ο στόχος γκολ"
