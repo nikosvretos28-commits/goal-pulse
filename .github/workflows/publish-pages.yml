@@ -35,7 +35,7 @@ jobs:
           # Project Pages uses /goal-pulse/ as its root.
           sed -i 's|href="/manifest.webmanifest"|href="/goal-pulse/manifest.webmanifest"|g; s|href="/goal-pulse-icon.svg"|href="/goal-pulse/goal-pulse-icon.svg"|g; s|navigator.serviceWorker.register('\''/sw.js'\'')|navigator.serviceWorker.register('\''/goal-pulse/sw.js'\'')|g; s|navigator.serviceWorker.getRegistration('\''/sw.js'\'')|navigator.serviceWorker.getRegistration('\''/goal-pulse/sw.js'\'')|g; s|https://goal-pulse.onrender.com/|https://nikosvretos28-commits.github.io/goal-pulse/|g' _site/index.html
           sed -i 's|"id": "/"|"id": "/goal-pulse/"|; s|"start_url": "/"|"start_url": "/goal-pulse/"|; s|"scope": "/"|"scope": "/goal-pulse/"|; s|"/goal-pulse-icon.svg"|"/goal-pulse/goal-pulse-icon.svg"|' _site/manifest.webmanifest
-          sed -i 's|/goal-pulse-icon.svg|/goal-pulse/goal-pulse-icon.svg|g; s|data.url||g' _site/sw.js
+          sed -i 's|/goal-pulse-icon.svg|/goal-pulse/goal-pulse-icon.svg|g' _site/sw.js
           touch _site/.nojekyll
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
