@@ -1727,8 +1727,9 @@ const server = http.createServer(async (req, res) => {
         if (isVip) levels.push("VIP");
         else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
-          // Odds are deliberately optional: AI eligibility comes from live match evidence,
-          // not from an odds provider being available. Never fabricate or require a price.
+          // A goal-pressure signal alone is not a betting recommendation: require a verified,
+          // active live quote for the exact score-derived line and period. No minimum
+          // price is imposed; the alert must simply have a real market price.
           let verifiedOdds = null;
           // Compare the stats-feed score with the freshest joined scoreboard before
           // issuing a market. If the sources disagree, skip this scan rather than
@@ -1781,6 +1782,13 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
+          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
+            console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
+              eventId: id, match: (match.home || "") + " – " + (match.away || ""),
+              period: oddsPeriod, targetLine: targetOverLine, reason: "no_verified_active_quote"
+            }));
+            continue;
+          }
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
@@ -1797,8 +1805,8 @@ const server = http.createServer(async (req, res) => {
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
-          // Alerts are sent without odds. Keep the suggested goal line grounded in the live score.
-          const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1.0);
+          // The quote was verified above; keep market and saved history tied to that quote.
+          const hasVerifiedOdds = true;
           // Reuse the same validated score snapshot for the alert line and history.
           const overLine = targetOverLine.toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
