@@ -1825,15 +1825,13 @@ const server = http.createServer(async (req, res) => {
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
           if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            // Live-odds providers may have no licensed bookmaker coverage for a fixture.
-            // Never invent a price and never let missing odds erase a separately qualified
-            // high-pressure goal signal. The notification/history must explicitly mark odds
-            // as unverified; the exact score-derived market line remains visible.
-            console.info("AI goal-pressure signal retained without verified odds", JSON.stringify({
+            // A pressure signal is not a betting recommendation without a verified active quote.
+            // Fail closed: do not notify or write a bet-history entry with an unknown price.
+            console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
               period: oddsPeriod, targetLine: targetOverLine, reason: "no_verified_active_quote"
             }));
-            verifiedOdds = null;
+            continue;
           }
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
