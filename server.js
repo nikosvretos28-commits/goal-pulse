@@ -1709,6 +1709,9 @@ const server = http.createServer(async (req, res) => {
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const xGDelta = current.xG != null && previous.xG != null ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
+        // Cumulative live xG adds only a modest bonus when available; missing xG is neutral.
+        const totalXG = current.xG == null ? null : Number(current.xG);
+        const xGTotalSupport = totalXG == null || !Number.isFinite(totalXG) ? 0 : totalXG >= 2 ? 1.5 : totalXG >= 1.5 ? 1 : totalXG >= 1 ? 0.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
         // but shots and at least one shot on target remain mandatory (no corner-only alerts).
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
@@ -1755,8 +1758,8 @@ const server = http.createServer(async (req, res) => {
           // Cap this bonus and require at least two shots on target to reduce tiny-sample noise.
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
-        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
-        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2));
+        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport;
+        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport;
         // Do not let conversion alone create an alert; it only strengthens already-qualified live pressure.
         const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 10));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
@@ -1847,6 +1850,7 @@ const server = http.createServer(async (req, res) => {
             shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία" : "",
             corners ? corners + " νέα κόρνερ" : "",
+            totalXG != null && Number.isFinite(totalXG) ? "xG " + totalXG.toFixed(2) : "",
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
@@ -1913,7 +1917,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
+                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
