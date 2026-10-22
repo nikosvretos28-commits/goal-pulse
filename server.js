@@ -1032,6 +1032,18 @@ const server = http.createServer(async (req, res) => {
         if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score' && !['won','lost','push','void'].includes(outcome)) {
           addIssue(row, 'period_rule_conflict_pending', 'Second-half alert is associated with first-half settlement rule.');
         }
+        // Surface old unresolved records explicitly; do not guess their outcome.
+        if (!['won','lost','push','void'].includes(outcome)) {
+          const ageHours = (Date.now() - new Date(row.created_at).getTime()) / 3600000;
+          if (Number.isFinite(ageHours) && ageHours >= 6) {
+            const market = String(p.market || '').trim();
+            if (!market) {
+              addIssue(row, 'pending_missing_market', 'Alert is still pending and has no saved market/line, so its outcome cannot be graded safely.');
+            } else {
+              addIssue(row, 'stale_pending_settlement', 'Alert has remained pending for at least 6 hours; verify provider final/period score before settlement.');
+            }
+          }
+        }
       }
       const winRate = terminal.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won' || String(row.payload.betOutcome).toLowerCase() === 'lost');
       const wins = winRate.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won').length;
