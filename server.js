@@ -1173,7 +1173,7 @@ const server = http.createServer(async (req, res) => {
             "SELECT alert_id,payload FROM alert_history WHERE COALESCE(payload->>'outcome','εκκρεμεί')='εκκρεμεί' AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND (payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') AND payload->>'market' NOT ILIKE '%ασιατ%' AND payload->>'market' NOT ILIKE '%asian%' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
           );
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
-          const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, "").trim();
           const completedScoreboardByTeams = new Map();
           for (const event of scoreboardEvents) {
             const competition = event.competitions?.[0];
@@ -1270,7 +1270,26 @@ const server = http.createServer(async (req, res) => {
               }
             }
             if (outcomeScore == null || (!won && !periodEnded)) continue;
-            if (!won) won = outcomeScore > startScore;
+            if (!won) {
+              const marketText = String(alert.market || "");
+              const overMarketMatch = marketText.match(/\bover\s*(\d+(?:[.,]\d+)?)/i);
+              if (/\bover\b/i.test(marketText) && !/corner|κόρνερ/i.test(marketText)) {
+                // Over markets are graded against the published line, not merely against
+                // the score at signal time. Example: Over 1.5 at FT 1-0 is a loss.
+                if (!overMarketMatch) {
+                  console.warn("AI alert settlement skipped: could not parse Over line", JSON.stringify({
+                    alertId: row.alert_id, market: marketText, outcomeScore
+                  }));
+                  continue;
+                }
+                const overLine = Number(overMarketMatch[1].replace(",", "."));
+                if (!Number.isFinite(overLine)) continue;
+                won = outcomeScore > overLine;
+              } else {
+                // Generic goal alert: at least one additional goal after the signal.
+                won = outcomeScore > startScore;
+              }
+            }
             alert.outcome = won
               ? "Επιβεβαιώθηκε · επιτεύχθηκε ο στόχος γκολ"
               : "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ";
