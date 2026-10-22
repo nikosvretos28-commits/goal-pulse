@@ -1418,6 +1418,7 @@ function renderTopAiAlerts(){
 }
 
 function showSignalHistory(){
+  const historyDateInput=document.getElementById('signalHistoryDate');if(historyDateInput&&!historyDateInput.value){const d=new Date();historyDateInput.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
   const period=document.getElementById('signalHistoryPeriod')?.value||'today';
   const now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime(),yesterdayStart=todayStart-86400000;
   const exactDate=document.getElementById('signalHistoryDate')?.value||'';const exactStart=exactDate?new Date(exactDate+'T00:00:00').getTime():NaN;const exactEnd=exactStart+86400000;const filtered=signalAlertHistory.filter(a=>{const t=Number(a.createdAt);if(!Number.isFinite(t))return false;if(period==='date')return Number.isFinite(exactStart)&&t>=exactStart&&t<exactEnd;if(period==='today')return t>=todayStart;if(period==='yesterday')return t>=yesterdayStart&&t<todayStart;if(period==='7days')return t>=todayStart-6*86400000;if(period==='30days')return t>=todayStart-29*86400000;return true;}).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
