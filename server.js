@@ -1865,12 +1865,26 @@ const server = http.createServer(async (req, res) => {
           .filter(([name, value]) => value >= scannerThresholds[name])
           .map(([name]) => name);
         const scannerConsensus = activeScanners.length;
-        // Require either agreement from at least two scanners or one unusually strong signal.
-        // This broadens coverage without allowing a single weak/corner-only scanner to alert.
+        // Do not treat overlapping scanners as statistically independent votes.
+        // Count distinct evidence families: short-window pressure, sustained match pressure,
+        // measured xG surge, and historical defensive weakness. Late-game timing is context,
+        // not a separate proof of goal probability.
+        const evidenceFamilies = [
+          recentGoalEvidence ? "short_window_pressure" : null,
+          sustainedGoalEvidence ? "sustained_pressure" : null,
+          xGDelta != null && xGDelta >= 0.20 ? "xg_surge" : null,
+          dirtySheetSupport >= 1.0 ? "historical_defensive_weakness" : null
+        ].filter(Boolean);
+        const distinctEvidenceCount = new Set(evidenceFamilies).size;
         const singleScannerHighConfidence =
-          (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 9) ||
-          (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 12);
-        const isAiGoal = scoreAvailable && (scannerConsensus >= 2 || singleScannerHighConfidence);
+          (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 9 &&
+            (xGDelta != null && xGDelta >= 0.20 || dirtySheetSupport >= 1.0 || sustainedGoalEvidence)) ||
+          (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 12 &&
+            (recentGoalEvidence || xGDelta != null && xGDelta >= 0.20 || dirtySheetSupport >= 1.0));
+        const hasMultiSourceEvidence = distinctEvidenceCount >= 2 &&
+          (recentGoalEvidence || sustainedGoalEvidence) &&
+          (onTarget >= 1 || totalOnTarget >= 4);
+        const isAiGoal = scoreAvailable && (hasMultiSourceEvidence || singleScannerHighConfidence);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
@@ -2023,6 +2037,9 @@ const server = http.createServer(async (req, res) => {
                   aiScanners: activeScanners,
                   aiScannerCount: scannerConsensus,
                   aiScannerScores: scannerScores,
+                  aiEvidenceFamilies: evidenceFamilies,
+                  aiDistinctEvidenceCount: distinctEvidenceCount,
+                  aiDecisionRule: "multi_source_evidence_or_strong_confirmed_signal",
                   odds: hasVerifiedOdds ? verifiedOdds.price : null,
                   bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
                   ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null, alertType: "goal_market_signal" }),
