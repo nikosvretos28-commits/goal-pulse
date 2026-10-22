@@ -106,6 +106,8 @@ async function runProtocolAnalyst() {
         shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
         xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
+        league: String(p.league || "Άγνωστο πρωτάθλημα").trim() || "Άγνωστο πρωτάθλημα",
+        scanners: Array.isArray(p.aiScanners) ? [...new Set(p.aiScanners.map(String).filter(Boolean))] : [],
         createdAt: row.created_at
       };
     });
@@ -114,6 +116,22 @@ async function runProtocolAnalyst() {
       return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
     };
     const overall = summarize(records);
+    const scannerRows = records.flatMap(row => row.scanners.map(scanner => ({ ...row, scanner })));
+    const byScanner = [...new Set(scannerRows.map(row => row.scanner))].map(scanner => ({
+      scanner, ...summarize(scannerRows.filter(row => row.scanner === scanner))
+    })).sort((a,b) => b.settled - a.settled);
+    const leagueScannerGroups = new Map();
+    for (const row of scannerRows) {
+      const key = row.league + "\\u0000" + row.scanner;
+      if (!leagueScannerGroups.has(key)) leagueScannerGroups.set(key, { league: row.league, scanner: row.scanner, rows: [] });
+      leagueScannerGroups.get(key).rows.push(row);
+    }
+    const byLeagueScanner = [...leagueScannerGroups.values()].map(group => ({
+      league: group.league,
+      scanner: group.scanner,
+      ...summarize(group.rows),
+      reliableSample: group.rows.length >= 20
+    })).sort((a,b) => b.settled - a.settled);
     const segment = (field, label) => {
       const values = [...new Set(records.map(row => row[field]))].sort();
       return values.map(value => ({ [label]: value, ...summarize(records.filter(row => row[field] === value)) }))
@@ -192,6 +210,11 @@ async function runProtocolAnalyst() {
       byShots: segment("shotBand", "shotBand"),
       byOnTarget: segment("onTargetBand", "onTargetBand"),
       byXG: segment("xGBand", "xGBand"),
+      // Mirrors the useful principle described for MyGoal247: show each scanner's
+      // settled record overall and within each competition, without inventing data.
+      byScanner,
+      byLeagueScanner,
+      scannerPerformanceNote: "Τα ποσοστά ανά πρωτάθλημα/scanner εμφανίζονται ως αξιόπιστα μόνο με τουλάχιστον 20 settled alerts. Μικρότερα δείγματα είναι προσωρινά και δεν αλλάζουν αυτόματα το live πρωτόκολλο.",
       recommendations
     };
     await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
