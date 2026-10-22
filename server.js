@@ -1712,8 +1712,9 @@ const server = http.createServer(async (req, res) => {
         // Match the reference pressure model: last-five-minute corners support the signal,
         // but shots and at least one shot on target remain mandatory (no corner-only alerts).
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
-        // AI goal pressure uses shots, dangerous attacks and xG only.
-        // Corners and clean-sheet rates do not affect alert eligibility or scoring.
+        // AI goal pressure prioritizes shots, shots on target, dangerous attacks and xG.
+        // Corners add limited supporting weight; they can never trigger an alert alone.
+        // Clean-sheet history is not supplied consistently by this live feed, so it is not imputed.
         const totalShots = current.shots == null ? 0 : Number(current.shots);
         const totalOnTarget = current.onTarget == null ? 0 : Number(current.onTarget);
         const totalAttacks = current.attacks == null ? 0 : Number(current.attacks);
@@ -1765,9 +1766,9 @@ const server = http.createServer(async (req, res) => {
         if (isVip) levels.push("VIP");
         else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
-          // A goal-pressure signal alone is not a betting recommendation: require a verified,
-          // active live quote for the exact score-derived line and period. No minimum
-          // price is imposed; the alert must simply have a real market price.
+          // Prefer a verified, active quote for the exact score-derived line and period.
+          // If the provider has no licensed live-bookmaker coverage, keep the qualified
+          // pressure signal but label the missing price explicitly; never invent odds.
           let verifiedOdds = null;
           // Compare the stats-feed score with the freshest joined scoreboard before
           // issuing a market. If the sources disagree, skip this scan rather than
@@ -1849,7 +1850,7 @@ const server = http.createServer(async (req, res) => {
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
-          // The quote was verified above; keep market and saved history tied to that quote.
+          // Store a price only when the exact active market quote was verified.
           const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1 && Number.isFinite(Number(verifiedOdds.line)) && Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001);
           // Reuse the same validated score snapshot for the alert line and history.
           const overLine = targetOverLine.toFixed(1);
