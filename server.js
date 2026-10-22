@@ -81,7 +81,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst is included; alert odds are not restricted by a 1.60 minimum.
+// Deployment verification marker: protocol analyst is included; AI alerts require verified decimal odds >= 1.60.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
@@ -771,8 +771,9 @@ async function getVerifiedOverOddsPapi(match, targetLine, period = "first_half")
     if (Number(m.sportId) !== 10 || Math.abs(Number(m.handicap) - line) >= 0.001 || String(m.marketType || "").toLowerCase() !== "totals") return false;
     const marketName = String(m.marketName || "");
     const normalizedPeriod = String(m.period || "").toLowerCase().replace(/[_ -]/g, "");
+    if (/asian/i.test(marketName) || /asian/i.test(normalizedPeriod)) return false;
     if (isFirstHalf) return /over.?under.*first half|first half.*over.?under/i.test(marketName) && normalizedPeriod.includes("firsthalf");
-    // In the second half, recommend a non-Asian full-match total, settled at full time.
+    // In the second half, recommend only non-Asian full-match totals, settled at full time.
     return !/first half|second half|asian/i.test(marketName) && !normalizedPeriod.includes("firsthalf") && !normalizedPeriod.includes("secondhalf") && /(fulltime|fullmatch|match|regular time|ft)/i.test(normalizedPeriod);
   });
   if (!matchingMarkets.length) {
@@ -1824,12 +1825,14 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
-          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            // A pressure signal is not a betting recommendation without a verified active quote.
-            // Fail closed: do not notify or write a bet-history entry with an unknown price.
+          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.60 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
+            // AI alerts require a real, active, exact-market decimal quote of at least 1.60.
+            // Never send unknown/estimated odds or a lower price; Asian markets are excluded upstream.
             console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
-              period: oddsPeriod, targetLine: targetOverLine, reason: "no_verified_active_quote"
+              period: oddsPeriod, targetLine: targetOverLine, minimumOdds: 1.60,
+              verifiedPrice: verifiedOdds?.price ?? null,
+              reason: !verifiedOdds ? "no_verified_active_quote" : Number(verifiedOdds.price) < 1.60 ? "verified_odds_below_1.60" : "invalid_or_mismatched_market"
             }));
             continue;
           }
