@@ -7,6 +7,8 @@ let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
 const PORT = Number(process.env.PORT || 3000);
+// Lower sensitivity means stricter alert thresholds. Default level 2 is intentionally more selective than the former level 3.
+const AI_ALERT_SENSITIVITY = Math.max(1, Math.min(10, Number(process.env.AI_ALERT_SENSITIVITY || 2)));
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
 const ESPN_HEADERS = {
@@ -1808,7 +1810,10 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
+        const sensitivityAdjustment = 3 - AI_ALERT_SENSITIVITY;
+        const recentGoalThreshold = 7 + sensitivityAdjustment;
+        const sustainedGoalThreshold = 10 + sensitivityAdjustment;
+        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= recentGoalThreshold) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= sustainedGoalThreshold));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
