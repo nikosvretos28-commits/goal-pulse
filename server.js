@@ -95,17 +95,18 @@ async function runProtocolAnalyst() {
       const p = row.payload || {};
       const stats = p.statsAtSignal || {};
       const label = p.betOutcome === "won" ? 1 : 0;
+      const numericFeature = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) ? Number(value) : null;
       const features = {
-        minute: Number.isFinite(Number(p.minuteNumber)) ? Number(p.minuteNumber) : null,
+        minute: numericFeature(p.minuteNumber),
         period: p.periodAtSignal || null,
-        odds: p.odds !== null && p.odds !== undefined && Number.isFinite(Number(p.odds)) ? Number(p.odds) : null,
-        shots5m: Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
-        shotsOnTarget5m: Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
-        corners5m: Number.isFinite(Number(stats.corners)) ? Number(stats.corners) : null,
-        attacks5m: Number.isFinite(Number(stats.attacks)) ? Number(stats.attacks) : null,
-        dangerousAttacks5m: Number.isFinite(Number(stats.dangerous)) ? Number(stats.dangerous) : null,
-        xG: Number.isFinite(Number(stats.xG)) ? Number(stats.xG) : null,
-        xGDelta: Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
+        odds: numericFeature(p.odds),
+        shots5m: numericFeature(stats.shots),
+        shotsOnTarget5m: numericFeature(stats.onTarget),
+        corners5m: numericFeature(stats.corners),
+        attacks5m: numericFeature(stats.attacks),
+        dangerousAttacks5m: numericFeature(stats.dangerous),
+        xG: numericFeature(stats.xG),
+        xGDelta: numericFeature(stats.xGDelta),
         scannerNames: Array.isArray(p.aiScanners) ? [...new Set(p.aiScanners.map(String).filter(Boolean))] : [],
         scannerScores: p.aiScannerScores && typeof p.aiScannerScores === "object" ? p.aiScannerScores : {},
         evidenceFamilies: Array.isArray(p.aiEvidenceFamilies) ? p.aiEvidenceFamilies : []
