@@ -195,7 +195,7 @@ async function runProtocolAnalyst() {
     };
     await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
     await analyticsPool.query("DELETE FROM protocol_analyst_reports WHERE id NOT IN (SELECT id FROM protocol_analyst_reports ORDER BY generated_at DESC LIMIT 50)").catch(() => {});
-    console.log("Goal Pulse protocol analyst completed:", JSON.stringify({ settledAlerts: overall.settled, successRate: overall.successRate, recommendations: recommendations.length }));
+    console.log("Goal Pulse protocol analyst completed:", JSON.stringify({ settledAlerts: overall.settled, successRate: overall.successRate, byPeriod: report.byPeriod, recommendations: recommendations.length }));
     return report;
   })().catch(error => {
     console.error("Goal Pulse protocol analyst failed:", error.message);
