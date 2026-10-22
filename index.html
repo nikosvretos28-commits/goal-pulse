@@ -380,6 +380,12 @@ header nav a{padding:9px 0;font-size:11px}
 @media(max-width:850px){.live-match-centre{overflow-x:auto}.live-match-line{min-width:850px;grid-template-columns:minmax(350px,1fr) minmax(450px,1fr)}.live-match-line .live-row{padding:9px 6px}.live-inline-stats{padding:5px;gap:4px}}
 @media(max-width:560px){.live-match-centre .top-live-head{position:sticky;left:0}.live-match-line{min-width:920px;grid-template-columns:380px 540px}.live-match-line .live-row{grid-template-columns:20px minmax(76px,1fr) 44px minmax(76px,1fr) 20px 38px;gap:5px}.live-match-line .live-row .teamname{font-size:12px}.live-inline-stats{grid-template-columns:repeat(5,minmax(96px,1fr));gap:5px;padding:6px}.live-inline-stat{padding:7px 4px}.live-inline-stat span{font-size:10px}.live-inline-stat b{font-size:13px}}
 .live-match-main{min-width:340px;display:flex;flex-direction:column;gap:3px}.goal-now-alert{display:inline-flex;align-self:flex-start;margin:0 8px 7px;padding:5px 9px;border:1px solid #ff9a36;border-radius:6px;background:#43220b;color:#ffd08a;font-size:10px;font-weight:900;letter-spacing:.3px;animation:goalPulseGlow 1.2s ease-in-out infinite alternate}.goal-now-alert:before{content:"";display:inline-block;width:6px;height:6px;margin:auto 6px auto 0;border-radius:50%;background:#ff8b26}@keyframes goalPulseGlow{from{box-shadow:0 0 0 #ff8b2600}to{box-shadow:0 0 12px #ff8b2666}}\n
+.gp-live-league{margin:0 0 10px;border:1px solid #1d3a4d;border-radius:10px;overflow:hidden;background:rgba(8,24,36,.35)}
+.gp-live-league-head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#102b3c;border-bottom:1px solid #24495f;color:#eaf6fb;font-size:12px;font-weight:850;letter-spacing:.2px}
+.gp-live-league-flag{color:#8adcf2;font-size:10px;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gp-live-league-name{flex:1;min-width:0}
+.gp-live-league-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:12px;background:#1a4257;color:#9ce9ff;font-size:11px}
+.gp-live-league .live-match-line{padding-left:8px;padding-right:8px}
 /* Final compact scoreboard: keep the fixture and all five stats visible on mobile */
 @media(max-width:560px){
   html,body{max-width:100%;overflow-x:hidden}
@@ -1234,7 +1240,12 @@ async function loadScores(){
  const live=allMatches.filter(m=>m.state==='in');
  const box=document.getElementById('liveRows');
  if(box){
-  box.innerHTML=live.length?live.map(liveMatchLine).join(''):'<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';
+  if(!live.length){box.innerHTML='<div class="subtle" style="padding:10px">Δεν εντοπίστηκαν live αγώνες τώρα.</div>';}
+  else{
+   const groups=new Map();
+   live.forEach(m=>{const key=String(m.country||'Διεθνής')+'::'+String(m.league||'Διοργάνωση');if(!groups.has(key))groups.set(key,{country:m.country||'Διεθνής',league:m.league||'Διοργάνωση',matches:[]});groups.get(key).matches.push(m);});
+   box.innerHTML=[...groups.entries()].map(([key,g])=>'<section class="gp-live-league"><div class="gp-live-league-head"><span class="gp-live-league-flag">'+esc(g.country)+'</span><span class="gp-live-league-name">'+esc(g.league)+'</span><span class="gp-live-league-count">'+g.matches.length+'</span></div>'+g.matches.map(liveMatchLine).join('')+'</section>').join('');
+  }
  }
 
  if(feedStatus)feedStatus.textContent=feedsSucceeded?`${feedsSucceeded}/${LEAGUES.length} πηγές · ${new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})}`:(allMatches.length?'Πρόβλημα σύνδεσης · τελευταία δεδομένα':'API προσωρινά μη διαθέσιμο');const topCount=document.getElementById('liveCountTop');if(topCount)topCount.textContent=allMatches.filter(m=>m.state==='in').length+' LIVE ΑΓΩΝΕΣ';const updated=document.getElementById('topUpdated');if(updated)updated.textContent=lastSuccessfulScoreUpdate?(feedsSucceeded?'Τελευταία επιτυχής ενημέρωση ':'Τελευταία επιτυχής ενημέρωση ')+lastSuccessfulScoreUpdate.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'Αναμονή επιβεβαιωμένων δεδομένων';
@@ -1529,10 +1540,15 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
  const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',fmtPair('shots'),'shot')+statCell('ΕΝΤΟΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',fmtPair('shotsOffTarget'),'shot')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
  const rawClock=String(m.clock||'').trim();
- const clockCandidates=[rawClock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute];
+ const clockCandidates=[stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute,rawClock];
  const numericClock=clockCandidates.map(v=>String(v??'').trim()).find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));
- const normalizedLiveClock=numericClock?numericClock.replace(/\s*['′’]?$/,'').replace(/\s*\+\s*/,'+').replace(/^(\d{1,3}):\d{2}$/,'$1')+'′':'';
- const liveClock=(m.state==='in'?(normalizedLiveClock||(/\b(?:HT|half[ -]?time|halftime|interval)\b/i.test(rawClock)?'HT':(rawClock||'LIVE'))):(rawClock||'LIVE')).replace(/\s*['′’]$/,'');
+ const isHalfTime=/\b(?:HT|half[ -]?time|halftime|interval)\b/i.test(rawClock);
+ let normalizedLiveClock=numericClock?numericClock.replace(/\s*['′’]?$/,'').replace(/\s*\+\s*/,'+').replace(/^(\d{1,3}):\d{2}$/,'$1'):'';
+ if(m.state==='in'&&!normalizedLiveClock&&!isHalfTime&&Number.isFinite(Number(m.kickoffAt))&&Number(m.kickoffAt)<=Date.now()){
+  const estimated=Math.max(1,Math.min(120,Math.floor((Date.now()-Number(m.kickoffAt))/60000)));
+  normalizedLiveClock='~'+estimated;
+ }
+ const liveClock=m.state==='in'?(isHalfTime?'HT':(normalizedLiveClock?normalizedLiveClock+'′':(rawClock||'LIVE'))):(m.state==='post'?'FT':(rawClock||'LIVE'));
   return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="minute">'+esc(liveClock)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span></button>'+alertHtml+secondaryActivityHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
 }
 function renderHighActivityMatches(){
