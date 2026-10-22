@@ -1180,7 +1180,7 @@ const server = http.createServer(async (req, res) => {
             const completed = alert.home && alert.away
               ? completedScoreboardByTeams.get(normalizeTeam(alert.home) + "|" + normalizeTeam(alert.away))
               : null;
-            const liveStatusIsFinished = /finished|full.?time|ended|final|\\bft\\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
+            const liveStatusIsFinished = /finished|full.?time|ended|final|\bft\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
             if (secondHalf && (!live || !liveStatusIsFinished) && completed) {
               live = completed;
             } else if (firstHalf && completed && completed.homeHtScore != null && completed.awayHtScore != null &&
@@ -1203,14 +1203,14 @@ const server = http.createServer(async (req, res) => {
             if (!Number.isFinite(startScore)) continue;
             if (firstHalf) {
               const hasHtScore = live.homeHtScore != null && live.awayHtScore != null && Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
-              const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\\bht\\b/.test(statusClock);
+              const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\bht\b/.test(statusClock);
               const explicitlySecondHalf = /second half|2nd half|2ο ημίχρονο/.test(statusText) || /second half|2nd half/.test(statusClock);
               const explicitlyFirstHalf = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusText);
-              const minuteNow = Number(String(live.minute || "").match(/(\\d{1,3})/)?.[1]);
+              const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
               const clearlyFirstHalf = !isAtHalf && !explicitlySecondHalf &&
                 ((Number.isFinite(minuteNow) && minuteNow <= 45) || explicitlyFirstHalf);
-              // A provider may expose placeholder 0-0 HT fields throughout the live first half.
-              // Never use those fields to declare a loss before half-time is actually confirmed.
+              // Providers may expose placeholder HT fields throughout the live first half.
+              // Never declare a loss until half-time is actually confirmed.
               if (clearlyFirstHalf && hasFullScore && homeScore + awayScore > startScore) {
                 outcomeScore = homeScore + awayScore;
                 won = true;
@@ -1220,18 +1220,17 @@ const server = http.createServer(async (req, res) => {
               } else if (isAtHalf && hasFullScore) {
                 outcomeScore = homeScore + awayScore;
                 periodEnded = true;
-              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && hasHtScore) {
-                // A completed fixture can settle a first-half market only from its actual HT score.
+              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && hasHtScore) {
+                // A completed fixture settles first-half markets only from its actual HT score.
                 outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
                 periodEnded = true;
               } else if (explicitlySecondHalf || (Number.isFinite(minuteNow) && minuteNow > 45)) {
-                // Do not use a second-half/full-time score to infer the first-half outcome.
+                // Never infer a first-half result from a second-half/full-time score.
                 continue;
-              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && !hasHtScore) {
+              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && !hasHtScore) {
                 // Missing HT score means unknown, not a loss.
                 continue;
-              }
-            }            } else if (secondHalf) {
+              }            } else if (secondHalf) {
               periodEnded = /finished|full.?time|ended|final|\bft\b/.test(statusText) || live.status === "post";
               if (hasFullScore) {
                 outcomeScore = homeScore + awayScore;
