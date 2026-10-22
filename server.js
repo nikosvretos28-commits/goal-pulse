@@ -83,7 +83,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst is included; AI alerts require verified decimal odds >= 1.60.
+// Deployment verification marker: protocol analyst is included; alerts require a verified exact-market quote, with no fixed minimum-odds cutoff.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
@@ -118,7 +118,17 @@ async function runProtocolAnalyst() {
     const overall = summarize(records);
     const segment = (field, label) => {
       const values = [...new Set(records.map(row => row[field]))].sort();
-      return values.map(value => ({ [label]: value, ...summarize(records.filter(row => row[field] === value)) }))
+      return values.map(value => {
+        const groupRows = records.filter(row => row[field] === value);
+        const comparisonRows = records.filter(row => row[field] !== value);
+        return {
+          [label]: value,
+          ...summarize(groupRows),
+          // Compare with the non-overlapping remainder, not an overall rate that includes this segment.
+          comparisonSuccessRate: comparisonRows.length ? summarize(comparisonRows).successRate : null,
+          comparisonSettled: comparisonRows.length
+        };
+      })
         .filter(row => row.settled >= 5)
         .sort((a,b) => b.settled - a.settled);
     };
@@ -131,38 +141,38 @@ async function runProtocolAnalyst() {
       });
     } else {
       for (const item of segment("oddsBand", "oddsBand")) {
-        if (item.settled < 20 || item.successRate == null) continue;
-        const difference = item.successRate - overall.successRate;
+        if (item.settled < 20 || item.successRate == null || item.comparisonSuccessRate == null) continue;
+        const difference = item.comparisonSuccessRate == null ? null : item.successRate - item.comparisonSuccessRate;
         if (difference <= -10) recommendations.push({
           priority: "review",
           title: "Επανέλεγχος alerts με απόδοση " + item.oddsBand,
-          detail: "Το ποσοστό επιτυχίας είναι " + item.successRate + "% σε " + item.settled + " περιπτώσεις, " + Math.abs(difference).toFixed(1) + " μονάδες κάτω από το συνολικό " + overall.successRate + "%. Να ελεγχθούν τα συγκεκριμένα ματς και οι αποδόσεις πριν αλλάξει ο κανόνας."
+          detail: "Το ποσοστό επιτυχίας είναι " + item.successRate + "% σε " + item.settled + " περιπτώσεις, " + Math.abs(difference).toFixed(1) + " μονάδες κάτω από το υπόλοιπο δείγμα (" + item.comparisonSuccessRate + "%). Να ελεγχθούν τα συγκεκριμένα ματς και οι αποδόσεις πριν αλλάξει ο κανόνας."
         });
         if (difference >= 8) recommendations.push({
           priority: "test",
           title: "Υποψήφια ομάδα για δοκιμή: " + item.oddsBand,
-          detail: "Η ομάδα έχει " + item.successRate + "% σε " + item.settled + " περιπτώσεις, πάνω από τη συνολική επίδοση. Να ελεγχθεί σε ανεξάρτητο ιστορικό δείγμα· δεν αλλάζει αυτόματα το live πρωτόκολλο."
+          detail: "Η ομάδα έχει " + item.successRate + "% σε " + item.settled + " περιπτώσεις, έναντι " + item.comparisonSuccessRate + "% στο υπόλοιπο δείγμα. Να ελεγχθεί σε ανεξάρτητο ιστορικό δείγμα· δεν αλλάζει αυτόματα το live πρωτόκολλο."
         });
       }
       for (const [field, label] of [["shotBand", "τελικές στο 5λεπτο"], ["onTargetBand", "σουτ στην εστία στο 5λεπτο"], ["xGBand", "μεταβολή xG στο 5λεπτο"]]) {
         for (const item of segment(field, field)) {
           if (item.settled < 20 || item.successRate == null || item[field] === "missing") continue;
-          const difference = item.successRate - overall.successRate;
+          const difference = item.comparisonSuccessRate == null ? null : item.successRate - item.comparisonSuccessRate;
           if (difference <= -10) recommendations.push({
             priority: "review",
             title: "Επανέλεγχος σήματος: " + label + " (" + item[field] + ")",
-            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, " + Math.abs(difference).toFixed(1) + " μονάδες κάτω από τη συνολική επίδοση. Να ελεγχθεί αν χρειάζεται αυστηρότερο κατώφλι."
+            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, " + Math.abs(difference).toFixed(1) + " μονάδες κάτω από το υπόλοιπο δείγμα. Να ελεγχθεί αν χρειάζεται αυστηρότερο κατώφλι."
           });
           if (difference >= 8) recommendations.push({
             priority: "test",
             title: "Δοκιμή σήματος: " + label + " (" + item[field] + ")",
-            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, πάνω από τη συνολική επίδοση. Απαιτείται ανεξάρτητος ιστορικός έλεγχος πριν από αλλαγή."
+            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, πάνω από το υπόλοιπο δείγμα. Απαιτείται ανεξάρτητος ιστορικός έλεγχος πριν από αλλαγή."
           });
         }
       }
       for (const item of segment("minuteBand", "minuteBand")) {
-        if (item.settled < 20 || item.successRate == null) continue;
-        const difference = item.successRate - overall.successRate;
+        if (item.settled < 20 || item.successRate == null || item.comparisonSuccessRate == null) continue;
+        const difference = item.comparisonSuccessRate == null ? null : item.successRate - item.comparisonSuccessRate;
         if (difference <= -12) recommendations.push({
           priority: "review",
           title: "Έλεγχος χρονικού παραθύρου " + item.minuteBand,
@@ -1803,7 +1813,9 @@ const server = http.createServer(async (req, res) => {
           // Cap this bonus and require at least two shots on target to reduce tiny-sample noise.
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
-        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport;
+        // Three or more shots on target in the rolling five-minute window add weight only; they cannot trigger an alert without existing evidence gates.
+        const last5OnTargetSupport = onTarget >= 3 ? 1.5 : 0;
+        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + last5OnTargetSupport;
         const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport;
         // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
         // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
@@ -1811,8 +1823,12 @@ const server = http.createServer(async (req, res) => {
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
         const sensitivityAdjustment = 3 - AI_ALERT_SENSITIVITY;
-        const recentGoalThreshold = 7 + sensitivityAdjustment;
-        const sustainedGoalThreshold = 10 + sensitivityAdjustment;
+        // Analyst found weak historical success in minutes 0–29 and 30–45. Tighten those first-half windows without disabling them.
+        const firstHalfTimeAdjustment = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 29
+          ? 2
+          : Number.isFinite(minuteForEligibility) && minuteForEligibility >= 30 && minuteForEligibility <= 45 ? 1 : 0;
+        const recentGoalThreshold = 7 + sensitivityAdjustment + firstHalfTimeAdjustment;
+        const sustainedGoalThreshold = 10 + sensitivityAdjustment + firstHalfTimeAdjustment;
         const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= recentGoalThreshold) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= sustainedGoalThreshold));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -1876,14 +1892,14 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
-          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.60 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            // AI alerts require a real, active, exact-market decimal quote of at least 1.60.
-            // Never send unknown/estimated odds or a lower price; Asian markets are excluded upstream.
+          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
+            // Require a real, active quote for the exact market, but do not impose a fixed minimum odds cutoff.
+            // Never send unknown/estimated odds; Asian markets remain excluded from automatic AI alerts.
             console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
-              period: oddsPeriod, targetLine: targetOverLine, minimumOdds: 1.60,
+              period: oddsPeriod, targetLine: targetOverLine,
               verifiedPrice: verifiedOdds?.price ?? null,
-              reason: !verifiedOdds ? "no_verified_active_quote" : Number(verifiedOdds.price) < 1.60 ? "verified_odds_below_1.60" : "invalid_or_mismatched_market"
+              reason: !verifiedOdds ? "no_verified_active_quote" : Number(verifiedOdds.price) <= 1 ? "invalid_verified_price" : "invalid_or_mismatched_market"
             }));
             continue;
           }
