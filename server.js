@@ -1169,8 +1169,15 @@ const server = http.createServer(async (req, res) => {
       // First-half outcomes use halftime scores, so second-half goals cannot falsely confirm them.
       if (await ensureAlertHistoryDb()) {
         try {
+          // Repair older HT alerts: the live market at half-time is the second-half remainder,
+          // but earlier records were stored as "halftime" and incorrectly settled against HT score.
+          // Reopen only those clearly misclassified push alerts so they can be graded from the final score.
+          const repairedHalftime = await analyticsPool.query(
+            "UPDATE alert_history SET payload = jsonb_set(jsonb_set(jsonb_set(payload, '{periodAtSignal}', '\"second_half\"'::jsonb), '{betOutcome}', '\"pending\"'::jsonb), '{outcome}', '\"εκκρεμεί\"'::jsonb), updated_at=NOW() WHERE payload->>'source'='server-push' AND payload->>'periodAtSignal'='halftime' AND payload->>'evaluationRule'='end_of_first_half_score' AND payload->>'betOutcome' IN ('won','lost') AND payload->>'market' ILIKE 'Over %' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND payload->>'market' NOT ILIKE '%asian%' AND created_at > NOW() - INTERVAL '30 days' RETURNING alert_id"
+          );
+          if (repairedHalftime.rowCount) console.warn("Goal Pulse history repaired: reopened halftime alerts misgraded against first-half score", JSON.stringify({ repaired: repairedHalftime.rowCount }));
           const pending = await analyticsPool.query(
-            "SELECT alert_id,payload FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','pending','εκκρεμεί','σε εκκρεμότητα') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND (payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') AND payload->>'market' NOT ILIKE '%ασιατ%' AND payload->>'market' NOT ILIKE '%asian%' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '3 days' ORDER BY created_at ASC LIMIT 1000"
+            "SELECT alert_id,payload FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','pending','εκκρεμεί','σε εκκρεμότητα') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND (payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') AND payload->>'market' NOT ILIKE '%ασιατ%' AND payload->>'market' NOT ILIKE '%asian%' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
           );
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
           const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, "").trim();
@@ -1198,11 +1205,13 @@ const server = http.createServer(async (req, res) => {
             const explicitPeriod = String(alert.periodAtSignal || "").toLowerCase();
             // Trust the explicit period captured at signal time over a parsed clock number.
             // Some feeds expose "2nd half" in a clock field, whose first digit can parse as minute 2.
+            // At half-time the first-half market has ended; new alerts target the remaining
+            // match (second-half goals), so they must settle at full-time, not against HT score.
             const firstHalf = explicitPeriod
-              ? explicitPeriod === "first_half" || explicitPeriod === "halftime"
+              ? explicitPeriod === "first_half"
               : Number.isFinite(signalMinute) && signalMinute <= 45;
             const secondHalf = explicitPeriod
-              ? explicitPeriod === "second_half"
+              ? explicitPeriod === "second_half" || explicitPeriod === "halftime"
               : !firstHalf && Number.isFinite(signalMinute) && signalMinute > 45;
             let live = metricById.get(String(alert.eventId));
             // Completed scoreboard entries can recover final scores and, when supplied by
