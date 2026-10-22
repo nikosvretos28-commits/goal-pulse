@@ -1341,6 +1341,7 @@ const server = http.createServer(async (req, res) => {
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
           const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, "").trim();
           const completedScoreboardByTeams = new Map();
+          const completedScoreboardById = new Map();
           for (const event of scoreboardEvents) {
             const competition = event.competitions?.[0];
             const competitors = competition?.competitors || [];
@@ -1351,11 +1352,13 @@ const server = http.createServer(async (req, res) => {
             if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusLabel))) continue;
             const homeFirstPeriod = Number(home.linescores?.[0]?.value ?? home.linescores?.[0]?.displayValue);
             const awayFirstPeriod = Number(away.linescores?.[0]?.value ?? away.linescores?.[0]?.displayValue);
-            completedScoreboardByTeams.set(normalizeTeam(home.team.displayName) + "|" + normalizeTeam(away.team.displayName), {
+            const completedResult = {
               status: "post", statusText: "finished", homeScore: home.score, awayScore: away.score,
               homeHtScore: Number.isFinite(homeFirstPeriod) ? homeFirstPeriod : null,
               awayHtScore: Number.isFinite(awayFirstPeriod) ? awayFirstPeriod : null
-            });
+            };
+            completedScoreboardByTeams.set(normalizeTeam(home.team.displayName) + "|" + normalizeTeam(away.team.displayName), completedResult);
+            if (event.id != null && String(event.id).trim()) completedScoreboardById.set(String(event.id), completedResult);
           }
           for (const row of pending.rows) {
             const alert = row.payload || {};
@@ -1378,9 +1381,10 @@ const server = http.createServer(async (req, res) => {
             // goals for a missing half-time score.
             const alertHome = alert.home || (Array.isArray(alert.teams) ? alert.teams[0] : "");
             const alertAway = alert.away || (Array.isArray(alert.teams) ? alert.teams[1] : "");
-            const completed = alertHome && alertAway
-              ? completedScoreboardByTeams.get(normalizeTeam(alertHome) + "|" + normalizeTeam(alertAway))
-              : null;
+            const completed = (alert.eventId != null ? completedScoreboardById.get(String(alert.eventId)) : null) ||
+              (alertHome && alertAway
+                ? completedScoreboardByTeams.get(normalizeTeam(alertHome) + "|" + normalizeTeam(alertAway))
+                : null);
             const liveStatusIsFinished = /finished|full.?time|ended|final|\bft\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
             if (secondHalf && (!live || !liveStatusIsFinished) && completed) {
               live = completed;
