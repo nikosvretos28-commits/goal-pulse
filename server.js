@@ -80,7 +80,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst is included; live alerts require verified odds >= 1.60.
+// Deployment verification marker: protocol analyst is included; alert odds are not restricted by a 1.60 minimum.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
@@ -1534,18 +1534,6 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
-          // Never issue an AI/VIP goal alert without verified decimal odds of at least 1.60.
-          // Missing odds or sub-1.60 prices must not leak into notifications or history.
-          const verifiedPrice = verifiedOdds && Number.isFinite(Number(verifiedOdds.price))
-            ? Number(verifiedOdds.price) : NaN;
-          if (!Number.isFinite(verifiedPrice) || verifiedPrice < 1.60) {
-            console.log("Push alert skipped: verified odds below minimum or unavailable", JSON.stringify({
-              match: match.home + " – " + match.away,
-              minute: getMatchMinute(match),
-              verifiedPrice: Number.isFinite(verifiedPrice) ? verifiedPrice : null
-            }));
-            continue;
-          }
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
@@ -1563,7 +1551,7 @@ const server = http.createServer(async (req, res) => {
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
           // Alerts are sent without odds. Keep the suggested goal line grounded in the live score.
-          const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) >= 1.60);
+          const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1.0);
           // Reuse the same validated score snapshot for the alert line and history.
           const overLine = targetOverLine.toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
