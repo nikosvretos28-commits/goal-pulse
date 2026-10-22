@@ -41,8 +41,8 @@ A GitHub Actions workflow builds and publishes a container image to GitHub Conta
 - [x] Docker build includes a Node syntax check.
 - [x] The container workflow triggers on any push to the selected branches, including frontend-only changes, so the static UI is not left out of a rebuilt image.
 - [x] The live 5-/10-minute inline summary includes attacks and dangerous attacks as well as shots, shots on target and corners.
-- [x] GitHub Actions container build/push succeeded for commit `ca1595b25bf1a1f2d50535c91569d831c9ea2d6c`; Docker build and `node --check server.js` passed.
-- [ ] Render deployment of this branch has not been confirmed; the current Render service is configured for `main`, and its recent builds failed. The image-based route still requires checking GHCR package visibility and configuring Render with the image plus existing environment variables/database connection.
+- [x] GitHub Actions container build/push succeeded for commit `fca9f9200ec533f82b6aa5deaa866d9389640bf7` (run [39761144733](https://github.com/nikosvretos28-commits/goal-pulse/actions/runs/39761144733)); earlier build also passed `node --check server.js`.
+- [ ] Render deployment of this branch has not been confirmed; the current Render service is configured for `main`. Render build logs explicitly report that the workspace has run out of build-pipeline minutes for this billing period, so Git-based deploys are cancelled before the new code can go live. A free-path next step is to configure Render to use the published GHCR image, verify package visibility, and preserve the existing environment variables/database connection; the available Render API action cannot create an image-based service.
 - [ ] Live odds coverage and prediction performance have not been validated end-to-end.
 
 Do not merge or claim the features are live until the container workflow (or another successful build) and live API/database checks pass. Do not alter settled historical outcomes just to improve the reported success rate.
