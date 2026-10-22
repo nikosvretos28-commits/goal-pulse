@@ -1603,8 +1603,8 @@ function renderHighActivityMatches(){
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
- // Evaluate every qualifying live match, but display ONLY the five strongest.
- // Recalculate the shortlist on each refresh so matches can enter/leave dynamically.
+ // Evaluate and display EVERY qualifying live match, not a five-match shortlist.
+ // Recalculate each refresh so matches leave when pressure fades and re-enter when it returns.
  if(powerGamesUnlocked){
   const powerRows=document.getElementById("powerGamesRows");
   if(powerRows)powerRows.innerHTML=ranked.length
@@ -1613,11 +1613,10 @@ function renderHighActivityMatches(){
   const status=document.getElementById("powerGamesStatus");if(status)status.textContent=ranked.length+" ΙΣΧΥΡΑ ΣΗΜΑΤΑ";
   const count=document.getElementById("powerGamesCount");if(count)count.textContent=String(ranked.length);
  }
- const topFive=ranked.slice(0,5);
  highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
- highActivityTopIds=new Set(topFive.map(x=>String(x.match.id)));
- box.innerHTML=topFive.length
-  ?topFive.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+ highActivityTopIds=new Set(ranked.map(x=>String(x.match.id)));
+ box.innerHTML=ranked.length
+  ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
