@@ -1097,6 +1097,27 @@ const server = http.createServer(async (req, res) => {
       const metrics = await metricsResponse.json();
       const scoreboard = await scoreboardResponse.json();
       const scoreboardEvents = (scoreboard.feeds || []).flatMap(feed => (feed.events || []).map(event => ({ ...event, __goalPulseLeagueCode: feed.code || "" })));
+      // Include recent completed fixtures so pending alerts can settle after UTC midnight.
+      // Keep the current-day feed unchanged and append only finished events from prior dates.
+      for (const daysBack of [1, 2]) {
+        const pastDate = new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+        try {
+          const pastResponse = await fetch(base + "/api/scoreboard?date=" + pastDate, { signal: AbortSignal.timeout(15000) });
+          if (!pastResponse.ok) continue;
+          const pastScoreboard = await pastResponse.json();
+          for (const feed of (pastScoreboard.feeds || [])) {
+            for (const event of (feed.events || [])) {
+              const state = String(event.status?.type?.state || "").toLowerCase();
+              const label = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
+              if (state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(label)) {
+                scoreboardEvents.push({ ...event, __goalPulseLeagueCode: feed.code || "" });
+              }
+            }
+          }
+        } catch (pastScoreboardError) {
+          console.warn("[settlement] Prior-date scoreboard unavailable for", pastDate, pastScoreboardError.message);
+        }
+      }
       // Join scoreboard score/status fields to the separate live-stat feed by normalized team names.
       // The stats endpoint does not include scores, and displayClock often looks like "45:00";
       // without this join the AI scanner silently sees no eligible first-half matches.
