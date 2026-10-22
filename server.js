@@ -1816,11 +1816,15 @@ const server = http.createServer(async (req, res) => {
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
           if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
+            // Live-odds providers may have no licensed bookmaker coverage for a fixture.
+            // Never invent a price and never let missing odds erase a separately qualified
+            // high-pressure goal signal. The notification/history must explicitly mark odds
+            // as unverified; the exact score-derived market line remains visible.
+            console.info("AI goal-pressure signal retained without verified odds", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
               period: oddsPeriod, targetLine: targetOverLine, reason: "no_verified_active_quote"
             }));
-            continue;
+            verifiedOdds = null;
           }
           const cooldownKey = id + ":" + level;
           const lastAlert = pushScanLastAlert.get(cooldownKey);
@@ -1839,15 +1843,16 @@ const server = http.createServer(async (req, res) => {
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
           // The quote was verified above; keep market and saved history tied to that quote.
-          const hasVerifiedOdds = true;
+          const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1 && Number.isFinite(Number(verifiedOdds.line)) && Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001);
           // Reuse the same validated score snapshot for the alert line and history.
           const overLine = targetOverLine.toFixed(1);
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
           const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
           const marketLabel = oddsPeriod === "second_half" ? "Τελικό σύνολο Over " : "1ο ημίχ. Over ";
-          const priceSuffix = verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1
-            ? " @" + Number(verifiedOdds.price).toFixed(2) : "";
+          const priceSuffix = hasVerifiedOdds
+            ? " @" + Number(verifiedOdds.price).toFixed(2)
+            : " (χωρίς επιβεβαιωμένη απόδοση)";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix;
           const result = await sendPushToSubscribers({
             title: alertTitle,
