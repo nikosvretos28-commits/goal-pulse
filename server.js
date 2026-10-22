@@ -610,6 +610,48 @@ async function findPitchLeague(code) {
   const allowed = countryCodes[country] || [];
   return candidates.find(item => allowed.includes(String(item.country_code || "").toUpperCase())) || null;
 }
+// Recent Dirty Sheet profile: share of the team's latest completed league matches in which it CONCEDED at least one goal.
+// Missing history/provider data is neutral and never fabricated; cache per league for six hours.
+const dirtySheetLeagueCache = new Map();
+async function getDirtySheetSupport(leagueCode, homeName, awayName) {
+  try {
+    if (!leagueCode || !homeName || !awayName) return { support: 0, homeRate: null, awayRate: null, sample: 0 };
+    const now = Date.now();
+    let cached = dirtySheetLeagueCache.get(String(leagueCode));
+    if (!cached || now - cached.at > 6 * 60 * 60 * 1000) {
+      const league = await findPitchLeague(String(leagueCode));
+      if (!league?.id) return { support: 0, homeRate: null, awayRate: null, sample: 0 };
+      const year = new Date().getUTCFullYear();
+      const season = pitchSeasonForCode(String(leagueCode), year, league.seasons);
+      const response = await pitchGet("/v1/leagues/" + encodeURIComponent(league.id) + "/matches?season=" + encodeURIComponent(season) + "&status=all");
+      const rows = response?.data?.matches || [];
+      const norm = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const completed = rows.map(m => ({
+        date: String(m.time_utc || m.date || ""), status: String(m.status || "").toLowerCase(),
+        home: norm(m.home_team?.name), away: norm(m.away_team?.name),
+        hs: Number(m.score_home), as: Number(m.score_away)
+      })).filter(m => /finished|full.?time|\\bft\\b|ended/.test(m.status) && m.home && m.away && Number.isFinite(m.hs) && Number.isFinite(m.as));
+      cached = { at: now, completed }; dirtySheetLeagueCache.set(String(leagueCode), cached);
+    }
+    const norm = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const rates = name => {
+      const target = norm(name);
+      const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10);
+      if (matches.length < 4) return { rate: null, sample: matches.length };
+      const conceded = matches.filter(m => m.home === target ? m.as > 0 : m.hs > 0).length;
+      return { rate: conceded / matches.length, sample: matches.length };
+    };
+    const h = rates(homeName), a = rates(awayName);
+    // Weight each team's concede rate; require usable samples before adding a capped bonus.
+    const usable = [h,a].filter(x => x.rate != null);
+    const avg = usable.length ? usable.reduce((sum,x) => sum + x.rate, 0) / usable.length : null;
+    const support = avg == null ? 0 : avg >= 0.9 ? 2 : avg >= 0.8 ? 1.5 : avg >= 0.7 ? 1 : avg >= 0.6 ? 0.5 : 0;
+    return { support, homeRate: h.rate, awayRate: a.rate, sample: Math.min(h.sample, a.sample) };
+  } catch (error) {
+    console.warn("Dirty Sheet history unavailable; neutral fallback:", String(error.message || error).slice(0,160));
+    return { support: 0, homeRate: null, awayRate: null, sample: 0 };
+  }
+}
 async function pitchGet(apiPath) {
   const key = process.env.PITCH_API_KEY;
   if (!key) {
@@ -1761,8 +1803,12 @@ const server = http.createServer(async (req, res) => {
         }, 0);
         const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport;
         const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport;
-        // Do not let conversion alone create an alert; it only strengthens already-qualified live pressure.
-        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 10));
+        // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
+        // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
+        const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
+        const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
+        const dirtySheetSupport = Number(dirtySheet.support || 0);
+        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
