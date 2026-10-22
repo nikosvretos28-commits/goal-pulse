@@ -1203,9 +1203,10 @@ const server = http.createServer(async (req, res) => {
             if (!Number.isFinite(startScore)) continue;
             if (firstHalf) {
               const hasHtScore = live.homeHtScore != null && live.awayHtScore != null && Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
-              const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\bht\b/.test(statusClock);
               const explicitlySecondHalf = /second half|2nd half|2ο ημίχρονο/.test(statusText) || /second half|2nd half/.test(statusClock);
               const explicitlyFirstHalf = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusText);
+              // Do not treat the phrase "1st half" / "1ο ημίχρονο" as confirmed half-time.
+              const isAtHalf = /half.?time|halftime|τέλος\s*(?:του\s*)?ημιχρόνου|^ημίχρονο$/.test(statusText) || /\bht\b/.test(statusClock);
               const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
               const clearlyFirstHalf = !isAtHalf && !explicitlySecondHalf &&
                 ((Number.isFinite(minuteNow) && minuteNow <= 45) || explicitlyFirstHalf);
