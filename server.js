@@ -1008,15 +1008,43 @@ const server = http.createServer(async (req, res) => {
       }
       const winRate = terminal.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won' || String(row.payload.betOutcome).toLowerCase() === 'lost');
       const wins = winRate.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won').length;
+      const nowMs = Date.now();
+      const pendingRows = rows.filter(row => pending.includes(row));
+      const pendingAge = { under1h: 0, from1to24h: 0, from1to7d: 0, over7d: 0, missingCreatedAt: 0 };
+      for (const row of pendingRows) {
+        const created = new Date(row.createdAt).getTime();
+        if (!Number.isFinite(created)) pendingAge.missingCreatedAt++;
+        else {
+          const age = nowMs - created;
+          if (age < 60 * 60 * 1000) pendingAge.under1h++;
+          else if (age < 24 * 60 * 60 * 1000) pendingAge.from1to24h++;
+          else if (age < 7 * 24 * 60 * 60 * 1000) pendingAge.from1to7d++;
+          else pendingAge.over7d++;
+        }
+      }
+      const pendingSample = [...pendingRows].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(0, 30).map(row => ({
+        alertId: row.id, eventId: row.eventId,
+        createdAt: row.createdAt,
+        ageHours: Number.isFinite(new Date(row.createdAt).getTime()) ? Math.round((nowMs - new Date(row.createdAt).getTime()) / 360000) / 10 : null,
+        teams: [row.payload.homeTeam || row.payload.home || null, row.payload.awayTeam || row.payload.away || null],
+        market: row.payload.market || null,
+        minute: row.payload.minuteNumber ?? row.payload.minute ?? null,
+        periodAtSignal: row.payload.periodAtSignal || null,
+        evaluationRule: row.payload.evaluationRule || null,
+        eventStatus: row.payload.status || row.payload.matchStatus || null,
+        startScore: row.payload.startScore ?? null,
+        betOutcome: row.payload.betOutcome || 'pending'
+      }));
       return send(res, 200, {
         ok: true, readOnly: true, generatedAt: new Date().toISOString(), windowDays: 180,
         scanned: rows.length, settled: terminal.length, pending: pending.length,
+        pendingAge, pendingSample,
         settledWinLossSample: winRate.length,
         wins, losses: winRate.length - wins,
         successRate: winRate.length ? Math.round(wins / winRate.length * 1000) / 10 : null,
         byOutcome, byPeriod,
         integrity: { issueCount: issues.length, issueLimit: 100, issues },
-        note: "Audit checks stored-field consistency only; it does not independently verify provider final scores and does not modify history."
+        note: "Read-only audit. Pending age helps identify stale alerts but does not prove match completion; stored outcomes are not independently checked against provider final scores."
       });
     } catch (error) {
       console.error("Alert history verification failed:", error.message);
@@ -2812,6 +2840,8 @@ server.listen(PORT, "0.0.0.0", () => {
         scanned: audit.scanned,
         settled: audit.settled,
         pending: audit.pending,
+        pendingAge: audit.pendingAge,
+        pendingSample: audit.pendingSample,
         settledWinLossSample: audit.settledWinLossSample,
         wins: audit.wins,
         losses: audit.losses,
