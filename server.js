@@ -1004,8 +1004,8 @@ const server = http.createServer(async (req, res) => {
           if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score') addIssue(row, 'period_rule_conflict', 'Second-half alert is marked as settled using first-half score.');
           // Internal consistency check: compare stored settlement against its recorded score and Over line.
           // This does not independently verify the score with a provider; it catches contradictory stored outcomes.
-          const scoreMatch = String(p.betFinalScore || '').match(/^\\s*(\\d+)\\s*[-:]\\s*(\\d+)\\s*$/);
-          const overMatch = String(p.market || '').match(/\\bover\\s*(\\d+(?:\\.\\d+)?)/i);
+          const scoreMatch = String(p.betFinalScore || '').match(/^\s*(\d+)\s*[-:]\s*(\d+)\s*$/);
+          const overMatch = String(p.market || '').match(/\bover\s*(\d+(?:\.\d+)?)/i);
           const firstHalfSettlement = p.evaluationRule === 'end_of_first_half_score' || p.periodAtSignal === 'first_half';
           const scoreScopeVerified = firstHalfSettlement
             ? p.betScoreScope === 'first_half'
