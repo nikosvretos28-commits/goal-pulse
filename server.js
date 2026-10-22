@@ -1483,7 +1483,11 @@ const server = http.createServer(async (req, res) => {
           const targetOverLine = Number((currentGoalsForMarketCheck + 0.5).toFixed(1));
           const oddsMinute = parseLiveMinute(getMatchMinute(match));
           const oddsStatus = String(match.statusText || match.status || match.status_text || "").toLowerCase();
-          const oddsPeriod = (Number.isFinite(oddsMinute) && oddsMinute > 45) || /second half|2nd half|2ο ημίχρονο/.test(oddsStatus)
+          // At HT the first-half market has ended; use the full-match market for the second-half remainder.
+          const isHalfTime = /\bht\b|half.?time|halftime|ανάπαυλα/.test(oddsStatus) ||
+            String(getMatchMinute(match) || "").trim().toLowerCase() === "ht";
+          const oddsPeriod = (Number.isFinite(oddsMinute) && oddsMinute > 45) ||
+            /second half|2nd half|2ο ημίχρονο/.test(oddsStatus) || isHalfTime
             ? "second_half" : "first_half";
           if (oddsPeriod === "first_half") firstHalfOddsChecks++;
           try {
