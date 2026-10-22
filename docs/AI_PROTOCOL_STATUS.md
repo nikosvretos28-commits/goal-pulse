@@ -36,8 +36,8 @@ A GitHub Actions workflow builds and publishes a container image to GitHub Conta
 - [x] Analyst invocation exists at startup, hourly, and via the API endpoint.
 - [x] Signal-time feature snapshot exists in alert payload construction.
 - [x] Docker build includes a Node syntax check.
-- [ ] GitHub container build/push success has not yet been confirmed.
-- [ ] Render deployment of this branch has not been confirmed; the current Render service is configured for `main`, and its recent builds failed.
+- [x] GitHub Actions container build/push succeeded for commit `ca1595b25bf1a1f2d50535c91569d831c9ea2d6c`; Docker build and `node --check server.js` passed.
+- [ ] Render deployment of this branch has not been confirmed; the current Render service is configured for `main`, and its recent builds failed. The image-based route still requires checking GHCR package visibility and configuring Render with the image plus existing environment variables/database connection.
 - [ ] Live odds coverage and prediction performance have not been validated end-to-end.
 
 Do not merge or claim the features are live until the container workflow (or another successful build) and live API/database checks pass. Do not alter settled historical outcomes just to improve the reported success rate.
