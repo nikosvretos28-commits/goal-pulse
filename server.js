@@ -1687,6 +1687,7 @@ const server = http.createServer(async (req, res) => {
           at: now,
           shots: total("shots"),
           onTarget: total("shotsOnTarget"),
+          corners: total("corners"),
           attacks: total("attacks"),
           dangerous: total("dangerousAttacks"),
           xG: total("xG")
@@ -1704,16 +1705,20 @@ const server = http.createServer(async (req, res) => {
         if (!previous || now - previous.at < 35000) continue;
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
+        const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const xGDelta = current.xG != null && previous.xG != null ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
-        const evidenceKinds = [shots, onTarget, attacks, dangerous].filter(value => value > 0).length;
+        // Match the reference pressure model: last-five-minute corners support the signal,
+        // but shots and at least one shot on target remain mandatory (no corner-only alerts).
+        const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
         // AI goal pressure uses shots, dangerous attacks and xG only.
         // Corners and clean-sheet rates do not affect alert eligibility or scoring.
         const totalShots = current.shots == null ? 0 : Number(current.shots);
         const totalOnTarget = current.onTarget == null ? 0 : Number(current.onTarget);
         const totalAttacks = current.attacks == null ? 0 : Number(current.attacks);
         const totalDangerous = current.dangerous == null ? 0 : Number(current.dangerous);
+        const totalCorners = current.corners == null ? 0 : Number(current.corners);
         // Some live providers (including SportScore's current widget feed) do not publish dangerous attacks.
         // Distinguish an unavailable metric from a real zero; use a stricter shots/SOT/attacks fallback
         // only when dangerous attacks are genuinely absent, without fabricating that statistic.
@@ -1749,8 +1754,8 @@ const server = http.createServer(async (req, res) => {
           // Cap this bonus and require at least two shots on target to reduce tiny-sample noise.
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
-        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
-        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2));
+        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
+        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2));
         // Do not let conversion alone create an alert; it only strengthens already-qualified live pressure.
         const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 10));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
@@ -1831,14 +1836,16 @@ const server = http.createServer(async (req, res) => {
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
             const shotsSinceLast = current.shots != null && lastAlert.shots != null ? Number(current.shots) - Number(lastAlert.shots) : 0;
             const onTargetSinceLast = current.onTarget != null && lastAlert.onTarget != null ? Number(current.onTarget) - Number(lastAlert.onTarget) : 0;
+            const cornersSinceLast = current.corners != null && lastAlert.corners != null ? Number(current.corners) - Number(lastAlert.corners) : 0;
             const xGSinceLast = current.xG != null && lastAlert.xG != null ? Number(current.xG) - Number(lastAlert.xG) : 0;
             const oddsImproved = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) >= Number(lastAlert.price || 0) + 0.05);
             // Re-alert only when the match adds meaningful shooting/xG evidence.
-            if (shotsSinceLast < 2 && onTargetSinceLast < 1 && xGSinceLast < 0.2 && !oddsImproved) continue;
+            if (shotsSinceLast < 2 && onTargetSinceLast < 1 && cornersSinceLast < 2 && xGSinceLast < 0.2 && !oddsImproved) continue;
           }
           const reason = [
             shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία" : "",
+            corners ? corners + " νέα κόρνερ" : "",
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : ""
           ].filter(Boolean).join(" · ");
@@ -1865,6 +1872,7 @@ const server = http.createServer(async (req, res) => {
               at: now,
               shots: current.shots,
               onTarget: current.onTarget,
+              corners: current.corners,
               xG: current.xG,
               price: hasVerifiedOdds ? Number(verifiedOdds.price) : null
             });
@@ -1904,7 +1912,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, attacks, dangerous, ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
+                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
