@@ -1013,11 +1013,19 @@ const server = http.createServer(async (req, res) => {
           if (firstHalfSettlement && ['won','lost','push','void'].includes(outcome) && !scoreScopeVerified) {
             addIssue(row, 'settlement_score_scope_unverified', 'Historical first-half result does not identify whether betFinalScore is the half-time score; its market outcome cannot be independently checked from this saved score alone.');
           }
-          if (scoreScopeVerified && scoreMatch && overMatch && ['won','lost','push'].includes(outcome)) {
+          if (p.lineType === 'asian' && p.asianPeriod === 'second_half' && ['won','lost','push'].includes(outcome)) {
+            const secondHalfGoals = Number(p.betSecondHalfGoals);
+            const line = overMatch ? Number(overMatch[1]) : Number(p.overLine);
+            if (!Number.isFinite(secondHalfGoals) || !Number.isFinite(line)) {
+              addIssue(row, 'asian_period_score_unverified', 'Second-half Asian result has no saved second-half goal total or valid line for outcome verification.');
+            } else {
+              const expected = secondHalfGoals === line && Number.isInteger(line) ? 'push' : secondHalfGoals > line ? 'won' : 'lost';
+              if (expected !== outcome) addIssue(row, 'market_score_outcome_conflict', 'Recorded Asian outcome conflicts with saved second-half goals and Over line (expected ' + expected + ', stored ' + outcome + ').');
+            }
+          } else if (scoreScopeVerified && scoreMatch && overMatch && ['won','lost','push'].includes(outcome) && p.lineType !== 'asian') {
             const totalGoals = Number(scoreMatch[1]) + Number(scoreMatch[2]);
             const line = Number(overMatch[1]);
-            const asianIntegerLine = p.lineType === 'asian' && Number.isInteger(line);
-            const expected = asianIntegerLine && totalGoals === line ? 'push' : totalGoals > line ? 'won' : 'lost';
+            const expected = totalGoals > line ? 'won' : 'lost';
             if (expected !== outcome) addIssue(row, 'market_score_outcome_conflict', 'Recorded outcome conflicts with the saved period score and Over line (expected ' + expected + ', stored ' + outcome + ').');
           }
         }
@@ -1584,17 +1592,30 @@ const server = http.createServer(async (req, res) => {
             if (!bet.home || !bet.away || !Number.isFinite(Number(bet.overLine))) continue;
             const final = finalByTeams.get(normalizeSettlementTeam(bet.home) + "|" + normalizeSettlementTeam(bet.away));
             if (!final) continue;
+            // Asian alerts are second-half-only. Never grade one against full-time total
+            // when its period/start score metadata is missing; leave it pending for review.
+            const isSecondHalfAsian = bet.lineType === "asian" && bet.asianPeriod === "second_half" &&
+              bet.startScore != null && Number.isFinite(Number(bet.startScore));
+            if (!isSecondHalfAsian) {
+              console.warn("Asian bet settlement skipped: missing second-half period/start score", JSON.stringify({alertId: row.alert_id, asianPeriod: bet.asianPeriod || null, startScore: bet.startScore ?? null}));
+              continue;
+            }
             const finalTotal = final.homeScore + final.awayScore;
-            const isSecondHalfAsian = bet.lineType === "asian" && bet.asianPeriod === "second_half" && Number.isFinite(Number(bet.startScore));
-            const settledTotal = isSecondHalfAsian ? finalTotal - Number(bet.startScore) : finalTotal;
+            const settledTotal = finalTotal - Number(bet.startScore);
+            if (settledTotal < 0) {
+              console.warn("Asian bet settlement skipped: final total below recorded start score", JSON.stringify({alertId: row.alert_id, finalTotal, startScore: bet.startScore}));
+              continue;
+            }
             const line = Number(bet.overLine);
-            const result = settledTotal > line ? "won" : settledTotal === line ? "void" : "lost";
+            if (!Number.isFinite(line)) continue;
+            const result = settledTotal > line ? "won" : settledTotal === line && Number.isInteger(line) ? "push" : "lost";
             bet.betOutcome = result;
             bet.betSettlementLabel = result === "won" ? "Κερδισμένο" : result === "lost" ? "Χαμένο" : "Επιστροφή (ασιατικό push)";
             bet.betFinalScore = final.homeScore + "-" + final.awayScore;
+            bet.betScoreScope = "full_time";
             bet.betSettledAt = now;
-            bet.betSettlementRule = isSecondHalfAsian ? "asian_over_second_half_goals_vs_line" : "asian_over_final_total_vs_line";
-            if (isSecondHalfAsian) bet.betSecondHalfGoals = settledTotal;
+            bet.betSettlementRule = "asian_over_second_half_goals_vs_line";
+            bet.betSecondHalfGoals = settledTotal;
             bet.betUpdatedAt = now;
             bet.recordUpdatedAt = now;
             await analyticsPool.query(
