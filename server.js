@@ -634,19 +634,29 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
       cached = { at: now, completed }; dirtySheetLeagueCache.set(String(leagueCode), cached);
     }
     const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks)\s+)+/, "").replace(/\s+(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks))+$/, "").trim();
+    // League baseline prevents tiny samples from being treated as certainty.
+    const leagueAppearances = cached.completed.length * 2;
+    const leagueConcededAppearances = cached.completed.reduce((sum, m) => sum + (m.hs > 0 ? 1 : 0) + (m.as > 0 ? 1 : 0), 0);
+    const leagueConcedeRate = leagueAppearances ? leagueConcededAppearances / leagueAppearances : 0.72;
     const rates = name => {
       const target = norm(name);
       const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10);
-      if (matches.length < 4) return { rate: null, sample: matches.length };
+      if (matches.length < 4) return { rate: null, rawRate: null, sample: matches.length, reliability: 0 };
       const conceded = matches.filter(m => m.home === target ? m.as > 0 : m.hs > 0).length;
-      return { rate: conceded / matches.length, sample: matches.length };
+      const rawRate = conceded / matches.length;
+      // Empirical shrinkage: larger samples stay closer to their measured rate;
+      // small samples are pulled toward the competition baseline.
+      const priorMatches = 5;
+      const weightedRate = (conceded + leagueConcedeRate * priorMatches) / (matches.length + priorMatches);
+      return { rate: weightedRate, rawRate, sample: matches.length, reliability: matches.length / (matches.length + priorMatches) };
     };
     const h = rates(homeName), a = rates(awayName);
-    // Weight each team's concede rate; require usable samples before adding a capped bonus.
     const usable = [h,a].filter(x => x.rate != null);
-    const avg = usable.length ? usable.reduce((sum,x) => sum + x.rate, 0) / usable.length : null;
+    // Each team contributes in proportion to its sample reliability.
+    const reliabilityTotal = usable.reduce((sum,x) => sum + x.reliability, 0);
+    const avg = reliabilityTotal ? usable.reduce((sum,x) => sum + x.rate * x.reliability, 0) / reliabilityTotal : null;
     const support = avg == null ? 0 : avg >= 0.9 ? 2 : avg >= 0.8 ? 1.5 : avg >= 0.7 ? 1 : avg >= 0.6 ? 0.5 : 0;
-    return { support, homeRate: h.rate, awayRate: a.rate, sample: Math.min(h.sample, a.sample) };
+    return { support, homeRate: h.rate, awayRate: a.rate, homeRawRate: h.rawRate, awayRawRate: a.rawRate, homeSample: h.sample, awaySample: a.sample, sample: Math.min(h.sample, a.sample), leagueConcedeRate };
   } catch (error) {
     console.warn("Dirty Sheet history unavailable; neutral fallback:", String(error.message || error).slice(0,160));
     return { support: 0, homeRate: null, awayRate: null, sample: 0 };
