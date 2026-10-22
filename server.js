@@ -1397,10 +1397,20 @@ const server = http.createServer(async (req, res) => {
         // Corners and clean-sheet rates do not affect alert eligibility or scoring.
         const totalShots = current.shots == null ? 0 : Number(current.shots);
         const totalOnTarget = current.onTarget == null ? 0 : Number(current.onTarget);
+        const totalAttacks = current.attacks == null ? 0 : Number(current.attacks);
         const totalDangerous = current.dangerous == null ? 0 : Number(current.dangerous);
+        // Some live providers (including SportScore's current widget feed) do not publish dangerous attacks.
+        // Distinguish an unavailable metric from a real zero; use a stricter shots/SOT/attacks fallback
+        // only when dangerous attacks are genuinely absent, without fabricating that statistic.
+        const dangerousAvailable = current.dangerous != null && previous?.dangerous != null;
+        const attacksAvailable = current.attacks != null && previous?.attacks != null;
         const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
-        const recentGoalEvidence = shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && dangerous >= 3;
-        const sustainedGoalEvidence = totalShots >= 20 && totalOnTarget >= 4 && totalDangerous >= 20;
+        const recentGoalEvidence = dangerousAvailable
+          ? shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && dangerous >= 3
+          : attacksAvailable && shots >= 2 && onTarget >= 1 && attacks >= 5 && [shots, onTarget, attacks].filter(value => value > 0).length >= 3;
+        const sustainedGoalEvidence = dangerousAvailable
+          ? totalShots >= 20 && totalOnTarget >= 4 && totalDangerous >= 20
+          : attacksAvailable && totalShots >= 20 && totalOnTarget >= 4 && totalAttacks >= 60;
         // xG strengthens the candidate when available; missing xG never blocks evaluation.
         // Current-match shot quality is a supplemental signal, never a standalone trigger.
         // Use goals/SOT as a conservative live conversion indicator when the feed provides valid values.
@@ -1425,7 +1435,7 @@ const server = http.createServer(async (req, res) => {
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
         const points = Math.min(shots, 4) + onTarget * 2 + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport;
-        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalDangerous * 0.05, 3);
+        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2));
         // Do not let conversion alone create an alert; it only strengthens already-qualified live pressure.
         const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 10));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
