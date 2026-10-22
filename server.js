@@ -1302,8 +1302,42 @@ const server = http.createServer(async (req, res) => {
           );
           if (repairedHalftime.rowCount) console.warn("Goal Pulse history repaired: reopened halftime alerts misgraded against first-half score", JSON.stringify({ repaired: repairedHalftime.rowCount }));
           const pending = await analyticsPool.query(
-            "SELECT alert_id,payload FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','pending','εκκρεμεί','σε εκκρεμότητα') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND (payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') AND payload->>'market' NOT ILIKE '%ασιατ%' AND payload->>'market' NOT ILIKE '%asian%' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
+            "SELECT alert_id,payload,created_at FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','pending','εκκρεμεί','σε εκκρεμότητα') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND (payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') AND payload->>'market' NOT ILIKE '%ασιατ%' AND payload->>'market' NOT ILIKE '%asian%' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
           );
+          // Fetch historical scoreboard dates only when unresolved alerts actually need them.
+          // This extends reconciliation beyond the previous fixed 2-day window without
+          // requesting every past date on every scan.
+          const todayUtc = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+          const loadedPastDates = new Set([1, 2].map(daysBack =>
+            new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10).replace(/-/g, "")
+          ));
+          const pendingDates = new Set();
+          for (const pendingRow of pending.rows) {
+            if (!pendingRow.created_at) continue;
+            const alertDate = new Date(pendingRow.created_at).toISOString().slice(0, 10).replace(/-/g, "");
+            if (alertDate !== todayUtc && !loadedPastDates.has(alertDate)) pendingDates.add(alertDate);
+          }
+          for (const alertDate of pendingDates) {
+            try {
+              const historicalResponse = await fetch(base + "/api/scoreboard?date=" + alertDate, { signal: AbortSignal.timeout(15000) });
+              if (!historicalResponse.ok) continue;
+              const historicalScoreboard = await historicalResponse.json();
+              let addedFinished = 0;
+              for (const feed of (historicalScoreboard.feeds || [])) {
+                for (const event of (feed.events || [])) {
+                  const state = String(event.status?.type?.state || "").toLowerCase();
+                  const label = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
+                  if (state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(label)) {
+                    scoreboardEvents.push({ ...event, __goalPulseLeagueCode: feed.code || "" });
+                    addedFinished++;
+                  }
+                }
+              }
+              console.info("[settlement] Historical pending-alert date checked:", JSON.stringify({ date: alertDate, addedFinished }));
+            } catch (historicalError) {
+              console.warn("[settlement] Historical pending-alert date unavailable:", JSON.stringify({ date: alertDate, error: historicalError.message }));
+            }
+          }
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
           const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, "").trim();
           const completedScoreboardByTeams = new Map();
