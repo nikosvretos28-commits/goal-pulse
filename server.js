@@ -1516,7 +1516,21 @@ const server = http.createServer(async (req, res) => {
               : "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ";
             alert.betOutcome = won ? "won" : "lost";
             alert.betSettlementLabel = won ? "Κερδισμένο" : "Χαμένο";
-            alert.betFinalScore = hasFullScore ? homeScore + "-" + awayScore : null;
+            // Store the exact score for the period that was graded. For first-half alerts,
+            // never save the full-time score as betFinalScore when the result used HT goals.
+            const hasHtScoreForSettlement = live.homeHtScore != null && live.awayHtScore != null &&
+              Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
+            const settlementHomeScore = firstHalf && hasHtScoreForSettlement
+              ? Number(live.homeHtScore)
+              : homeScore;
+            const settlementAwayScore = firstHalf && hasHtScoreForSettlement
+              ? Number(live.awayHtScore)
+              : awayScore;
+            alert.betFinalScore = Number.isFinite(settlementHomeScore) && Number.isFinite(settlementAwayScore)
+              ? settlementHomeScore + "-" + settlementAwayScore
+              : null;
+            if (hasFullScore) alert.betMatchFinalScore = homeScore + "-" + awayScore;
+            alert.betScoreScope = firstHalf ? "first_half" : "full_time";
             alert.betSettledAt = now;
             alert.evaluatedAt = now;
             alert.evaluationRule = firstHalf ? "end_of_first_half_score" : "end_of_match_score";
