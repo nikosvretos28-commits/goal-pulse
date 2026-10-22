@@ -1003,7 +1003,7 @@ const server = http.createServer(async (req, res) => {
       });
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
       await analyticsPool.query(
-        "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) SELECT x.alert_id,x.event_id,x.level,to_timestamp(x.created_at/1000.0),x.payload,NOW() FROM jsonb_to_recordset($1::jsonb) AS x(alert_id text,event_id text,level text,created_at numeric,payload jsonb) ON CONFLICT(alert_id) DO UPDATE SET payload=CASE
+        `INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) SELECT x.alert_id,x.event_id,x.level,to_timestamp(x.created_at/1000.0),x.payload,NOW() FROM jsonb_to_recordset($1::jsonb) AS x(alert_id text,event_id text,level text,created_at numeric,payload jsonb) ON CONFLICT(alert_id) DO UPDATE SET payload=CASE
           WHEN alert_history.payload->>'betOutcome' IN ('won','lost','void','push')
            AND COALESCE(EXCLUDED.payload->>'betOutcome','pending') NOT IN ('won','lost','void','push')
           THEN EXCLUDED.payload || jsonb_build_object(
@@ -1016,7 +1016,7 @@ const server = http.createServer(async (req, res) => {
             'evaluationRule', alert_history.payload->'evaluationRule'
           )
           ELSE EXCLUDED.payload
-        END, updated_at=NOW()",
+        END, updated_at=NOW()`,
         [JSON.stringify(records)]
       );
       return send(res, 200, { ok: true, persistent: true, saved: records.length });
