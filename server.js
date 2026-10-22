@@ -72,7 +72,7 @@ let protocolAnalystRunInFlight = null;
 async function ensureProtocolAnalystDb() {
   if (!analyticsPool) return false;
   if (!protocolAnalystDbInit) protocolAnalystDbInit = analyticsPool.query(
-    "CREATE TABLE IF NOT EXISTS protocol_analyst_reports (id BIGSERIAL PRIMARY KEY, generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), report JSONB NOT NULL); CREATE INDEX IF NOT EXISTS protocol_analyst_reports_generated_at_idx ON protocol_analyst_reports(generated_at DESC)"
+    "CREATE TABLE IF NOT EXISTS protocol_analyst_reports (id BIGSERIAL PRIMARY KEY, generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), report JSONB NOT NULL); CREATE INDEX IF NOT EXISTS protocol_analyst_reports_generated_at_idx ON protocol_analyst_reports(generated_at DESC); CREATE TABLE IF NOT EXISTS ai_training_examples (alert_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL, settled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), label SMALLINT NOT NULL CHECK (label IN (0,1)), league TEXT, model_version TEXT NOT NULL, features JSONB NOT NULL, source_payload JSONB NOT NULL); CREATE INDEX IF NOT EXISTS ai_training_examples_created_at_idx ON ai_training_examples(created_at DESC); CREATE INDEX IF NOT EXISTS ai_training_examples_league_idx ON ai_training_examples(league)"
   ).then(() => true).catch(error => {
     protocolAnalystDbInit = null;
     console.error("Protocol analyst database unavailable:", error.message);
@@ -81,14 +81,42 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst is included; AI alerts require verified decimal odds >= 1.60.
+// Deployment verification marker: protocol analyst and multi-scanner AI goal ensemble are included; no minimum odds threshold.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
     if (!await ensureAlertHistoryDb() || !await ensureProtocolAnalystDb()) return null;
     const result = await analyticsPool.query(
-      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+      "SELECT alert_id, event_id, payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
     );
+    // Build a durable, labeled dataset only from real settled alerts. Each feature is
+    // frozen at alert time; no final-score/post-match features are added (leakage guard).
+    for (const row of result.rows) {
+      const p = row.payload || {};
+      const stats = p.statsAtSignal || {};
+      const label = p.betOutcome === "won" ? 1 : 0;
+      const numericFeature = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) ? Number(value) : null;
+      const features = {
+        minute: numericFeature(p.minuteNumber),
+        period: p.periodAtSignal || null,
+        odds: numericFeature(p.odds),
+        shots5m: numericFeature(stats.shots),
+        shotsOnTarget5m: numericFeature(stats.onTarget),
+        corners5m: numericFeature(stats.corners),
+        attacks5m: numericFeature(stats.attacks),
+        dangerousAttacks5m: numericFeature(stats.dangerous),
+        xG: numericFeature(stats.xG),
+        xGDelta: numericFeature(stats.xGDelta),
+        scannerNames: Array.isArray(p.aiScanners) ? [...new Set(p.aiScanners.map(String).filter(Boolean))] : [],
+        scannerScores: p.aiScannerScores && typeof p.aiScannerScores === "object" ? p.aiScannerScores : {},
+        evidenceFamilies: Array.isArray(p.aiEvidenceFamilies) ? p.aiEvidenceFamilies : []
+      };
+      await analyticsPool.query(
+        "INSERT INTO ai_training_examples(alert_id,event_id,created_at,label,league,model_version,features,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb) ON CONFLICT(alert_id) DO UPDATE SET label=EXCLUDED.label, settled_at=NOW(), features=EXCLUDED.features, source_payload=EXCLUDED.source_payload",
+        [row.alert_id, String(row.event_id || p.eventId || "unknown"), row.created_at, label, String(p.league || "Άγνωστο πρωτάθλημα"), "goal-pulse-rules-v2", JSON.stringify(features), JSON.stringify(p)]
+      );
+    }
+    const datasetCount = await analyticsPool.query("SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days')::int AS last_30_days, COUNT(DISTINCT league)::int AS leagues FROM ai_training_examples");
     const records = result.rows.map(row => {
       const p = row.payload || {};
       const won = p.betOutcome === "won";
@@ -106,6 +134,8 @@ async function runProtocolAnalyst() {
         shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
         xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
+        league: String(p.league || "Άγνωστο πρωτάθλημα").trim() || "Άγνωστο πρωτάθλημα",
+        scanners: Array.isArray(p.aiScanners) ? [...new Set(p.aiScanners.map(String).filter(Boolean))] : [],
         createdAt: row.created_at
       };
     });
@@ -114,6 +144,22 @@ async function runProtocolAnalyst() {
       return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
     };
     const overall = summarize(records);
+    const scannerRows = records.flatMap(row => row.scanners.map(scanner => ({ ...row, scanner })));
+    const byScanner = [...new Set(scannerRows.map(row => row.scanner))].map(scanner => ({
+      scanner, ...summarize(scannerRows.filter(row => row.scanner === scanner))
+    })).sort((a,b) => b.settled - a.settled);
+    const leagueScannerGroups = new Map();
+    for (const row of scannerRows) {
+      const key = row.league + "\\u0000" + row.scanner;
+      if (!leagueScannerGroups.has(key)) leagueScannerGroups.set(key, { league: row.league, scanner: row.scanner, rows: [] });
+      leagueScannerGroups.get(key).rows.push(row);
+    }
+    const byLeagueScanner = [...leagueScannerGroups.values()].map(group => ({
+      league: group.league,
+      scanner: group.scanner,
+      ...summarize(group.rows),
+      reliableSample: group.rows.length >= 20
+    })).sort((a,b) => b.settled - a.settled);
     const segment = (field, label) => {
       const values = [...new Set(records.map(row => row[field]))].sort();
       return values.map(value => ({ [label]: value, ...summarize(records.filter(row => row[field] === value)) }))
@@ -179,6 +225,14 @@ async function runProtocolAnalyst() {
       method: "statistical_review_of_settled_server_generated_ai_alerts",
       automaticRuleChanges: false,
       sample: overall,
+      trainingDataset: {
+        storedSettledExamples: Number(datasetCount.rows[0]?.total || 0),
+        settledExamplesLast30Days: Number(datasetCount.rows[0]?.last_30_days || 0),
+        leaguesRepresented: Number(datasetCount.rows[0]?.leagues || 0),
+        modelVersion: "goal-pulse-rules-v2",
+        trainingStatus: Number(datasetCount.rows[0]?.total || 0) >= 1000 ? "eligible_for_chronological_validation" : "collecting_real_settled_examples",
+        note: "This is a growing labeled dataset from actual settled Goal Pulse alerts, not millions of historical phases. It is not a trained ML model until a separate chronological train/test process is implemented and validated."
+      },
       dataQuality: {
         recordsAnalyzed: records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
@@ -192,6 +246,11 @@ async function runProtocolAnalyst() {
       byShots: segment("shotBand", "shotBand"),
       byOnTarget: segment("onTargetBand", "onTargetBand"),
       byXG: segment("xGBand", "xGBand"),
+      // Mirrors the useful principle described for MyGoal247: show each scanner's
+      // settled record overall and within each competition, without inventing data.
+      byScanner,
+      byLeagueScanner,
+      scannerPerformanceNote: "Τα ποσοστά ανά πρωτάθλημα/scanner εμφανίζονται ως αξιόπιστα μόνο με τουλάχιστον 20 settled alerts. Μικρότερα δείγματα είναι προσωρινά και δεν αλλάζουν αυτόματα το live πρωτόκολλο.",
       recommendations
     };
     await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
@@ -625,7 +684,7 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
       const season = pitchSeasonForCode(String(leagueCode), year, league.seasons);
       const response = await pitchGet("/v1/leagues/" + encodeURIComponent(league.id) + "/matches?season=" + encodeURIComponent(season) + "&status=all");
       const rows = response?.data?.matches || [];
-      const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks)\s+)+/, "").replace(/\s+(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks))+$/, "").trim();
       const completed = rows.map(m => ({
         date: String(m.time_utc || m.date || ""), status: String(m.status || "").toLowerCase(),
         home: norm(m.home_team?.name), away: norm(m.away_team?.name),
@@ -633,20 +692,30 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
       })).filter(m => /finished|full.?time|\bft\b|ended/.test(m.status) && m.home && m.away && Number.isFinite(m.hs) && Number.isFinite(m.as));
       cached = { at: now, completed }; dirtySheetLeagueCache.set(String(leagueCode), cached);
     }
-    const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks)\s+)+/, "").replace(/\s+(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks))+$/, "").trim();
+    // League baseline prevents tiny samples from being treated as certainty.
+    const leagueAppearances = cached.completed.length * 2;
+    const leagueConcededAppearances = cached.completed.reduce((sum, m) => sum + (m.hs > 0 ? 1 : 0) + (m.as > 0 ? 1 : 0), 0);
+    const leagueConcedeRate = leagueAppearances ? leagueConcededAppearances / leagueAppearances : 0.72;
     const rates = name => {
       const target = norm(name);
       const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10);
-      if (matches.length < 4) return { rate: null, sample: matches.length };
+      if (matches.length < 4) return { rate: null, rawRate: null, sample: matches.length, reliability: 0 };
       const conceded = matches.filter(m => m.home === target ? m.as > 0 : m.hs > 0).length;
-      return { rate: conceded / matches.length, sample: matches.length };
+      const rawRate = conceded / matches.length;
+      // Empirical shrinkage: larger samples stay closer to their measured rate;
+      // small samples are pulled toward the competition baseline.
+      const priorMatches = 5;
+      const weightedRate = (conceded + leagueConcedeRate * priorMatches) / (matches.length + priorMatches);
+      return { rate: weightedRate, rawRate, sample: matches.length, reliability: matches.length / (matches.length + priorMatches) };
     };
     const h = rates(homeName), a = rates(awayName);
-    // Weight each team's concede rate; require usable samples before adding a capped bonus.
     const usable = [h,a].filter(x => x.rate != null);
-    const avg = usable.length ? usable.reduce((sum,x) => sum + x.rate, 0) / usable.length : null;
+    // Each team contributes in proportion to its sample reliability.
+    const reliabilityTotal = usable.reduce((sum,x) => sum + x.reliability, 0);
+    const avg = reliabilityTotal ? usable.reduce((sum,x) => sum + x.rate * x.reliability, 0) / reliabilityTotal : null;
     const support = avg == null ? 0 : avg >= 0.9 ? 2 : avg >= 0.8 ? 1.5 : avg >= 0.7 ? 1 : avg >= 0.6 ? 0.5 : 0;
-    return { support, homeRate: h.rate, awayRate: a.rate, sample: Math.min(h.sample, a.sample) };
+    return { support, homeRate: h.rate, awayRate: a.rate, homeRawRate: h.rawRate, awayRawRate: a.rawRate, homeSample: h.sample, awaySample: a.sample, sample: Math.min(h.sample, a.sample), leagueConcedeRate };
   } catch (error) {
     console.warn("Dirty Sheet history unavailable; neutral fallback:", String(error.message || error).slice(0,160));
     return { support: 0, homeRate: null, awayRate: null, sample: 0 };
@@ -1808,7 +1877,50 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
+
+        // Goal Pulse multi-scanner ensemble: independent scanners inspect the same verified live sample.
+        // Each scanner has a distinct role; missing xG/history is neutral and never fabricated.
+        const liveMinuteForScanners = parseLiveMinute(getMatchMinute(match));
+        const scannerScores = {
+          momentum: recentGoalEvidence ? points + liveConversionSupport : 0,
+          sustainedPressure: sustainedGoalEvidence ? sustainedPoints + liveConversionSupport : 0,
+          xgSurge: recentGoalEvidence && xGDelta != null && xGDelta >= 0.20
+            ? points + liveConversionSupport + Math.min(1.5, xGDelta * 2) : 0,
+          defensiveWeakness: dirtySheetSupport > 0
+            ? Math.max(recentGoalEvidence ? points + liveConversionSupport : 0,
+                sustainedGoalEvidence ? sustainedPoints + liveConversionSupport : 0) + dirtySheetSupport : 0,
+          lateGamePressure: Number.isFinite(liveMinuteForScanners) && liveMinuteForScanners >= 65 &&
+            recentGoalEvidence && onTarget >= 1
+            ? points + liveConversionSupport : 0
+        };
+        const scannerThresholds = {
+          momentum: 5.5, sustainedPressure: 8, xgSurge: 5.5,
+          defensiveWeakness: 6.5, lateGamePressure: 5.5
+        };
+        const activeScanners = Object.entries(scannerScores)
+          .filter(([name, value]) => value >= scannerThresholds[name])
+          .map(([name]) => name);
+        const scannerConsensus = activeScanners.length;
+        // Do not treat overlapping scanners as statistically independent votes.
+        // Count distinct evidence families: short-window pressure, sustained match pressure,
+        // measured xG surge, and historical defensive weakness. Late-game timing is context,
+        // not a separate proof of goal probability.
+        const evidenceFamilies = [
+          recentGoalEvidence ? "short_window_pressure" : null,
+          sustainedGoalEvidence ? "sustained_pressure" : null,
+          xGDelta != null && xGDelta >= 0.20 ? "xg_surge" : null,
+          dirtySheetSupport >= 1.0 ? "historical_defensive_weakness" : null
+        ].filter(Boolean);
+        const distinctEvidenceCount = new Set(evidenceFamilies).size;
+        const singleScannerHighConfidence =
+          (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 9 &&
+            (xGDelta != null && xGDelta >= 0.20 || dirtySheetSupport >= 1.0 || sustainedGoalEvidence)) ||
+          (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 12 &&
+            (recentGoalEvidence || xGDelta != null && xGDelta >= 0.20 || dirtySheetSupport >= 1.0));
+        const hasMultiSourceEvidence = distinctEvidenceCount >= 2 &&
+          (recentGoalEvidence || sustainedGoalEvidence) &&
+          (onTarget >= 1 || totalOnTarget >= 4);
+        const isAiGoal = scoreAvailable && (hasMultiSourceEvidence || singleScannerHighConfidence);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
@@ -1817,8 +1929,8 @@ const server = http.createServer(async (req, res) => {
         else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
           // Prefer a verified, active quote for the exact score-derived line and period.
-          // If the provider has no licensed live-bookmaker coverage, keep the qualified
-          // pressure signal but label the missing price explicitly; never invent odds.
+          // A pressure signal is not sent as a betting alert unless its exact live market quote is verified.
+          // Never invent odds; there is no minimum price threshold.
           let verifiedOdds = null;
           // Compare the stats-feed score with the freshest joined scoreboard before
           // issuing a market. If the sources disagree, skip this scan rather than
@@ -1871,14 +1983,14 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
-          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.60 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            // AI alerts require a real, active, exact-market decimal quote of at least 1.60.
-            // Never send unknown/estimated odds or a lower price; Asian markets are excluded upstream.
+          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
+            // Require a real, active quote for the exact score-derived market. No invented odds;
+            // no minimum price threshold. Asian markets are excluded upstream.
             console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
-              period: oddsPeriod, targetLine: targetOverLine, minimumOdds: 1.60,
+              period: oddsPeriod, targetLine: targetOverLine,
               verifiedPrice: verifiedOdds?.price ?? null,
-              reason: !verifiedOdds ? "no_verified_active_quote" : Number(verifiedOdds.price) < 1.60 ? "verified_odds_below_1.60" : "invalid_or_mismatched_market"
+              reason: !verifiedOdds ? "no_verified_active_quote" : Number(verifiedOdds.price) <= 1 ? "invalid_verified_price" : "invalid_or_mismatched_market"
             }));
             continue;
           }
@@ -1958,6 +2070,12 @@ const server = http.createServer(async (req, res) => {
                   league: scoreEvent?.competitions?.[0]?.name || match.league || match.competition || "",
                   minute: rawMinute, minuteNumber,
                   market: "Over " + overLine,
+                  aiScanners: activeScanners,
+                  aiScannerCount: scannerConsensus,
+                  aiScannerScores: scannerScores,
+                  aiEvidenceFamilies: evidenceFamilies,
+                  aiDistinctEvidenceCount: distinctEvidenceCount,
+                  aiDecisionRule: "multi_source_evidence_or_strong_confirmed_signal",
                   odds: hasVerifiedOdds ? verifiedOdds.price : null,
                   bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
                   ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null, alertType: "goal_market_signal" }),
