@@ -2233,7 +2233,7 @@ const server = http.createServer(async (req, res) => {
           // Use it for broader coverage; stats still must come from verified metrics providers.
           try {
             const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
-            const sportScoreResponses = await Promise.all(["live", "upcoming"].map(async status => {
+            const sportScoreResponses = await Promise.all(["live", "upcoming", "finished"].map(async status => {
               const endpoint = "https://sportscore.com/api/v1/fixtures/?sport=football" +
                 (status === "live" ? "" : "&date=" + encodeURIComponent(requestedIsoDate)) + "&status=" + status + "&limit=200&src=goal-pulse";
               try {
@@ -2262,7 +2262,7 @@ const server = http.createServer(async (req, res) => {
                 const rawStatus = String(match.status_text || match.status || match.state || result.status || "").toLowerCase();
                 const state = result.status === "live" || /live|in play|in-play|playing|1st half|2nd half|half time|extra time|penalt|in_progress/.test(rawStatus)
                   ? "in"
-                  : /finished|full time|ended|complete|after extra|\bft\b|\baet\b|\bpen\b/.test(rawStatus)
+                  : result.status === "finished" || /finished|full time|ended|complete|after extra|\bft\b|\baet\b|\bpen\b/.test(rawStatus)
                     ? "post" : "pre";
                 if (result.status === "live" && state !== "in") continue;
                 const toScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : String(Number(value));
@@ -2315,9 +2315,10 @@ const server = http.createServer(async (req, res) => {
                 finalFeeds = finalFeeds.concat([{ code: "sportscore", events: missingSportScoreEvents, ok: true }]);
                 successfulFeeds = finalFeeds.filter(feed => feed.ok).length;
               }
-              console.log("SportScore live/upcoming fixtures:", JSON.stringify({
+              console.log("SportScore live/upcoming/finished fixtures:", JSON.stringify({
                 date, liveReceived: sportScoreResponses.find(x => x.status === "live")?.matches.length || 0,
                 upcomingReceived: sportScoreResponses.find(x => x.status === "upcoming")?.matches.length || 0,
+                finishedReceived: sportScoreResponses.find(x => x.status === "finished")?.matches.length || 0,
                 mapped: sportScoreEvents.length, added: missingSportScoreEvents.length,
                 errors: sportScoreResponses.filter(x => !x.ok).map(x => ({ status: x.status, httpStatus: x.httpStatus, error: x.error }))
               }));
