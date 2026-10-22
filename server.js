@@ -81,7 +81,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst is included; AI alerts require verified decimal odds >= 1.60.
+// Deployment verification marker: protocol analyst and multi-scanner AI goal ensemble are included; no minimum odds threshold.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
@@ -1846,8 +1846,8 @@ const server = http.createServer(async (req, res) => {
         else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
           // Prefer a verified, active quote for the exact score-derived line and period.
-          // If the provider has no licensed live-bookmaker coverage, keep the qualified
-          // pressure signal but label the missing price explicitly; never invent odds.
+          // A pressure signal is not sent as a betting alert unless its exact live market quote is verified.
+          // Never invent odds; there is no minimum price threshold.
           let verifiedOdds = null;
           // Compare the stats-feed score with the freshest joined scoreboard before
           // issuing a market. If the sources disagree, skip this scan rather than
