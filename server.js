@@ -72,7 +72,7 @@ let protocolAnalystRunInFlight = null;
 async function ensureProtocolAnalystDb() {
   if (!analyticsPool) return false;
   if (!protocolAnalystDbInit) protocolAnalystDbInit = analyticsPool.query(
-    "CREATE TABLE IF NOT EXISTS protocol_analyst_reports (id BIGSERIAL PRIMARY KEY, generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), report JSONB NOT NULL); CREATE INDEX IF NOT EXISTS protocol_analyst_reports_generated_at_idx ON protocol_analyst_reports(generated_at DESC)"
+    "CREATE TABLE IF NOT EXISTS protocol_analyst_reports (id BIGSERIAL PRIMARY KEY, generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), report JSONB NOT NULL); CREATE INDEX IF NOT EXISTS protocol_analyst_reports_generated_at_idx ON protocol_analyst_reports(generated_at DESC); CREATE TABLE IF NOT EXISTS ai_training_examples (alert_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL, settled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), label SMALLINT NOT NULL CHECK (label IN (0,1)), league TEXT, model_version TEXT NOT NULL, features JSONB NOT NULL, source_payload JSONB NOT NULL); CREATE INDEX IF NOT EXISTS ai_training_examples_created_at_idx ON ai_training_examples(created_at DESC); CREATE INDEX IF NOT EXISTS ai_training_examples_league_idx ON ai_training_examples(league)"
   ).then(() => true).catch(error => {
     protocolAnalystDbInit = null;
     console.error("Protocol analyst database unavailable:", error.message);
@@ -87,8 +87,35 @@ async function runProtocolAnalyst() {
   protocolAnalystRunInFlight = (async () => {
     if (!await ensureAlertHistoryDb() || !await ensureProtocolAnalystDb()) return null;
     const result = await analyticsPool.query(
-      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+      "SELECT alert_id, event_id, payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
     );
+    // Build a durable, labeled dataset only from real settled alerts. Each feature is
+    // frozen at alert time; no final-score/post-match features are added (leakage guard).
+    for (const row of result.rows) {
+      const p = row.payload || {};
+      const stats = p.statsAtSignal || {};
+      const label = p.betOutcome === "won" ? 1 : 0;
+      const features = {
+        minute: Number.isFinite(Number(p.minuteNumber)) ? Number(p.minuteNumber) : null,
+        period: p.periodAtSignal || null,
+        odds: p.odds !== null && p.odds !== undefined && Number.isFinite(Number(p.odds)) ? Number(p.odds) : null,
+        shots5m: Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
+        shotsOnTarget5m: Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
+        corners5m: Number.isFinite(Number(stats.corners)) ? Number(stats.corners) : null,
+        attacks5m: Number.isFinite(Number(stats.attacks)) ? Number(stats.attacks) : null,
+        dangerousAttacks5m: Number.isFinite(Number(stats.dangerous)) ? Number(stats.dangerous) : null,
+        xG: Number.isFinite(Number(stats.xG)) ? Number(stats.xG) : null,
+        xGDelta: Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
+        scannerNames: Array.isArray(p.aiScanners) ? [...new Set(p.aiScanners.map(String).filter(Boolean))] : [],
+        scannerScores: p.aiScannerScores && typeof p.aiScannerScores === "object" ? p.aiScannerScores : {},
+        evidenceFamilies: Array.isArray(p.aiEvidenceFamilies) ? p.aiEvidenceFamilies : []
+      };
+      await analyticsPool.query(
+        "INSERT INTO ai_training_examples(alert_id,event_id,created_at,label,league,model_version,features,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb) ON CONFLICT(alert_id) DO UPDATE SET label=EXCLUDED.label, settled_at=NOW(), features=EXCLUDED.features, source_payload=EXCLUDED.source_payload",
+        [row.alert_id, String(row.event_id || p.eventId || "unknown"), row.created_at, label, String(p.league || "Άγνωστο πρωτάθλημα"), "goal-pulse-rules-v2", JSON.stringify(features), JSON.stringify(p)]
+      );
+    }
+    const datasetCount = await analyticsPool.query("SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days')::int AS last_30_days, COUNT(DISTINCT league)::int AS leagues FROM ai_training_examples");
     const records = result.rows.map(row => {
       const p = row.payload || {};
       const won = p.betOutcome === "won";
@@ -197,6 +224,14 @@ async function runProtocolAnalyst() {
       method: "statistical_review_of_settled_server_generated_ai_alerts",
       automaticRuleChanges: false,
       sample: overall,
+      trainingDataset: {
+        storedSettledExamples: Number(datasetCount.rows[0]?.total || 0),
+        settledExamplesLast30Days: Number(datasetCount.rows[0]?.last_30_days || 0),
+        leaguesRepresented: Number(datasetCount.rows[0]?.leagues || 0),
+        modelVersion: "goal-pulse-rules-v2",
+        trainingStatus: Number(datasetCount.rows[0]?.total || 0) >= 1000 ? "eligible_for_chronological_validation" : "collecting_real_settled_examples",
+        note: "This is a growing labeled dataset from actual settled Goal Pulse alerts, not millions of historical phases. It is not a trained ML model until a separate chronological train/test process is implemented and validated."
+      },
       dataQuality: {
         recordsAnalyzed: records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
