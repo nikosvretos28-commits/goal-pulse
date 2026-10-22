@@ -16,7 +16,10 @@ The live server evaluates five named scanners:
 
 The scanners share some underlying live statistics and are **not statistically independent**. The final decision therefore counts distinct evidence families (short-window pressure, sustained pressure, measured xG surge, historical defensive weakness), rather than simply counting scanner names. A strong single signal can qualify only with additional corroborating evidence. Missing xG or historical data is neutral; it is not fabricated.
 
-The exact score-derived market and period must have a verified, active decimal quote before an alert is emitted. No odds are invented and there is no minimum-odds threshold in this branch. Asian markets remain excluded from automatic AI alerts.
+The exact score-derived market and period are checked against the available live-odds provider. If the provider has no usable quote, the system must not fabricate a price; odds availability and whether an alert is allowed to proceed are separate concerns that still need end-to-end verification. There is no minimum-odds threshold in this branch. Asian markets remain excluded from automatic AI alerts.
+
+### Live scanning and activity UI
+The frontend keeps a rolling match-stat trail and displays 5- and 10-minute deltas when enough real samples have accumulated. The inline summary includes shots, shots on target, attacks, dangerous attacks and corners. High Activity ranks every match that meets the recent-pressure rules; it is not intentionally capped at five. It excludes half-time and exits when the recent activity conditions no longer hold, then can re-enter if fresh data again qualifies. xG can support ranking only when comparable live samples exist; missing xG does not block evaluation. Corner deltas are displayed, but corner-only activity is not a goal High Activity trigger.
 
 ### Dirty Sheet sample weighting
 Team names are normalized for common prefixes/suffixes. Recent completed matches are used, with a five-match empirical prior toward the league conceding baseline. Team rates are weighted by their sample reliability; the raw rate, weighted rate, sample count, and league baseline are available for debugging. Missing/insufficient history falls back neutrally.
@@ -36,6 +39,8 @@ A GitHub Actions workflow builds and publishes a container image to GitHub Conta
 - [x] Analyst invocation exists at startup, hourly, and via the API endpoint.
 - [x] Signal-time feature snapshot exists in alert payload construction.
 - [x] Docker build includes a Node syntax check.
+- [x] The container workflow triggers on any push to the selected branches, including frontend-only changes, so the static UI is not left out of a rebuilt image.
+- [x] The live 5-/10-minute inline summary includes attacks and dangerous attacks as well as shots, shots on target and corners.
 - [x] GitHub Actions container build/push succeeded for commit `ca1595b25bf1a1f2d50535c91569d831c9ea2d6c`; Docker build and `node --check server.js` passed.
 - [ ] Render deployment of this branch has not been confirmed; the current Render service is configured for `main`, and its recent builds failed. The image-based route still requires checking GHCR package visibility and configuring Render with the image plus existing environment variables/database connection.
 - [ ] Live odds coverage and prediction performance have not been validated end-to-end.
