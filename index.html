@@ -1528,7 +1528,11 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const fmtPair=(key)=>pair(key);
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
  const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′',delta(5,'shots'),'interval')+statCell('ΤΕΛ. 10′',delta(10,'shots'),'interval')+statCell('ΣΟΥΤ',fmtPair('shots'),'shot')+statCell('ΕΝΤΟΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΕΚΤΟΣ',fmtPair('shotsOffTarget'),'shot')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
- const liveClock=String(m.clock||'LIVE').replace(/\s*['′’]$/,'');
+ const rawClock=String(m.clock||'').trim();
+ const clockCandidates=[rawClock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute];
+ const numericClock=clockCandidates.map(v=>String(v??'').trim()).find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));
+ const normalizedLiveClock=numericClock?numericClock.replace(/\s*['′’]?$/,'').replace(/\s*\+\s*/,'+').replace(/^(\d{1,3}):\d{2}$/,'$1')+'′':'';
+ const liveClock=(m.state==='in'?(normalizedLiveClock||(/\b(?:HT|half[ -]?time|halftime|interval)\b/i.test(rawClock)?'HT':(rawClock||'LIVE'))):(rawClock||'LIVE')).replace(/\s*['′’]$/,'');
   return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="minute">'+esc(liveClock)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span></button>'+alertHtml+secondaryActivityHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
 }
 function renderHighActivityMatches(){
