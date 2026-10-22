@@ -1808,7 +1808,36 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
+
+        // Goal Pulse multi-scanner ensemble: independent scanners inspect the same verified live sample.
+        // Each scanner has a distinct role; missing xG/history is neutral and never fabricated.
+        const liveMinuteForScanners = parseLiveMinute(getMatchMinute(match));
+        const scannerScores = {
+          momentum: recentGoalEvidence ? points + liveConversionSupport : 0,
+          sustainedPressure: sustainedGoalEvidence ? sustainedPoints + liveConversionSupport : 0,
+          xgSurge: recentGoalEvidence && xGDelta != null && xGDelta >= 0.20
+            ? points + liveConversionSupport + Math.min(1.5, xGDelta * 2) : 0,
+          defensiveWeakness: dirtySheetSupport > 0
+            ? Math.max(recentGoalEvidence ? points + liveConversionSupport : 0,
+                sustainedGoalEvidence ? sustainedPoints + liveConversionSupport : 0) + dirtySheetSupport : 0,
+          lateGamePressure: Number.isFinite(liveMinuteForScanners) && liveMinuteForScanners >= 65 &&
+            recentGoalEvidence && onTarget >= 1
+            ? points + liveConversionSupport : 0
+        };
+        const scannerThresholds = {
+          momentum: 5.5, sustainedPressure: 8, xgSurge: 5.5,
+          defensiveWeakness: 6.5, lateGamePressure: 5.5
+        };
+        const activeScanners = Object.entries(scannerScores)
+          .filter(([name, value]) => value >= scannerThresholds[name])
+          .map(([name]) => name);
+        const scannerConsensus = activeScanners.length;
+        // Require either agreement from at least two scanners or one unusually strong signal.
+        // This broadens coverage without allowing a single weak/corner-only scanner to alert.
+        const singleScannerHighConfidence =
+          (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 9) ||
+          (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 12);
+        const isAiGoal = scoreAvailable && (scannerConsensus >= 2 || singleScannerHighConfidence);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
@@ -1958,6 +1987,9 @@ const server = http.createServer(async (req, res) => {
                   league: scoreEvent?.competitions?.[0]?.name || match.league || match.competition || "",
                   minute: rawMinute, minuteNumber,
                   market: "Over " + overLine,
+                  aiScanners: activeScanners,
+                  aiScannerCount: scannerConsensus,
+                  aiScannerScores: scannerScores,
                   odds: hasVerifiedOdds ? verifiedOdds.price : null,
                   bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
                   ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null, alertType: "goal_market_signal" }),
