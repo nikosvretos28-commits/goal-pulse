@@ -1180,10 +1180,16 @@ const server = http.createServer(async (req, res) => {
             const completed = alert.home && alert.away
               ? completedScoreboardByTeams.get(normalizeTeam(alert.home) + "|" + normalizeTeam(alert.away))
               : null;
-            if (secondHalf && (!live || !/finished|full.?time|ended|final|\bft\b/.test(String(live.statusText || live.status || "").toLowerCase())) && completed) {
+            const liveStatusIsFinished = /finished|full.?time|ended|final|\\bft\\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
+            if (secondHalf && (!live || !liveStatusIsFinished) && completed) {
+              live = completed;
+            } else if (firstHalf && completed && completed.homeHtScore != null && completed.awayHtScore != null &&
+                       (!live || liveStatusIsFinished)) {
+              // Prefer the completed scoreboard's first-period score over stale live placeholders.
               live = completed;
             } else if (firstHalf && live && completed && live.homeHtScore == null && live.awayHtScore == null &&
                        completed.homeHtScore != null && completed.awayHtScore != null) {
+              // Reference only until the feed confirms that the first half has ended.
               live = { ...live, homeHtScore: completed.homeHtScore, awayHtScore: completed.awayHtScore };
             }
             if (/κόρνερ|corner/i.test(String(alert.market || ""))) continue;
@@ -1197,32 +1203,35 @@ const server = http.createServer(async (req, res) => {
             if (!Number.isFinite(startScore)) continue;
             if (firstHalf) {
               const hasHtScore = live.homeHtScore != null && live.awayHtScore != null && Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
-              const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\bht\b/.test(statusClock);
-              const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
-              const clearlyFirstHalf = !isAtHalf && Number.isFinite(minuteNow) && minuteNow <= 45 &&
-                !/second half|2nd half|2ο ημίχρονο/.test(statusText);
-              // Settle a first-half Over immediately when a live first-half score confirms
-              // the target goal; do not wait for the halftime score field to appear.
+              const isAtHalf = /half.?time|halftime|ημίχρονο/.test(statusText) || /\\bht\\b/.test(statusClock);
+              const explicitlySecondHalf = /second half|2nd half|2ο ημίχρονο/.test(statusText) || /second half|2nd half/.test(statusClock);
+              const explicitlyFirstHalf = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusText);
+              const minuteNow = Number(String(live.minute || "").match(/(\\d{1,3})/)?.[1]);
+              const clearlyFirstHalf = !isAtHalf && !explicitlySecondHalf &&
+                ((Number.isFinite(minuteNow) && minuteNow <= 45) || explicitlyFirstHalf);
+              // A provider may expose placeholder 0-0 HT fields throughout the live first half.
+              // Never use those fields to declare a loss before half-time is actually confirmed.
               if (clearlyFirstHalf && hasFullScore && homeScore + awayScore > startScore) {
                 outcomeScore = homeScore + awayScore;
                 won = true;
-              } else if (hasHtScore) {
+              } else if (isAtHalf && hasHtScore) {
                 outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
                 periodEnded = true;
               } else if (isAtHalf && hasFullScore) {
                 outcomeScore = homeScore + awayScore;
                 periodEnded = true;
-              } else if (Number.isFinite(minuteNow) && minuteNow > 45) {
-                // Do not infer a first-half result from second-half full-time score.
+              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && hasHtScore) {
+                // A completed fixture can settle a first-half market only from its actual HT score.
+                outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
+                periodEnded = true;
+              } else if (explicitlySecondHalf || (Number.isFinite(minuteNow) && minuteNow > 45)) {
+                // Do not use a second-half/full-time score to infer the first-half outcome.
                 continue;
-              } else if (hasFullScore && homeScore + awayScore > startScore) {
-                // Settle as won immediately when the target goal arrives in the first half.
-                outcomeScore = homeScore + awayScore;
-                won = true;
-              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && !hasHtScore) {
+              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && !hasHtScore) {
+                // Missing HT score means unknown, not a loss.
                 continue;
               }
-            } else if (secondHalf) {
+            }            } else if (secondHalf) {
               periodEnded = /finished|full.?time|ended|final|\bft\b/.test(statusText) || live.status === "post";
               if (hasFullScore) {
                 outcomeScore = homeScore + awayScore;
