@@ -184,7 +184,10 @@ async function runProtocolAnalyst() {
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
         alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
         minimumRecommendedSamplePerSegment: 20,
-        note: "Μόνο πραγματικά server-generated AI alerts με καταγεγραμμένο αποτέλεσμα· δεν κατασκευάζονται αποτελέσματα."
+        successRateNumerator: overall.wins,
+        successRateDenominator: overall.settled,
+        successRateDefinition: "wins / (wins + losses); pushes and voids excluded consistently from overall and segment rates",
+        note: "Όλα τα ποσοστά συνολικά και ανά ομάδα υπολογίζονται από το ίδιο σύνολο πραγματικών server-generated AI alerts με αποτέλεσμα won/lost· pushes/voids αποκλείονται παντού. Δεν κατασκευάζονται αποτελέσματα."
       },
       byOdds: segment("oddsBand", "oddsBand"),
       byMinute: segment("minuteBand", "minuteBand"),
@@ -1801,14 +1804,20 @@ const server = http.createServer(async (req, res) => {
           // Cap this bonus and require at least two shots on target to reduce tiny-sample noise.
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
-        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport;
+        // Three or more shots on target in the rolling five-minute window are a capped supporting bonus, never a standalone trigger.
+        const onTargetBurstSupport = onTarget >= 3 ? 1.5 : 0;
+        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + onTargetBurstSupport;
         const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport;
         // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
         // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
+        // Analyst findings: tighten the two weak first-half windows; penalty applies to both recent and sustained signals.
+        const minuteProtocolPenalty = Number.isFinite(minuteForEligibility)
+          ? (minuteForEligibility < 30 ? 2 : minuteForEligibility <= 45 ? 1 : 0)
+          : 0;
+        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7 + minuteProtocolPenalty) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10 + minuteProtocolPenalty));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
