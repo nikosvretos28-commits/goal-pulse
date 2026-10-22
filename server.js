@@ -1006,12 +1006,19 @@ const server = http.createServer(async (req, res) => {
           // This does not independently verify the score with a provider; it catches contradictory stored outcomes.
           const scoreMatch = String(p.betFinalScore || '').match(/^\\s*(\\d+)\\s*[-:]\\s*(\\d+)\\s*$/);
           const overMatch = String(p.market || '').match(/\\bover\\s*(\\d+(?:\\.\\d+)?)/i);
-          if (scoreMatch && overMatch && ['won','lost','push'].includes(outcome)) {
+          const firstHalfSettlement = p.evaluationRule === 'end_of_first_half_score' || p.periodAtSignal === 'first_half';
+          const scoreScopeVerified = firstHalfSettlement
+            ? p.betScoreScope === 'first_half'
+            : (!p.betScoreScope || p.betScoreScope === 'full_time');
+          if (firstHalfSettlement && ['won','lost','push','void'].includes(outcome) && !scoreScopeVerified) {
+            addIssue(row, 'settlement_score_scope_unverified', 'Historical first-half result does not identify whether betFinalScore is the half-time score; its market outcome cannot be independently checked from this saved score alone.');
+          }
+          if (scoreScopeVerified && scoreMatch && overMatch && ['won','lost','push'].includes(outcome)) {
             const totalGoals = Number(scoreMatch[1]) + Number(scoreMatch[2]);
             const line = Number(overMatch[1]);
             const asianIntegerLine = p.lineType === 'asian' && Number.isInteger(line);
             const expected = asianIntegerLine && totalGoals === line ? 'push' : totalGoals > line ? 'won' : 'lost';
-            if (expected !== outcome) addIssue(row, 'market_score_outcome_conflict', 'Recorded outcome conflicts with the saved score and Over line (expected ' + expected + ', stored ' + outcome + ').');
+            if (expected !== outcome) addIssue(row, 'market_score_outcome_conflict', 'Recorded outcome conflicts with the saved period score and Over line (expected ' + expected + ', stored ' + outcome + ').');
           }
         }
         if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score' && !['won','lost','push','void'].includes(outcome)) {
@@ -1516,7 +1523,21 @@ const server = http.createServer(async (req, res) => {
               : "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ";
             alert.betOutcome = won ? "won" : "lost";
             alert.betSettlementLabel = won ? "Κερδισμένο" : "Χαμένο";
-            alert.betFinalScore = hasFullScore ? homeScore + "-" + awayScore : null;
+            // Store the exact score for the period that was graded. For first-half alerts,
+            // never save the full-time score as betFinalScore when the result used HT goals.
+            const hasHtScoreForSettlement = live.homeHtScore != null && live.awayHtScore != null &&
+              Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
+            const settlementHomeScore = firstHalf && hasHtScoreForSettlement
+              ? Number(live.homeHtScore)
+              : homeScore;
+            const settlementAwayScore = firstHalf && hasHtScoreForSettlement
+              ? Number(live.awayHtScore)
+              : awayScore;
+            alert.betFinalScore = Number.isFinite(settlementHomeScore) && Number.isFinite(settlementAwayScore)
+              ? settlementHomeScore + "-" + settlementAwayScore
+              : null;
+            if (hasFullScore) alert.betMatchFinalScore = homeScore + "-" + awayScore;
+            alert.betScoreScope = firstHalf ? "first_half" : "full_time";
             alert.betSettledAt = now;
             alert.evaluatedAt = now;
             alert.evaluationRule = firstHalf ? "end_of_first_half_score" : "end_of_match_score";
