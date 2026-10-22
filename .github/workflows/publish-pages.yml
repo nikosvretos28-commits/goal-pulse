@@ -1,0 +1,47 @@
+name: Publish Goal Pulse on GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Prepare static site
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp index.html _site/index.html
+          cp manifest.webmanifest sw.js goal-pulse-icon.svg _site/
+          # GitHub project pages are served below /goal-pulse/ rather than the domain root.
+          sed -i 's|href="/manifest.webmanifest"|href="/goal-pulse/manifest.webmanifest"|g; s|href="/goal-pulse-icon.svg"|href="/goal-pulse/goal-pulse-icon.svg"|g; s|navigator.serviceWorker.register('\''/sw.js'\'')|navigator.serviceWorker.register('\''/goal-pulse/sw.js'\'')|g; s|navigator.serviceWorker.getRegistration('\''/sw.js'\'')|navigator.serviceWorker.getRegistration('\''/goal-pulse/sw.js'\'')|g; s|https://goal-pulse.onrender.com/|https://nikosvretos28-commits.github.io/goal-pulse/|g' _site/index.html
+          sed -i 's|"id": "/"|"id": "/goal-pulse/"|; s|"start_url": "/"|"start_url": "/goal-pulse/"|; s|"scope": "/"|"scope": "/goal-pulse/"|; s|"/goal-pulse-icon.svg"|"/goal-pulse/goal-pulse-icon.svg"|' _site/manifest.webmanifest
+          sed -i "s|'/goal-pulse-icon.svg'|'/goal-pulse/goal-pulse-icon.svg'|g; s|url||g" /dev/null 2>/dev/null || true
+          sed -i 's|/goal-pulse-icon.svg|/goal-pulse/goal-pulse-icon.svg|g; s|data.url||g' _site/sw.js
+          touch _site/.nojekyll
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
