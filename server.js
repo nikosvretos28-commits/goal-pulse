@@ -26,6 +26,7 @@ const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || "";
 const POWER_GAMES_ADMIN_PIN = process.env.POWER_GAMES_ADMIN_PIN || "";
 const powerGamesAuthAttempts = new Map();
 const pushScanSnapshots = new Map();
+const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
 let pushDbInit = null;
 let alertHistoryDbInit = null;
@@ -1381,10 +1382,50 @@ const server = http.createServer(async (req, res) => {
             // goals for a missing half-time score.
             const alertHome = alert.home || (Array.isArray(alert.teams) ? alert.teams[0] : "");
             const alertAway = alert.away || (Array.isArray(alert.teams) ? alert.teams[1] : "");
-            const completed = (alert.eventId != null ? completedScoreboardById.get(String(alert.eventId)) : null) ||
+            let completed = (alert.eventId != null ? completedScoreboardById.get(String(alert.eventId)) : null) ||
               (alertHome && alertAway
                 ? completedScoreboardByTeams.get(normalizeTeam(alertHome) + "|" + normalizeTeam(alertAway))
                 : null);
+            // The public day endpoint caps finished fixtures at 200. For a specific
+            // unresolved alert, query SportScore by team so busy dates cannot hide its result.
+            if (!completed && alertHome && alertAway && row.created_at) {
+              const alertDate = new Date(row.created_at).toISOString().slice(0, 10);
+              const teamSlug = value => normalizeTeam(value).replace(/\s+/g, "-");
+              const parseScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+              const toCompleted = match => {
+                const matchHome = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || "").trim();
+                const matchAway = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
+                if (normalizeTeam(matchHome) !== normalizeTeam(alertHome) || normalizeTeam(matchAway) !== normalizeTeam(alertAway)) return null;
+                const homeFinal = parseScore(match.home_score ?? match.homeScore ?? match.scores?.home ?? match.score?.home);
+                const awayFinal = parseScore(match.away_score ?? match.awayScore ?? match.scores?.away ?? match.score?.away);
+                if (homeFinal == null || awayFinal == null) return null;
+                const homeHt = parseScore(match.home_ht_score ?? match.homeHtScore ?? match.half_time_score?.home);
+                const awayHt = parseScore(match.away_ht_score ?? match.awayHtScore ?? match.half_time_score?.away);
+                return { status: "post", statusText: "finished", homeScore: homeFinal, awayScore: awayFinal, homeHtScore: homeHt, awayHtScore: awayHt };
+              };
+              for (const teamName of [alertHome, alertAway]) {
+                const slug = teamSlug(teamName);
+                if (!slug) continue;
+                const key = alertDate + "|" + slug;
+                let cached = historicalTeamResultCache.get(key);
+                const cacheTtl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
+                if (!cached || Date.now() - cached.at > cacheTtl) {
+                  try {
+                    const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(alertDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+                    const body = historicalResponse.ok ? await historicalResponse.json() : {};
+                    const matches = Array.isArray(body.matches) ? body.matches : Array.isArray(body.data) ? body.data : Array.isArray(body.fixtures) ? body.fixtures : [];
+                    cached = { at: Date.now(), matches };
+                    historicalTeamResultCache.set(key, cached);
+                    if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
+                  } catch (lookupError) {
+                    cached = { at: Date.now(), matches: [] };
+                    historicalTeamResultCache.set(key, cached);
+                  }
+                }
+                const exactMatch = cached.matches.map(toCompleted).find(Boolean);
+                if (exactMatch) { completed = exactMatch; break; }
+              }
+            }
             const liveStatusIsFinished = /finished|full.?time|ended|final|\bft\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
             if (secondHalf && (!live || !liveStatusIsFinished) && completed) {
               live = completed;
