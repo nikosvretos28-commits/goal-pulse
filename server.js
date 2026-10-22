@@ -955,6 +955,75 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/alerts/history/verify" && req.method === "GET") {
+    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    try {
+      // Read-only integrity audit: it never edits or settles alerts.
+      const result = await analyticsPool.query(
+        "SELECT alert_id, event_id, created_at, payload FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+      );
+      const rows = result.rows.map(row => ({ id: row.alert_id, eventId: row.event_id, createdAt: row.created_at, payload: row.payload || {} }));
+      const terminal = rows.filter(row => ['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()));
+      const pending = rows.filter(row => !['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()));
+      const byOutcome = {};
+      const byPeriod = {};
+      for (const row of terminal) {
+        const p = row.payload;
+        const outcome = String(p.betOutcome || 'unknown').toLowerCase();
+        const period = String(p.periodAtSignal || 'unknown');
+        byOutcome[outcome] = (byOutcome[outcome] || 0) + 1;
+        if (!byPeriod[period]) byPeriod[period] = { settled: 0, wins: 0, losses: 0, pushes: 0, voids: 0 };
+        byPeriod[period].settled++;
+        if (outcome === 'won') byPeriod[period].wins++;
+        if (outcome === 'lost') byPeriod[period].losses++;
+        if (outcome === 'push') byPeriod[period].pushes++;
+        if (outcome === 'void') byPeriod[period].voids++;
+      }
+      const issues = [];
+      const addIssue = (row, code, detail) => {
+        if (issues.length < 100) issues.push({
+          alertId: row.id, eventId: row.eventId,
+          teams: [row.payload.homeTeam || row.payload.home || null, row.payload.awayTeam || row.payload.away || null],
+          market: row.payload.market || null, minute: row.payload.minuteNumber ?? row.payload.minute ?? null,
+          periodAtSignal: row.payload.periodAtSignal || null,
+          evaluationRule: row.payload.evaluationRule || null,
+          betOutcome: row.payload.betOutcome || 'pending',
+          finalScore: row.payload.betFinalScore || null,
+          issue: code, detail
+        });
+      };
+      for (const row of rows) {
+        const p = row.payload;
+        const outcome = String(p.betOutcome || 'pending').toLowerCase();
+        if (['won','lost','push','void'].includes(outcome)) {
+          if (!p.betFinalScore) addIssue(row, 'missing_final_score', 'Settled alert has no recorded final score.');
+          if (!p.betSettledAt) addIssue(row, 'missing_settlement_time', 'Settled alert has no recorded settlement timestamp.');
+          if (!p.evaluationRule) addIssue(row, 'missing_evaluation_rule', 'Settled alert has no recorded evaluation rule.');
+          if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score') addIssue(row, 'period_rule_conflict', 'Second-half alert is marked as settled using first-half score.');
+        }
+        if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score' && !['won','lost','push','void'].includes(outcome)) {
+          addIssue(row, 'period_rule_conflict_pending', 'Second-half alert is associated with first-half settlement rule.');
+        }
+      }
+      const winRate = terminal.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won' || String(row.payload.betOutcome).toLowerCase() === 'lost');
+      const wins = winRate.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won').length;
+      return send(res, 200, {
+        ok: true, readOnly: true, generatedAt: new Date().toISOString(), windowDays: 180,
+        scanned: rows.length, settled: terminal.length, pending: pending.length,
+        settledWinLossSample: winRate.length,
+        wins, losses: winRate.length - wins,
+        successRate: winRate.length ? Math.round(wins / winRate.length * 1000) / 10 : null,
+        byOutcome, byPeriod,
+        integrity: { issueCount: issues.length, issueLimit: 100, issues },
+        note: "Audit checks stored-field consistency only; it does not independently verify provider final scores and does not modify history."
+      });
+    } catch (error) {
+      console.error("Alert history verification failed:", error.message);
+      return send(res, 503, { error: "Could not verify alert history" });
+    }
+  }
+
   if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
     if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
