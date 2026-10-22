@@ -625,7 +625,7 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
       const season = pitchSeasonForCode(String(leagueCode), year, league.seasons);
       const response = await pitchGet("/v1/leagues/" + encodeURIComponent(league.id) + "/matches?season=" + encodeURIComponent(season) + "&status=all");
       const rows = response?.data?.matches || [];
-      const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks)\s+)+/, "").replace(/\s+(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks))+$/, "").trim();
       const completed = rows.map(m => ({
         date: String(m.time_utc || m.date || ""), status: String(m.status || "").toLowerCase(),
         home: norm(m.home_team?.name), away: norm(m.away_team?.name),
@@ -633,7 +633,7 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
       })).filter(m => /finished|full.?time|\bft\b|ended/.test(m.status) && m.home && m.away && Number.isFinite(m.hs) && Number.isFinite(m.as));
       cached = { at: now, completed }; dirtySheetLeagueCache.set(String(leagueCode), cached);
     }
-    const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks)\s+)+/, "").replace(/\s+(?:(?:fc|cf|sc|ac|afc|cd|ud|fk|sk|ks))+$/, "").trim();
     const rates = name => {
       const target = norm(name);
       const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10);
