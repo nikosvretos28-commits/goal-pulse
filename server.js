@@ -1109,7 +1109,7 @@ const server = http.createServer(async (req, res) => {
             for (const event of (feed.events || [])) {
               const state = String(event.status?.type?.state || "").toLowerCase();
               const label = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
-              if (state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(label)) {
+              if (state === "post" || /final|full.?time|finished|ended|\bft\b/.test(label)) {
                 scoreboardEvents.push({ ...event, __goalPulseLeagueCode: feed.code || "" });
               }
             }
@@ -1250,21 +1250,21 @@ const server = http.createServer(async (req, res) => {
               } else if (isAtHalf && hasFullScore) {
                 outcomeScore = homeScore + awayScore;
                 periodEnded = true;
-              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && hasHtScore) {
+              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && hasHtScore) {
                 // A completed fixture settles first-half markets only from its actual HT score.
                 outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
                 periodEnded = true;
               } else if (explicitlySecondHalf || (Number.isFinite(minuteNow) && minuteNow > 45)) {
                 // Never infer a first-half result from a second-half/full-time score.
                 continue;
-              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && !hasHtScore) {
+              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && !hasHtScore) {
                 // Missing HT score means unknown, not a loss.
                 continue;
               }
             } else if (secondHalf) {
               // Second-half alerts settle only after the match is confirmed finished.
               // This prevents a provisional goal later disallowed by VAR from settling an alert.
-              periodEnded = /finished|full.?time|ended|final|\\bft\\b/.test(statusText) || live.status === "post";
+              periodEnded = /finished|full.?time|ended|final|\bft\b/.test(statusText) || live.status === "post";
               if (periodEnded && hasFullScore) {
                 outcomeScore = homeScore + awayScore;
               }
