@@ -2791,4 +2791,40 @@ const protocolAnalystTimer = setInterval(() => { runProtocolAnalyst().catch(() =
 protocolAnalystTimer.unref();
 setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
 
-server.listen(PORT, "0.0.0.0", () => console.log("Goal Pulse listening on " + PORT));
+server.listen(PORT, "0.0.0.0", () => {
+  console.log("Goal Pulse listening on " + PORT);
+  // Run a read-only audit against the same live database path and log the actual result.
+  // This avoids changing the Postgres IP allowlist just to perform verification.
+  setTimeout(async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:${PORT}/api/alerts/history/verify`, {
+        headers: { Origin: "https://goal-pulse.onrender.com" }
+      });
+      const audit = await response.json();
+      if (!response.ok || !audit.ok) throw new Error(audit.error || ("HTTP " + response.status));
+      const issueCodes = {};
+      for (const issue of (audit.integrity?.issues || [])) {
+        issueCodes[issue.issue] = (issueCodes[issue.issue] || 0) + 1;
+      }
+      console.log("Goal Pulse history integrity audit:", JSON.stringify({
+        generatedAt: audit.generatedAt,
+        windowDays: audit.windowDays,
+        scanned: audit.scanned,
+        settled: audit.settled,
+        pending: audit.pending,
+        settledWinLossSample: audit.settledWinLossSample,
+        wins: audit.wins,
+        losses: audit.losses,
+        successRate: audit.successRate,
+        byOutcome: audit.byOutcome,
+        byPeriod: audit.byPeriod,
+        issueCount: audit.integrity?.issueCount,
+        issueCodes,
+        sampleIssues: (audit.integrity?.issues || []).slice(0, 15),
+        note: audit.note
+      }));
+    } catch (error) {
+      console.error("Goal Pulse history integrity audit failed:", String(error.message || error));
+    }
+  }, 25000).unref?.();
+});
