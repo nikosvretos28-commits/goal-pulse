@@ -959,9 +959,11 @@ const server = http.createServer(async (req, res) => {
     if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
-      const latest = await analyticsPool.query("SELECT report FROM protocol_analyst_reports ORDER BY generated_at DESC LIMIT 1");
-      const report = latest.rows[0]?.report || await runProtocolAnalyst();
-      return send(res, 200, { ok: true, report: report || null });
+      // Always recompute from current settled history; cached reports may predate
+      // the latest halftime repair or settlement pass.
+      const report = await runProtocolAnalyst();
+      if (!report) return send(res, 503, { error: "Protocol analysis could not be refreshed" });
+      return send(res, 200, { ok: true, report, refreshed: true });
     } catch (error) {
       console.error("Protocol analyst read failed:", error.message);
       return send(res, 503, { error: "Could not load protocol analysis" });
