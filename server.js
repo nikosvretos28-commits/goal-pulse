@@ -1002,6 +1002,17 @@ const server = http.createServer(async (req, res) => {
           if (!p.betSettledAt) addIssue(row, 'missing_settlement_time', 'Settled alert has no recorded settlement timestamp.');
           if (!p.evaluationRule) addIssue(row, 'missing_evaluation_rule', 'Settled alert has no recorded evaluation rule.');
           if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score') addIssue(row, 'period_rule_conflict', 'Second-half alert is marked as settled using first-half score.');
+          // Internal consistency check: compare stored settlement against its recorded score and Over line.
+          // This does not independently verify the score with a provider; it catches contradictory stored outcomes.
+          const scoreMatch = String(p.betFinalScore || '').match(/^\\s*(\\d+)\\s*[-:]\\s*(\\d+)\\s*$/);
+          const overMatch = String(p.market || '').match(/\\bover\\s*(\\d+(?:\\.\\d+)?)/i);
+          if (scoreMatch && overMatch && ['won','lost','push'].includes(outcome)) {
+            const totalGoals = Number(scoreMatch[1]) + Number(scoreMatch[2]);
+            const line = Number(overMatch[1]);
+            const asianIntegerLine = p.lineType === 'asian' && Number.isInteger(line);
+            const expected = asianIntegerLine && totalGoals === line ? 'push' : totalGoals > line ? 'won' : 'lost';
+            if (expected !== outcome) addIssue(row, 'market_score_outcome_conflict', 'Recorded outcome conflicts with the saved score and Over line (expected ' + expected + ', stored ' + outcome + ').');
+          }
         }
         if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score' && !['won','lost','push','void'].includes(outcome)) {
           addIssue(row, 'period_rule_conflict_pending', 'Second-half alert is associated with first-half settlement rule.');
