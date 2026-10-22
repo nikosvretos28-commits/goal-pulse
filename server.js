@@ -1004,6 +1004,19 @@ const server = http.createServer(async (req, res) => {
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
       await analyticsPool.query(
         `INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) SELECT x.alert_id,x.event_id,x.level,to_timestamp(x.created_at/1000.0),x.payload,NOW() FROM jsonb_to_recordset($1::jsonb) AS x(alert_id text,event_id text,level text,created_at numeric,payload jsonb) ON CONFLICT(alert_id) DO UPDATE SET payload=CASE
+          WHEN alert_history.payload->>'periodAtSignal'='second_half'
+           AND alert_history.payload->>'evaluationRule'='end_of_match_score'
+           AND EXCLUDED.payload->>'periodAtSignal'='halftime'
+          THEN EXCLUDED.payload || jsonb_build_object(
+            'periodAtSignal', alert_history.payload->'periodAtSignal',
+            'evaluationRule', alert_history.payload->'evaluationRule',
+            'betOutcome', alert_history.payload->'betOutcome',
+            'outcome', alert_history.payload->'outcome',
+            'betSettlementLabel', alert_history.payload->'betSettlementLabel',
+            'betFinalScore', alert_history.payload->'betFinalScore',
+            'betSettledAt', alert_history.payload->'betSettledAt',
+            'evaluatedAt', alert_history.payload->'evaluatedAt'
+          )
           WHEN alert_history.payload->>'betOutcome' IN ('won','lost','void','push')
            AND COALESCE(EXCLUDED.payload->>'betOutcome','pending') NOT IN ('won','lost','void','push')
           THEN EXCLUDED.payload || jsonb_build_object(
@@ -1186,7 +1199,7 @@ const server = http.createServer(async (req, res) => {
           // but earlier records were stored as "halftime" and incorrectly settled against HT score.
           // Reopen only those clearly misclassified push alerts so they can be graded from the final score.
           const repairedHalftime = await analyticsPool.query(
-            "UPDATE alert_history SET payload = jsonb_set(jsonb_set(jsonb_set(payload, '{periodAtSignal}', '\"second_half\"'::jsonb), '{betOutcome}', '\"pending\"'::jsonb), '{outcome}', '\"εκκρεμεί\"'::jsonb), updated_at=NOW() WHERE payload->>'source'='server-push' AND payload->>'periodAtSignal'='halftime' AND payload->>'evaluationRule'='end_of_first_half_score' AND payload->>'betOutcome' IN ('won','lost') AND payload->>'market' ILIKE 'Over %' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND payload->>'market' NOT ILIKE '%asian%' AND created_at > NOW() - INTERVAL '30 days' RETURNING alert_id"
+            "UPDATE alert_history SET payload = jsonb_set(jsonb_set(jsonb_set(jsonb_set(payload, '{periodAtSignal}', '\"second_half\"'::jsonb), '{evaluationRule}', '\"end_of_match_score\"'::jsonb), '{betOutcome}', '\"pending\"'::jsonb), '{outcome}', '\"εκκρεμεί\"'::jsonb), updated_at=NOW() WHERE payload->>'source'='server-push' AND payload->>'periodAtSignal'='halftime' AND payload->>'evaluationRule'='end_of_first_half_score' AND payload->>'betOutcome' IN ('won','lost') AND payload->>'market' ILIKE 'Over %' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%κόρνερ%' AND payload->>'market' NOT ILIKE '%asian%' AND created_at > NOW() - INTERVAL '30 days' RETURNING alert_id"
           );
           if (repairedHalftime.rowCount) console.warn("Goal Pulse history repaired: reopened halftime alerts misgraded against first-half score", JSON.stringify({ repaired: repairedHalftime.rowCount }));
           const pending = await analyticsPool.query(
