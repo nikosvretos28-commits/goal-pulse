@@ -1210,33 +1210,32 @@ const server = http.createServer(async (req, res) => {
               const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
               const clearlyFirstHalf = !isAtHalf && !explicitlySecondHalf &&
                 ((Number.isFinite(minuteNow) && minuteNow <= 45) || explicitlyFirstHalf);
-              // Providers may expose placeholder HT fields throughout the live first half.
-              // Never declare a loss until half-time is actually confirmed.
-              if (clearlyFirstHalf && hasFullScore && homeScore + awayScore > startScore) {
-                outcomeScore = homeScore + awayScore;
-                won = true;
-              } else if (isAtHalf && hasHtScore) {
+              // Settle first-half alerts only after the provider confirms half-time
+              // (or a completed fixture supplies its actual HT score). A live goal can
+              // be provisional and later disallowed by VAR, so never settle on live score changes.
+              if (isAtHalf && hasHtScore) {
                 outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
                 periodEnded = true;
               } else if (isAtHalf && hasFullScore) {
                 outcomeScore = homeScore + awayScore;
                 periodEnded = true;
-              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && hasHtScore) {
+              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && hasHtScore) {
                 // A completed fixture settles first-half markets only from its actual HT score.
                 outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
                 periodEnded = true;
               } else if (explicitlySecondHalf || (Number.isFinite(minuteNow) && minuteNow > 45)) {
                 // Never infer a first-half result from a second-half/full-time score.
                 continue;
-              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && !hasHtScore) {
+              } else if (/finished|full.?time|ended|final|\\bft\\b/.test(statusText) && !hasHtScore) {
                 // Missing HT score means unknown, not a loss.
                 continue;
-              }            } else if (secondHalf) {
-              periodEnded = /finished|full.?time|ended|final|\bft\b/.test(statusText) || live.status === "post";
-              if (hasFullScore) {
+              }
+            } else if (secondHalf) {
+              // Second-half alerts settle only after the match is confirmed finished.
+              // This prevents a provisional goal later disallowed by VAR from settling an alert.
+              periodEnded = /finished|full.?time|ended|final|\\bft\\b/.test(statusText) || live.status === "post";
+              if (periodEnded && hasFullScore) {
                 outcomeScore = homeScore + awayScore;
-                // A second-half full-match Over is a win as soon as one more goal is scored.
-                if (outcomeScore > startScore) won = true;
               }
             }
             if (outcomeScore == null || (!won && !periodEnded)) continue;
@@ -1249,9 +1248,7 @@ const server = http.createServer(async (req, res) => {
             alert.betFinalScore = hasFullScore ? homeScore + "-" + awayScore : null;
             alert.betSettledAt = now;
             alert.evaluatedAt = now;
-            alert.evaluationRule = won
-              ? (firstHalf ? "goal_scored_during_first_half" : "goal_scored_before_full_time")
-              : (firstHalf ? "end_of_first_half_score" : "end_of_match_score");
+            alert.evaluationRule = firstHalf ? "end_of_first_half_score" : "end_of_match_score";
             await analyticsPool.query(
               "UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1",
               [row.alert_id, JSON.stringify(alert)]
