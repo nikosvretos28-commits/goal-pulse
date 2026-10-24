@@ -293,28 +293,33 @@ const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
 function resolveDatabaseUrl(raw) {
   if (!raw) return "";
-  // Render's DATABASE_URL was configured as the database password only.
-  // Rebuild the URI using the known database metadata and Render's private hostname.
   const trimmed = String(raw).trim();
+  // These compatibility rules are specific to the Render deployment. Do not
+  // rewrite a database host when this same API is deployed on another platform.
+  const onRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+  const renderHost = "dpg-db9t153rjlhs7382ko40-a";
   if (/^[a-f0-9]{32}$/i.test(trimmed)) {
+    if (!onRender) {
+      console.warn("DATABASE_URL looks like a password rather than a connection URL; database disabled.");
+      return "";
+    }
     const username = process.env.PGUSER || "goal_pulse_memberships_user";
     const database = process.env.PGDATABASE || "goal_pulse_memberships";
     const password = process.env.PGPASSWORD || process.env.DATABASE_PASSWORD || trimmed;
-    const internalHost = "dpg-db9t153rjlhs7382ko40-a";
-    return "postgresql://" + encodeURIComponent(username) + ":" + encodeURIComponent(password) + "@" + internalHost + "/" + encodeURIComponent(database);
+    return "postgresql://" + encodeURIComponent(username) + ":" + encodeURIComponent(password) + "@" + renderHost + "/" + encodeURIComponent(database);
   }
-  // Normalize only the host. Keep credentials private and never log the full URL.
-  const renderHost = "dpg-db9t153rjlhs7382ko40-a";
+  // Keep a valid platform-provided connection URL unchanged outside Render.
   try {
-    const parsed = new URL(raw);
-    if (parsed.hostname.toLowerCase() === "base" ||
-        parsed.hostname.toLowerCase() === "dpg-db9t153rjlhs7382ko40-a") {
+    const parsed = new URL(trimmed);
+    if (onRender && (parsed.hostname.toLowerCase() === "base" ||
+        parsed.hostname.toLowerCase() === renderHost)) {
       parsed.hostname = renderHost;
     }
     return parsed.toString();
   } catch {
-    // Safe fallback for URL strings that cannot be parsed because credentials are malformed.
-    return raw
+    if (!onRender) return trimmed;
+    // Render-only fallback for its known placeholder hostname.
+    return trimmed
       .replace(/@base(?=[:/?#]|$)/i, "@" + renderHost)
       .replace(/:\/\/base(?=[:/?#]|$)/i, "://" + renderHost)
       .replace(/@dpg-db9t153rjlhs7382ko40-a(?=[:/?#]|$)/i, "@" + renderHost)
