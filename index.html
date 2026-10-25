@@ -1788,6 +1788,16 @@ async function runSignalCheck(){
    const sensitivity=Number(signalThreshold.value);
    const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
    const evidenceKinds=[totalShotsAdded>0||shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
+   // Recent pressure reinforcement shared by goal, pressure and corner scoring:
+   // 3+ new shots on target in the measured window is strong supporting evidence,
+   // never a standalone trigger; require at least one independent signal.
+   const independentAttackSignal=totalShotsAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
+   const recentSotReinforcement=shotsOnTargetAdded>=3&&independentAttackSignal;
+   if(recentSotReinforcement){
+    goalPoints+=2;
+    pressurePoints+=2;
+    reasons.push('ισχυρή πρόσφατη πίεση: '+shotsOnTargetAdded+' νέα σουτ στην εστία μαζί με ανεξάρτητη επιθετική ένδειξη');
+   }
    const matchMinute=minuteMatch?Number(minuteMatch[0]):null;
    const totalCorners=live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null;
    const overLine=Number(document.getElementById('cornerOverLine')?.value||10.5);
