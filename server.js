@@ -81,7 +81,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst is included; no minimum-odds threshold is applied.
+// Deployment verification marker: protocol analyst includes a verified decimal-odds floor of 1.60 for automatic AI alerts.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
@@ -187,6 +187,7 @@ async function runProtocolAnalyst() {
         recordsAnalyzed: records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
         alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
+        alertsWithDirtySheetHistory: records.filter(row => row.dirtySheetBand !== "missing").length,
         minimumRecommendedSamplePerSegment: 20,
         note: "Μόνο πραγματικά server-generated AI alerts με καταγεγραμμένο αποτέλεσμα· δεν κατασκευάζονται αποτελέσματα."
       },
@@ -196,6 +197,7 @@ async function runProtocolAnalyst() {
       byShots: segment("shotBand", "shotBand"),
       byOnTarget: segment("onTargetBand", "onTargetBand"),
       byXG: segment("xGBand", "xGBand"),
+      byDirtySheet: segment("dirtySheetBand", "dirtySheetBand"),
       recommendations
     };
     await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
