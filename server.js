@@ -251,7 +251,7 @@ async function sendPushToSubscribers(payload) {
 }
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
-  if (!ALLOWED_ORIGINS.has(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
+  if (!isAllowedOrigin(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
   const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
   const rateKey = ip + ":" + new URL(req.url, "http://localhost").pathname;
   const now = Date.now(), previous = pushRateLimit.get(rateKey) || 0;
@@ -983,9 +983,20 @@ const ALLOWED_ORIGINS = new Set([
   "https://goal-pulse-live-2026-2.onrender.com",
   "https://nikosvretos28-commits.github.io"
 ]);
+
+function isAllowedOrigin(value) {
+  if (ALLOWED_ORIGINS.has(value || "")) return true;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" &&
+      (parsed.hostname === "vibenest.net" || parsed.hostname.endsWith(".vibenest.net"));
+  } catch {
+    return false;
+  }
+}
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -996,7 +1007,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
 
   if (url.pathname === "/api/power-games/access" && req.method === "POST") {
-    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Power Games admin access is not configured" });
     const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
     const now = Date.now();
@@ -1020,7 +1031,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/alerts/history/verify" && req.method === "GET") {
-    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       // Read-only integrity audit: it never edits or settles alerts.
@@ -1155,7 +1166,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
-    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
       // Always recompute from current settled history; cached reports may predate
@@ -1170,7 +1181,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
-    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       // Public visitors may view only the previous calendar day in Greece.
@@ -1191,7 +1202,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
   if (url.pathname === "/api/alerts/history" && req.method === "POST") {
-    if (!ALLOWED_ORIGINS.has(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       const body = await readJsonBody(req, 4 * 1024 * 1024);
