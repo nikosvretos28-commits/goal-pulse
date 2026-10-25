@@ -1235,7 +1235,10 @@ async function loadScores(){
  const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  const feedsSucceeded=successfulFeeds;
  goalFlashMatchIds=[];
- if(freshMatches.length>0){
+ // Never replace a useful live scoreboard with an empty/failed partial response.
+ // Preserve the previous in-memory and local snapshot until a valid feed returns.
+ const usableFeedResponse=feedsSucceeded>0;
+ if(usableFeedResponse&&freshMatches.length>0){
   saveMatchSnapshot(freshMatches);
   const previousById=new Map(allMatches.map(m=>[String(m.id),m]));
   freshMatches.forEach(m=>{const prev=previousById.get(String(m.id));if(!prev)return;const oldHome=Number(prev.home.score),newHome=Number(m.home.score),oldAway=Number(prev.away.score),newAway=Number(m.away.score);if(Number.isFinite(oldHome)&&Number.isFinite(newHome)&&Number.isFinite(oldAway)&&Number.isFinite(newAway)&&(newHome>oldHome||newAway>oldAway))goalFlashMatchIds.push(String(m.id));});
