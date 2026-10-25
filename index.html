@@ -1815,7 +1815,7 @@ async function runSignalCheck(){
    if(recentSotReinforcement){
     goalPoints+=sixSot10m?3:2;
     pressurePoints+=sixSot10m?3:2;
-    reasons.push((sixSot10m?'10λεπτο: ':'πρόσφατη πίεση: ')+shotsOnTarget10m+' σουτ στην εστία στα τελευταία 10′'+(independentAttackSignal?' μαζί με ανεξάρτητη επιθετική ένδειξη':''));
+    reasons.push(sixSot10m?'6+ σουτ στην εστία στα τελευταία 10′ ('+shotsOnTarget10m+') μαζί με ανεξάρτητη επιθετική ένδειξη':'ισχυρή πρόσφατη πίεση: '+shotsOnTargetAdded+' νέα σουτ στην εστία μαζί με ανεξάρτητη επιθετική ένδειξη');
    }
    const matchMinute=minuteMatch?Number(minuteMatch[0]):null;
    const totalCorners=live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null;
