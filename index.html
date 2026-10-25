@@ -2298,7 +2298,8 @@ setInterval(loadProtocolAnalyst,60*60*1000);
 if(allMatches.length){render();renderHighActivityMatches();const cachedLive=document.getElementById('liveRows');if(cachedLive)cachedLive.innerHTML=allMatches.filter(m=>m.state==='in').map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν υπάρχουν αποθηκευμένοι live αγώνες· γίνεται νέος έλεγχος.</div>';}
 loadScores();
 setInterval(()=>{if(!document.hidden)loadScores()},30000);
-setInterval(runSignalCheck,30000);
+setInterval(()=>{if(!document.hidden)runSignalCheck()},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadScores();runSignalCheck()}});
 
 document.addEventListener('click',function(event){const head=event.target.closest('[data-league-toggle]');if(!head)return;const block=head.closest('.league-block');const panel=block&&block.querySelector('.league-matches');if(!panel)return;const opening=panel.hidden;panel.hidden=!opening;head.setAttribute('aria-expanded',opening?'true':'false');block.classList.toggle('is-open',opening);});
 document.addEventListener('click',function(event){const tab=event.target.closest('.gp-standings-tab');if(!tab)return;const root=tab.closest('.gp-analysis-panel');if(!root)return;const key=tab.getAttribute('data-gp-standings-mode');root.querySelectorAll('.gp-standings-tab').forEach(el=>el.classList.toggle('active',el===tab));root.querySelectorAll('[data-gp-standings-panel]').forEach(el=>{el.hidden=el.getAttribute('data-gp-standings-panel')!==key;});});
