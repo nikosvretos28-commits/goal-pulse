@@ -326,7 +326,20 @@ function resolveDatabaseUrl(raw) {
       .replace(/:\/\/dpg-db9t153rjlhs7382ko40-a(?=[:/?#]|$)/i, "://" + renderHost);
   }
 }
-const resolvedDatabaseUrl = resolveDatabaseUrl(process.env.DATABASE_URL || "");
+function getConfiguredDatabaseUrl() {
+  const directUrl = process.env.DATABASE_URL || process.env.ConnectionStrings__DefaultConnection || process.env.ConnectionStrings__Default || "";
+  if (directUrl.trim()) return directUrl;
+  // VibeNest may expose PostgreSQL credentials as separate environment variables.
+  const host = process.env.POSTGRES_HOST || process.env.PGHOST || "";
+  const user = process.env.POSTGRES_USER || process.env.PGUSER || "";
+  const password = process.env.POSTGRES_PASSWORD || process.env.PGPASSWORD || "";
+  const database = process.env.POSTGRES_DB || process.env.PGDATABASE || "";
+  const port = process.env.POSTGRES_PORT || process.env.PGPORT || "5432";
+  if (!host || !user || !password || !database) return "";
+  return "postgresql://" + encodeURIComponent(user) + ":" + encodeURIComponent(password) +
+    "@" + host + ":" + encodeURIComponent(port) + "/" + encodeURIComponent(database);
+}
+const resolvedDatabaseUrl = resolveDatabaseUrl(getConfiguredDatabaseUrl());
 const analyticsPool = resolvedDatabaseUrl && Pool ? new Pool({
   connectionString: resolvedDatabaseUrl,
   ssl: resolvedDatabaseUrl.includes("localhost") ? false : { rejectUnauthorized: false },
