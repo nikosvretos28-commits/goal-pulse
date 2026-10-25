@@ -1009,12 +1009,12 @@ function isAllowedRequestOrigin(req) {
   // Browsers commonly omit Origin on same-origin GET requests. Accept that case
   // only when the HTTPS Referer host matches this request's Host header.
   const referer = req.headers.referer || "";
-  const host = String(req.headers.host || "").toLowerCase();
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim().toLowerCase();
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
   try {
     const parsed = new URL(referer);
     return parsed.protocol === "https:" &&
-      forwardedProto === "https" &&
+      (forwardedProto === "https" || req.socket?.encrypted === true) &&
       parsed.host.toLowerCase() === host &&
       isAllowedOrigin(parsed.origin);
   } catch {
