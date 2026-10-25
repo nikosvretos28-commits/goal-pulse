@@ -9,6 +9,24 @@ try { ({ Pool } = require("pg")); } catch {}
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
+
+// Normalize common football API response envelopes. Several providers wrap the
+// fixture array in data.matches/data.fixtures rather than returning data as an array.
+function extractFixtureArray(body) {
+  if (Array.isArray(body)) return body;
+  if (!body || typeof body !== "object") return [];
+  const direct = [body.matches, body.fixtures, body.events, body.results, body.items, body.data];
+  for (const value of direct) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object") {
+      for (const key of ["matches", "fixtures", "events", "results", "items", "data"]) {
+        if (Array.isArray(value[key])) return value[key];
+      }
+    }
+  }
+  return [];
+}
+
 const ESPN_HEADERS = {
   "Accept": "application/json, text/plain, */*",
   "Accept-Language": "en-US,en;q=0.9",
@@ -2518,9 +2536,7 @@ const server = http.createServer(async (req, res) => {
                 const response = await fetch(endpoint, { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000) });
                 if (!response.ok) return { status, ok: false, httpStatus: response.status, matches: [] };
                 const body = await response.json();
-                const matches = Array.isArray(body.matches) ? body.matches :
-                  Array.isArray(body.data) ? body.data :
-                  Array.isArray(body.fixtures) ? body.fixtures : [];
+                const matches = extractFixtureArray(body);
                 return { status, ok: true, matches };
               } catch (error) {
                 return { status, ok: false, error: error.message || "request failed", matches: [] };
@@ -2618,7 +2634,7 @@ const server = http.createServer(async (req, res) => {
             });
             if (response.ok) {
               const payload = await response.json();
-              const liveFixtures = Array.isArray(payload) ? payload : (payload.matches || payload.data || payload.fixtures || payload.events || payload.results || []);
+              const liveFixtures = extractFixtureArray(payload);
               const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const liveEventsFromApi = [];
               let replacedLive = 0;
