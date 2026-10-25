@@ -1376,7 +1376,7 @@ const signalThreshold=document.getElementById('signalThreshold'),signalThreshold
 let liveMetricsCache=new Map();
 function setLiveMetricsCache(rows){
  const next=new Map((Array.isArray(rows)?rows:[]).map(x=>[String(x.eventId),x]));
- const norm=value=>String(value||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+ const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
  const live=Array.isArray(allMatches)?allMatches:[];
  for(const match of live){
   const id=String(match.id);
