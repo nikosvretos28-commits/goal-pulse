@@ -660,9 +660,11 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
       return { rate: conceded / matches.length, sample: matches.length };
     };
     const h = rates(homeName), a = rates(awayName);
-    // Weight each team's concede rate; require usable samples before adding a capped bonus.
-    const usable = [h,a].filter(x => x.rate != null);
-    const avg = usable.length ? usable.reduce((sum,x) => sum + x.rate, 0) / usable.length : null;
+    // Weight Dirty Sheet rates by the actual number of completed matches available for each team.
+    // Small samples contribute less; unavailable history stays neutral and is never fabricated.
+    const usable = [h,a].filter(x => x.rate != null && Number(x.sample) >= 4);
+    const totalSample = usable.reduce((sum,x) => sum + Number(x.sample), 0);
+    const avg = totalSample > 0 ? usable.reduce((sum,x) => sum + x.rate * Number(x.sample), 0) / totalSample : null;
     const support = avg == null ? 0 : avg >= 0.9 ? 2 : avg >= 0.8 ? 1.5 : avg >= 0.7 ? 1 : avg >= 0.6 ? 0.5 : 0;
     return { support, homeRate: h.rate, awayRate: a.rate, sample: Math.min(h.sample, a.sample) };
   } catch (error) {
@@ -1923,8 +1925,8 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
-          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            // No minimum-odds threshold: require only a real, active, exact-market decimal quote.
+          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.60 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
+            // Automatic AI alerts require verified decimal odds of at least 1.60.
             // Never send unknown/estimated odds or a mismatched market; Asian markets are excluded upstream.
             console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
