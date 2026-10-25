@@ -1798,7 +1798,7 @@ async function runSignalCheck(){
   let available=0,newAlerts=0;
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
   for(const m of liveMatches){
-   const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;if(minuteMode==='early'&&(minute===null||minute>30)||minuteMode==='middle'&&(minute===null||minute<31||minute>60)||minuteMode==='late'&&(minute===null||minute<61)||scannerLeague.value!=='all'&&m.leagueCode!==scannerLeague.value)continue;
+   const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;
    const live=(data.matches||[]).find(x=>x.eventId===m.id);
    if(!live||!live.statsAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
    available++;
@@ -1810,6 +1810,10 @@ async function runSignalCheck(){
    signalTrails.set(key,trail);
     updateIntervalStats(m,trail,values,now);
    signalSnapshots.set(key,{values,at:now});
+   // Collect rolling 5/10-minute history for every live match with stats.
+   // Apply the user's alert filters only after saving the snapshot, so display
+   // windows do not remain blank merely because a match is outside scanner filters.
+   if(minuteMode==='early'&&(minute===null||minute>30)||minuteMode==='middle'&&(minute===null||minute<31||minute>60)||minuteMode==='late'&&(minute===null||minute<61)||scannerLeague.value!=='all'&&m.leagueCode!==scannerLeague.value)continue;
    const windowMinutes=Number(signalWindow.value);
    const baseline=[...trail].reverse().find(item=>now-item.at>=windowMinutes*60*1000);
    const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
