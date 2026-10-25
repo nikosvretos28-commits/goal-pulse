@@ -81,7 +81,7 @@ async function ensureProtocolAnalystDb() {
   return protocolAnalystDbInit;
 }
 
-// Deployment verification marker: protocol analyst is included; AI alerts require verified decimal odds >= 1.60.
+// Deployment verification marker: protocol analyst is included; no minimum-odds threshold is applied.
 async function runProtocolAnalyst() {
   if (protocolAnalystRunInFlight) return protocolAnalystRunInFlight;
   protocolAnalystRunInFlight = (async () => {
@@ -1877,14 +1877,14 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
-          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) < 1.60 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            // AI alerts require a real, active, exact-market decimal quote of at least 1.60.
-            // Never send unknown/estimated odds or a lower price; Asian markets are excluded upstream.
+          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
+            // No minimum-odds threshold: require only a real, active, exact-market decimal quote.
+            // Never send unknown/estimated odds or a mismatched market; Asian markets are excluded upstream.
             console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
-              period: oddsPeriod, targetLine: targetOverLine, minimumOdds: 1.60,
+              period: oddsPeriod, targetLine: targetOverLine,
               verifiedPrice: verifiedOdds?.price ?? null,
-              reason: !verifiedOdds ? "no_verified_active_quote" : Number(verifiedOdds.price) < 1.60 ? "verified_odds_below_1.60" : "invalid_or_mismatched_market"
+              reason: !verifiedOdds ? "no_verified_active_quote" : "invalid_or_mismatched_market"
             }));
             continue;
           }
