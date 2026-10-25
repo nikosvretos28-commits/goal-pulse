@@ -1013,8 +1013,10 @@ function isAllowedRequestOrigin(req) {
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
   try {
     const parsed = new URL(referer);
+    // The platform may terminate TLS at its edge and omit forwarded-proto
+    // on internal requests. An HTTPS Referer matching the effective request host
+    // is sufficient for this same-origin fallback.
     return parsed.protocol === "https:" &&
-      (forwardedProto === "https" || req.socket?.encrypted === true) &&
       parsed.host.toLowerCase() === host &&
       isAllowedOrigin(parsed.origin);
   } catch {
