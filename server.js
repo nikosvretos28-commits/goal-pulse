@@ -1186,19 +1186,27 @@ const server = http.createServer(async (req, res) => {
     if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
-      // Public visitors may view only the previous calendar day in Greece.
-      // Use Europe/Athens calendar boundaries so daylight-saving changes are handled correctly.
+      // Return the requested history window using Greece-local calendar boundaries.
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const period = String(url.searchParams.get("period") || "all").toLowerCase();
+      const windowSql = period === "today"
+        ? "created_at >= (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+        : period === "yesterday"
+          ? "created_at >= ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') - INTERVAL '1 day') AT TIME ZONE 'Europe/Athens') AND created_at < (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+          : period === "7d"
+            ? "created_at >= NOW() - INTERVAL '7 days'"
+            : period === "30d"
+              ? "created_at >= NOW() - INTERVAL '30 days'"
+              : "TRUE";
       const result = await analyticsPool.query(
         `SELECT payload
            FROM alert_history
-          WHERE created_at >= ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') - INTERVAL '1 day') AT TIME ZONE 'Europe/Athens')
-            AND created_at < (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')
+          WHERE ${windowSql}
           ORDER BY created_at DESC
           LIMIT $1`,
         [limit]
       );
-      return send(res, 200, { ok: true, persistent: true, historyScope: "previous-day-europe-athens", alerts: result.rows.map(row => row.payload) });
+      return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => row.payload) });
     } catch (error) {
       return send(res, 503, { error: "Could not load alert history" });
     }
