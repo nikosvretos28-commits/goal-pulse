@@ -1846,7 +1846,22 @@ const server = http.createServer(async (req, res) => {
         // For Over-goal markets, the agreed shot-on-target thresholds may qualify by themselves:
         // 3+ new shots on target in ~5 minutes OR 6+ in ~10 minutes.
         // All alerts still require a valid live score and a verified active Over price below.
-        const isAiGoal = scoreAvailable && (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
+        // Stricter AI Analyst trial rules requested on 2026-10-25:
+        // 0-29': suppress alerts pending evidence that this segment is reliable.
+        // 30-45': require >=3 new shots on target in the last ~5 minutes
+        // plus at least one independent corroborating pressure signal.
+        // 46'+: retain existing criteria while collecting comparable outcomes.
+        const aiMinute = parseLiveMinute(getMatchMinute(match));
+        const corroboratingPressure = evidenceKinds >= 2 &&
+          (shots >= 2 || attacks >= 5 || dangerous >= 3 || (xGDelta != null && xGDelta >= 0.15));
+        const earlySegmentAllowed = Number.isFinite(aiMinute) && aiMinute >= 30;
+        const firstHalfStrictPass = Number.isFinite(aiMinute) && aiMinute >= 30 && aiMinute <= 45 &&
+          onTarget >= 3 && corroboratingPressure;
+        const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute > 45 &&
+          (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
+            (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
+        const isAiGoal = scoreAvailable && earlySegmentAllowed &&
+          ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
