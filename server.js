@@ -1002,6 +1002,25 @@ function isAllowedOrigin(value) {
     return false;
   }
 }
+
+function isAllowedRequestOrigin(req) {
+  const origin = req.headers.origin;
+  if (origin) return isAllowedOrigin(origin);
+  // Browsers commonly omit Origin on same-origin GET requests. Accept that case
+  // only when the HTTPS Referer host matches this request's Host header.
+  const referer = req.headers.referer || "";
+  const host = String(req.headers.host || "").toLowerCase();
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  try {
+    const parsed = new URL(referer);
+    return parsed.protocol === "https:" &&
+      forwardedProto === "https" &&
+      parsed.host.toLowerCase() === host &&
+      isAllowedOrigin(parsed.origin);
+  } catch {
+    return false;
+  }
+}
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
   if (origin && isAllowedOrigin(origin)) {
@@ -1015,7 +1034,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
 
   if (url.pathname === "/api/power-games/access" && req.method === "POST") {
-    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Power Games admin access is not configured" });
     const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
     const now = Date.now();
@@ -1039,7 +1058,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/alerts/history/verify" && req.method === "GET") {
-    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       // Read-only integrity audit: it never edits or settles alerts.
@@ -1174,7 +1193,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
-    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
       // Always recompute from current settled history; cached reports may predate
@@ -1189,7 +1208,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
-    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       // Return the requested history window using Greece-local calendar boundaries.
@@ -1218,7 +1237,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
   if (url.pathname === "/api/alerts/history" && req.method === "POST") {
-    if (!isAllowedOrigin(req.headers.origin || "")) return send(res, 403, { error: "Origin not allowed" });
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       const body = await readJsonBody(req, 4 * 1024 * 1024);
