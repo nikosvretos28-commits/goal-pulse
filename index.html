@@ -826,7 +826,10 @@ nav a{flex:0 0 auto}
  .live-match-line .live-row{grid-template-columns:28px minmax(0,1fr) 29px minmax(0,1fr)!important;gap:2px;padding:8px 3px}
  .live-match-line .live-row .minute{font-size:8px;padding:3px 1px}
 }
-.live-match-line .live-row .minute{font-size:12px!important;font-weight:950;min-width:38px;padding:5px 4px!important;line-height:1.2}@media(max-width:560px){.live-match-line .live-row .minute{font-size:11px!important;min-width:36px;padding:5px 3px!important}}</style>
+.live-match-line .live-row .minute{font-size:12px!important;font-weight:950;min-width:38px;padding:5px 4px!important;line-height:1.2}@media(max-width:560px){.live-match-line .live-row .minute{font-size:11px!important;min-width:36px;padding:5px 3px!important}}
+/* Final mobile override: keep match minutes readable even after responsive rules. */
+.minute{background:#542631!important;color:#ffd0d5!important;border-radius:8px;padding:5px 7px!important;min-width:36px;min-height:28px;display:inline-flex;align-items:center;justify-content:center;font-size:12px!important;line-height:1.15;font-weight:900;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+</style>
 </head>
 <body>
 <div class="wrap">
