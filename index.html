@@ -1763,7 +1763,9 @@ async function runSignalCheck(){
    signalSnapshots.set(key,{values,at:now});
    const windowMinutes=Number(signalWindow.value);
    const baseline=[...trail].reverse().find(item=>now-item.at>=windowMinutes*60*1000);
+   const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
    const serverTrend=windowMinutes===10?live.trend?.window10m:windowMinutes===5?live.trend?.window5m:null;
+   const serverTrend10=live.trend?.window10m;
    if(!baseline&&!serverTrend?.available)continue;
    let goalPoints=0,pressurePoints=0,reasons=[],totalShotsAdded=0,shotsOnTargetAdded=0,cornersAdded=0,attacksAdded=0,dangerousAttacksAdded=0,xGAdded=0,xGAvailable=false;
    values.forEach((v,i)=>{
@@ -1788,15 +1790,23 @@ async function runSignalCheck(){
    const sensitivity=Number(signalThreshold.value);
    const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
    const evidenceKinds=[totalShotsAdded>0||shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
-   // Recent pressure reinforcement shared by goal, pressure and corner scoring:
-   // 3+ new shots on target in the measured window is strong supporting evidence,
-   // never a standalone trigger; require at least one independent signal.
+   // Independent 10-minute pressure protocol: count newly recorded shots on target
+   // against a real ~10-minute baseline, or use the provider's 10-minute trend.
+   let shotsOnTarget10m=0,hasSot10mData=false;
+   if(baseline10&&Array.isArray(baseline10.values)){
+    values.forEach((v,i)=>{const p=baseline10.values[i]||{};if(v.shotsOnTarget!=null&&p.shotsOnTarget!=null&&Number.isFinite(Number(v.shotsOnTarget))&&Number.isFinite(Number(p.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(v.shotsOnTarget)-Number(p.shotsOnTarget));hasSot10mData=true;}});
+   }else if(serverTrend10?.available&&Array.isArray(serverTrend10.teams)){
+    serverTrend10.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
+   }
+   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+   // Recent pressure reinforcement: 3+ new shots on target in the selected window,
+   // or 6+ across the last 10 minutes, boosts scoring but never triggers alone.
    const independentAttackSignal=totalShotsAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
-   const recentSotReinforcement=shotsOnTargetAdded>=3&&independentAttackSignal;
+   const recentSotReinforcement=(shotsOnTargetAdded>=3||sixSot10m)&&independentAttackSignal;
    if(recentSotReinforcement){
-    goalPoints+=2;
-    pressurePoints+=2;
-    reasons.push('ισχυρή πρόσφατη πίεση: '+shotsOnTargetAdded+' νέα σουτ στην εστία μαζί με ανεξάρτητη επιθετική ένδειξη');
+    goalPoints+=sixSot10m?3:2;
+    pressurePoints+=sixSot10m?3:2;
+    reasons.push((sixSot10m?'10λεπτο: ':'πρόσφατη πίεση: ')+shotsOnTarget10m+' σουτ στην εστία στα τελευταία 10′'+(independentAttackSignal?' μαζί με ανεξάρτητη επιθετική ένδειξη':''));
    }
    const matchMinute=minuteMatch?Number(minuteMatch[0]):null;
    const totalCorners=live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null;
