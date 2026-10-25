@@ -1231,7 +1231,7 @@ async function loadScores(){
  const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
  const feedsSucceeded=successfulFeeds;
  goalFlashMatchIds=[];
- if(feedsSucceeded>0 || freshMatches.length>0){
+ if(freshMatches.length>0){
   const previousById=new Map(allMatches.map(m=>[String(m.id),m]));
   freshMatches.forEach(m=>{const prev=previousById.get(String(m.id));if(!prev)return;const oldHome=Number(prev.home.score),newHome=Number(m.home.score),oldAway=Number(prev.away.score),newAway=Number(m.away.score);if(Number.isFinite(oldHome)&&Number.isFinite(newHome)&&Number.isFinite(oldAway)&&Number.isFinite(newAway)&&(newHome>oldHome||newAway>oldAway))goalFlashMatchIds.push(String(m.id));});
   allMatches=freshMatches;lastSuccessfulScoreUpdate=new Date();
@@ -1375,7 +1375,16 @@ document.getElementById('refreshScores').addEventListener('click',loadScores);
 const signalThreshold=document.getElementById('signalThreshold'),signalThresholdLabel=document.getElementById('signalThresholdLabel'),signalMarket=document.getElementById('signalMarket'),signalWindow=document.getElementById('signalWindow'),signalOutcomeWindow=document.getElementById('signalOutcomeWindow'),scannerMinute=document.getElementById('scannerMinute'),scannerLeague=document.getElementById('scannerLeague'),vipAlertsToggle=document.getElementById('vipAlerts'),signalResults=document.getElementById('signalResults'),signalStatus=document.getElementById('signalStatus');
 let liveMetricsCache=new Map();
 function setLiveMetricsCache(rows){
- const next=new Map((Array.isArray(rows)?rows:[]).map(x=>[String(x.eventId),x]));
+ // Keep the last usable metrics during transient empty/partial API responses.
+ const incoming=Array.isArray(rows)?rows:[];
+ const next=new Map(liveMetricsCache);
+ for(const row of incoming){
+  if(!row||row.eventId==null)continue;
+  const id=String(row.eventId);
+  const old=next.get(id);
+  const usable=row.statsAvailable===true||(Array.isArray(row.teams)&&row.teams.some(t=>t&&Object.keys(t).some(k=>t[k]!=null&&t[k]!=='')));
+  if(usable||!old)next.set(id,row);
+ }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
  const live=Array.isArray(allMatches)?allMatches:[];
  for(const match of live){
