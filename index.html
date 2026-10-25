@@ -1597,7 +1597,11 @@ function renderHighActivityMatches(){
   const goalEvidence=delta.shots>=2&&delta.shotsOnTarget>=1;
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.attacks*.25,3)+Math.min(delta.dangerousAttacks*.75,5);
   const pressureEvidence=evidenceKinds>=3&&pressureScore>=7&&delta.dangerousAttacks>=3;
-  const active=goalEvidence||pressureEvidence;
+  // Strong recent-pressure signal: 3+ additional shots on target in the measured ~5-minute window.
+  // It supports the decision only alongside at least one independent attacking signal; it is never a standalone trigger.
+  const recentSotStrong=delta.shotsOnTarget>=3;
+  const recentSotSupported=recentSotStrong&&evidenceKinds>=2&&pressureScore>=5;
+  const active=goalEvidence||pressureEvidence||recentSotSupported;
   // xG supports ranking only when two comparable live measurements exist.
   // It never triggers High Activity by itself and missing xG never blocks evaluation.
   let recentXG=null;
