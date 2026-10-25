@@ -928,7 +928,7 @@ nav a{flex:0 0 auto}
 })();
 </script>
 <script>
-const ANALYTICS_API='';
+const ANALYTICS_API='https://goal-pulse-analytics.onrender.com';
 function alertHistoryKey(a){return String(a?.alertId||[a?.eventId||'unknown',a?.level||'AI',a?.createdAt||0,a?.market||''].join(':'))}
 async function persistAlertRecord(a){
  if(!a||!a.eventId||!Number.isFinite(Number(a.createdAt)))return false;
