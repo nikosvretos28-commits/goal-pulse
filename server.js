@@ -966,6 +966,7 @@ async function getVerifiedOver(match, targetLine, period = "first_half") {
 
 const ALLOWED_ORIGINS = new Set([
   "https://goal-pulse.onrender.com",
+  "https://goal-pulse.vibenest.net",
   "https://goal-pulse-live-2026-2.onrender.com",
   "https://nikosvretos28-commits.github.io"
 ]);
