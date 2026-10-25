@@ -1901,17 +1901,17 @@ const server = http.createServer(async (req, res) => {
         // For Over-goal markets, the agreed shot-on-target thresholds may qualify by themselves:
         // 3+ new shots on target in ~5 minutes OR 6+ in ~10 minutes.
         // All alerts still require a valid live score and a verified active Over price below.
-        // Goal Pulse protocol confirmed 2026-10-25:
-        // first-half AI alerts: minutes 20-40 only; second-half AI alerts: minutes 46-88 only.
+        // Goal Pulse protocol updated 2026-10-25:
+        // first-half AI alerts: minutes 1-40; second-half AI alerts: minutes 46-88.
         // High Activity has no minute-window restriction and is evaluated by its own pressure protocol.
         // >=3 shots on target over ~5 minutes OR >=6 over ~10 minutes qualifies.
         // Dirty Sheet history, live pressure and xG remain supporting signals when available.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const corroboratingPressure = evidenceKinds >= 2 &&
           (shots >= 2 || attacks >= 5 || dangerous >= 3 || (xGDelta != null && xGDelta >= 0.15));
-        const earlySegmentAllowed = Number.isFinite(aiMinute) && aiMinute >= 20 && aiMinute <= 88 &&
+        const earlySegmentAllowed = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 88 &&
           (aiMinute <= 40 || aiMinute >= 46);
-        const firstHalfStrictPass = Number.isFinite(aiMinute) && aiMinute >= 20 && aiMinute <= 40 &&
+        const firstHalfStrictPass = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40 &&
           shotsOnlyOverEvidence;
         const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute >= 46 && aiMinute <= 88 &&
           (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
