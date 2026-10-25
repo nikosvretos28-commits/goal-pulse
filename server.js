@@ -1861,7 +1861,10 @@ const server = http.createServer(async (req, res) => {
         const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute > 45 && aiMinute <= 86 &&
           (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
             (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
-        const isAiGoal = scoreAvailable && earlySegmentAllowed &&
+        // HARD GATE for every automatic AI notification: recent shots on target must qualify.
+        // Require >=3 SOT in the rolling ~5-minute window OR >=6 SOT in the rolling ~10-minute window.
+        // Other pressure/xG/Dirty Sheet signals may support ranking but can never bypass this gate.
+        const isAiGoal = scoreAvailable && earlySegmentAllowed && shotsOnlyOverEvidence &&
           ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
