@@ -950,7 +950,7 @@ async function persistAlertBatch(alerts){
 }
 async function loadPersistentAlertHistory(){
  try{
-  const response=await fetch(ANALYTICS_API+'/api/alerts/history?limit=5000',{cache:'no-store'});
+  const response=await fetch(ANALYTICS_API+'/api/alerts/history?limit=5000&period=all',{cache:'no-store'});
   if(!response.ok)throw new Error('HTTP '+response.status);
   const data=await response.json();if(!Array.isArray(data.alerts))return;
   const merged=new Map();
