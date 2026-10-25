@@ -1490,7 +1490,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const waveSvg='<svg class="activity-ecg" viewBox="0 0 140 38" preserveAspectRatio="none" aria-hidden="true"><polyline class="ecg-trace" points="'+wavePoints+'"/></svg>';
  const waveHtml='<span class="activity-wave" style="--wave-color:'+waveColor+';--wave-level:'+waveLevel+'%" role="img" aria-label="Ένταση επιθετικής δραστηριότητας '+waveLevel+' στα 100" title="Δείκτης επιθετικής δραστηριότητας: '+waveLevel+'/100">'+waveSvg+'<span class="ecg-glow"></span></span>';
   const alertHtml=recentAlert?'<div class="activity-alert-row"><span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>'+(highActivity?waveHtml:'')+'</div>':(highActivity?'<div class="activity-alert-row"><span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>'+waveHtml+'</div>':"");
- const secondaryActivityHtml=(!highActivity&&highActivityEligibleIds.has(String(m.id))?'<span class="activity-secondary-badge" title="Πληροί τα κριτήρια High Activity, αλλά βρίσκεται εκτός της κορυφαίας πεντάδας">⚡ HI ACTIVITY</span>':"");
+ const secondaryActivityHtml=(!highActivity&&highActivityEligibleIds.has(String(m.id))?'<span class="activity-secondary-badge" title="Πληροί τα κριτήρια High Activity, αλλά βρίσκεται εκτός της κορυφαίας δεκάδας">⚡ HI ACTIVITY</span>':"");
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams[0]||{},away=teams[1]||{};
@@ -1647,9 +1647,10 @@ function renderHighActivityMatches(){
   const count=document.getElementById("powerGamesCount");if(count)count.textContent=String(ranked.length);
  }
  highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
- highActivityTopIds=new Set(ranked.map(x=>String(x.match.id)));
- box.innerHTML=ranked.length
-  ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+ const topTen=ranked.slice(0,10);
+ highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
+ box.innerHTML=topTen.length
+  ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια πραγματικής πρόσφατης έντασης. Ελέγχονται σουτ, σουτ στον στόχο, επιθέσεις και επικίνδυνες επιθέσεις· η λίστα ανανεώνεται αυτόματα.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
