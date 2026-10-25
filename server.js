@@ -103,6 +103,10 @@ async function runProtocolAnalyst() {
         shots: stats.shots !== null && stats.shots !== undefined && Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
+        dirtySheetSupport: stats.dirtySheetSupport !== null && stats.dirtySheetSupport !== undefined && Number.isFinite(Number(stats.dirtySheetSupport)) ? Number(stats.dirtySheetSupport) : null,
+        dirtySheetBand: stats.dirtySheetSample >= 5 && Number.isFinite(Number(stats.dirtySheetHomeRate)) && Number.isFinite(Number(stats.dirtySheetAwayRate))
+          ? ((Number(stats.dirtySheetHomeRate) + Number(stats.dirtySheetAwayRate)) / 2 >= 0.8 ? "80%+" : (Number(stats.dirtySheetHomeRate) + Number(stats.dirtySheetAwayRate)) / 2 >= 0.6 ? "60–79%" : "<60%")
+          : "missing",
         shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
         xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
@@ -142,7 +146,7 @@ async function runProtocolAnalyst() {
           detail: "Η ομάδα έχει " + item.successRate + "% σε " + item.settled + " περιπτώσεις, πάνω από τη συνολική επίδοση. Να ελεγχθεί σε ανεξάρτητο ιστορικό δείγμα· δεν αλλάζει αυτόματα το live πρωτόκολλο."
         });
       }
-      for (const [field, label] of [["shotBand", "τελικές στο 5λεπτο"], ["onTargetBand", "σουτ στην εστία στο 5λεπτο"], ["xGBand", "μεταβολή xG στο 5λεπτο"]]) {
+      for (const [field, label] of [["shotBand", "τελικές στο 5λεπτο"], ["onTargetBand", "σουτ στην εστία στο 5λεπτο"], ["xGBand", "μεταβολή xG στο 5λεπτο"], ["dirtySheetBand", "ιστορικό ομάδων που δέχονται γκολ"]]) {
         for (const item of segment(field, field)) {
           if (item.settled < 20 || item.successRate == null || item[field] === "missing") continue;
           const difference = item.successRate - overall.successRate;
@@ -654,15 +658,15 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
     const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const rates = name => {
       const target = norm(name);
-      const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10);
-      if (matches.length < 4) return { rate: null, sample: matches.length };
+      const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 15);
+      if (matches.length < 5) return { rate: null, sample: matches.length };
       const conceded = matches.filter(m => m.home === target ? m.as > 0 : m.hs > 0).length;
       return { rate: conceded / matches.length, sample: matches.length };
     };
     const h = rates(homeName), a = rates(awayName);
     // Weight Dirty Sheet rates by the actual number of completed matches available for each team.
     // Small samples contribute less; unavailable history stays neutral and is never fabricated.
-    const usable = [h,a].filter(x => x.rate != null && Number(x.sample) >= 4);
+    const usable = [h,a].filter(x => x.rate != null && Number(x.sample) >= 5);
     const totalSample = usable.reduce((sum,x) => sum + Number(x.sample), 0);
     const avg = totalSample > 0 ? usable.reduce((sum,x) => sum + x.rate * Number(x.sample), 0) / totalSample : null;
     const support = avg == null ? 0 : avg >= 0.9 ? 2 : avg >= 0.8 ? 1.5 : avg >= 0.7 ? 1 : avg >= 0.6 ? 0.5 : 0;
@@ -2032,7 +2036,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), evidenceKinds, points }
+                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
