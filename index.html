@@ -1562,6 +1562,7 @@ function renderHighActivityMatches(){
   if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   const teams=stats.teams,trail=signalTrails.get(String(m.id))||[];
   const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
+  const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
   const keys=["shots","shotsOnTarget","attacks","dangerousAttacks"];
   const delta={shots:0,shotsOnTarget:0,attacks:0,dangerousAttacks:0};
   let hasRecentData=false;
@@ -1601,7 +1602,15 @@ function renderHighActivityMatches(){
   // It supports the decision only alongside at least one independent attacking signal; it is never a standalone trigger.
   const recentSotStrong=delta.shotsOnTarget>=3;
   const recentSotSupported=recentSotStrong&&evidenceKinds>=2&&pressureScore>=5;
-  const active=goalEvidence||pressureEvidence||recentSotSupported;
+  let shotsOnTarget10m=0,hasSot10mData=false;
+  if(baseline10&&Array.isArray(baseline10.values)){
+   teams.forEach((team,i)=>{const prev=baseline10.values[i]||{};if(team.shotsOnTarget!=null&&prev.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number.isFinite(Number(prev.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget)-Number(prev.shotsOnTarget));hasSot10mData=true;}});
+  }else if(stats.trend?.window10m?.available&&Array.isArray(stats.trend.window10m.teams)){
+   stats.trend.window10m.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
+  }
+  const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+  const recentSot10mSupported=sixSot10m&&evidenceKinds>=2&&pressureScore>=5;
+  const active=goalEvidence||pressureEvidence||recentSotSupported||recentSot10mSupported;
   // xG supports ranking only when two comparable live measurements exist.
   // It never triggers High Activity by itself and missing xG never blocks evaluation.
   let recentXG=null;
@@ -1621,9 +1630,9 @@ function renderHighActivityMatches(){
    if(!Number.isFinite(sot)||sot<2||!Number.isFinite(goals)||goals<0)return sum;
    return sum+Math.min(1,goals/sot*1.5);
   },0);
-  const score=pressureScore+xGSupport+liveConversionSupport;
-  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3)));
-  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
+  const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
+  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
+  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
