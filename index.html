@@ -1374,6 +1374,29 @@ document.getElementById('todayDate').addEventListener('click',()=>{selectedMatch
 document.getElementById('refreshScores').addEventListener('click',loadScores);
 const signalThreshold=document.getElementById('signalThreshold'),signalThresholdLabel=document.getElementById('signalThresholdLabel'),signalMarket=document.getElementById('signalMarket'),signalWindow=document.getElementById('signalWindow'),signalOutcomeWindow=document.getElementById('signalOutcomeWindow'),scannerMinute=document.getElementById('scannerMinute'),scannerLeague=document.getElementById('scannerLeague'),vipAlertsToggle=document.getElementById('vipAlerts'),signalResults=document.getElementById('signalResults'),signalStatus=document.getElementById('signalStatus');
 let liveMetricsCache=new Map();
+function setLiveMetricsCache(rows){
+ const next=new Map((Array.isArray(rows)?rows:[]).map(x=>[String(x.eventId),x]));
+ const norm=value=>String(value||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+ const live=Array.isArray(allMatches)?allMatches:[];
+ for(const match of live){
+  const id=String(match.id);
+  if(next.has(id))continue;
+  const home=norm(match.home?.name),away=norm(match.away?.name);
+  if(!home||!away)continue;
+  const found=(Array.isArray(rows)?rows:[]).find(row=>norm(row.home)===home&&norm(row.away)===away);
+  if(found)next.set(id,found);
+  else{
+   const reverse=(Array.isArray(rows)?rows:[]).find(row=>norm(row.home)===away&&norm(row.away)===home);
+   if(reverse){
+    const teams=Array.isArray(reverse.teams)?reverse.teams:[];
+    const swap=team=>({...team,homeAway:team.homeAway==='home'?'away':team.homeAway==='away'?'home':team.homeAway});
+    const trend=reverse.trend?{...reverse.trend,window5m:reverse.trend.window5m?{...reverse.trend.window5m,teams:(reverse.trend.window5m.teams||[]).slice().reverse().map(swap)}:reverse.trend.window5m,window10m:reverse.trend.window10m?{...reverse.trend.window10m,teams:(reverse.trend.window10m.teams||[]).slice().reverse().map(swap)}:reverse.trend.window10m}:reverse.trend;
+    next.set(id,{...reverse,eventId:id,home:match.home?.name||reverse.away,away:match.away?.name||reverse.home,teams:teams.slice().reverse().map(swap),trend});
+   }
+  }
+ }
+ liveMetricsCache=next;
+}
 let selectedLiveStatsId="";
 let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalCandidateLastAt=new Map(), signalAlertHistory=[];try{signalAlertHistory=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(!Array.isArray(signalAlertHistory))signalAlertHistory=[];signalAlertHistory=signalAlertHistory.filter(a=>a&&Number.isFinite(Number(a.createdAt))).slice(0,5000);signalAlertHistory.forEach(a=>{if(a.eventId&&a.createdAt){const marketKey=a.market==='πιθανό γκολ'?'goal':a.market==='πιθανό κόρνερ'?'corner':'pressure';const k=String(a.eventId)+':'+marketKey;signalLastAlertAt.set(k,Math.max(signalLastAlertAt.get(k)||0,Number(a.createdAt)))}})}catch{}
 signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/10');
@@ -1692,7 +1715,7 @@ async function runSignalCheck(){
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
   const liveMatches=allMatches.filter(m=>m.state==='in');
-  liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));
+  setLiveMetricsCache(data.matches||[]);
   if(Date.now()-lastPersistentAlertRefresh>60000){lastPersistentAlertRefresh=Date.now();loadPersistentAlertHistory();}
    updateInsightSummary();
    if(active==='signals')render();
@@ -2050,7 +2073,7 @@ async function showDetails(btn){
      const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
      const data=await response.json();
      if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
-     liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));
+     setLiveMetricsCache(data.matches||[]);
      renderLiveDetails();
     }catch{
      const note=document.createElement('p');note.className='analysis-note';note.textContent='Δεν ήταν δυνατή η ανανέωση τώρα. Δοκίμασε ξανά σε λίγο.';content.appendChild(note);
@@ -2067,7 +2090,7 @@ async function showDetails(btn){
    const date=(selectedMatchDate||new Date().toISOString().slice(0,10)).replace(/-/g,'');
    const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
    const data=await response.json();
-   if(response.ok){liveMetricsCache=new Map((data.matches||[]).map(x=>[String(x.eventId),x]));renderLiveDetails();await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
+   if(response.ok){setLiveMetricsCache(data.matches||[]);renderLiveDetails();await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
    else {content.insertAdjacentHTML('beforeend','<p class="analysis-note">Η πηγή live στατιστικών δεν απάντησε τώρα. Εμφανίζεται η ανάλυση σεζόν ως εναλλακτική.</p>');await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
   }catch{try{await runSignalCheck();renderLiveDetails()}catch{}await showSeasonResultsDetails(card,home,away,subtitle,content,true)}
   liveDetailRefreshTimer=setInterval(async()=>{
@@ -2080,7 +2103,7 @@ async function showDetails(btn){
     const poll=await fetch(ANALYTICS_API+'/api/live-metrics?date='+pollDate,{signal:AbortSignal.timeout(12000),cache:'no-store'});
     const pollData=await poll.json();
     if(!poll.ok)throw new Error('live stats unavailable');
-    liveMetricsCache=new Map((pollData.matches||[]).map(x=>[String(x.eventId),x]));
+    setLiveMetricsCache(pollData.matches||[]);
     renderLiveDetails();
     document.getElementById('liveRefreshError')?.remove();
    }catch(error){let note=document.getElementById('liveRefreshError');if(!note){note=document.createElement('p');note.id='liveRefreshError';note.className='analysis-note';content.appendChild(note)}note.textContent='Η αυτόματη ενημέρωση θα ξαναδοκιμάσει σύντομα.';}
