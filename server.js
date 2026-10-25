@@ -2373,24 +2373,31 @@ const server = http.createServer(async (req, res) => {
         sharedRequest = (async () => {
           const feeds = [];
           const espnLeagues = SCOREBOARD_LEAGUES.filter(code => !ESPN_UNSUPPORTED_LEAGUES.has(code));
-          // Run the three ESPN league batches concurrently so one slow league batch
-          // cannot make the public scoreboard miss the browser's request deadline.
-          const espnBatches = Array.from({ length: Math.ceil(espnLeagues.length / 36) }, (_, index) =>
-            espnLeagues.slice(index * 36, (index + 1) * 36)
+          // Bound concurrency: the previous nested Promise.all launched every
+          // league request at once (up to ~150 simultaneous calls), which can trigger
+          // provider throttling and leave the scoreboard with almost no successful feeds.
+          // Run groups of 50 in sequence so no more than 50 ESPN requests are in flight.
+          const espnBatchSize = 50;
+          const espnBatches = Array.from({ length: Math.ceil(espnLeagues.length / espnBatchSize) }, (_, index) =>
+            espnLeagues.slice(index * espnBatchSize, (index + 1) * espnBatchSize)
           );
-          const batchResults = await Promise.all(espnBatches.map(batch => Promise.all(batch.map(async code => {
-            try {
-              const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
-                headers: { "Accept": "application/json" },
-                signal: AbortSignal.timeout(8000)
-              });
-              if (!response.ok) { if (response.status === 400) ESPN_UNSUPPORTED_LEAGUES.add(code); return { code, events: [], ok: false, error: "HTTP " + response.status }; }
-              const body = await response.json();
-              return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
-            } catch (error) {
-              return { code, events: [], ok: false, error: error.message || "request failed" };
-            }
-          }))));
+          const batchResults = [];
+          for (const batch of espnBatches) {
+            const results = await Promise.all(batch.map(async code => {
+              try {
+                const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
+                  headers: { "Accept": "application/json" },
+                  signal: AbortSignal.timeout(6000)
+                });
+                if (!response.ok) { if (response.status === 400) ESPN_UNSUPPORTED_LEAGUES.add(code); return { code, events: [], ok: false, error: "HTTP " + response.status }; }
+                const body = await response.json();
+                return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
+              } catch (error) {
+                return { code, events: [], ok: false, error: error.message || "request failed" };
+              }
+            }));
+            batchResults.push(results);
+          }
           feeds.push(...batchResults.flat());
           let finalFeeds = feeds;
           let successfulFeeds = feeds.filter(feed => feed.ok).length;
