@@ -1771,14 +1771,18 @@ const server = http.createServer(async (req, res) => {
         // is measured together, instead of comparing only with the immediately prior scan.
         const snapshots = pushScanSnapshots.get(id) || [];
         snapshots.push(current);
-        const windowStart = now - 5 * 60 * 1000;
+        // Keep 10 minutes of snapshots so Over alerts can use either the 5m or 10m shot-on-target threshold.
+        const windowStart = now - 10 * 60 * 1000;
         const rollingSnapshots = snapshots.filter(snapshot => snapshot.at >= windowStart);
         pushScanSnapshots.set(id, rollingSnapshots);
-        const previous = rollingSnapshots.length > 1 ? rollingSnapshots[0] : null;
+        const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || null;
+        const previous10 = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 9.5 * 60 * 1000 && now - snapshot.at <= 11 * 60 * 1000) || null;
         checked++;
         if (!previous || now - previous.at < 35000) continue;
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
+        const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const xGDelta = current.xG != null && previous.xG != null ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
@@ -1839,7 +1843,10 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        const isAiGoal = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
+        // For Over-goal markets, the agreed shot-on-target thresholds may qualify by themselves:
+        // 3+ new shots on target in ~5 minutes OR 6+ in ~10 minutes.
+        // All alerts still require a valid live score and a verified active Over price below.
+        const isAiGoal = scoreAvailable && (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
@@ -1926,7 +1933,8 @@ const server = http.createServer(async (req, res) => {
           }
           const reason = [
             shots ? shots + " νέες τελικές" : "",
-            onTarget ? onTarget + " νέα σουτ στην εστία" : "",
+            onTarget ? onTarget + " νέα σουτ στην εστία στο 5λεπτο" : "",
+            onTarget10m >= 6 ? onTarget10m + " σουτ στην εστία στα τελευταία 10′" : "",
             corners ? corners + " νέα κόρνερ" : "",
             totalXG != null && Number.isFinite(totalXG) ? "xG " + totalXG.toFixed(2) : "",
             attacks ? attacks + " νέες επιθέσεις" : "",
