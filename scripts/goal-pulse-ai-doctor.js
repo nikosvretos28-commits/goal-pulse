@@ -78,11 +78,20 @@ async function checkHealthUrl() {
     add('deployed health endpoint', 'FAIL', 'Health URL must use HTTP or HTTPS'); return;
   }
   try {
+    const startedAt = performance.now();
     const response = await fetch(parsed, { signal: AbortSignal.timeout(8000), redirect: 'manual' });
+    const headerMs = Math.round(performance.now() - startedAt);
+    const body = await response.arrayBuffer();
+    const totalMs = Math.round(performance.now() - startedAt);
     const status = response.status;
     if (status >= 200 && status < 400) add('deployed health endpoint', 'PASS', 'HTTP ' + status);
     else add('deployed health endpoint', 'FAIL', 'HTTP ' + status + ' returned by configured URL');
-    await response.body?.cancel();
+    const warnMs = Number(process.env.GOAL_PULSE_WARN_RESPONSE_MS || 1500);
+    const failMs = Number(process.env.GOAL_PULSE_FAIL_RESPONSE_MS || 4000);
+    const detail = 'headers ' + headerMs + ' ms; full response ' + totalMs + ' ms; ' + body.byteLength + ' bytes';
+    if (totalMs >= failMs) add('site response speed', 'WARN', detail + ' — slow response; investigate server load, API calls, and caching');
+    else if (totalMs >= warnMs) add('site response speed', 'WARN', detail + ' — slower than target; aim for under ' + warnMs + ' ms');
+    else add('site response speed', 'PASS', detail + ' — within the ' + warnMs + ' ms target');
   } catch (error) {
     add('deployed health endpoint', 'FAIL', 'Request failed: ' + (error.name === 'TimeoutError' ? 'timed out after 8 seconds' : error.message));
   }
