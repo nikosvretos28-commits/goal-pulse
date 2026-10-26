@@ -1880,19 +1880,20 @@ const server = http.createServer(async (req, res) => {
         const shots = delta("shots"), onTarget = delta("onTarget");
         const shots10m = current.shots == null || previous10?.shots == null ? 0 : Math.max(0, current.shots - previous10.shots);
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Core Over evidence: either strong recent shot volume + SOT, OR 10+ cumulative SOT.
-        // Recent windows require >=5 total shots AND >=3 SOT in ~5 minutes,
+        // Core Over evidence: strong recent shot volume + SOT, 10+ cumulative SOT,
+        // OR either team's xG reaching 2.50+. The xG criterion is an alternative core
+        // signal; missing xG is neutral and never blocks a match by itself.
+        // Recent shot windows require >=5 total shots AND >=3 SOT in ~5 minutes,
         // OR >=10 total shots AND >=6 SOT in ~10 minutes.
-        // 10+ cumulative SOT is an additional core criterion, but all data validation
-        // and the remaining alert eligibility/scoring rules still apply.
         const cumulativeSOTCoreCriterion = current.onTarget != null && Number(current.onTarget) >= 10;
+        const xGCoreCriterion = current.xG != null && Number.isFinite(Number(current.xG)) && Number(current.xG) >= 2.5;
         const shotsOnlyOverEvidence = (shots >= 5 && onTarget >= 3) ||
-          (shots10m >= 10 && onTarget10m >= 6) || cumulativeSOTCoreCriterion;
+          (shots10m >= 10 && onTarget10m >= 6) || cumulativeSOTCoreCriterion || xGCoreCriterion;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
-        // One team's xG >= 2.50 is a positive supporting signal; both teams >= 2.50
-        // adds a stronger core evaluation factor, but never bypasses the mandatory SOT gate.
+        // One team's xG >= 2.50 is a core Over signal; both teams >= 2.50
+        // provide stronger support. Missing xG remains neutral, not a disqualifier.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
         const bothTeamsXGQualified = current.bothTeamsXGQualified === true;
         const xGDelta = xGQualifies && previous.xG != null
@@ -1973,9 +1974,9 @@ const server = http.createServer(async (req, res) => {
         const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute >= 46 && aiMinute <= 88 &&
           (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
             (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
-        // HARD GATE for every automatic AI notification: recent shots on target must qualify.
-        // Require >=3 SOT in the rolling ~5-minute window OR >=6 SOT in the rolling ~10-minute window.
-        // Other pressure/xG/Dirty Sheet signals may support ranking but can never bypass this gate.
+        // Core evidence gate for automatic AI notifications: either the agreed recent-shot/SOT
+        // thresholds, 10+ cumulative SOT, or a team xG of 2.50+ must qualify.
+        // Other pressure signals can support ranking but cannot trigger an alert alone.
         const isAiGoal = scoreAvailable && earlySegmentAllowed && shotsOnlyOverEvidence &&
           ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
