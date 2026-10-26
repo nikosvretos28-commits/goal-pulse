@@ -1011,6 +1011,64 @@ nav a:hover{color:var(--green)}
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
+
+
+/* GOALMATRIX — unified premium presentation pass (CSS-only, no behavior changes) */
+:root{--gm-card:linear-gradient(145deg,rgba(17,42,60,.97),rgba(9,27,41,.98));--gm-border:rgba(94,177,203,.22);--gm-soft-glow:0 10px 28px rgba(0,0,0,.16)}
+html{scroll-behavior:smooth;scroll-padding-top:88px}
+body{background-image:radial-gradient(ellipse at 12% 0%,rgba(67,224,162,.055),transparent 35%),radial-gradient(ellipse at 90% 8%,rgba(85,199,232,.055),transparent 30%)}
+header{border-bottom:1px solid rgba(85,199,232,.15)}
+.brand{flex-shrink:0}
+.brand-name span{color:var(--gm-matrix, #43e0a2)}
+nav a{border-radius:9px;padding:9px 10px}
+nav a:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.hero-main{border:1px solid rgba(85,199,232,.2);background-image:linear-gradient(115deg,rgba(13,37,54,.98),rgba(10,27,42,.94))}
+.eyebrow{letter-spacing:1.5px}
+.primary{box-shadow:0 5px 18px rgba(67,224,162,.12)}
+.panel,.side-live,.hero-main,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel{border-color:var(--gm-border)}
+.panel,.side-live,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel{box-shadow:var(--gm-soft-glow)}
+.panel-head{border-bottom-color:rgba(94,177,203,.13)}
+.section-title{letter-spacing:.5px}
+.filter{border-radius:999px}
+.filter:focus-visible,.mini-btn:focus-visible,.primary:focus-visible,.login:focus-visible,.gp-section-button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+.match{border:1px solid rgba(94,177,203,.19);background:linear-gradient(135deg,rgba(15,37,53,.98),rgba(9,26,39,.98))}
+.match:hover{border-color:rgba(67,224,162,.42)}
+.match-live,.live-tag,.live-badge{font-weight:800}
+.stats .stat{border:1px solid rgba(94,177,203,.13);border-radius:8px;background:rgba(6,19,30,.35)}
+.league-head{border-bottom:1px solid rgba(94,177,203,.1)}
+.feature{border:1px solid rgba(94,177,203,.16);border-radius:14px}
+.gp-section-buttons{align-items:stretch}
+.gp-section-button{min-height:44px;border:1px solid rgba(94,177,203,.2);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.gp-section-button:hover{border-color:rgba(67,224,162,.5);filter:brightness(1.06)}
+.gp-button-count{font-variant-numeric:tabular-nums}
+.gp-trend-card{border:1px solid rgba(94,177,203,.2);border-radius:13px;background:var(--gm-card);box-shadow:0 5px 16px rgba(0,0,0,.12);transition:border-color .18s ease,transform .18s ease}
+.gp-trend-card:hover{border-color:rgba(67,224,162,.4);transform:translateY(-1px)}
+.gp-trends-banner,.gp-top-trends-banner{border:1px solid rgba(94,177,203,.2);border-radius:14px}
+.top-ai-alert-card,.activity-alert-row,.signal-row{border:1px solid rgba(94,177,203,.2);border-radius:12px;background:var(--gm-card)}
+.top-ai-alert-card{box-shadow:0 6px 18px rgba(0,0,0,.13)}
+.top-ai-alert-card:hover{border-color:rgba(67,224,162,.38)}
+.gp-history-toggle{border-radius:10px}
+.history-head{border-bottom:1px solid rgba(94,177,203,.16)}
+table{border-collapse:separate;border-spacing:0}
+th{color:#dff6ff}
+td,th{border-color:rgba(94,177,203,.16)}
+.protocol-analyst-panel{border-radius:14px}
+.protocol-analyst-recommendation{border:1px solid rgba(94,177,203,.18);border-radius:11px}
+.gp-power-panel{border-radius:14px}
+.gp-power-lock{border:1px solid rgba(94,177,203,.22);border-radius:12px}
+input,select,textarea{border-color:rgba(94,177,203,.25)}
+input:focus,select:focus,textarea:focus{border-color:var(--cyan)!important;box-shadow:0 0 0 3px rgba(85,199,232,.1)}
+button:disabled{cursor:not-allowed;filter:saturate(.65)}
+@media(max-width:760px){
+ html{scroll-padding-top:72px}
+ nav{gap:5px}
+ nav a{padding:8px 9px}
+ .gp-section-button{min-height:42px}
+ .gp-trend-card,.top-ai-alert-card{border-radius:11px}
+ .panel,.side-live,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel{box-shadow:0 7px 20px rgba(0,0,0,.14)}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
 </style>
 </head>
 <body>
