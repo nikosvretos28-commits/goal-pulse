@@ -369,7 +369,7 @@ header nav a{padding:9px 0;font-size:11px}
 .live-match-line .live-row:hover{background:#0d2638}
 .live-match-line .live-row .teamname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
 .live-match-line .live-row .score{font-weight:950;color:#f2f7fa;font-variant-numeric:tabular-nums}
-.live-match-line .live-row .minute{font-size:9px;color:var(--green);white-space:nowrap}.live-match-line .live-row .score{color:#f2c879;font-weight:950;text-shadow:0 0 8px rgba(242,200,121,.18)}
+.live-match-line .live-row .minute{font-size:9px;color:var(--green);white-space:nowrap}.live-match-line .live-row .score{color:#55c7e8;font-weight:1000;text-shadow:0 0 8px rgba(85,199,232,.32)}
 .live-inline-stats{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;align-items:stretch;padding:6px;background:#0a1b2a;min-width:0}
 .live-inline-stat{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px;min-width:0;padding:6px 3px;border:1px solid #18394d;border-radius:5px;background:#0b1d2d;text-align:center}
 .live-inline-stat span{font-size:9px;font-weight:900;letter-spacing:.35px;color:#8fa9bf;white-space:nowrap}
@@ -1815,7 +1815,7 @@ function renderHighActivityMatches(){
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
-  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν κάποιο κριτήριο: 3+ SOT/5′, 6+ SOT/10′, 10+ συνολικά SOT από μία ομάδα ή xG 2.50+ και στις δύο ομάδες, στα λεπτά 1′–40′ ή 46′–88′.</div>';
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν κάποιο κριτήριο: 2+ SOT/5′, 4+ SOT/10′, 8+ συνολικά SOT από μία ομάδα ή xG 2.00+ και στις δύο ομάδες, στα λεπτά 1′–40′ ή 46′–88′.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
  const button=event.target.closest('button[data-manual-vip]');if(!button)return;
