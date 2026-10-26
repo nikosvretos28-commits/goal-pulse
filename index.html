@@ -1447,6 +1447,92 @@ nav a:first-child:after{right:0}
   .gp-section-button.gp-power-button:hover{border-color:rgba(183,255,70,.5);box-shadow:0 8px 22px rgba(67,224,162,.09);transform:translateY(-1px)}
 }
 
+
+/* GOALMATRIX Live Score controls — visual-only premium finish */
+#matches.filters{
+  gap:8px;
+  padding:12px;
+  margin:16px 0 18px;
+  border:1px solid rgba(85,199,232,.16);
+  border-radius:18px;
+  background:linear-gradient(135deg,rgba(12,32,49,.94),rgba(7,21,34,.94));
+  box-shadow:0 12px 30px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.025);
+}
+#matches .date-controls{gap:7px}
+#matches .date-label{
+  min-height:36px;
+  border-color:rgba(85,199,232,.24);
+  background:rgba(16,38,56,.78);
+  color:#a9c9d7;
+}
+#matches .date-label:focus-within,
+#matches .search:focus{
+  border-color:#55c7e8;
+  box-shadow:0 0 0 3px rgba(85,199,232,.10);
+}
+#matches .date-step,
+#matches #todayDate{
+  min-height:36px;
+  border:1px solid rgba(85,199,232,.20);
+  border-radius:11px;
+  background:linear-gradient(135deg,#102b3d,#0b1d2c);
+  color:#e4f7ff;
+}
+#matches .filter{
+  min-height:36px;
+  border-color:rgba(85,199,232,.17);
+  background:rgba(16,38,56,.72);
+  color:#c9dce6;
+  transition:background .16s ease,border-color .16s ease,box-shadow .16s ease,color .16s ease;
+}
+#matches .filter.active{
+  border-color:rgba(67,224,162,.65);
+  background:linear-gradient(135deg,#43e0a2,#b7ff46);
+  color:#05241d;
+  box-shadow:0 4px 15px rgba(67,224,162,.13);
+}
+#matches .filter:not(.active):hover{
+  border-color:rgba(85,199,232,.48);
+  background:rgba(27,62,81,.86);
+  color:#f1fbff;
+}
+#matches .search{
+  min-height:38px;
+  border-color:rgba(85,199,232,.2);
+  background:rgba(7,21,34,.78);
+}
+.main-grid>.panel,
+.main-grid>.right-stack>.panel{
+  border-color:rgba(85,199,232,.19);
+  box-shadow:0 12px 34px rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.02);
+}
+.main-grid>.panel>.panel-head{
+  background:linear-gradient(100deg,rgba(16,43,61,.78),rgba(9,25,39,.5));
+  border-bottom:1px solid rgba(85,199,232,.14);
+}
+.main-grid .section-title h2{
+  letter-spacing:-.02em;
+}
+.main-grid #count{
+  border:1px solid rgba(85,199,232,.2);
+  background:rgba(85,199,232,.08);
+}
+.main-grid #feedStatus{
+  color:#9dc1d0;
+}
+@media(max-width:700px){
+  #matches.filters{padding:9px;gap:7px;border-radius:15px}
+  #matches .date-controls{width:100%}
+  #matches .date-label{flex:1;justify-content:space-between;min-width:0}
+  #matches .date-label input{min-width:0;width:130px;max-width:52vw}
+  #matches .search{order:10;flex:1 1 100%;max-width:none;margin-left:0}
+  #matches .filter{padding:8px 11px;font-size:11px}
+  .main-grid>.panel>.panel-head{gap:9px;align-items:flex-start}
+}
+@media(prefers-reduced-motion:reduce){
+  #matches .filter{transition:none}
+}
+
 </style>
 </head>
 <body>
