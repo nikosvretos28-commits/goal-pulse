@@ -1954,9 +1954,9 @@ renderTopAiAlerts();
 document.getElementById('runSignalCheck').addEventListener('click',runSignalCheck);
 signalMarket.addEventListener('change',runSignalCheck);document.getElementById('goalLineType')?.addEventListener('change',runSignalCheck);document.getElementById('cornerOverLine')?.addEventListener('change',runSignalCheck);signalWindow.addEventListener('change',runSignalCheck);signalOutcomeWindow.addEventListener('change',runSignalCheck);scannerMinute.addEventListener('change',runSignalCheck);scannerLeague.addEventListener('change',runSignalCheck);vipAlertsToggle.addEventListener('change',runSignalCheck);
 signalThreshold.addEventListener('change',runSignalCheck);
-// Start the live AI scanner automatically and keep it checking while the page is open.
+// One initial scan; the shared 30-second refresh below runs the scanner thereafter.
+// Avoid a second independent timer that can overlap the same network/statistics work.
 setTimeout(()=>{if(!document.hidden)runSignalCheck()},2500);
-setInterval(()=>{if(!document.hidden)runSignalCheck()},60000);
 document.getElementById('showSignalHistory').addEventListener('click',showSignalHistory);
 document.getElementById('exportSignalHistory').addEventListener('click',()=>{
  const period=document.getElementById('signalHistoryPeriod')?.value||'all',exactDate=document.getElementById('signalHistoryDate')?.value||'',exactStart=exactDate?new Date(exactDate+'T00:00:00').getTime():NaN,exactEnd=exactStart+86400000,now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime(),yesterdayStart=todayStart-86400000;
