@@ -1850,11 +1850,10 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Four independent triggers; any one is sufficient.
-        // SOT 3+/5m OR SOT 6+/10m OR one team has 10+ cumulative SOT
-        // OR BOTH teams have live xG >= 2.50 each.
-        const cumulativeSotStrong = current.maxTeamSOT != null && Number(current.maxTeamSOT) >= 10;
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong || bothTeamsXGQualified;
+        // Mandatory recent-SOT gate for every automatic Over AI alert.
+        // Only the agreed rolling windows qualify: 3+ SOT in ~5m OR 6+ SOT in ~10m.
+        // Cumulative SOT and xG may support ranking, but can never replace this gate.
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
@@ -1923,26 +1922,12 @@ const server = http.createServer(async (req, res) => {
         // 3+ new shots on target in ~5 minutes OR 6+ in ~10 minutes.
         // All alerts still require a valid live score and a verified active Over price below.
         // Goal Pulse protocol updated 2026-10-26:
-        // first-half AI alerts: minutes 1-40; second-half AI alerts: minutes 46-88.
-        // High Activity uses the same minute windows and mandatory recent-SOT trigger as AI alerts.
-        // Eligible minutes: 1-40 and 46-88; >=3 SOT/5m OR >=6 SOT/10m.
-        // Dirty Sheet history, live pressure and xG remain supporting signals when available.
+        // Automatic AI alerts use the agreed eligible window: minutes 1-40 inclusive.
+        // Mandatory SOT gate: 3+ SOT in the rolling last ~5m OR 6+ SOT in the rolling last ~10m.
+        // xG, pressure, dangerous attacks and team history are supporting evidence only.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
-        const corroboratingPressure = evidenceKinds >= 2 &&
-          (shots >= 2 || attacks >= 5 || dangerous >= 3 || (xGDelta != null && xGDelta >= 0.15));
-        // First-half AI alerts are eligible from minute 1 through minute 40; do not apply the old 1–20-minute cutoff.
-        // Second-half alerts remain eligible from minute 46 through minute 88.
-        const earlySegmentAllowed = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 88 &&
-          (aiMinute <= 40 || aiMinute >= 46);
-        const firstHalfStrictPass = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40 &&
-          shotsOnlyOverEvidence;
-        const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute >= 46 && aiMinute <= 88 &&
-          (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
-            (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
-        // HARD GATE: any one trigger qualifies: SOT 3+/5m, SOT 6+/10m,
-        // one team SOT 10+ cumulative, or BOTH teams xG 2.50+ each.
-        const isAiGoal = scoreAvailable && earlySegmentAllowed && shotsOnlyOverEvidence &&
-          ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
+        const eligibleMinute = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40;
+        const isAiGoal = scoreAvailable && eligibleMinute && shotsOnlyOverEvidence;
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
