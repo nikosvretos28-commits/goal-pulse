@@ -1887,7 +1887,7 @@ const server = http.createServer(async (req, res) => {
         // OR >=10 total shots AND >=6 SOT in ~10 minutes.
         const cumulativeSOTCoreCriterion = current.onTarget != null && Number(current.onTarget) >= 10;
         const xGCoreCriterion = current.xG != null && Number.isFinite(Number(current.xG)) && Number(current.xG) >= 2.5;
-        const shotsOnlyOverEvidence = (shots >= 5 && onTarget >= 3) ||
+        const coreOverEvidence = (shots >= 5 && onTarget >= 3) ||
           (shots10m >= 10 && onTarget10m >= 6) || cumulativeSOTCoreCriterion || xGCoreCriterion;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
@@ -1970,14 +1970,14 @@ const server = http.createServer(async (req, res) => {
         const earlySegmentAllowed = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 88 &&
           (aiMinute <= 40 || aiMinute >= 46);
         const firstHalfStrictPass = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40 &&
-          shotsOnlyOverEvidence;
+          coreOverEvidence;
         const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute >= 46 && aiMinute <= 88 &&
-          (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
+          (coreOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
             (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
         // Core evidence gate for automatic AI notifications: either the agreed recent-shot/SOT
         // thresholds, 10+ cumulative SOT, or a team xG of 2.50+ must qualify.
         // Other pressure signals can support ranking but cannot trigger an alert alone.
-        const isAiGoal = scoreAvailable && earlySegmentAllowed && shotsOnlyOverEvidence &&
+        const isAiGoal = scoreAvailable && earlySegmentAllowed && coreOverEvidence &&
           ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
