@@ -1878,10 +1878,13 @@ const server = http.createServer(async (req, res) => {
         if (!previous || now - previous.at < 35000) continue;
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
+        const shots10m = current.shots == null || previous10?.shots == null ? 0 : Math.max(0, current.shots - previous10.shots);
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Mandatory recent SOT thresholds only: >=3 in ~5 minutes OR >=6 in ~10 minutes.
-        // A high cumulative SOT count must never bypass the recent-activity requirement.
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
+        // Over-alert gate requires both recent shots volume and recent SOT:
+        // >=5 total shots AND >=3 SOT in ~5 minutes, OR >=10 total shots AND >=6 SOT in ~10 minutes.
+        // Missing/invalid baselines resolve to zero and therefore cannot trigger an alert.
+        // A high cumulative SOT count must never bypass recent-activity requirements.
+        const shotsOnlyOverEvidence = (shots >= 5 && onTarget >= 3) || (shots10m >= 10 && onTarget10m >= 6);
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
