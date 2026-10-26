@@ -2687,10 +2687,16 @@ function evaluateHighActivityObservations(ranked){
  const matches=new Map(allMatches.map(m=>[String(m.id),m]));
  const active=new Map((ranked||[]).map(x=>[String(x.match.id),x.match]));
  for(const [eventId,match] of active){
-  if(highActivityObservations.some(x=>String(x.eventId)===eventId))continue;
+  const stats=liveMetricsCache.get(eventId);
+  const clockText=String(match.clock||stats?.live_minute||stats?.liveMinute||stats?.elapsed||stats?.time?.elapsed||stats?.minute||'');
+  const clock=clockText.match(/\d{1,3}/);
+  const minute=clock?Number(clock[0]):null;
+  if(!Number.isFinite(minute))continue;
+  const half=minute<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ';
+  const observationId=eventId+(minute<=45?':1H':':2H');
+  if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
   const score=highActivityScore(match);if(!score)continue;
-  const clock=String(match.clock||'').match(/\d{1,3}/);
-  const observation={observationId:eventId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute:clock?Number(clock[0]):null,half:clock&&Number(clock[0])<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ',scoreAtSignal:score,currentScore:score,outcome:'pending'};
+  const observation={observationId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,outcome:'pending'};
   highActivityObservations.push(observation);changed.push(observation);
  }
  for(const item of highActivityObservations){
