@@ -2789,8 +2789,8 @@ function renderHighActivityMatches(){
   // High Activity uses the same four independent alert triggers.
   // Attacks and dangerous attacks rank matches but never qualify them by themselves.
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.shotsOffTarget||0,4)*0.35;
-  // Keep High Activity aligned with the main AI protocol: 3+ SOT/5m or 6+ SOT/10m.
-  const recentSotStrong=delta.shotsOnTarget>=3;
+  // HI ACTIVITY relaxed protocol: 2+ SOT in the last 5 minutes.
+  const recentSotStrong=delta.shotsOnTarget>=2;
   const recentSotSupported=recentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
   if(baseline10&&Array.isArray(baseline10.values)){
@@ -2800,7 +2800,8 @@ function renderHighActivityMatches(){
   }
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=4;
   const recentSot10mSupported=sixSot10m;
-  const active=recentSotSupported||recentSot10mSupported;
+  // All four agreed HI ACTIVITY triggers qualify independently.
+  const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
   // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
