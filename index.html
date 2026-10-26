@@ -2835,7 +2835,8 @@ function renderHighActivityMatches(){
   const status=document.getElementById("powerGamesStatus");if(status)status.textContent=ranked.length+" ΙΣΧΥΡΑ ΣΗΜΑΤΑ";
   const count=document.getElementById("powerGamesCount");if(count)count.textContent=String(ranked.length);
  }
- evaluateHighActivityObservations(ranked);\n highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
+ evaluateHighActivityObservations(ranked);
+ highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
  const topTen=ranked.slice(0,10);
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
