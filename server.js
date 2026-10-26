@@ -1803,6 +1803,29 @@ const server = http.createServer(async (req, res) => {
       for (const match of (metrics.matches || [])) {
         if (!match.statsAvailable || !Array.isArray(match.teams) || match.teams.length < 2) continue;
         const teams = match.teams;
+        // Fail closed on invalid shot data: no negative/non-numeric values, and SOT
+        // cannot exceed total shots. Require SOT from both teams before using this match.
+        // This catches internally inconsistent feeds; it cannot prove a provider's values
+        // match a bookmaker's feed, so provider/source discrepancies remain auditable.
+        const shotStatsValid = teams.length === 2 && teams.every(team => {
+          const sot = team.shotsOnTarget;
+          const shotsTotal = team.shots;
+          if (sot == null || !Number.isFinite(Number(sot)) || Number(sot) < 0) return false;
+          if (shotsTotal == null || !Number.isFinite(Number(shotsTotal)) || Number(shotsTotal) < 0) return false;
+          if (Number(sot) > Number(shotsTotal)) return false;
+          for (const key of ["shotsOffTarget", "blockedShots"]) {
+            if (team[key] != null && (!Number.isFinite(Number(team[key])) || Number(team[key]) < 0)) return false;
+          }
+          return true;
+        });
+        if (!shotStatsValid) {
+          console.warn("[Goal Pulse AI Doctor] AI scan blocked: missing or inconsistent shot statistics", JSON.stringify({
+            eventId: String(match.eventId || ""), home: match.home, away: match.away,
+            source: match.statsSource || "unknown",
+            teams: teams.map(team => ({ team: team.team, shots: team.shots, shotsOnTarget: team.shotsOnTarget, shotsOffTarget: team.shotsOffTarget, blockedShots: team.blockedShots }))
+          }));
+          continue;
+        }
         const total = key => teams.every(team => team[key] != null)
           ? teams.reduce((sum, team) => sum + Number(team[key] || 0), 0) : null;
         const minuteRawForEligibility = getMatchMinute(match);
@@ -1850,9 +1873,9 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // SOT gate can qualify through recent pressure OR a high cumulative total for one team.
-        const cumulativeTeamSOTQualified = current.maxTeamSOT != null && current.maxTeamSOT >= 10;
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeTeamSOTQualified;
+        // Mandatory recent SOT thresholds only: >=3 in ~5 minutes OR >=6 in ~10 minutes.
+        // A high cumulative SOT count must never bypass the recent-activity requirement.
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
