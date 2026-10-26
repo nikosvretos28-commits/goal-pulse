@@ -1664,11 +1664,14 @@ function renderHighActivityMatches(){
     }));
    }
   }
-  if(!hasRecentData)return null;
+  const validCumulativeSOTData=teams.length>=2&&teams.every(team=>team.shotsOnTarget!=null&&team.shots!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number.isFinite(Number(team.shots))&&Number(team.shotsOnTarget)>=0&&Number(team.shots)>=Number(team.shotsOnTarget));
+  const totalOnTarget=validCumulativeSOTData?teams.reduce((n,t)=>n+Number(t.shotsOnTarget),0):0;
+  const cumulativeSOTStrong=validCumulativeSOTData&&totalOnTarget>=10;
+  if(!hasRecentData&&!cumulativeSOTStrong)return null;
   // High Activity follows the same SOT-only trigger and match-minute window as AI Alerts.
   // Total shots, attacks, dangerous attacks, xG and conversion may rank eligible matches only; none can trigger or block SOT eligibility.
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget;
-  // Core trigger is only 3+ SOT in ~5 minutes OR 6+ SOT in ~10 minutes.
+  // Each SOT trigger is independent: 3+ SOT/5m OR 6+ SOT/10m OR 10+ cumulative match SOT.
   const recentSotStrong=delta.shotsOnTarget>=3;
   const recentSotSupported=recentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
@@ -1679,7 +1682,7 @@ function renderHighActivityMatches(){
   }
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
   const recentSot10mSupported=sixSot10m;
-  const active=recentSotSupported||recentSot10mSupported;
+  const active=recentSotSupported||recentSot10mSupported||cumulativeSOTStrong;
   // xG supports ranking only when two comparable live measurements exist.
   // It never triggers High Activity by itself and missing xG never blocks evaluation.
   let recentXG=null;
@@ -1691,7 +1694,6 @@ function renderHighActivityMatches(){
   }
   const xGSupport=recentXG==null?0:Math.min(2,recentXG*2);
   const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
-  const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
   // Live conversion efficiency is only a ranking tie-breaker/support signal; it cannot create High Activity by itself.
   const scores=[Number(m.homeScore ?? m.home?.score),Number(m.awayScore ?? m.away?.score)];
   const liveConversionSupport=teams.reduce((sum,t,i)=>{
@@ -1701,7 +1703,7 @@ function renderHighActivityMatches(){
   },0);
   const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
   const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
-  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
+  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,cumulativeSOTStrong,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
  };
  const ranked=allMatches.filter(m=>m.state==="in").map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
