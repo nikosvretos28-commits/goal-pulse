@@ -1663,14 +1663,12 @@ function renderHighActivityMatches(){
    }
   }
   if(!hasRecentData)return null;
-  const evidenceKinds=[delta.shots>0||delta.shotsOnTarget>0,delta.attacks>0,delta.dangerousAttacks>0].filter(Boolean).length;
-  const goalEvidence=delta.shots>=2&&delta.shotsOnTarget>=1;
-  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.attacks*.25,3)+Math.min(delta.dangerousAttacks*.75,5);
-  const pressureEvidence=evidenceKinds>=3&&pressureScore>=7&&delta.dangerousAttacks>=3;
-  // Strong recent-pressure signal: 3+ additional shots on target in the measured ~5-minute window.
-  // It supports the decision only alongside at least one independent attacking signal; it is never a standalone trigger.
+  // High Activity eligibility follows the agreed shots/on-target-only protocol.
+  // Attacks and dangerous attacks may help rank eligible matches, but cannot qualify one by themselves.
+  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget;
+  // Require 3+ shots on target in the rolling ~5-minute window, or 6+ in ~10 minutes below.
   const recentSotStrong=delta.shotsOnTarget>=3;
-  const recentSotSupported=recentSotStrong&&evidenceKinds>=2&&pressureScore>=5;
+  const recentSotSupported=recentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
   if(baseline10&&Array.isArray(baseline10.values)){
    teams.forEach((team,i)=>{const prev=baseline10.values[i]||{};if(team.shotsOnTarget!=null&&prev.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number.isFinite(Number(prev.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget)-Number(prev.shotsOnTarget));hasSot10mData=true;}});
@@ -1678,8 +1676,8 @@ function renderHighActivityMatches(){
    stats.trend.window10m.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
   }
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
-  const recentSot10mSupported=sixSot10m&&evidenceKinds>=2&&pressureScore>=5;
-  const active=goalEvidence||pressureEvidence||recentSotSupported||recentSot10mSupported;
+  const recentSot10mSupported=sixSot10m;
+  const active=recentSotSupported||recentSot10mSupported;
   // xG supports ranking only when two comparable live measurements exist.
   // It never triggers High Activity by itself and missing xG never blocks evaluation.
   let recentXG=null;
