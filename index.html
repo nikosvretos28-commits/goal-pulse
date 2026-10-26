@@ -831,8 +831,8 @@ nav a{flex:0 0 auto}
 .minute{background:#542631!important;color:#ffd0d5!important;border-radius:8px;padding:5px 7px!important;min-width:36px;min-height:28px;display:inline-flex;align-items:center;justify-content:center;font-size:12px!important;line-height:1.15;font-weight:900;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* Final live-match readability fixes */
-.live-match-line .live-row .score{color:#ffbf47!important;text-shadow:0 0 9px rgba(255,191,71,.38);font-weight:1000}
-.live-row-league{display:block!important;visibility:visible!important;opacity:1!important;color:#55c7e8!important;font-size:11px!important;font-weight:900!important;line-height:1.35;min-height:15px}
+.live-match-line .live-row .score{color:#39e6c1!important;text-shadow:0 0 10px rgba(57,230,193,.42);font-weight:1000;background:rgba(12,90,81,.24);border:1px solid rgba(57,230,193,.55);border-radius:7px;padding:3px 7px;min-width:44px;text-align:center}
+.live-row-league{display:block!important;visibility:visible!important;opacity:1!important;color:#70e3ff!important;font-size:11px!important;font-weight:950!important;line-height:1.4;min-height:18px;padding:5px 8px!important;margin:2px 0 4px!important;background:rgba(22,70,94,.36);border:1px solid rgba(85,199,232,.3);border-radius:6px;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -1582,7 +1582,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
    shotsOnTarget:['shotsOnTarget','shots_on_target','shots_on_goal','shotsOnGoal','onTargetShots'],
    shotsOffTarget:['shotsOffTarget','shots_off_target','shots_off_goal','shotsOffGoal','offTargetShots'],
    blockedShots:['blockedShots','blocked_shots','shotsBlocked','shots_blocked'],
-   corners:['corners','cornerKicks','corner_kicks','cornerKicksTotal','corner_kicks_total','totalCornerKicks','total_corner_kicks','cornerKickCount','corner_kick_count','cornersWon','corners_won','cornerKicksWon','corner_kicks_won','wonCorners','won_corners','totalCorners','total_corners','corner'],
+   corners:['corners','cornerKicks','corner_kicks','cornerKicksTotal','corner_kicks_total','totalCornerKicks','total_corner_kicks','cornerKickCount','corner_kick_count','cornerCount','corner_count','cornersTotal','corners_total','totalCornerCount','total_corner_count','cornersWon','corners_won','cornerKicksWon','corner_kicks_won','wonCorners','won_corners','totalCorners','total_corners','corner'],
    possession:['possession','possessionPct','possessionPercentage'],
    xG:['xG','xg','expectedGoals']
   };
