@@ -1985,14 +1985,20 @@ const server = http.createServer(async (req, res) => {
             oddsMissingCount++;
             console.warn("Verified live odds lookup failed:", String(oddsError.message || oddsError).slice(0, 180));
           }
-          if (!verifiedOdds || !Number.isFinite(Number(verifiedOdds.price)) || Number(verifiedOdds.price) <= 1 || !Number.isFinite(Number(verifiedOdds.line)) || Math.abs(Number(verifiedOdds.line) - targetOverLine) > 0.001) {
-            // No minimum odds floor: accept any valid, verified decimal price above 1.00.
-            // Never send unknown/estimated odds or a mismatched market; Asian markets are excluded upstream.
-            console.info("AI alert skipped: exact live market odds not verified", JSON.stringify({
+          const hasOddsQuote = Boolean(verifiedOdds);
+          const validOddsQuote = hasOddsQuote &&
+            Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1 &&
+            Number.isFinite(Number(verifiedOdds.line)) &&
+            Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001;
+          if (hasOddsQuote && !validOddsQuote) {
+            // Reject a supplied but invalid or mismatched quote. A missing quote does not
+            // suppress a protocol-qualified alert; the notification is explicitly labelled
+            // "χωρίς επιβεβαιωμένη απόδοση" and no odds are fabricated.
+            console.info("AI alert quote rejected: invalid or mismatched market", JSON.stringify({
               eventId: id, match: (match.home || "") + " – " + (match.away || ""),
               period: oddsPeriod, targetLine: targetOverLine,
               verifiedPrice: verifiedOdds?.price ?? null,
-              reason: !verifiedOdds ? "no_verified_active_quote" : "invalid_or_mismatched_market"
+              reason: "invalid_or_mismatched_market"
             }));
             continue;
           }
