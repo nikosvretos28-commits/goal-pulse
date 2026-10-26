@@ -962,9 +962,19 @@ async function loadPersistentAlertHistory(){
   const data=await response.json();if(!Array.isArray(data.alerts))return;
   const merged=new Map();
   data.alerts.forEach(a=>{if(a&&Number.isFinite(Number(a.createdAt)))merged.set(alertHistoryKey(a),a)});
+  const latestRecordTime=a=>Math.max(0,...['recordUpdatedAt','betUpdatedAt','manualOutcomeUpdatedAt','betSettledAt','evaluatedAt'].map(k=>Number(a?.[k])||0));
+  const isSettledBet=a=>['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
+  const isPendingOutcome=a=>!a?.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase());
   signalAlertHistory.forEach(a=>{
    const key=alertHistoryKey(a),saved=merged.get(key);
-   if(!saved||(Number(a.recordUpdatedAt||a.betUpdatedAt||a.manualOutcomeUpdatedAt||0)>Number(saved.recordUpdatedAt||saved.betUpdatedAt||saved.manualOutcomeUpdatedAt||0))||(a.manualOutcome&&!saved.manualOutcome)||(a.outcome&&a.outcome!=='εκκρεμεί'&&(!saved.outcome||saved.outcome==='εκκρεμεί')))merged.set(key,a);
+   if(!saved){merged.set(key,a);return}
+   const localSettled=isSettledBet(a),serverSettled=isSettledBet(saved);
+   // Never let an old browser copy with a pending bet overwrite an automatic server settlement.
+   if(serverSettled&&!localSettled){return}
+   if(localSettled&&!serverSettled){merged.set(key,a);return}
+   if(latestRecordTime(a)>latestRecordTime(saved)){merged.set(key,a);return}
+   if(a.manualOutcome&&!saved.manualOutcome){merged.set(key,a);return}
+   if(!isPendingOutcome(a)&&isPendingOutcome(saved)){merged.set(key,a);return}
   });
   signalAlertHistory=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt)).slice(0,5000);
   signalAlertHistory.forEach(a=>{if(!a.alertId)a.alertId=alertHistoryKey(a)});
