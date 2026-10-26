@@ -1533,7 +1533,7 @@ function autoSettleFinishedOverBets(){
     if(!Number.isFinite(line)||!Number.isInteger(line*2)||Math.abs(line*2-Math.round(line*2))>1e-8||Math.abs(line-Math.round(line))<1e-8)continue;
     const match=allMatches.find(m=>String(m.id)===String(alert.eventId));
     if(!match)continue;
-    const isFinished=String(match.state||'').toLowerCase()==='post';
+    const finishSignals=[match.state,match.status,match.statusText,match.shortStatus,match.matchStatus,match.clock,match.period].map(v=>String(v||'').trim().toLowerCase()).filter(Boolean);\n    const isFinished=finishSignals.some(v=>['post','finished','finish','ft','full time','full-time','aet','after extra time','after-extra-time','pen','penalties','ended','complete','completed'].includes(v)||/^(?:ft|aet|pen)\b/.test(v)||/\b(?:full time|full-time|match ended|finished|ended|completed)\b/.test(v));
     const homeRaw=match.home?.score??match.homeScore??match.scoreHome;
     const awayRaw=match.away?.score??match.awayScore??match.scoreAway;
     let home=homeRaw==null||homeRaw===''?NaN:Number(homeRaw);
