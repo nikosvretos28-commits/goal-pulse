@@ -2967,7 +2967,14 @@ const server = http.createServer(async (req, res) => {
                 sportScoreDetailDiagnostics.sample.statLabels = statsRows.slice(0, 30).map(row => ({ label: row.label, home: row.home, away: row.away }));
               }
               const readStat = (side, aliases) => {
-                const found = statsRows.find(row => aliases.includes(row.label));
+                // Prefer the most specific total-stat label before generic aliases.
+                // Searching rows first can accidentally select a generic "shots" row
+                // even when a dedicated "total_shots" row is present.
+                let found = null;
+                for (const alias of aliases) {
+                  found = statsRows.find(row => row.label === alias);
+                  if (found) break;
+                }
                 if (!found) return null;
                 const raw = found[side];
                 const n = Number.parseFloat(String(raw).replace("%", "").replace(",", "."));
@@ -3005,7 +3012,15 @@ const server = http.createServer(async (req, res) => {
               const groups = (allPeriods.length ? allPeriods : periods).flatMap(period => period.groups || []);
               const items = groups.flatMap(group => group.items || []);
               const readStat = (side, aliases) => {
-                const found = items.find(stat => aliases.includes(String(stat.key || "").toLowerCase()) || aliases.includes(String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")));
+                // Resolve aliases in priority order (specific total first), not provider row order.
+                let found = null;
+                for (const alias of aliases) {
+                  found = items.find(stat =>
+                    String(stat.key || "").toLowerCase() === alias ||
+                    String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") === alias
+                  );
+                  if (found) break;
+                }
                 if (!found) return null;
                 const value = Number.parseFloat(String(found[side] ?? "").replace(",", "."));
                 return Number.isFinite(value) ? value : null;
@@ -3034,8 +3049,13 @@ const server = http.createServer(async (req, res) => {
             const values = teams.map(team => {
               const stats = team.statistics || [];
               const get = (...names) => {
-                const normalizedNames = names.map(name => String(name).toLowerCase().replace(/[^a-z]/g, ""));
-                const found = stats.find(stat => { const statNames = [stat.name, stat.abbreviation].filter(Boolean).map(value => String(value).toLowerCase().replace(/[^a-z]/g, "")); return normalizedNames.some(name => statNames.includes(name)); });
+                // Prefer the requested alias order so total shots wins over generic shots.
+                let found = null;
+                for (const name of names) {
+                  const normalizedName = String(name).toLowerCase().replace(/[^a-z]/g, "");
+                  found = stats.find(stat => [stat.name, stat.abbreviation].filter(Boolean).some(value => String(value).toLowerCase().replace(/[^a-z]/g, "") === normalizedName));
+                  if (found) break;
+                }
                 if (!found) return null;
                 const n = Number(String(found.displayValue ?? found.value ?? "").replace("%", ""));
                 return Number.isFinite(n) ? n : null;
