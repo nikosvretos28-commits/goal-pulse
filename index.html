@@ -1285,6 +1285,22 @@ nav a:first-child:after{right:0}
 }
 @media(prefers-reduced-motion:reduce){.brand svg{transition:none}.brand:hover svg{transform:none}}
 
+
+/* GoalMatrix intelligence cards: refined visual hierarchy only. */
+.top-ai-alerts-head{gap:12px}
+.top-ai-alert-list{gap:12px}
+.top-ai-alert-card{position:relative;overflow:hidden;background:linear-gradient(145deg,rgba(16,39,56,.98),rgba(7,21,34,.98));border-color:rgba(85,199,232,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.035);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.top-ai-alert-card:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(180deg,#43e0a2,#55c7e8);opacity:.8;pointer-events:none}
+.top-ai-alert-card:hover,.top-ai-alert-card:focus-visible{transform:translateY(-2px);border-color:rgba(67,224,162,.65);box-shadow:0 10px 26px rgba(0,0,0,.2),0 0 0 1px rgba(67,224,162,.08)}
+.top-ai-alert-card .alert-card-kicker{letter-spacing:.65px}
+.top-ai-alert-card .alert-card-kicker span{border-radius:20px}
+.top-ai-alert-card :is(strong,b){text-wrap:pretty}
+@media(max-width:560px){
+ .top-ai-alert-list{grid-template-columns:minmax(0,1fr);gap:9px}
+ .top-ai-alert-card{padding:13px}
+}
+@media(prefers-reduced-motion:reduce){.top-ai-alert-card{transition:none}.top-ai-alert-card:hover{transform:none}}
+
 </style>
 </head>
 <body>
