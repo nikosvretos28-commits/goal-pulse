@@ -1607,6 +1607,73 @@ nav a:first-child:after{right:0}
   .top-ai-alerts:not(.top-vip-alerts) .top-ai-alert-card:hover{transform:none}
 }
 
+
+/* GOALMATRIX signature header polish — CSS only */
+header{
+  position:relative;
+  border-bottom-color:rgba(85,199,232,.18);
+  background:linear-gradient(180deg,rgba(7,21,34,.5),rgba(7,21,34,0));
+}
+header:after{
+  content:"";
+  position:absolute;
+  left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(67,224,162,.42) 28%,rgba(85,199,232,.32) 72%,transparent);
+  pointer-events:none;
+}
+.brand{
+  gap:12px;
+  border-radius:14px;
+  transition:opacity .18s ease,filter .18s ease;
+}
+.brand:hover{opacity:.96;filter:drop-shadow(0 0 13px rgba(67,224,162,.08))}
+.brand svg{filter:drop-shadow(0 0 14px rgba(67,224,162,.18))}
+.brand-name{
+  letter-spacing:-1.15px;
+  text-shadow:0 2px 16px rgba(85,199,232,.07);
+}
+.brand-tagline{
+  letter-spacing:1.5px;
+  color:#9ab5c5;
+}
+header nav{align-items:center;gap:clamp(12px,1.8vw,24px)}
+header nav a{
+  position:relative;
+  transition:color .16s ease;
+}
+header nav a:not(:first-child):after{
+  content:"";
+  position:absolute;
+  left:0;right:100%;bottom:4px;height:2px;
+  background:linear-gradient(90deg,#43e0a2,#55c7e8);
+  transition:right .16s ease;
+}
+header nav a:not(:first-child):hover{color:#f2fbff}
+header nav a:not(:first-child):hover:after{right:0}
+.live-badge{
+  box-shadow:0 0 18px rgba(67,224,162,.07),inset 0 1px 0 rgba(255,255,255,.035);
+}
+@media(max-width:900px){
+  .wrap{padding-left:16px;padding-right:16px}
+  header{gap:12px}
+  .brand{min-width:0}
+  .brand svg{width:48px;height:48px}
+  .brand-name{font-size:22px}
+  header nav{gap:12px}
+}
+@media(max-width:700px){
+  header{min-height:76px;height:auto;padding:10px 0;flex-wrap:wrap;row-gap:8px}
+  .brand{gap:9px}
+  .brand svg{width:43px;height:43px}
+  .brand-name{font-size:21px}
+  .brand-tagline{font-size:7px;letter-spacing:1.15px}
+  header nav{order:3;flex:1 1 100%;justify-content:space-between;gap:8px;border-top:1px solid rgba(85,199,232,.12);padding-top:7px}
+  header nav a{padding:7px 0;font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  .brand,header nav a,header nav a:after{transition:none}
+}
+
 </style>
 </head>
 <body>
