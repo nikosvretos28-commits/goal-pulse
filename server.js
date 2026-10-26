@@ -84,6 +84,27 @@ async function ensureAlertHistoryDb() {
   return alertHistoryDbInit;
 }
 
+let highActivityHistoryDbInit = null;
+async function ensureHighActivityHistoryDb() {
+  if (!analyticsPool) return false;
+  if (!highActivityHistoryDbInit) highActivityHistoryDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS high_activity_history (
+      observation_id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS high_activity_history_created_at_idx ON high_activity_history(created_at DESC);
+    CREATE INDEX IF NOT EXISTS high_activity_history_event_id_idx ON high_activity_history(event_id);
+  `).then(() => true).catch(error => {
+    highActivityHistoryDbInit = null;
+    console.error("High Activity history database unavailable:", error.message);
+    return false;
+  });
+  return highActivityHistoryDbInit;
+}
+
 let protocolAnalystDbInit = null;
 let protocolAnalystRunInFlight = null;
 
@@ -1224,6 +1245,45 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       console.error("Protocol analyst read failed:", error.message);
       return send(res, 503, { error: "Could not load protocol analysis" });
+    }
+  }
+
+  if (url.pathname === "/api/high-activity/history" && req.method === "GET") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!await ensureHighActivityHistoryDb()) return send(res, 503, { error: "High Activity history database unavailable" });
+    try {
+      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const result = await analyticsPool.query("SELECT payload FROM high_activity_history ORDER BY created_at DESC LIMIT $1", [limit]);
+      return send(res, 200, { ok: true, persistent: true, observations: result.rows.map(row => row.payload) });
+    } catch (error) {
+      console.error("High Activity history read failed:", error.message);
+      return send(res, 503, { error: "Could not load High Activity history" });
+    }
+  }
+  if (url.pathname === "/api/high-activity/history" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!await ensureHighActivityHistoryDb()) return send(res, 503, { error: "High Activity history database unavailable" });
+    try {
+      const body = await readJsonBody(req, 4 * 1024 * 1024);
+      const incoming = Array.isArray(body.observations) ? body.observations.slice(0, 5000) : body.observation ? [body.observation] : [];
+      const records = incoming.filter(x => x && x.observationId && x.eventId && Number.isFinite(Number(x.createdAt))).map(x => ({
+        observation_id: String(x.observationId).slice(0, 240),
+        event_id: String(x.eventId).slice(0, 120),
+        created_at: Number(x.createdAt),
+        payload: x
+      }));
+      if (!records.length) return send(res, 400, { error: "No valid High Activity observations supplied" });
+      await analyticsPool.query(
+        `INSERT INTO high_activity_history(observation_id,event_id,created_at,payload,updated_at)
+         SELECT x.observation_id,x.event_id,to_timestamp(x.created_at/1000.0),x.payload,NOW()
+         FROM jsonb_to_recordset($1::jsonb) AS x(observation_id text,event_id text,created_at double precision,payload jsonb)
+         ON CONFLICT(observation_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()`,
+        [JSON.stringify(records)]
+      );
+      return send(res, 200, { ok: true, saved: records.length, persistent: true });
+    } catch (error) {
+      console.error("High Activity history save failed:", error.message);
+      return send(res, 503, { error: "Could not save High Activity history" });
     }
   }
 
