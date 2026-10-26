@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Goal Pulse — Live Football Scores",
-  "short_name": "Goal Pulse",
-  "description": "Live football scores, match statistics and AI alerts.",
+  "name": "GoalMatrix — AI Football Intelligence",
+  "short_name": "GoalMatrix",
+  "description": "Live football intelligence, match statistics and AI alerts.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,6 +10,6 @@
   "theme_color": "#071522",
   "orientation": "any",
   "icons": [
-    { "src": "/goal-pulse-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/goalmatrix-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }
