@@ -1632,8 +1632,20 @@ function renderHighActivityMatches(){
   const minute=minuteMatch?Number(minuteMatch[1]):null;
   if(!Number.isFinite(minute)||!(minute>=1&&minute<=40||minute>=46&&minute<=88))return null;
   const stats=liveMetricsCache.get(String(m.id));
-  if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
-  const teams=stats.teams,trail=signalTrails.get(String(m.id))||[];
+  if(!stats||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
+  // Normalize provider stat aliases exactly as the live row renderer does.
+  // Some feeds use shots_on_target / shots_on_goal rather than shotsOnTarget;
+  // without this, the visible 6–6 SOT can be ignored by High Activity.
+  const normalizeTeam=team=>({
+   ...team,
+   shots:team.shots??team.totalShots??team.total_shots??team.total_attempts??team.totalAttempts,
+   shotsOnTarget:team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots,
+   shotsOffTarget:team.shotsOffTarget??team.shots_off_target??team.shots_off_goal??team.shotsOffGoal??team.offTargetShots,
+   xG:team.xG??team.xg??team.expectedGoals,
+   attacks:team.attacks??team.totalAttacks??team.total_attacks,
+   dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??team.dangerousAttack
+  });
+  const teams=stats.teams.map(normalizeTeam),trail=signalTrails.get(String(m.id))||[];
   const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
   const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
   const keys=["shots","shotsOnTarget","attacks","dangerousAttacks"];
