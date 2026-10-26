@@ -1816,6 +1816,12 @@ const server = http.createServer(async (req, res) => {
           for (const key of ["shotsOffTarget", "blockedShots"]) {
             if (team[key] != null && (!Number.isFinite(Number(team[key])) || Number(team[key]) < 0)) return false;
           }
+          // If every shot component is supplied, their sum must not exceed total shots.
+          // Do not require equality: some feeds omit a component or classify attempts differently.
+          if (team.shotsOffTarget != null && team.blockedShots != null) {
+            const componentSum = Number(sot) + Number(team.shotsOffTarget) + Number(team.blockedShots);
+            if (componentSum > Number(shotsTotal)) return false;
+          }
           return true;
         });
         if (!shotStatsValid) {
