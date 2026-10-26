@@ -1891,7 +1891,7 @@ const server = http.createServer(async (req, res) => {
         const totalXG = current.xG == null ? null : Number(current.xG);
         // xG >= 2.50 is supplementary support only; it never triggers or blocks an alert.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
-        const bothTeamsXGQualified = current.bothTeamsXGQualified === true;
+        // Reuse bothTeamsXGQualified calculated above from the two teams' live xG values.
         const xGDelta = xGQualifies && previous?.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
