@@ -1770,6 +1770,7 @@ button:focus-visible,a:focus-visible{
  <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
 <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
+ <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst" id="highActivityHistoryToggle">📊 ΙΣΤΟΡΙΚΟ HI ACTIVITY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button>
 </div>
 <div class="notification-optin notification-optin-global" aria-label="Ρυθμίσεις ειδοποιήσεων">
@@ -3499,6 +3500,8 @@ loadHighActivityHistory();
    if(open)panel.scrollIntoView({behavior:'smooth',block:'start'});
   });
  });
+ const highActivityHistoryToggle=document.getElementById('highActivityHistoryToggle');
+ highActivityHistoryToggle?.addEventListener('click',()=>{document.getElementById('highActivityAnalystPanel')?.scrollIntoView({behavior:'smooth',block:'start'});loadHighActivityHistory();});
  const historyButton=document.getElementById('toggleHistoryPanel');
  historyButton?.addEventListener('click',()=>{
   const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls');
