@@ -1860,23 +1860,26 @@ async function runSignalCheck(){
     if(!a||a.level==='VIP'||a.manualOutcome||['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))return;
     const marketText=String(a.market||'').trim();
     if(!/^Over\s*\d+(?:[.,]\d+)?$/i.test(marketText)||String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText))return;
-    const match=allMatches.find(m=>String(m.id)===String(a.eventId));
+    const normTeam=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+    const match=allMatches.find(m=>String(m.id)===String(a.eventId))||allMatches.find(m=>normTeam(m.home?.name)===normTeam(a.home)&&normTeam(m.away?.name)===normTeam(a.away));
     if(!match||match.state!=='post')return;
     const lineMatch=marketText.match(/^Over\s*(\d+(?:[.,]\d+)?)/i);
     const line=Number(a.overLine??(lineMatch?lineMatch[1].replace(',','.'):NaN));
     const homeScore=Number(match.home?.score),awayScore=Number(match.away?.score);
     if(!Number.isFinite(line)||!Number.isFinite(homeScore)||!Number.isFinite(awayScore))return;
-    const total=homeScore+awayScore,won=total>line;
+    const total=homeScore+awayScore,won=total>line,nowSettled=Date.now();
     a.betOutcome=won?'won':'lost';
+    a.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · τελικό σκορ '+homeScore+'–'+awayScore+' · Over '+line+' επιτεύχθηκε':'ΧΑΜΕΝΟ · τελικό σκορ '+homeScore+'–'+awayScore+' · Over '+line+' δεν επιτεύχθηκε';
     a.betSettlementLabel=won?'Κερδισμένο · τελικό σκορ '+homeScore+'–'+awayScore:'Χαμένο · τελικό σκορ '+homeScore+'–'+awayScore;
-    a.betSettledAt=Date.now();a.recordUpdatedAt=a.betSettledAt;
-    a.betSettlementRule='full_time_score_vs_over_line';
-    persistAlertRecord(a);outcomesChanged=true;
+    a.betFinalScore=homeScore+'-'+awayScore;a.betMatchFinalScore=a.betFinalScore;a.betScoreScope='full_time';
+    a.betSettledAt=nowSettled;a.evaluatedAt=nowSettled;a.recordUpdatedAt=nowSettled;
+    a.evaluationRule='end_of_match_score';a.betSettlementRule='full_time_score_vs_over_line';
+    void persistAlertRecord(a);outcomesChanged=true;
   });
   signalAlertHistory.forEach(a=>{
     if(a.outcome!=='εκκρεμεί'||a.manualOutcome||!a.createdAt)return;
     if(a.source==='server-push'&&a.market==='πιθανό γκολ')return;
-    const match=allMatches.find(m=>m.id===a.eventId);
+    const match=allMatches.find(m=>String(m.id)===String(a.eventId));
     if(!match)return;
     const clock=String(match.clock||'').toUpperCase();
     const explicitHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/.test(clock);
@@ -1935,7 +1938,7 @@ async function runSignalCheck(){
     }
     a.evaluatedAt=Date.now();a.recordUpdatedAt=a.evaluatedAt;a.evaluationRule='end_of_selected_half';persistAlertRecord(a);outcomesChanged=true;
   });
-  if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory();}
+  if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}void persistAlertBatch(signalAlertHistory.filter(a=>a&&(['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))));showSignalHistory();}
   let available=0,newAlerts=0;
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
   for(const m of liveMatches){
