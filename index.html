@@ -1681,15 +1681,15 @@ function renderHighActivityMatches(){
     }));
    }
   }
-  const cumulativeSotStrong=teams.some(team=>team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number(team.shotsOnTarget)>=10);
+  const cumulativeSotStrong=teams.some(team=>team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number(team.shotsOnTarget)>=8);
   const xGValues=teams.map(team=>team.xG==null?null:Number(team.xG));
-  const xGStandaloneTrigger=xGValues.length===2&&xGValues.every(value=>value!=null&&Number.isFinite(value)&&value>=2.5);
-  if(!hasRecentData&&!cumulativeSotStrong&&!xGStandaloneTrigger)return null;
+  const xGStandaloneTrigger=xGValues.length===2&&xGValues.every(value=>value!=null&&Number.isFinite(value)&&value>=2.0);
+  // Do not gate recent-SOT triggers on unrelated stat availability; each SOT threshold qualifies independently.
   // High Activity uses the same four independent alert triggers.
   // Attacks and dangerous attacks rank matches but never qualify them by themselves.
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget;
-  // Require 3+ shots on target in the rolling ~5-minute window, or 6+ in ~10 minutes below.
-  const recentSotStrong=delta.shotsOnTarget>=3;
+  // High Activity is deliberately looser: 2+ SOT in ~5 minutes or 4+ in ~10 minutes.
+  const recentSotStrong=delta.shotsOnTarget>=2;
   const recentSotSupported=recentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
   if(baseline10&&Array.isArray(baseline10.values)){
@@ -1697,10 +1697,10 @@ function renderHighActivityMatches(){
   }else if(stats.trend?.window10m?.available&&Array.isArray(stats.trend.window10m.teams)){
    stats.trend.window10m.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
   }
-  const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+  const sixSot10m=hasSot10mData&&shotsOnTarget10m>=4;
   const recentSot10mSupported=sixSot10m;
   const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
-  // xG >= 2.50 for BOTH teams qualifies independently; missing xG is neutral.
+  // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
    const xgPairs=teams.map((team,i)=>({current:team.xG,previous:(baseline.values[i]||{}).xG}));
@@ -1900,7 +1900,7 @@ async function runSignalCheck(){
    }else if(serverTrend10?.available&&Array.isArray(serverTrend10.teams)){
     serverTrend10.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
    }
-   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=4;
    // Recent pressure reinforcement: 3+ new shots on target in the selected window,
    // or 6+ across the last 10 minutes, boosts scoring but never triggers alone.
    const independentAttackSignal=totalShotsAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
