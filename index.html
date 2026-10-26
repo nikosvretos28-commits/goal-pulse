@@ -1766,8 +1766,7 @@ button:focus-visible,a:focus-visible{
 <div class="gp-section-buttons" id="gpSectionButtons" aria-label="Ενότητες GoalMatrix">
  <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
- <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ <span class="gp-button-count" id="gpHistoryCount">0</span></button>
-  <button type="button" class="gp-section-button" id="aiAlertHistoryToggle">📚 ΙΣΤΟΡΙΚΟ AI ALERT <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
+ <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
 <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
@@ -3503,8 +3502,6 @@ loadHighActivityHistory();
  });
  const highActivityHistoryToggle=document.getElementById('highActivityHistoryToggle');
  highActivityHistoryToggle?.addEventListener('click',()=>{const panel=document.getElementById('protocolAnalyst');if(panel?.hidden){panel.hidden=false;document.querySelector('[data-gp-toggle="protocolAnalyst"]')?.setAttribute('aria-expanded','true');}loadHighActivityHistory();document.getElementById('highActivityAnalystPanel')?.scrollIntoView({behavior:'smooth',block:'start'});});
-  const aiAlertHistoryToggle=document.getElementById('aiAlertHistoryToggle');
-  aiAlertHistoryToggle?.addEventListener('click',()=>{const panel=document.getElementById('topAiAlerts');if(panel?.hidden){panel.hidden=false;document.querySelector('[data-gp-toggle="topAiAlerts"]')?.setAttribute('aria-expanded','true');}const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls');if(results)results.hidden=false;if(controls)controls.hidden=false;const inline=document.getElementById('toggleHistoryPanel');inline?.setAttribute('aria-expanded','true');const badge=document.getElementById('gpHistoryInlineCount');if(badge)badge.textContent='ΚΛΕΙΣΙΜΟ';showSignalHistory();document.getElementById('signalResults')?.scrollIntoView({behavior:'smooth',block:'start'});});
  const historyButton=document.getElementById('toggleHistoryPanel');
  historyButton?.addEventListener('click',()=>{
   const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls');
