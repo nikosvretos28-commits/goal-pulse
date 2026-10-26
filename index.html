@@ -1624,11 +1624,15 @@ function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
  const now=Date.now();
  const scoreMatch=m=>{
-  const clockText=String(m.clock||"").toLowerCase();
+  const stats=liveMetricsCache.get(String(m.id));
+  const clockText=String(m.clock||stats?.live_minute||stats?.liveMinute||stats?.elapsed||stats?.time?.elapsed||stats?.minute||"").toLowerCase();
   const statusText=String(m.statusText||m.status||m.state||"").toLowerCase();
-  if(m.state!=="in"||/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
+  if(/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
+  // Accept the live-state spellings used by different feeds; the live board may already display the match.
+  const liveState=/^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play)$/i.test(String(m.state||m.status||""));
+  if(!liveState&& !/\b(?:live|playing|in progress)\b/i.test(statusText))return null;
   // High Activity follows the same minute windows as automatic AI alerts.
-  const minuteMatch=String(m.clock||"").match(/(\d{1,3})/);
+  const minuteMatch=String(clockText).match(/(\d{1,3})/);
   const minute=minuteMatch?Number(minuteMatch[1]):null;
   if(!Number.isFinite(minute)||!(minute>=1&&minute<=40||minute>=46&&minute<=88))return null;
   const stats=liveMetricsCache.get(String(m.id));
