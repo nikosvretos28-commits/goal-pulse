@@ -1880,15 +1880,12 @@ const server = http.createServer(async (req, res) => {
         const shots = delta("shots"), onTarget = delta("onTarget");
         const shots10m = current.shots == null || previous10?.shots == null ? 0 : Math.max(0, current.shots - previous10.shots);
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Core Over evidence: strong recent shot volume + SOT, 10+ cumulative SOT,
-        // OR either team's xG reaching 2.50+. The xG criterion is an alternative core
-        // signal; missing xG is neutral and never blocks a match by itself.
-        // Recent shot windows require >=5 total shots AND >=3 SOT in ~5 minutes,
-        // OR >=10 total shots AND >=6 SOT in ~10 minutes.
+        // SOT is the standalone core trigger for AI Over alerts. Supporting metrics
+        // (total shots, xG, corners, attacks, conversion and history) must not be mandatory.
+        // Qualify on >=3 new SOT in ~5 minutes OR >=6 new SOT in ~10 minutes.
+        // 10+ cumulative match SOT is also a standalone SOT signal. Missing xG is neutral.
         const cumulativeSOTCoreCriterion = current.onTarget != null && Number(current.onTarget) >= 10;
-        const xGCoreCriterion = current.xG != null && Number.isFinite(Number(current.xG)) && Number(current.xG) >= 2.5;
-        const coreOverEvidence = (shots >= 5 && onTarget >= 3) ||
-          (shots10m >= 10 && onTarget10m >= 6) || cumulativeSOTCoreCriterion || xGCoreCriterion;
+        const coreOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeSOTCoreCriterion;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
@@ -1954,14 +1951,14 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        // For Over-goal markets, the agreed shot-on-target thresholds may qualify by themselves:
-        // 3+ new shots on target in ~5 minutes OR 6+ in ~10 minutes.
-        // All alerts still require a valid live score and a verified active Over price below.
+        // For Over-goal markets, SOT alone qualifies: 3+ new SOT in ~5 minutes,
+        // 6+ new SOT in ~10 minutes, or 10+ cumulative match SOT. Total shots and xG
+        // are supplemental only. Alerts still require a valid live score and eligible market data.
         // Goal Pulse protocol updated 2026-10-26:
         // first-half AI alerts: minutes 1-40; second-half AI alerts: minutes 46-88.
         // High Activity has no minute-window restriction and is evaluated by its own pressure protocol.
-        // >=3 shots on target over ~5 minutes OR >=6 over ~10 minutes qualifies.
-        // Dirty Sheet history, live pressure and xG remain supporting signals when available.
+        // >=3 shots on target over ~5 minutes OR >=6 over ~10 minutes qualifies without
+        // total-shot confirmation. Dirty Sheet history, live pressure and xG are supporting signals only.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const corroboratingPressure = evidenceKinds >= 2 &&
           (shots >= 2 || attacks >= 5 || dangerous >= 3 || (xGDelta != null && xGDelta >= 0.15));
@@ -1974,9 +1971,8 @@ const server = http.createServer(async (req, res) => {
         const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute >= 46 && aiMinute <= 88 &&
           (coreOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
             (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
-        // Core evidence gate for automatic AI notifications: either the agreed recent-shot/SOT
-        // thresholds, 10+ cumulative SOT, or a team xG of 2.50+ must qualify.
-        // Other pressure signals can support ranking but cannot trigger an alert alone.
+        // Core evidence gate: SOT criteria alone can trigger AI notifications.
+        // xG >=2.50 and other pressure signals are supplementary, never standalone triggers.
         const isAiGoal = scoreAvailable && earlySegmentAllowed && coreOverEvidence &&
           ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
