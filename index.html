@@ -1705,6 +1705,43 @@ button:focus-visible,a:focus-visible{
   html{scroll-behavior:auto!important}
 }
 
+
+/* GOALMATRIX live-score micro-polish — CSS only */
+#matches .filter{
+  border:1px solid rgba(143,177,195,.16);
+  transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease;
+}
+#matches .filter.active{
+  border-color:rgba(67,224,162,.42);
+  box-shadow:0 0 0 1px rgba(67,224,162,.07),0 5px 18px rgba(67,224,162,.06);
+}
+#matches .filter:not(.active):hover{
+  border-color:rgba(85,199,232,.3);
+}
+#matchList .live-row .live-score{
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 0 14px rgba(67,224,162,.1);
+}
+#matchList .live-row .teamname{
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.gp-trend-stat{
+  border:1px solid rgba(85,199,232,.12);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+.gp-trend-stat strong{
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-.35px;
+}
+@media(max-width:700px){
+  #matches .filter{min-height:34px}
+  #matchList .live-row .live-score{white-space:nowrap}
+}
+@media(prefers-reduced-motion:reduce){
+  #matches .filter{transition:none}
+}
+
 </style>
 </head>
 <body>
