@@ -2718,7 +2718,6 @@ function evaluateHighActivityObservations(ranked){
  }
  highActivityObservations=highActivityObservations.slice(-5000);
  if(changed.length)persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
- if(now-highActivityHistoryLastSave>60000)persistHighActivityObservations(highActivityObservations.filter(x=>x.outcome==='pending'));
  renderHighActivityAnalyst();
 }
 function renderHighActivityMatches(){
