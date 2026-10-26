@@ -26,6 +26,37 @@ The scoreboard depends on ESPN's public endpoints, which are not a guaranteed co
 
 A stated competitor hit rate such as 90% cannot be fairly compared until both systems use the same alert definition, time window, market, settlement rules and sample period. No hit rate is guaranteed.
 
+
+## Goal Pulse live Over alert protocol (specification; not yet implemented in the live app)
+
+### Required SOT gate
+- Eligible alert window: match minutes 1–40 inclusive, including High Activity monitoring.
+- Five-minute trigger: at least 3 shots on target (SOT) in the rolling last 5 minutes.
+- Ten-minute trigger: at least 6 SOT in the rolling last 10 minutes.
+- Apply the same thresholds in the first half.
+- The implementation must explicitly define whether the 5-minute OR 10-minute trigger is sufficient. Do not silently treat both as simultaneously required.
+- SOT is a mandatory gate for automatic Over AI alerts; missing xG alone must not disqualify a match.
+- No minimum odds cutoff. Automatic alerts must not use Asian Over markets; Asian Over remains a manual VIP-only option.
+
+### Scanner pipeline
+1. **Live Stats / freshness scanner:** validate match identity, clock, score, event timestamps and freshness of each data source. Do not issue alerts from stale or contradictory statistics.
+2. **SOT scanner:** calculate rolling 5- and 10-minute SOT windows from timestamped events/statistics and apply the required thresholds.
+3. **Dangerous Match scanner:** detect repeated dangerous actions at short intervals, including sequences occurring roughly every minute. Use timestamped shots, SOT, big chances and dangerous attacks only when the provider supplies them. Treat this as an urgency/priority signal that triggers an immediate re-evaluation, not as a replacement for the mandatory SOT gate.
+4. **Open Game scanner:** look for rapid transitions, counterattacks and attacks by both teams, rather than possession or pressure by one team alone. Use available event/stat data; do not infer unprovided events.
+5. **Rapid Chance scanner:** detect clusters of shots/SOT or high-quality chances within a short 2–3 minute span. This should prompt an immediate re-check of the rolling SOT windows.
+6. **Momentum scanner:** distinguish sustained pressure from a short burst and check whether activity is increasing or fading.
+7. **Historical team scanner:** use available season/sample data for scoring/conceding, clean sheets/dirty sheets, SOT conversion and goal-time patterns. Historical features are supporting evidence, not automatic vetoes of strong live signals.
+8. **Match context / Over selection:** account for current score, match minute, red cards and time remaining; select only a non-Asian Over market that matches the intended goal threshold. No minimum odds cutoff.
+9. **Alert validation / duplicate guard:** verify the required SOT gate, eligible minute, fresh data, valid market and absence of an accidental duplicate before publishing.
+10. **Re-alert scanner:** allow a new alert on the same match only when fresh data justifies it and a configured cooldown/deduplication rule is satisfied.
+11. **Performance and learning scanner:** record time-stamped inputs, alerts and settled outcomes; evaluate performance by window, market and match context using chronological out-of-sample tests. It may recommend protocol changes, but must not change the active rules without explicit user approval.
+
+### Important implementation constraints
+- Dangerous/open-game signals can trigger an immediate re-evaluation even between routine refreshes, but alert timing is limited by the live provider's actual update frequency.
+- Do not assume a provider exposes per-minute dangerous attacks, shot timestamps, or complete live statistics unless verified.
+- Missing xG is not the same as xG = 0.
+- Clearly label this as a protocol specification until the scanners, data feed, persistence and alert delivery have been implemented and tested. Do not present it as a live feature or claim a validated hit rate before evidence exists.
+
 ## Deploy on Render
 
 This is a static site. In the existing Render Static Site service, connect this GitHub repository and branch `main`, set the publish directory to `.`, and leave the build command empty. A push to the connected branch should trigger a deploy if automatic deploys are enabled.
