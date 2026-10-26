@@ -1859,7 +1859,7 @@ const server = http.createServer(async (req, res) => {
         // One team's xG >= 2.50 is a positive supporting signal; both teams >= 2.50
         // adds a stronger core evaluation factor, but never bypasses the mandatory SOT gate.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
-        const bothTeamsXGQualified = current.bothTeamsXGQualified === true;
+        // Reuse bothTeamsXGQualified computed from the two team xG values above.
         const xGDelta = xGQualifies && previous.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
