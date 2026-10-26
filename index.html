@@ -1666,9 +1666,12 @@ function renderHighActivityMatches(){
     }));
    }
   }
-  if(!hasRecentData)return null;
-  // High Activity eligibility follows the agreed shots/on-target-only protocol.
-  // Attacks and dangerous attacks may help rank eligible matches, but cannot qualify one by themselves.
+  const cumulativeSotStrong=teams.some(team=>team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number(team.shotsOnTarget)>=10);
+  const xGValues=teams.map(team=>team.xG==null?null:Number(team.xG));
+  const xGStandaloneTrigger=xGValues.length===2&&xGValues.every(value=>value!=null&&Number.isFinite(value)&&value>=2.5);
+  if(!hasRecentData&&!cumulativeSotStrong&&!xGStandaloneTrigger)return null;
+  // High Activity uses the same four independent alert triggers.
+  // Attacks and dangerous attacks rank matches but never qualify them by themselves.
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget;
   // Require 3+ shots on target in the rolling ~5-minute window, or 6+ in ~10 minutes below.
   const recentSotStrong=delta.shotsOnTarget>=3;
@@ -1681,7 +1684,7 @@ function renderHighActivityMatches(){
   }
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
   const recentSot10mSupported=sixSot10m;
-  const active=recentSotSupported||recentSot10mSupported;
+  const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
   // xG >= 2.50 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
