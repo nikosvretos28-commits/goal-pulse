@@ -1803,6 +1803,35 @@ const server = http.createServer(async (req, res) => {
       for (const match of (metrics.matches || [])) {
         if (!match.statsAvailable || !Array.isArray(match.teams) || match.teams.length < 2) continue;
         const teams = match.teams;
+        // Fail closed on invalid shot data: no negative/non-numeric values, and SOT
+        // cannot exceed total shots. Require SOT from both teams before using this match.
+        // This catches internally inconsistent feeds; it cannot prove a provider's values
+        // match a bookmaker's feed, so provider/source discrepancies remain auditable.
+        const shotStatsValid = teams.length === 2 && teams.every(team => {
+          const sot = team.shotsOnTarget;
+          const shotsTotal = team.shots;
+          if (sot == null || !Number.isFinite(Number(sot)) || Number(sot) < 0) return false;
+          if (shotsTotal == null || !Number.isFinite(Number(shotsTotal)) || Number(shotsTotal) < 0) return false;
+          if (Number(sot) > Number(shotsTotal)) return false;
+          for (const key of ["shotsOffTarget", "blockedShots"]) {
+            if (team[key] != null && (!Number.isFinite(Number(team[key])) || Number(team[key]) < 0)) return false;
+          }
+          // If every shot component is supplied, their sum must not exceed total shots.
+          // Do not require equality: some feeds omit a component or classify attempts differently.
+          if (team.shotsOffTarget != null && team.blockedShots != null) {
+            const componentSum = Number(sot) + Number(team.shotsOffTarget) + Number(team.blockedShots);
+            if (componentSum > Number(shotsTotal)) return false;
+          }
+          return true;
+        });
+        if (!shotStatsValid) {
+          console.warn("[Goal Pulse AI Doctor] AI scan blocked: missing or inconsistent shot statistics", JSON.stringify({
+            eventId: String(match.eventId || ""), home: match.home, away: match.away,
+            source: match.statsSource || "unknown",
+            teams: teams.map(team => ({ team: team.team, shots: team.shots, shotsOnTarget: team.shotsOnTarget, shotsOffTarget: team.shotsOffTarget, blockedShots: team.blockedShots }))
+          }));
+          continue;
+        }
         const total = key => teams.every(team => team[key] != null)
           ? teams.reduce((sum, team) => sum + Number(team[key] || 0), 0) : null;
         const minuteRawForEligibility = getMatchMinute(match);
@@ -1846,27 +1875,29 @@ const server = http.createServer(async (req, res) => {
         const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || null;
         const previous10 = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 9.5 * 60 * 1000 && now - snapshot.at <= 11 * 60 * 1000) || null;
         checked++;
-        if (!previous || now - previous.at < 35000) continue;
-        const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
+        const cumulativeSOTCoreCriterion = current.onTarget != null && Number.isFinite(Number(current.onTarget)) && Number(current.onTarget) >= 10;
+        if ((!previous || now - previous.at < 35000) && !previous10 && !cumulativeSOTCoreCriterion) continue;
+        const delta = key => !previous || current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
+        const shots10m = current.shots == null || previous10?.shots == null ? 0 : Math.max(0, current.shots - previous10.shots);
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // SOT gate can qualify through recent pressure OR a high cumulative total for one team.
-        const cumulativeTeamSOTQualified = current.maxTeamSOT != null && current.maxTeamSOT >= 10;
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeTeamSOTQualified;
+        // SOT is the standalone core trigger for AI Over alerts. Supporting metrics
+        // (total shots, xG, corners, attacks, conversion and history) must not be mandatory.
+        // Any one SOT criterion independently qualifies: >=3 new SOT/~5m OR >=6 new SOT/~10m OR >=10 cumulative match SOT.
+        // Cumulative SOT sums both teams. Missing xG is neutral.
+        const coreOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeSOTCoreCriterion;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
-        // One team's xG >= 2.50 is a positive supporting signal; both teams >= 2.50
-        // adds a stronger core evaluation factor, but never bypasses the mandatory SOT gate.
+        // xG >= 2.50 is supplementary support only; it never triggers or blocks an alert.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
-        const bothTeamsXGQualified = current.bothTeamsXGQualified === true;
-        const xGDelta = xGQualifies && previous.xG != null
+        // Reuse bothTeamsXGQualified calculated above from the two teams' live xG values.
+        const xGDelta = xGQualifies && previous?.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
         // Missing xG or xG below 2.50 is neutral; both teams qualifying gives stronger support.
         const xGTotalSupport = bothTeamsXGQualified ? 2.5 : (xGQualifies ? 1.5 : 0);
-        // Match the reference pressure model: last-five-minute corners support the signal,
-        // but shots and at least one shot on target remain mandatory (no corner-only alerts).
+        // Total shots, corners and other pressure metrics are supplementary only; they never gate SOT alerts.
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
         // AI goal pressure prioritizes shots, shots on target, dangerous attacks and xG.
         // Corners add limited supporting weight; they can never trigger an alert alone.
@@ -1918,14 +1949,11 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        // For Over-goal markets, the agreed shot-on-target thresholds may qualify by themselves:
-        // 3+ new shots on target in ~5 minutes OR 6+ in ~10 minutes.
-        // All alerts still require a valid live score and a verified active Over price below.
-        // Goal Pulse protocol updated 2026-10-26:
-        // first-half AI alerts: minutes 1-40; second-half AI alerts: minutes 46-88.
-        // High Activity has no minute-window restriction and is evaluated by its own pressure protocol.
-        // >=3 shots on target over ~5 minutes OR >=6 over ~10 minutes qualifies.
-        // Dirty Sheet history, live pressure and xG remain supporting signals when available.
+        // For Over-goal markets, ANY ONE of these qualifies independently: 3+ new SOT/~5m, 6+ new SOT/~10m, or 10+ cumulative match SOT. All other statistics are supplementary only.
+        // Goal Pulse protocol updated 2026-10-26: AI Alerts and High Activity use the same
+        // first-half minutes 1-40 and second-half minutes 46-88.
+        // >=3 SOT/~5 minutes OR >=6 SOT/~10 minutes OR >=10 cumulative match SOT qualifies independently,
+        // without total-shot confirmation. Dirty Sheet history, live pressure and xG are supporting signals only.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const corroboratingPressure = evidenceKinds >= 2 &&
           (shots >= 2 || attacks >= 5 || dangerous >= 3 || (xGDelta != null && xGDelta >= 0.15));
@@ -1934,14 +1962,13 @@ const server = http.createServer(async (req, res) => {
         const earlySegmentAllowed = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 88 &&
           (aiMinute <= 40 || aiMinute >= 46);
         const firstHalfStrictPass = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40 &&
-          shotsOnlyOverEvidence;
+          coreOverEvidence;
         const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute >= 46 && aiMinute <= 88 &&
-          (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
+          (coreOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
             (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
-        // HARD GATE for every automatic AI notification: recent shots on target must qualify.
-        // Require >=3 SOT in the rolling ~5-minute window OR >=6 SOT in the rolling ~10-minute window.
-        // Other pressure/xG/Dirty Sheet signals may support ranking but can never bypass this gate.
-        const isAiGoal = scoreAvailable && earlySegmentAllowed && shotsOnlyOverEvidence &&
+        // Core evidence gate: SOT criteria alone can trigger AI notifications.
+        // xG >=2.50 and other pressure signals are supplementary, never standalone triggers.
+        const isAiGoal = scoreAvailable && earlySegmentAllowed && coreOverEvidence &&
           ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -2034,6 +2061,7 @@ const server = http.createServer(async (req, res) => {
             if (shotsSinceLast < 2 && onTargetSinceLast < 1 && cornersSinceLast < 2 && xGSinceLast < 0.2 && !oddsImproved) continue;
           }
           const reason = [
+            "Ενεργοποίηση SOT: " + [onTarget >= 3 ? "3+ SOT/5′" : "", onTarget10m >= 6 ? "6+ SOT/10′" : "", cumulativeSOTCoreCriterion ? "10+ συνολικά SOT αγώνα" : ""].filter(Boolean).join(" · "),
             shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία στο 5λεπτο" : "",
             onTarget10m >= 6 ? onTarget10m + " σουτ στην εστία στα τελευταία 10′" : "",
@@ -2046,6 +2074,28 @@ const server = http.createServer(async (req, res) => {
           const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1 && Number.isFinite(Number(verifiedOdds.line)) && Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001);
           // Reuse the same validated score snapshot for the alert line and history.
           const overLine = targetOverLine.toFixed(1);
+          // Derive a transparent historical confirmation rate from settled real AI alerts.
+          // Never display a fabricated percentage; require at least 5 settled outcomes.
+          let historicalConfirmation = null;
+          try {
+            if (await ensureAlertHistoryDb()) {
+              const historyResult = await analyticsPool.query(
+                "SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE payload->>'betOutcome'='won')::int AS won FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days'"
+              );
+              const settledTotal = Number(historyResult.rows?.[0]?.total || 0);
+              const settledWon = Number(historyResult.rows?.[0]?.won || 0);
+              if (settledTotal >= 5) {
+                historicalConfirmation = { percent: Math.round(settledWon / settledTotal * 100), won: settledWon, total: settledTotal };
+              }
+            }
+          } catch (historyError) {
+            console.warn("AI alert historical confirmation rate unavailable:", historyError.message);
+          }
+          const passedSOTCriteria = [];
+          if (onTarget >= 3) passedSOTCriteria.push("3+ SOT/5′");
+          if (onTarget10m >= 6) passedSOTCriteria.push("6+ SOT/10′");
+          if (cumulativeSOTCoreCriterion) passedSOTCriteria.push("10+ συνολικά SOT αγώνα");
+          const sotEvidenceLabel = passedSOTCriteria.join(" + ") || "κριτήριο SOT";
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
           const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
@@ -2053,7 +2103,8 @@ const server = http.createServer(async (req, res) => {
           const priceSuffix = hasVerifiedOdds
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix;
+          const confirmationLabel = historicalConfirmation ? " · " + historicalConfirmation.percent + "%" : "";
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · SOT: " + sotEvidenceLabel + confirmationLabel + priceSuffix;
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
@@ -2103,7 +2154,7 @@ const server = http.createServer(async (req, res) => {
                   bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
                   ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null, alertType: "goal_market_signal" }),
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
-                  reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
+                  reason, historicalConfirmation, sotEvidenceLabel, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
                   statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, evidenceKinds, points }
                 };

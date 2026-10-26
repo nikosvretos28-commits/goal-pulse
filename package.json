@@ -4,7 +4,8 @@
   "private": true,
   "description": "Goal Pulse live-score API with secure PitchAPI proxy and Web Push alerts",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "doctor": "node scripts/goal-pulse-ai-doctor.js"
   },
   "engines": {
     "node": ">=24.22.1 <25"
