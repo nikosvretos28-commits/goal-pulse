@@ -1812,6 +1812,12 @@ const server = http.createServer(async (req, res) => {
         const firstHalfStatusForEligibility = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusForEligibility);
         const validFirstHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45;
         if ((validFirstHalfMinute || (firstHalfStatusForEligibility && !Number.isFinite(minuteForEligibility))) && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility.replace(/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/g, "")) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
+        // xG qualifies only when at least one individual team has live xG >= 2.50.
+        // Use the highest available team xG rather than summing both teams' xG together.
+        const teamXGValues = teams
+          .map(team => team.xG == null ? null : Number(team.xG))
+          .filter(value => value != null && Number.isFinite(value));
+        const qualifyingTeamXG = teamXGValues.length ? Math.max(...teamXGValues) : null;
         const current = {
           at: now,
           shots: total("shots"),
@@ -1819,7 +1825,7 @@ const server = http.createServer(async (req, res) => {
           corners: total("corners"),
           attacks: total("attacks"),
           dangerous: total("dangerousAttacks"),
-          xG: total("xG")
+          xG: qualifyingTeamXG
         };
         const id = String(match.eventId);
         // Keep a rolling five-minute window so activity spread across scanner cycles
@@ -1840,11 +1846,14 @@ const server = http.createServer(async (req, res) => {
         const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
-        const xGDelta = current.xG != null && previous.xG != null ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
-        const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
-        // Cumulative live xG adds only a modest bonus when available; missing xG is neutral.
         const totalXG = current.xG == null ? null : Number(current.xG);
-        const xGTotalSupport = totalXG == null || !Number.isFinite(totalXG) ? 0 : totalXG >= 2 ? 1.5 : totalXG >= 1.5 ? 1 : totalXG >= 1 ? 0.5 : 0;
+        // Do not count either cumulative xG or its recent change unless one team's xG reaches 2.50.
+        const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
+        const xGDelta = xGQualifies && previous.xG != null
+          ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
+        const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
+        // Missing xG or xG below 2.50 is neutral and never blocks a shot-qualified alert.
+        const xGTotalSupport = xGQualifies ? 1.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
         // but shots and at least one shot on target remain mandatory (no corner-only alerts).
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
