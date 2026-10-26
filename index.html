@@ -1357,6 +1357,96 @@ nav a:first-child:after{right:0}
 }
 @media(prefers-reduced-motion:reduce){.gp-trend-card{transition:none}.gp-trend-card:hover{transform:none}}
 
+
+/* GOALMATRIX premium analyst + VIP tool finish — visual-only */
+.protocol-analyst-panel,
+.gp-power-panel{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+  border:1px solid rgba(85,199,232,.28);
+  border-radius:22px;
+  background:
+    radial-gradient(ellipse at 92% 0%,rgba(67,224,162,.10),transparent 38%),
+    linear-gradient(145deg,#091827 0%,#0c2030 54%,#091724 100%);
+  box-shadow:0 18px 42px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.035);
+}
+.protocol-analyst-panel:before,
+.gp-power-panel:before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  inset:0 0 auto;
+  height:2px;
+  background:linear-gradient(90deg,transparent,#43e0a2 28%,#55c7e8 72%,transparent);
+  opacity:.9;
+}
+.protocol-analyst-panel .top-ai-alerts-head,
+.gp-power-panel .top-ai-alerts-head{
+  gap:14px;
+  padding:18px 18px 15px;
+  border-bottom:1px solid rgba(134,183,204,.14);
+}
+.protocol-analyst-panel .top-ai-alerts-head h2,
+.gp-power-panel .top-ai-alerts-head h2{
+  letter-spacing:.045em;
+  line-height:1.25;
+  text-shadow:0 0 22px rgba(85,199,232,.12);
+}
+.protocol-analyst-panel .top-ai-alerts-head p,
+.gp-power-panel .top-ai-alerts-head p{
+  color:#a9c2d0;
+  line-height:1.55;
+}
+#protocolAnalystPanel,
+#powerGamesContent{
+  padding:16px 18px;
+}
+.protocol-analyst-panel .top-ai-alert-privacy,
+.gp-power-panel .top-ai-alert-privacy{
+  margin:0;
+  padding:13px 18px 16px;
+  color:#9bb7c7;
+  font-size:12px;
+  line-height:1.6;
+  border-top:1px solid rgba(134,183,204,.12);
+}
+.protocol-analyst-panel #refreshProtocolAnalyst{
+  border:1px solid rgba(85,199,232,.38);
+  border-radius:12px;
+  background:linear-gradient(135deg,rgba(85,199,232,.13),rgba(67,224,162,.10));
+  color:#e6fbff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+.gp-power-panel .pulse-status{
+  border:1px solid rgba(183,255,70,.26);
+  border-radius:999px;
+  padding:7px 11px;
+  background:rgba(183,255,70,.07);
+  color:#d8ff8b;
+  font-weight:800;
+  letter-spacing:.08em;
+}
+.gp-section-button.gp-power-button{
+  border-color:rgba(183,255,70,.27);
+  background:linear-gradient(135deg,rgba(183,255,70,.075),rgba(67,224,162,.08) 52%,rgba(85,199,232,.05));
+}
+.gp-section-button.gp-power-button .gp-button-count{
+  color:#dcff9a;
+}
+@media(max-width:700px){
+  .protocol-analyst-panel,.gp-power-panel{border-radius:17px}
+  .protocol-analyst-panel .top-ai-alerts-head,
+  .gp-power-panel .top-ai-alerts-head{padding:14px 13px 12px;align-items:flex-start}
+  #protocolAnalystPanel,#powerGamesContent{padding:12px 13px}
+  .protocol-analyst-panel .top-ai-alert-privacy,
+  .gp-power-panel .top-ai-alert-privacy{padding:11px 13px 13px}
+}
+@media(prefers-reduced-motion:no-preference){
+  .gp-section-button.gp-power-button{transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+  .gp-section-button.gp-power-button:hover{border-color:rgba(183,255,70,.5);box-shadow:0 8px 22px rgba(67,224,162,.09);transform:translateY(-1px)}
+}
+
 </style>
 </head>
 <body>
