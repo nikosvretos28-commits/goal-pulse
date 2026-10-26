@@ -1872,7 +1872,7 @@ const server = http.createServer(async (req, res) => {
         const windowStart = now - 10 * 60 * 1000;
         const rollingSnapshots = snapshots.filter(snapshot => snapshot.at >= windowStart);
         pushScanSnapshots.set(id, rollingSnapshots);
-        const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || null;
+        const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || (current.onTarget != null && Number(current.onTarget) >= 10 ? { ...current, at: now - 5 * 60 * 1000 } : null);
         const previous10 = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 9.5 * 60 * 1000 && now - snapshot.at <= 11 * 60 * 1000) || null;
         checked++;
         if (!previous || now - previous.at < 35000) continue;
@@ -1889,8 +1889,7 @@ const server = http.createServer(async (req, res) => {
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
-        // One team's xG >= 2.50 is a core Over signal; both teams >= 2.50
-        // provide stronger support. Missing xG remains neutral, not a disqualifier.
+        // xG >= 2.50 is supplementary support only; it never triggers or blocks an alert.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
         const bothTeamsXGQualified = current.bothTeamsXGQualified === true;
         const xGDelta = xGQualifies && previous.xG != null
