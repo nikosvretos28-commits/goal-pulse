@@ -30,7 +30,7 @@
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 55% -20%,#19435e 0,transparent 45%),var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
 button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}.wrap{max-width:1400px;margin:auto;padding:0 24px}
 header{height:84px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #214257;gap:20px}
-.brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:inherit;min-width:220px}.brand svg{width:54px;height:48px;filter:drop-shadow(0 0 10px #43e0a244)}.brand-name{font-size:25px;line-height:.9;font-weight:950;letter-spacing:-1.3px;font-style:italic}.brand-name span{display:block;color:var(--green);margin-top:5px}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:inherit;min-width:220px}.brand svg{width:54px;height:54px;filter:drop-shadow(0 0 12px #43e0a244);flex-shrink:0}.brand-lockup{display:flex;flex-direction:column;gap:5px}.brand-name{font-size:25px;line-height:.9;font-weight:950;letter-spacing:-1.3px;font-style:italic}.brand-name span{display:block;color:var(--green);margin-top:5px}.brand-tagline{font-size:8px;letter-spacing:1.65px;font-weight:850;color:var(--muted);white-space:nowrap}
 nav{display:flex;gap:24px;color:#d1dfe7;font-weight:650}nav a{color:inherit;text-decoration:none;padding:10px 0}nav a:first-child{color:var(--green);border-bottom:2px solid var(--green)}
 .header-actions{display:flex;align-items:center;gap:13px}.live-badge{border:1px solid #24664f;background:#10352e;color:var(--green);border-radius:30px;padding:8px 12px;font-weight:800;font-size:11px}.pulse-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px;box-shadow:0 0 10px var(--green)}
 .login{border:0;background:linear-gradient(100deg,var(--green),#78e9b5);padding:11px 19px;border-radius:30px;font-weight:850;color:#06251f}
@@ -1075,14 +1075,16 @@ button:disabled{cursor:not-allowed;filter:saturate(.65)}
 <div class="wrap">
 <header>
 <a class="brand" href="#" aria-label="GoalMatrix home">
-<svg viewBox="0 0 120 95" role="img" aria-label="GoalMatrix AI football radar logo">
-<defs><linearGradient id="gm" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a4ff00"/><stop offset=".55" stop-color="#43e0a2"/><stop offset="1" stop-color="#f2f7fa"/></linearGradient></defs>
-<circle cx="57" cy="47" r="38" fill="none" stroke="#43e0a2" stroke-width="2.5" stroke-dasharray="18 6 24 7"/>
-<path d="M72 19H45L28 36V59L43 75H70L87 58V44H65V55H74V60L66 67H47L38 58V38L47 29H66Z" fill="url(#gm)"/>
-<circle cx="57" cy="47" r="15" fill="#071522" stroke="#a4ff00" stroke-width="2"/>
-<path d="M57 38 65 43 62 52H52L49 43Z M49 43 42 41M65 43 72 41M52 52 49 59M62 52 66 59" fill="none" stroke="#a4ff00" stroke-width="2" stroke-linejoin="round"/>
+<svg viewBox="0 0 120 95" role="img" aria-label="GoalMatrix premium football intelligence logo">
+<defs><linearGradient id="gm" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b7ff46"/><stop offset=".52" stop-color="#43e0a2"/><stop offset="1" stop-color="#55c7e8"/></linearGradient></defs>
+<path d="M60 5 98 19V48C98 68 82 82 60 91 38 82 22 68 22 48V19Z" fill="#0b2030" stroke="#43e0a2" stroke-width="2.5"/>
+<path d="M60 12 91 23V47C91 63 78 75 60 83 42 75 29 63 29 47V23Z" fill="none" stroke="#55c7e8" stroke-opacity=".55" stroke-width="1.5"/>
+<path d="M68 27H51L42 36V56L51 65H68L77 56V47H61V54H68V57L65 59H54L49 54V38L54 33H68Z" fill="url(#gm)"/>
+<circle cx="60" cy="46" r="10" fill="#071522" stroke="#b7ff46" stroke-width="1.8"/>
+<path d="m60 40 5 4-2 6h-6l-2-6z M55 44l-5-2m15 2 5-2m-10 8-2 5m7-5 3 4" fill="none" stroke="#b7ff46" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M39 71H81" stroke="#43e0a2" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
 </svg>
-<span class="brand-name">GOAL<span>MATRIX</span></span>
+<span class="brand-lockup"><span class="brand-name">GOAL<span>MATRIX</span></span><span class="brand-tagline">AI FOOTBALL INTELLIGENCE</span></span>
 </a>
 <nav aria-label="Κύριο μενού"><a href="#matches" data-menu-filter="live">LIVE ΤΩΡΑ</a><a href="#matches" data-menu-filter="all">Όλοι οι αγώνες</a><a href="#matches" data-menu-filter="upcoming">Πρόγραμμα</a><a href="#matches" data-menu-filter="finished">Αποτελέσματα</a><a href="#leagues">Πρωταθλήματα</a><a href="#insights">Στατιστικά</a><a href="#topAiAlerts">AI Alerts</a><a href="#trends">Trends</a></nav>
 <div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span><button class="login" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Live Score ↗</button></div>
