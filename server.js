@@ -2108,7 +2108,7 @@ const server = http.createServer(async (req, res) => {
           const priceSuffix = hasVerifiedOdds
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const confirmationLabel = historicalConfirmation ? " · Ιστορική επιβεβαίωση " + historicalConfirmation.percent + "% (" + historicalConfirmation.won + "/" + historicalConfirmation.total + ")" : " · Ιστορική επιβεβαίωση: ανεπαρκές δείγμα";
+          const confirmationLabel = historicalConfirmation ? " · " + historicalConfirmation.percent + "%" : "";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · SOT: " + sotEvidenceLabel + confirmationLabel + priceSuffix;
           const result = await sendPushToSubscribers({
             title: alertTitle,
@@ -2159,7 +2159,7 @@ const server = http.createServer(async (req, res) => {
                   bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
                   ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null, alertType: "goal_market_signal" }),
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
-                  reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
+                  reason, historicalConfirmation, sotEvidenceLabel, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
                   statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, evidenceKinds, points }
                 };
