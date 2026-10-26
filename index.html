@@ -1519,7 +1519,11 @@ function autoSettleFinishedOverBets(){
   if(!Array.isArray(signalAlertHistory)||!Array.isArray(allMatches))return false;
   let changed=false;
   for(const alert of signalAlertHistory){
-    if(!alert||['won','lost','void','push'].includes(String(alert.betOutcome||'').toLowerCase()))continue;
+    if(!alert)continue;
+    const existingBetOutcome=String(alert.betOutcome||'').toLowerCase();
+    const wasAutoSettled=Boolean(alert.betAutoSettledAt)&&String(alert.betSettlementLabel||'').startsWith('Αυτόματο αποτέλεσμα');
+    // Re-check previous automatic settlements against the score at alert time; preserve manual decisions.
+    if(['won','lost','void','push'].includes(existingBetOutcome)&&!wasAutoSettled)continue;
     // Automatically settle only ordinary Over x.5 markets; leave Asian/integer lines for manual handling.
     const market=String(alert.market||'');
     if(/asian|ασιατ/i.test(market))continue;
@@ -1544,6 +1548,7 @@ function autoSettleFinishedOverBets(){
     const startScore=alert.startScore==null||alert.startScore===''?NaN:Number(alert.startScore);
     if(!Number.isFinite(startScore))continue; // Legacy records without a start score must not be guessed.
     if(startScore>line){
+      if(existingBetOutcome==='void'&&String(alert.betSettlementLabel||'').includes('γραμμή Over είχε ήδη ξεπεραστεί'))continue;
       alert.betOutcome='void';
       alert.betSettlementLabel='Άκυρο — η γραμμή Over είχε ήδη ξεπεραστεί κατά την έκδοση του alert';
     }else{
