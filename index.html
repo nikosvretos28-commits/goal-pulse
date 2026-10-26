@@ -2735,7 +2735,7 @@ function renderHighActivityMatches(){
   // High Activity follows the same minute windows as automatic AI alerts.
   const minuteMatch=String(clockText).match(/(\d{1,3})/);
   const minute=minuteMatch?Number(minuteMatch[1]):null;
-  if(!Number.isFinite(minute)||!(minute>=1&&minute<=40||minute>=46&&minute<=88))return null;
+  if(!Number.isFinite(minute)||!(minute>=1&&minute<=40))return null;
   if(!stats||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   // Normalize provider stat aliases exactly as the live row renderer does.
   // Some feeds use shots_on_target / shots_on_goal rather than shotsOnTarget;
@@ -2789,8 +2789,8 @@ function renderHighActivityMatches(){
   // High Activity uses the same four independent alert triggers.
   // Attacks and dangerous attacks rank matches but never qualify them by themselves.
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.shotsOffTarget||0,4)*0.35;
-  // High Activity is deliberately looser: 2+ SOT in ~5 minutes or 4+ in ~10 minutes.
-  const recentSotStrong=delta.shotsOnTarget>=2;
+  // Keep High Activity aligned with the main AI protocol: 3+ SOT/5m or 6+ SOT/10m.
+  const recentSotStrong=delta.shotsOnTarget>=3;
   const recentSotSupported=recentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
   if(baseline10&&Array.isArray(baseline10.values)){
@@ -2800,7 +2800,7 @@ function renderHighActivityMatches(){
   }
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=4;
   const recentSot10mSupported=sixSot10m;
-  const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
+  const active=recentSotSupported||recentSot10mSupported;
   // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
@@ -2841,7 +2841,7 @@ function renderHighActivityMatches(){
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
-  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν κάποιο κριτήριο: 2+ SOT/5′, 4+ SOT/10′, 8+ συνολικά SOT από μία ομάδα ή xG 2.00+ και στις δύο ομάδες, στα λεπτά 1′–40′ ή 46′–88′.</div>';
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν το πρωτόκολλο: 3+ SOT/5′ ή 6+ SOT/10′, στα λεπτά 1′–40′.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
  const button=event.target.closest('button[data-manual-vip]');if(!button)return;
@@ -3025,7 +3025,7 @@ async function runSignalCheck(){
    }else if(serverTrend10?.available&&Array.isArray(serverTrend10.teams)){
     serverTrend10.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
    }
-   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=4;
+   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
    // Recent pressure reinforcement: 3+ new shots on target in the selected window,
    // or 6+ across the last 10 minutes, boosts scoring but never triggers alone.
    const independentAttackSignal=totalShotsAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
