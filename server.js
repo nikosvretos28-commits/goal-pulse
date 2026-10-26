@@ -1401,7 +1401,7 @@ const server = http.createServer(async (req, res) => {
     try {
       // Explicitly labelled connectivity test: never a betting tip and never stored in alert history.
       const result = await sendPushToSubscribers({
-        title: "TEST — Goal Pulse",
+        title: "TEST — GoalMatrix",
         body: "Δοκιμαστική ειδοποίηση. Δεν είναι πρόταση στοιχήματος.",
         tag: "goal-pulse-push-test",
         url: "/"
@@ -1418,8 +1418,8 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       // Odds are optional. Do not reject a legitimate alert because a price is unavailable.
       const level = body.level === "VIP" ? "VIP" : "AI";
-      const title = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
-      const alertBody = String(body.body || "Νέα live ένδειξη στο Goal Pulse").slice(0, 180);
+      const title = level === "VIP" ? "GoalMatrix · ◆ VIP ALERT" : "GoalMatrix · AI ALERT";
+      const alertBody = String(body.body || "Νέα live ένδειξη στο GoalMatrix").slice(0, 180);
       const eventId = String(body.eventId || "").slice(0, 160);
       const result = await sendPushToSubscribers({
         title,
@@ -2091,7 +2091,7 @@ const server = http.createServer(async (req, res) => {
           const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1 && Number.isFinite(Number(verifiedOdds.line)) && Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001);
           // Reuse the same validated score snapshot for the alert line and history.
           const overLine = targetOverLine.toFixed(1);
-          const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
+          const alertTitle = level === "VIP" ? "GoalMatrix · ◆ VIP ALERT" : "GoalMatrix · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
           const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
           const marketLabel = oddsPeriod === "second_half" ? "Τελικό σύνολο Over " : "1ο ημίχ. Over ";
