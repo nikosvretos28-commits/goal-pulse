@@ -1326,6 +1326,37 @@ nav a:first-child:after{right:0}
 }
 @media(prefers-reduced-motion:reduce){.match,.live-row{transition:none}.match:hover{transform:none}}
 
+
+/* GoalMatrix Trends + History visual system: styling only. */
+.gp-trend-panel{position:relative;overflow:hidden;border-color:rgba(85,199,232,.2);background:linear-gradient(150deg,rgba(13,34,50,.98),rgba(7,21,34,.99));box-shadow:0 12px 30px rgba(0,0,0,.17),inset 0 1px 0 rgba(255,255,255,.025)}
+.gp-trend-head{padding-bottom:13px;border-bottom:1px solid rgba(85,199,232,.13)}
+.gp-trend-head h2{letter-spacing:1.45px;text-shadow:0 0 20px rgba(67,224,162,.08)}
+.gp-trend-date{box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.gp-trend-list{gap:12px}
+.gp-trend-card{position:relative;overflow:hidden;border-color:rgba(85,199,232,.18);background:linear-gradient(145deg,rgba(16,39,56,.94),rgba(8,23,36,.98));box-shadow:inset 0 1px 0 rgba(255,255,255,.025);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.gp-trend-card:before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:linear-gradient(180deg,#43e0a2,#55c7e8);opacity:.72;pointer-events:none}
+.gp-trend-card:hover{transform:translateY(-2px);border-color:rgba(67,224,162,.5);box-shadow:0 9px 22px rgba(0,0,0,.17)}
+.gp-trend-stat{border-top-color:rgba(85,199,232,.12)}
+.gp-trend-stat strong{color:#7cf0bd}
+.gp-trend-stat .gp-trend-pct{font-variant-numeric:tabular-nums}
+.gp-trend-empty{background:rgba(8,24,37,.55);border-color:rgba(85,199,232,.22)}
+.gp-trends-banner,.gp-top-trends-banner{box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+#signalResults.signal-results{border:1px solid rgba(85,199,232,.17);background:linear-gradient(145deg,rgba(13,34,50,.9),rgba(7,21,34,.98));padding:14px}
+#signalResults .signal-row{border-bottom-color:rgba(85,199,232,.13);padding:11px 2px}
+#signalResults .signal-score{color:#7cf0bd;font-variant-numeric:tabular-nums}
+#signalHistoryControls{padding:12px;border:1px solid rgba(85,199,232,.16);border-radius:12px;background:rgba(9,27,41,.75)}
+#signalHistoryControls .mini-btn{max-width:100%}
+#toggleHistoryPanel{margin-top:12px}
+.gp-history-toggle{border-color:rgba(85,199,232,.23);background:linear-gradient(110deg,rgba(16,39,56,.98),rgba(9,27,41,.98))}
+.gp-history-toggle:hover,.gp-history-toggle[aria-expanded="true"]{border-color:rgba(67,224,162,.58);box-shadow:0 8px 24px rgba(0,0,0,.17)}
+@media(max-width:600px){
+ .gp-trend-head{gap:10px}
+ .gp-trend-card{padding:12px}
+ #signalHistoryControls{gap:7px!important;padding:10px}
+ #signalHistoryControls .mini-btn{font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){.gp-trend-card{transition:none}.gp-trend-card:hover{transform:none}}
+
 </style>
 </head>
 <body>
