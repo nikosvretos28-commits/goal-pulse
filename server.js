@@ -1850,14 +1850,15 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Mandatory automatic Over-alert trigger: recent SOT only.
-        // The obsolete cumulative >=10 team-SOT fallback is intentionally removed.
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
+        // Four independent triggers; any one is sufficient.
+        // SOT 3+/5m OR SOT 6+/10m OR one team has 10+ cumulative SOT
+        // OR BOTH teams have live xG >= 2.50 each.
+        const cumulativeSotStrong = current.maxTeamSOT != null && Number(current.maxTeamSOT) >= 10;
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong || bothTeamsXGQualified;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
-        // One team's xG >= 2.50 is a positive supporting signal; both teams >= 2.50
-        // adds a stronger core evaluation factor, but never bypasses the mandatory SOT gate.
+        // Both teams' xG >= 2.50 is an independent trigger; missing xG is neutral.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
         // Reuse bothTeamsXGQualified computed from the two team xG values above.
         const xGDelta = xGQualifies && previous.xG != null
@@ -1938,9 +1939,8 @@ const server = http.createServer(async (req, res) => {
         const laterSegmentPass = Number.isFinite(aiMinute) && aiMinute >= 46 && aiMinute <= 88 &&
           (shotsOnlyOverEvidence || (recentGoalEvidence && points + liveConversionSupport + dirtySheetSupport >= 7) ||
             (sustainedGoalEvidence && sustainedPoints + liveConversionSupport + dirtySheetSupport >= 10));
-        // HARD GATE for every automatic AI notification: recent shots on target must qualify.
-        // Require >=3 SOT in the rolling ~5-minute window OR >=6 SOT in the rolling ~10-minute window.
-        // Other pressure/xG/Dirty Sheet signals may support ranking but can never bypass this gate.
+        // HARD GATE: any one trigger qualifies: SOT 3+/5m, SOT 6+/10m,
+        // one team SOT 10+ cumulative, or BOTH teams xG 2.50+ each.
         const isAiGoal = scoreAvailable && earlySegmentAllowed && shotsOnlyOverEvidence &&
           ((aiMinute <= 45 && firstHalfStrictPass) || laterSegmentPass);
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
@@ -2053,7 +2053,7 @@ const server = http.createServer(async (req, res) => {
           const priceSuffix = hasVerifiedOdds
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : "SOT 6+/10′";
+          const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : cumulativeSotStrong ? "SOT 10+ συνολικά" : "xG 2.50+ και στις 2 ομάδες";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
           const result = await sendPushToSubscribers({
             title: alertTitle,
