@@ -23,10 +23,10 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const html = fs.readFileSync('index.html', 'utf8');
-          const scripts = [...html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)];
+          const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
           let checked = 0;
           for (const [index, attrs, source] of scripts.map((m, i) => [i, m[1], m[2]])) {
-            if (/application\\/ld\\+json/i.test(attrs)) continue;
+            if (/application\/ld\+json/i.test(attrs)) continue;
             try {
               new Function(source);
               checked++;
