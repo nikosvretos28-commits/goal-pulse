@@ -1540,10 +1540,18 @@ function autoSettleFinishedOverBets(){
     }
     if(!Number.isFinite(home)||!Number.isFinite(away))continue;
     const totalGoals=home+away;
-    // A standard Over x.5 is won as soon as the total passes the line; mark it lost only after full time.
-    if(totalGoals<=line&&!isFinished)continue;
-    alert.betOutcome=totalGoals>line?'won':'lost';
-    alert.betSettlementLabel='Αυτόματο αποτέλεσμα τελικού σκορ '+home+'–'+away;
+    // Settle only if the recorded start score proves the Over line was still valid when the alert was issued.
+    const startScore=alert.startScore==null||alert.startScore===''?NaN:Number(alert.startScore);
+    if(!Number.isFinite(startScore))continue; // Legacy records without a start score must not be guessed.
+    if(startScore>line){
+      alert.betOutcome='void';
+      alert.betSettlementLabel='Άκυρο — η γραμμή Over είχε ήδη ξεπεραστεί κατά την έκδοση του alert';
+    }else{
+      // A standard Over x.5 wins only if the total exceeds the line after the alert; a loss is final-time only.
+      if(totalGoals<=line&&!isFinished)continue;
+      alert.betOutcome=totalGoals>line&&totalGoals>startScore?'won':'lost';
+      alert.betSettlementLabel='Αυτόματο αποτέλεσμα σκορ '+home+'–'+away;
+    }
     alert.betAutoSettledAt=Date.now();
     alert.betUpdatedAt=alert.betAutoSettledAt;
     alert.recordUpdatedAt=alert.betAutoSettledAt;
