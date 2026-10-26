@@ -1626,11 +1626,13 @@ function renderHighActivityMatches(){
  const scoreMatch=m=>{
   const clockText=String(m.clock||"").toLowerCase();
   const statusText=String(m.statusText||m.status||m.state||"").toLowerCase();
-  if(m.state!=="in"||/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
+  const minuteMatch=clockText.match(/(\\d{1,3})/),minute=minuteMatch?Number(minuteMatch[1]):NaN;
+  const eligibleMinute=Number.isFinite(minute)&&((minute>=1&&minute<=40)||(minute>=46&&minute<=88));
+  if(m.state!=="in"||!eligibleMinute||/\\b(?:ht|half[\\s-]*time|halftime|interval)\\b/i.test(clockText+" "+statusText))return null;
   const stats=liveMetricsCache.get(String(m.id));
   if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   const teams=stats.teams,trail=signalTrails.get(String(m.id))||[];
-  const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
+  const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=6*60*1000);
   const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
   const keys=["shots","shotsOnTarget","attacks","dangerousAttacks"];
   const delta={shots:0,shotsOnTarget:0,attacks:0,dangerousAttacks:0};
@@ -1646,7 +1648,7 @@ function renderHighActivityMatches(){
    // Prefer a true five-minute persisted delta; when it is not available yet,
    // use a valid ten-minute baseline and normalize rates to a five-minute equivalent.
    const candidates=[
-    {trend:stats.trend?.window5m,min:4.5,max:8,scale:1},
+    {trend:stats.trend?.window5m,min:4.5,max:6,scale:1},
     {trend:stats.trend?.window10m,min:8,max:13,scale:0.5}
    ];
    const chosen=candidates.find(item=>{
@@ -1663,10 +1665,10 @@ function renderHighActivityMatches(){
    }
   }
   if(!hasRecentData)return null;
-  // High Activity eligibility follows the agreed shots/on-target-only protocol.
-  // Attacks and dangerous attacks may help rank eligible matches, but cannot qualify one by themselves.
+  // High Activity follows the same SOT-only trigger and match-minute window as AI Alerts.
+  // Total shots, attacks, dangerous attacks, xG and conversion may rank eligible matches only; none can trigger or block SOT eligibility.
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget;
-  // Require 3+ shots on target in the rolling ~5-minute window, or 6+ in ~10 minutes below.
+  // Core trigger is only 3+ SOT in ~5 minutes OR 6+ SOT in ~10 minutes.
   const recentSotStrong=delta.shotsOnTarget>=3;
   const recentSotSupported=recentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
