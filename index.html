@@ -1267,6 +1267,24 @@ nav a:first-child:after{right:0}
  nav a,.gp-section-button,.gp-section-button:before{transition:none!important}
  .gp-section-button:hover{transform:none}
 }
+
+/* GoalMatrix signature lockup: visual identity only; no app behavior changes. */
+.brand{gap:12px;align-items:center}
+.brand svg{width:clamp(54px,5.2vw,68px);height:auto;filter:drop-shadow(0 0 12px rgba(67,224,162,.14));transition:filter .22s ease,transform .22s ease}
+.brand:hover svg{filter:drop-shadow(0 0 17px rgba(85,199,232,.24));transform:translateY(-1px)}
+.brand-lockup{display:flex;flex-direction:column;gap:3px;line-height:1}
+.brand-name{font-size:clamp(19px,2.1vw,25px);font-weight:900;letter-spacing:.075em;color:#f3fbff;text-shadow:0 2px 18px rgba(85,199,232,.08);white-space:nowrap}
+.brand-name span{background:linear-gradient(100deg,#43e0a2 5%,#b7ff46 48%,#55c7e8 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand-tagline{font-size:8px;font-weight:800;letter-spacing:.19em;color:#8eabbc;white-space:nowrap}
+.live-badge{box-shadow:0 0 0 1px rgba(67,224,162,.12),0 0 18px rgba(67,224,162,.07)}
+@media(max-width:560px){
+ .brand{gap:8px}
+ .brand svg{width:48px}
+ .brand-name{font-size:17px;letter-spacing:.055em}
+ .brand-tagline{font-size:7px;letter-spacing:.13em}
+}
+@media(prefers-reduced-motion:reduce){.brand svg{transition:none}.brand:hover svg{transform:none}}
+
 </style>
 </head>
 <body>
