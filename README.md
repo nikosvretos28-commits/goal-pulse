@@ -27,15 +27,17 @@ The scoreboard depends on ESPN's public endpoints, which are not a guaranteed co
 A stated competitor hit rate such as 90% cannot be fairly compared until both systems use the same alert definition, time window, market, settlement rules and sample period. No hit rate is guaranteed.
 
 
-## Goal Pulse live Over alert protocol (specification; not yet implemented in the live app)
+## Goal Pulse live Over alert protocol (verify deployed revision before claiming operational status)
 
-### Required SOT gate
-- Eligible alert window: match minutes 1–40 inclusive, including High Activity monitoring.
-- Five-minute trigger: at least 3 shots on target (SOT) in the rolling last 5 minutes.
-- Ten-minute trigger: at least 6 SOT in the rolling last 10 minutes.
-- Apply the same thresholds in the first half.
-- The implementation must explicitly define whether the 5-minute OR 10-minute trigger is sufficient. Do not silently treat both as simultaneously required.
-- SOT is a mandatory gate for automatic Over AI alerts; missing xG alone must not disqualify a match.
+### Four independent Over-alert triggers
+- Eligible minute windows: 1–40 inclusive and 46–88 inclusive; High Activity uses the same windows.
+- Any ONE trigger is sufficient:
+  1. At least 3 new shots on target (SOT) in the rolling last 5 minutes.
+  2. At least 6 new SOT in the rolling last 10 minutes.
+  3. At least 10 cumulative SOT by either one team.
+  4. Live xG of at least 2.50 for BOTH teams individually.
+- These are OR conditions; they are not all required together.
+- Do not add the two teams' xG together to reach 2.50. Missing xG is neutral.
 - No minimum odds cutoff. Automatic alerts must not use Asian Over markets; Asian Over remains a manual VIP-only option.
 
 ### Scanner pipeline
@@ -57,11 +59,9 @@ A stated competitor hit rate such as 90% cannot be fairly compared until both sy
 - Missing xG is not the same as xG = 0.
 - Clearly label this as a protocol specification until the scanners, data feed, persistence and alert delivery have been implemented and tested. Do not present it as a live feature or claim a validated hit rate before evidence exists.
 
-## Deploy on Render
+## Deployment
 
-This is a static site. In the existing Render Static Site service, connect this GitHub repository and branch `main`, set the publish directory to `.`, and leave the build command empty. A push to the connected branch should trigger a deploy if automatic deploys are enabled.
-
-The repository's `render.yaml` declares a service named `goal-pulse`. If an existing Render service uses a different name, verify the service/repository connection before applying the Blueprint so you do not accidentally create a second service.
+Deploy through the hosting provider currently configured by the owner. Verify the connected repository, branch, deployed revision, runtime health, and live-data availability before considering a release complete.
 
 ## Repository
 
