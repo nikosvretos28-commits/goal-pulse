@@ -1829,9 +1829,10 @@ async function runSignalCheck(){
     const marketText=String(a.market||'');
     const isAsianBet=String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText);
     // New Asian alerts are evaluated only on second-half goals, after full time.
-    const periodFinished=isAsianBet?match.state==='post':(firstHalf?explicitHalfTime:match.state==='post');
+    const isFullMatchOver=/^Over\s*\d+(?:[.,]\d+)?$/i.test(marketText.trim())&&!isAsianBet;
+    const periodFinished=isAsianBet||isFullMatchOver?match.state==='post':(firstHalf?explicitHalfTime:match.state==='post');
     if(!periodFinished)return;
-    if(a.market==='πιθανό γκολ'||marketText.startsWith('1ο ημίχρονο Over ')||marketText.startsWith('1ο ημίχρονο · Ασιατικό Over ')||marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||/ασιατικ[όο].*over|over.*ασιατικ[όο]/i.test(marketText)){
+    if(a.market==='πιθανό γκολ'||isFullMatchOver||marketText.startsWith('1ο ημίχρονο Over ')||marketText.startsWith('1ο ημίχρονο · Ασιατικό Over ')||marketText.startsWith('2ο ημίχρονο · επόμενο γκολ')||/ασιατικ[όο].*over|over.*ασιατικ[όο]/i.test(marketText)){
       const finalScore=Number(match.home.score||0)+Number(match.away.score||0);
       if(a.startScore==null)return;
       const asian=isAsianBet;
