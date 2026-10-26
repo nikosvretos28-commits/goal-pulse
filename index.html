@@ -1069,6 +1069,21 @@ button:disabled{cursor:not-allowed;filter:saturate(.65)}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 
+
+/* GoalMatrix premium finishing touch — visual-only */
+:root{--gp-glow:rgba(67,224,162,.16);--gp-glass:rgba(16,42,60,.72)}
+::selection{background:rgba(67,224,162,.32);color:#fff}
+.panel,.side-live,.hero-main,.pressure,.insight{box-shadow:0 12px 34px rgba(0,0,0,.13),inset 0 1px 0 rgba(255,255,255,.025)}
+.panel-head{background:linear-gradient(90deg,rgba(85,199,232,.055),transparent 72%)}
+.panel-head h2,.pressure-head h3{letter-spacing:-.25px}
+.primary,.login{position:relative;isolation:isolate;transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
+.primary:hover,.login:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(67,224,162,.2);filter:saturate(1.08)}
+.filter,.mini-btn,.gp-standings-tab{transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease}
+.filter:hover,.mini-btn:hover,.gp-standings-tab:hover{transform:translateY(-1px)}
+.match:focus-visible,.league-item:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.top-ai-alert-card{box-shadow:inset 3px 0 0 rgba(67,224,162,.65),0 8px 24px rgba(0,0,0,.12)}
+@media(prefers-reduced-motion:reduce){.primary,.login,.filter,.mini-btn,.gp-standings-tab,.match,.league-item{transition:none!important}.primary:hover,.login:hover,.filter:hover,.mini-btn:hover,.gp-standings-tab:hover,.match:hover{transform:none}}
+
 </style>
 
 <style id="goalmatrix-premium-finish">
