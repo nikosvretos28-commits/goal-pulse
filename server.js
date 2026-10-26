@@ -2993,7 +2993,7 @@ const server = http.createServer(async (req, res) => {
                 }
               }
               matches.push({
-                eventId: String(event.id), home: homeName, away: awayName,
+                eventId: String(event.id), home: homeName, away: awayName, statsSource: "SportScore",
                 minute: root.live_minute ?? root.liveMinute ?? root.elapsed ?? root.time?.elapsed ?? event.live_minute ?? event.status?.displayClock ?? event.time ?? "",
                 homeScore: event.home_score ?? event.homeScore ?? null,
                 awayScore: event.away_score ?? event.awayScore ?? null,
@@ -3032,7 +3032,7 @@ const server = http.createServer(async (req, res) => {
                 { team: awayName, homeAway: "away", shots: readStat("away", ["total_shots","shots","total_attempts","total_shots_attempted"]), shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","on_target"]), shotsOffTarget: readStat("away", ["shots_off_target","shots_off_goal","shots_wide","off_target","shots_off_target_total"]), blockedShots: readStat("away", ["blocked_shots","shots_blocked","blocked_attempts"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
               ];
               matches.push({
-                eventId: String(event.id), home: homeName, away: awayName,
+                eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
                 minute: event.status?.displayClock || "",
                 statsAvailable: values.some(value => ["shots","shotsOnTarget","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
@@ -3075,7 +3075,7 @@ const server = http.createServer(async (req, res) => {
               };
             });
             matches.push({
-              eventId: String(event.id),
+              eventId: String(event.id), statsSource: "ESPN",
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
@@ -3088,6 +3088,27 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
+      // Temporary live-stat audit: log provider and the raw normalized shot components
+      // so discrepancies can be traced without guessing or silently altering totals.
+      for (const match of matches) {
+        const normalizedHome = String(match.home || "").toLowerCase();
+        const normalizedAway = String(match.away || "").toLowerCase();
+        if (/tijuana|santos laguna/.test(normalizedHome + " " + normalizedAway)) {
+          console.log("[Goal Pulse shot-stat audit]", JSON.stringify({
+            eventId: match.eventId, home: match.home, away: match.away,
+            provider: match.statsSource || "unknown", minute: match.minute,
+            teams: (match.teams || []).map(team => ({
+              team: team.team, shots: team.shots,
+              shotsOnTarget: team.shotsOnTarget, shotsOffTarget: team.shotsOffTarget,
+              blockedShots: team.blockedShots,
+              componentSum: [team.shotsOnTarget, team.shotsOffTarget, team.blockedShots]
+                .every(value => value != null && Number.isFinite(Number(value)))
+                ? Number(team.shotsOnTarget) + Number(team.shotsOffTarget) + Number(team.blockedShots)
+                : null
+            }))
+          }));
+        }
+      }
       const isSportScoreEvent = value => String(value || "").startsWith("sportscore:") || String(value || "").startsWith("sportscore-widget:");
       if (work.some(item => isSportScoreEvent(item.event.id))) {
         console.log("SportScore live metrics detail diagnostic:", JSON.stringify({
