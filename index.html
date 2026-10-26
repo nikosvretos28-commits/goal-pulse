@@ -1533,6 +1533,80 @@ nav a:first-child:after{right:0}
   #matches .filter{transition:none}
 }
 
+
+/* GOALMATRIX match rows + alert card visual refinement — CSS only */
+#matchList .live-row{
+  position:relative;
+  border-bottom-color:rgba(85,199,232,.12);
+  background:linear-gradient(100deg,rgba(12,32,49,.30),rgba(7,21,34,.08));
+  transition:background .16s ease,border-color .16s ease;
+}
+#matchList .live-row:nth-child(even){background:rgba(16,38,56,.24)}
+#matchList .live-row:hover{
+  background:linear-gradient(100deg,rgba(67,224,162,.07),rgba(85,199,232,.035));
+  border-bottom-color:rgba(67,224,162,.25);
+}
+#matchList .live-row .teamname{font-weight:800;letter-spacing:-.01em}
+#matchList .live-row .score,
+#matchList .live-row .live-score{
+  border-radius:8px;
+  background:rgba(85,199,232,.075);
+  color:#f0fbff;
+  padding:4px 6px;
+  font-variant-numeric:tabular-nums;
+}
+.top-ai-alert-list{gap:11px}
+.top-ai-alert-card{
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(85,199,232,.25);
+  border-radius:15px;
+  background:
+    radial-gradient(ellipse at 100% 0%,rgba(85,199,232,.075),transparent 45%),
+    linear-gradient(150deg,#0b1d2c,#071522 72%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+  transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;
+}
+.top-ai-alert-card .alert-card-kicker{
+  align-items:center;
+  color:#8fe8d2;
+  letter-spacing:.65px;
+}
+.top-ai-alert-card .alert-card-match{
+  font-size:15px;
+  letter-spacing:-.015em;
+}
+.top-ai-alert-card .alert-card-market{
+  color:#c9ffe6;
+  line-height:1.5;
+}
+.top-ai-alert-card .alert-card-reason{
+  line-height:1.55;
+  color:#a5bdca;
+}
+.top-ai-alerts:not(.top-vip-alerts) .top-ai-alert-card:hover,
+.top-ai-alerts:not(.top-vip-alerts) .top-ai-alert-card:focus-visible{
+  border-color:rgba(85,199,232,.58);
+  box-shadow:0 9px 22px rgba(0,0,0,.20),0 0 0 1px rgba(85,199,232,.07);
+  transform:translateY(-1px);
+}
+.top-vip-alerts .top-ai-alert-card{
+  border-color:rgba(67,224,162,.32);
+  background:
+    radial-gradient(ellipse at 100% 0%,rgba(67,224,162,.10),transparent 48%),
+    linear-gradient(150deg,#0b281d,#071522 72%);
+}
+.top-vip-alerts .top-ai-alert-card .alert-card-kicker{color:#b7ffb9}
+@media(max-width:700px){
+  #matchList .live-row{gap:5px;padding:11px 9px}
+  .top-ai-alert-list{gap:9px}
+  .top-ai-alert-card{padding:11px;border-radius:13px}
+}
+@media(prefers-reduced-motion:reduce){
+  #matchList .live-row,.top-ai-alert-card{transition:none}
+  .top-ai-alerts:not(.top-vip-alerts) .top-ai-alert-card:hover{transform:none}
+}
+
 </style>
 </head>
 <body>
