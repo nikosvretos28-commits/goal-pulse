@@ -918,6 +918,55 @@ button:active{transform:translateY(1px)}
  .match{border-radius:10px}
 }
 
+
+/* GoalMatrix visual polish — presentation only; preserve all existing app behavior. */
+:root{--bg:#081725;--panel:#102638;--panel2:#153247;--line:#294b60;--text:#f4f8fb;--muted:#b2c3cf;--green:#4be5aa;--cyan:#66d4f0}
+body{font-size:15px;line-height:1.52;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wrap{padding-left:clamp(14px,2.2vw,28px);padding-right:clamp(14px,2.2vw,28px)}
+.panel,.side-live{box-shadow:0 12px 32px #020b1429}
+.panel-head{padding:17px 19px}
+.panel-head h2{font-size:17px;letter-spacing:.1px}
+.live-row{font-size:13px;gap:8px;padding:14px 16px;line-height:1.4}
+.live-row .score{font-size:16px}
+.minute{font-size:13px;min-width:38px;min-height:30px;padding:6px 8px}
+.match{padding:14px 15px;border-color:#24485d;background:linear-gradient(120deg,#0d2131,#0b1c2a);border-radius:14px}
+.match-meta{font-size:11px;margin-bottom:11px}
+.team{font-size:14px;line-height:1.35}
+.team-logo{font-size:24px}
+.match-score{font-size:23px}
+.match-score small{font-size:10px}
+.stats{gap:8px;margin-top:13px}
+.stat{font-size:11px;padding:6px 9px}
+.match-bottom{margin-top:12px;padding-top:10px}
+.ai-note{font-size:11px}
+.mini-btn{font-size:11px;padding:7px 10px}
+.filter{font-size:13px;padding:10px 17px}
+.search{font-size:14px;padding:11px 16px}
+.league-head{padding:14px 9px}
+.league-country{font-size:11px}
+.count{font-size:12px}
+.subtle{font-size:12px}
+.live-tag{font-size:10px}
+.feature{padding:16px}
+.feature strong{font-size:13px}
+.feature small{font-size:11px}
+button,a,input{transition:background-color .16s ease,border-color .16s ease,opacity .16s ease}
+button:focus-visible,a:focus-visible,input:focus-visible{outline-offset:3px}
+@media(max-width:760px){
+ body{font-size:15px}
+ .wrap{padding-left:12px;padding-right:12px}
+ .live-row{font-size:13px;padding:13px 10px;gap:6px;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1fr) 24px 40px}
+ .live-row .score{font-size:15px}
+ .minute{font-size:12px;min-width:36px;padding:5px 6px}
+ .match{padding:13px 11px}
+ .team{font-size:13px;gap:7px}
+ .match-score{font-size:22px}
+ .stat{font-size:11px;padding:6px 8px}
+ .match-meta{font-size:11px}
+ .panel-head{padding:15px 14px}
+ .filter{font-size:12px;padding:9px 13px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
