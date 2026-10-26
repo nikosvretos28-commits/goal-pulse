@@ -930,7 +930,7 @@ nav a{flex:0 0 auto}
    box.textContent='Goal Pulse: εντοπίστηκε σφάλμα εμφάνισης. '+String(message||'Άγνωστο σφάλμα').slice(0,240);
   }catch(_){}
  }
- window.addEventListener('error',function(e){showGoalPulseError(e.message||'Σφάλμα JavaScript')});
+ window.addEventListener('error',function(e){showGoalPulseError((e.message||'Σφάλμα JavaScript')+(e.filename?' · '+String(e.filename).split('/').pop():'')+(e.lineno?':'+e.lineno:'')+(e.colno?':'+e.colno:''))});
  window.addEventListener('unhandledrejection',function(e){showGoalPulseError(e.reason&&e.reason.message||e.reason||'Αποτυχία φόρτωσης')});
 })();
 </script>
