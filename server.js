@@ -1872,20 +1872,19 @@ const server = http.createServer(async (req, res) => {
         const windowStart = now - 10 * 60 * 1000;
         const rollingSnapshots = snapshots.filter(snapshot => snapshot.at >= windowStart);
         pushScanSnapshots.set(id, rollingSnapshots);
-        const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || (current.onTarget != null && Number(current.onTarget) >= 10 ? { ...current, at: now - 5 * 60 * 1000 } : null);
+        const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || null;
         const previous10 = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 9.5 * 60 * 1000 && now - snapshot.at <= 11 * 60 * 1000) || null;
         checked++;
-        if (!previous || now - previous.at < 35000) continue;
-        const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
+        if ((!previous || now - previous.at < 35000) && !previous10) continue;
+        const delta = key => !previous || current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const shots10m = current.shots == null || previous10?.shots == null ? 0 : Math.max(0, current.shots - previous10.shots);
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
         // SOT is the standalone core trigger for AI Over alerts. Supporting metrics
         // (total shots, xG, corners, attacks, conversion and history) must not be mandatory.
-        // Qualify on >=3 new SOT in ~5 minutes OR >=6 new SOT in ~10 minutes.
-        // 10+ cumulative match SOT is also a standalone SOT signal. Missing xG is neutral.
-        const cumulativeSOTCoreCriterion = current.onTarget != null && Number(current.onTarget) >= 10;
-        const coreOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeSOTCoreCriterion;
+        // Qualify only on >=3 new SOT in ~5 minutes OR >=6 new SOT in ~10 minutes.
+        // Cumulative match SOT is not a trigger. Missing xG is neutral.
+        const coreOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
@@ -1897,8 +1896,7 @@ const server = http.createServer(async (req, res) => {
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
         // Missing xG or xG below 2.50 is neutral; both teams qualifying gives stronger support.
         const xGTotalSupport = bothTeamsXGQualified ? 2.5 : (xGQualifies ? 1.5 : 0);
-        // Match the reference pressure model: last-five-minute corners support the signal,
-        // but shots and at least one shot on target remain mandatory (no corner-only alerts).
+        // Total shots, corners and other pressure metrics are supplementary only; they never gate SOT alerts.
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
         // AI goal pressure prioritizes shots, shots on target, dangerous attacks and xG.
         // Corners add limited supporting weight; they can never trigger an alert alone.
@@ -1950,12 +1948,10 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        // For Over-goal markets, SOT alone qualifies: 3+ new SOT in ~5 minutes,
-        // 6+ new SOT in ~10 minutes, or 10+ cumulative match SOT. Total shots and xG
-        // are supplemental only. Alerts still require a valid live score and eligible market data.
-        // Goal Pulse protocol updated 2026-10-26:
-        // first-half AI alerts: minutes 1-40; second-half AI alerts: minutes 46-88.
-        // High Activity has no minute-window restriction and is evaluated by its own pressure protocol.
+        // For Over-goal markets, only 3+ new SOT in ~5 minutes OR 6+ new SOT in ~10 minutes qualifies.
+        // Cumulative match SOT is not a trigger. All other statistics are supplementary only.
+        // Goal Pulse protocol updated 2026-10-26: AI Alerts and High Activity use the same
+        // first-half minutes 1-40 and second-half minutes 46-88.
         // >=3 shots on target over ~5 minutes OR >=6 over ~10 minutes qualifies without
         // total-shot confirmation. Dirty Sheet history, live pressure and xG are supporting signals only.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
@@ -2065,7 +2061,7 @@ const server = http.createServer(async (req, res) => {
             if (shotsSinceLast < 2 && onTargetSinceLast < 1 && cornersSinceLast < 2 && xGSinceLast < 0.2 && !oddsImproved) continue;
           }
           const reason = [
-            "Ενεργοποίηση SOT: " + (onTarget >= 3 ? "3+ SOT/5′" : "") + (onTarget >= 3 && onTarget10m >= 6 ? " · " : "") + (onTarget10m >= 6 ? "6+ SOT/10′" : "") + ((onTarget >= 3 || onTarget10m >= 6) && cumulativeSOTCoreCriterion ? " · " : "") + (cumulativeSOTCoreCriterion ? "10+ συνολικά SOT" : ""),
+            "Ενεργοποίηση SOT: " + (onTarget >= 3 ? "3+ SOT/5′" : "") + (onTarget >= 3 && onTarget10m >= 6 ? " · " : "") + (onTarget10m >= 6 ? "6+ SOT/10′" : ""),
             shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία στο 5λεπτο" : "",
             onTarget10m >= 6 ? onTarget10m + " σουτ στην εστία στα τελευταία 10′" : "",
@@ -2098,7 +2094,6 @@ const server = http.createServer(async (req, res) => {
           const passedSOTCriteria = [];
           if (onTarget >= 3) passedSOTCriteria.push("3+ SOT/5′");
           if (onTarget10m >= 6) passedSOTCriteria.push("6+ SOT/10′");
-          if (cumulativeSOTCoreCriterion) passedSOTCriteria.push("10+ συνολικά SOT");
           const sotEvidenceLabel = passedSOTCriteria.join(" + ") || "κριτήριο SOT";
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
