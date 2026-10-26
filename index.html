@@ -1674,6 +1674,37 @@ header nav a:not(:first-child):hover:after{right:0}
   .brand,header nav a,header nav a:after{transition:none}
 }
 
+
+/* GOALMATRIX signature detail pass — visual/accessibility only */
+:root{
+  color-scheme:dark;
+  accent-color:#43e0a2;
+}
+::selection{background:rgba(67,224,162,.28);color:#f5fffb}
+:focus-visible{
+  outline:2px solid #55c7e8;
+  outline-offset:3px;
+}
+h1,h2,h3,.section-title,.panel-title{
+  text-wrap:balance;
+}
+section[id], [id="signalResults"], [id="powerGames"]{
+  scroll-margin-top:18px;
+}
+button,a,[role="button"]{
+  -webkit-tap-highlight-color:transparent;
+}
+button:focus-visible,a:focus-visible{
+  border-radius:8px;
+}
+@media(max-width:700px){
+  h1,h2,.section-title,.panel-title{line-height:1.2}
+  section[id], [id="signalResults"], [id="powerGames"]{scroll-margin-top:10px}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto!important}
+}
+
 </style>
 </head>
 <body>
