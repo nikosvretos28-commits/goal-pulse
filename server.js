@@ -1868,13 +1868,17 @@ const server = http.createServer(async (req, res) => {
         const firstHalfStatusForEligibility = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusForEligibility);
         const validFirstHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45;
         if ((validFirstHalfMinute || (firstHalfStatusForEligibility && !Number.isFinite(minuteForEligibility))) && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility.replace(/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/g, "")) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
-        // xG qualifies only when at least one individual team has live xG >= 2.50.
-        // Use the highest available team xG rather than summing both teams' xG together.
-        const teamXGValues = teams
-          .map(team => team.xG == null ? null : Number(team.xG))
-          .filter(value => value != null && Number.isFinite(value));
-        const qualifyingTeamXG = teamXGValues.length ? Math.max(...teamXGValues) : null;
-        const bothTeamsXGQualified = teamXGValues.length === 2 && teamXGValues.every(value => value >= 2.5);
+        // xG trigger: one team must have xG >= 2.50 and the other >= 2.00.
+        // Missing/invalid xG stays neutral and never blocks an otherwise valid SOT alert.
+        const teamXGValues = teams.map(team =>
+          team.xG == null || !Number.isFinite(Number(team.xG)) ? null : Number(team.xG)
+        );
+        const validTeamXGValues = teamXGValues.filter(value => value != null);
+        const qualifyingTeamXG = validTeamXGValues.length ? Math.max(...validTeamXGValues) : null;
+        const bothTeamsXGQualified = teamXGValues.length === 2 &&
+          teamXGValues.every(value => value != null) &&
+          Math.max(...teamXGValues) >= 2.5 &&
+          Math.min(...teamXGValues) >= 2.0;
         const teamSOTValues = teams
           .map(team => team.shotsOnTarget == null ? null : Number(team.shotsOnTarget))
           .filter(value => value != null && Number.isFinite(value));
@@ -1906,18 +1910,19 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Mandatory shooting gate for every automatic Over AI alert.
-        // Require at least 10 total shots in the match AND one agreed SOT signal:
-        // 3+ SOT in ~5m OR 6+ SOT in ~10m OR 10+ cumulative SOT.
-        // Cumulative SOT and xG do not bypass the total-shots minimum.
+        // Mandatory match-volume gate: at least 10 total shots in the match.
+        // An alert can qualify through either the existing SOT criteria or the xG trigger:
+        // 3+ SOT in ~5m OR 6+ SOT in ~10m OR 10+ cumulative SOT OR xG 2.50/2.00 across both teams.
+        // Missing xG never blocks a valid SOT-based alert.
         const cumulativeSotStrong = current.onTarget != null && Number(current.onTarget) >= 10;
         const totalShotsMinimumMet = current.shots != null && Number(current.shots) >= 10;
-        const shotsOnlyOverEvidence = totalShotsMinimumMet && (onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong);
+        const shotsOnlyOverEvidence = totalShotsMinimumMet && (onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong || xGQualifies);
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
-        // Both teams' xG >= 2.50 is an independent trigger; missing xG is neutral.
-        const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
+        // xG qualifies when one team is >= 2.50 and the opponent is >= 2.00.
+        // This is an alternative SOT trigger, but the 10-total-shots match minimum remains mandatory.
+        const xGQualifies = bothTeamsXGQualified && totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
         // Reuse bothTeamsXGQualified computed from the two team xG values above.
         const xGDelta = xGQualifies && previous.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
@@ -1977,13 +1982,11 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        // For Over-goal markets, the agreed shot-on-target thresholds may qualify by themselves:
-        // 3+ new shots on target in ~5 minutes OR 6+ in ~10 minutes.
-        // All alerts still require a valid live score and a verified active Over price below.
-        // Goal Pulse protocol updated 2026-10-26:
+        // For Over-goal markets, alerts require 10+ total shots and either an agreed SOT signal
+        // (3+ SOT in ~5m, 6+ SOT in ~10m, or 10+ cumulative SOT) or xG >=2.50 for one team
+        // and >=2.00 for the other. Missing xG is neutral; valid SOT alerts remain possible.
         // Automatic AI alerts use the agreed eligible window: minutes 1-40 inclusive.
-        // Mandatory SOT gate: 3+ SOT in the rolling last ~5m OR 6+ SOT in the rolling last ~10m.
-        // xG, pressure, dangerous attacks and team history are supporting evidence only.
+        // All alerts still require a valid live score and a verified active Over price below.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40;
         const isAiGoal = scoreAvailable && eligibleMinute && shotsOnlyOverEvidence;
