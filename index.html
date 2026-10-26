@@ -831,7 +831,7 @@ nav a{flex:0 0 auto}
 .minute{background:#542631!important;color:#ffd0d5!important;border-radius:8px;padding:5px 7px!important;min-width:36px;min-height:28px;display:inline-flex;align-items:center;justify-content:center;font-size:12px!important;line-height:1.15;font-weight:900;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* Final live-match readability fixes */
-.live-match-line .live-row .score{color:#39e6c1!important;text-shadow:0 0 10px rgba(57,230,193,.42);font-weight:1000;background:rgba(12,90,81,.24);border:1px solid rgba(57,230,193,.55);border-radius:7px;padding:3px 7px;min-width:44px;text-align:center}
+.live-match-line .live-row .score{color:#ffd166!important;text-shadow:0 0 10px rgba(255,209,102,.48);font-weight:1000;background:rgba(120,78,12,.28);border:1px solid rgba(255,209,102,.68);border-radius:7px;padding:3px 7px;min-width:44px;text-align:center}
 .live-row-league{display:block!important;visibility:visible!important;opacity:1!important;color:#70e3ff!important;font-size:11px!important;font-weight:950!important;line-height:1.4;min-height:18px;padding:5px 8px!important;margin:2px 0 4px!important;background:rgba(22,70,94,.36);border:1px solid rgba(85,199,232,.3);border-radius:6px;overflow-wrap:anywhere}
 </style>
 </head>
@@ -1528,7 +1528,8 @@ function autoSettleFinishedOverBets(){
     const line=Number(lineMatch[1].replace(',','.'));
     if(!Number.isFinite(line)||!Number.isInteger(line*2)||Math.abs(line*2-Math.round(line*2))>1e-8||Math.abs(line-Math.round(line))<1e-8)continue;
     const match=allMatches.find(m=>String(m.id)===String(alert.eventId));
-    if(!match||String(match.state||'').toLowerCase()!=='post')continue;
+    if(!match)continue;
+    const isFinished=String(match.state||'').toLowerCase()==='post';
     const homeRaw=match.home?.score??match.homeScore??match.scoreHome;
     const awayRaw=match.away?.score??match.awayScore??match.scoreAway;
     let home=homeRaw==null||homeRaw===''?NaN:Number(homeRaw);
@@ -1538,7 +1539,10 @@ function autoSettleFinishedOverBets(){
       if(scoreText){home=Number(scoreText[1]);away=Number(scoreText[2]);}
     }
     if(!Number.isFinite(home)||!Number.isFinite(away))continue;
-    alert.betOutcome=(home+away)>line?'won':'lost';
+    const totalGoals=home+away;
+    // A standard Over x.5 is won as soon as the total passes the line; mark it lost only after full time.
+    if(totalGoals<=line&&!isFinished)continue;
+    alert.betOutcome=totalGoals>line?'won':'lost';
     alert.betSettlementLabel='Αυτόματο αποτέλεσμα τελικού σκορ '+home+'–'+away;
     alert.betAutoSettledAt=Date.now();
     alert.betUpdatedAt=alert.betAutoSettledAt;
@@ -1690,7 +1694,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  }
  const safeRawClock=rawClockLooksNumeric?'LIVE':rawClock;
  const liveClock=m.state==='in'?(isHalfTime?'HT':(normalizedLiveClock?normalizedLiveClock+'′':(safeRawClock||'LIVE'))):(m.state==='post'?'FT':(rawClock||'LIVE'));
-  return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><div class="live-row-league">'+esc([String(m.country||m.countryName||m.region||m.area||'').trim(),matchLeague].filter(Boolean).join(' · ')||String(m.leagueCode||m.competitionCode||m.leagueId||m.tournamentCode||'').replace(/[._-]/g,' ').toUpperCase()||'ΔΙΟΡΓΑΝΩΣΗ')+'</div><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="minute">'+esc(liveClock)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span></button>'+alertHtml+secondaryActivityHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
+  return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><div class="live-row-league">'+esc([String(m.country||m.countryName||m.region||m.area||'').trim(),matchLeague].filter(Boolean).join(' · ')||String(m.leagueCode||m.competitionCode||m.leagueId||m.tournamentCode||'').replace(/[._-]/g,' ').toUpperCase()||String(m.country||m.countryName||m.region||m.area||'').trim()||'ΔΙΟΡΓΑΝΩΣΗ')+'</div><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="minute">'+esc(liveClock)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span></button>'+alertHtml+secondaryActivityHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
 }
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
