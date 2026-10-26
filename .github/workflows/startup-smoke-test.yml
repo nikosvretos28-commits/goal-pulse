@@ -18,6 +18,27 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Check server syntax
         run: node --check server.js
+      - name: Check inline browser JavaScript syntax
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)];
+          let checked = 0;
+          for (const [index, attrs, source] of scripts.map((m, i) => [i, m[1], m[2]])) {
+            if (/application\\/ld\\+json/i.test(attrs)) continue;
+            try {
+              new Function(source);
+              checked++;
+            } catch (error) {
+              console.error('Inline script #' + index + ' failed syntax check: ' + error.message);
+              process.exitCode = 1;
+            }
+          }
+          if (process.exitCode) process.exit(process.exitCode);
+          if (!checked) throw new Error('No executable inline scripts were checked');
+          console.log('Checked ' + checked + ' executable inline scripts.');
+          NODE
       - name: Start server and verify HTTP response
         shell: bash
         run: |
