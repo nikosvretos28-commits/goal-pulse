@@ -897,8 +897,7 @@ async function getVerifiedOverOddsPapi(match, targetLine, period = "first_half")
   const valid = [];
   for (const [bookmaker, board] of Object.entries(odds.bookmakerOdds)) {
     if (board?.bookmakerIsActive === false || board?.suspended === true) continue;
-    for (const marketDef of matchingMarkets) {
-      const market = board?.markets?.[String(marketDef.marketId)];
+    for (const marketDef of matchingMarkets) {      const market = board?.markets?.[String(marketDef.marketId)];
       if (!market || market.marketActive === false) continue;
       for (const [outcomeId, outcome] of Object.entries(market.outcomes || {})) {
         const definition = (marketDef.outcomes || []).find(o => String(o.outcomeId) === String(outcomeId));
@@ -1797,8 +1796,7 @@ const server = http.createServer(async (req, res) => {
             // when its period/start score metadata is missing; leave it pending for review.
             const isSecondHalfAsian = bet.lineType === "asian" && bet.asianPeriod === "second_half" &&
               bet.startScore != null && Number.isFinite(Number(bet.startScore));
-            if (!isSecondHalfAsian) {
-              console.warn("Asian bet settlement skipped: missing second-half period/start score", JSON.stringify({alertId: row.alert_id, asianPeriod: bet.asianPeriod || null, startScore: bet.startScore ?? null}));
+            if (!isSecondHalfAsian) {              console.warn("Asian bet settlement skipped: missing second-half period/start score", JSON.stringify({alertId: row.alert_id, asianPeriod: bet.asianPeriod || null, startScore: bet.startScore ?? null}));
               continue;
             }
             const finalTotal = final.homeScore + final.awayScore;
@@ -1913,7 +1911,8 @@ const server = http.createServer(async (req, res) => {
         // Mandatory recent-SOT gate for every automatic Over AI alert.
         // Only the agreed rolling windows qualify: 3+ SOT in ~5m OR 6+ SOT in ~10m.
         // Cumulative SOT and xG may support ranking, but can never replace this gate.
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
+        const cumulativeSotStrong = totalOnTarget >= 10;
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
@@ -2697,8 +2696,7 @@ const server = http.createServer(async (req, res) => {
                 mapped: sportScoreEvents.length, added: missingSportScoreEvents.length,
                 errors: sportScoreResponses.filter(x => !x.ok).map(x => ({ status: x.status, httpStatus: x.httpStatus, error: x.error }))
               }));
-            } else {
-              console.warn("SportScore returned no mappable fixtures:", JSON.stringify(sportScoreResponses.map(x => ({ status: x.status, ok: x.ok, received: x.matches.length, httpStatus: x.httpStatus, error: x.error }))));
+            } else {              console.warn("SportScore returned no mappable fixtures:", JSON.stringify(sportScoreResponses.map(x => ({ status: x.status, ok: x.ok, received: x.matches.length, httpStatus: x.httpStatus, error: x.error }))));
             }
           } catch (error) {
             console.warn("SportScore scoreboard unavailable; keeping existing feeds:", error.message || "request failed");
