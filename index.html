@@ -1515,7 +1515,43 @@ function renderTopAiAlerts(){
  render('topVipAlertList','topVipAlertCount',all.filter(a=>a.level==='VIP'),'VIP','Δεν υπάρχει αυτή τη στιγμή νέα VIP ένδειξη.','◆');
 }
 
+function autoSettleFinishedOverBets(){
+  if(!Array.isArray(signalAlertHistory)||!Array.isArray(allMatches))return false;
+  let changed=false;
+  for(const alert of signalAlertHistory){
+    if(!alert||['won','lost','void','push'].includes(String(alert.betOutcome||'').toLowerCase()))continue;
+    // Automatically settle only ordinary Over x.5 markets; leave Asian/integer lines for manual handling.
+    const market=String(alert.market||'');
+    if(/asian|ασιατ/i.test(market))continue;
+    const lineMatch=market.match(/\bover\s*(\d+(?:[.,]\d+)?)/i);
+    if(!lineMatch)continue;
+    const line=Number(lineMatch[1].replace(',','.'));
+    if(!Number.isFinite(line)||!Number.isInteger(line*2)||Math.abs(line*2-Math.round(line*2))>1e-8||Math.abs(line-Math.round(line))<1e-8)continue;
+    const match=allMatches.find(m=>String(m.id)===String(alert.eventId));
+    if(!match||String(match.state||'').toLowerCase()!=='post')continue;
+    const homeRaw=match.home?.score??match.homeScore??match.scoreHome;
+    const awayRaw=match.away?.score??match.awayScore??match.scoreAway;
+    let home=homeRaw==null||homeRaw===''?NaN:Number(homeRaw);
+    let away=awayRaw==null||awayRaw===''?NaN:Number(awayRaw);
+    if(!Number.isFinite(home)||!Number.isFinite(away)){
+      const scoreText=String(match.score||match.scoreText||'').match(/(\d+)\s*[-–:]\s*(\d+)/);
+      if(scoreText){home=Number(scoreText[1]);away=Number(scoreText[2]);}
+    }
+    if(!Number.isFinite(home)||!Number.isFinite(away))continue;
+    alert.betOutcome=(home+away)>line?'won':'lost';
+    alert.betSettlementLabel='Αυτόματο αποτέλεσμα τελικού σκορ '+home+'–'+away;
+    alert.betAutoSettledAt=Date.now();
+    alert.betUpdatedAt=alert.betAutoSettledAt;
+    alert.recordUpdatedAt=alert.betAutoSettledAt;
+    changed=true;
+    Promise.resolve(persistAlertRecord(alert)).catch(error=>console.warn('Could not persist automatic bet settlement:',error));
+  }
+  if(changed){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch(error){console.warn('Could not save automatic bet settlement locally:',error)}}
+  return changed;
+}
+
 function showSignalHistory(){
+  autoSettleFinishedOverBets();
   
   const period=document.getElementById('signalHistoryPeriod')?.value||'yesterday';
   const now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime(),yesterdayStart=todayStart-86400000;
