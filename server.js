@@ -1819,10 +1819,15 @@ const server = http.createServer(async (req, res) => {
           .filter(value => value != null && Number.isFinite(value));
         const qualifyingTeamXG = teamXGValues.length ? Math.max(...teamXGValues) : null;
         const bothTeamsXGQualified = teamXGValues.length === 2 && teamXGValues.every(value => value >= 2.5);
+        const teamSOTValues = teams
+          .map(team => team.shotsOnTarget == null ? null : Number(team.shotsOnTarget))
+          .filter(value => value != null && Number.isFinite(value));
+        const maxTeamSOT = teamSOTValues.length ? Math.max(...teamSOTValues) : null;
         const current = {
           at: now,
           shots: total("shots"),
           onTarget: total("shotsOnTarget"),
+          maxTeamSOT,
           corners: total("corners"),
           attacks: total("attacks"),
           dangerous: total("dangerousAttacks"),
@@ -1845,7 +1850,9 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
+        // SOT gate can qualify through recent pressure OR a high cumulative total for one team.
+        const cumulativeTeamSOTQualified = current.maxTeamSOT != null && current.maxTeamSOT >= 10;
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeTeamSOTQualified;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
