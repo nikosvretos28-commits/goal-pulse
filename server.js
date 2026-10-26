@@ -1909,6 +1909,8 @@ const server = http.createServer(async (req, res) => {
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const corroboratingPressure = evidenceKinds >= 2 &&
           (shots >= 2 || attacks >= 5 || dangerous >= 3 || (xGDelta != null && xGDelta >= 0.15));
+        // First-half AI alerts are eligible from minute 1 through minute 40; do not apply the old 1–20-minute cutoff.
+        // Second-half alerts remain eligible from minute 46 through minute 88.
         const earlySegmentAllowed = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 88 &&
           (aiMinute <= 40 || aiMinute >= 46);
         const firstHalfStrictPass = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40 &&
