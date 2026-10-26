@@ -967,6 +967,50 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline-offset:3px}
  .filter{font-size:12px;padding:9px 13px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* GoalMatrix visual finish — CSS only; functionality and protocols unchanged */
+:root{--matrix-glow:#43e0a2;--matrix-blue:#55c7e8}
+::selection{background:#43e0a255;color:#fff}
+header{position:relative}
+.brand{gap:13px}
+.brand svg{width:58px;height:52px;transition:filter .2s ease,transform .2s ease}
+.brand:hover svg{filter:drop-shadow(0 0 15px #43e0a277);transform:translateY(-1px)}
+.brand-name{letter-spacing:-1.5px;text-shadow:0 2px 18px #43e0a21c}
+nav a{transition:color .18s ease,border-color .18s ease}
+nav a:hover{color:var(--green)}
+.panel,.side-live,.hero-main{box-shadow:0 12px 32px #00000018}
+.panel{backdrop-filter:blur(8px)}
+.filter,.mini-btn,.login,.primary,.date-step{transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background .16s ease}
+.filter:hover,.mini-btn:hover,.login:hover,.primary:hover,.date-step:hover{transform:translateY(-1px)}
+.primary:hover,.login:hover{box-shadow:0 8px 24px #43e0a233}
+.match{box-shadow:0 5px 15px #00000012}
+.match:hover{box-shadow:0 9px 22px #00000026}
+.match-live{letter-spacing:.35px}
+.count{border:1px solid #55c7e822}
+.feature{transition:border-color .18s ease,transform .18s ease,background .18s ease}
+.feature:hover{border-color:#2d6b78;transform:translateY(-2px);background:#0d2235}
+@media(max-width:760px){
+ .wrap{padding-left:14px;padding-right:14px}
+ header{height:auto;min-height:72px;gap:10px}
+ .brand{min-width:0;gap:8px}
+ .brand svg{width:44px;height:42px}
+ .brand-name{font-size:21px;letter-spacing:-1px}
+ .live-badge{padding:7px 9px;font-size:10px}
+ .hero-main{padding:24px 20px;min-height:245px}
+ .hero-ball{right:0;top:18%;width:125px;height:125px;font-size:74px;opacity:.32}
+ .hero h1{font-size:clamp(32px,8vw,44px);letter-spacing:-1.5px}
+ .panel-head{padding:14px}
+ .match{padding:11px}
+ .teams{grid-template-columns:minmax(0,1fr) 54px minmax(0,1fr);gap:5px}
+ .team{gap:6px;font-size:12px}
+ .team-logo{font-size:19px}
+ .match-score{font-size:19px}
+ .stats{gap:5px}
+ .stat{padding:5px 6px}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
 </style>
 </head>
 <body>
