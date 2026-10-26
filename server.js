@@ -1818,6 +1818,7 @@ const server = http.createServer(async (req, res) => {
           .map(team => team.xG == null ? null : Number(team.xG))
           .filter(value => value != null && Number.isFinite(value));
         const qualifyingTeamXG = teamXGValues.length ? Math.max(...teamXGValues) : null;
+        const bothTeamsXGQualified = teamXGValues.length === 2 && teamXGValues.every(value => value >= 2.5);
         const current = {
           at: now,
           shots: total("shots"),
@@ -1825,7 +1826,8 @@ const server = http.createServer(async (req, res) => {
           corners: total("corners"),
           attacks: total("attacks"),
           dangerous: total("dangerousAttacks"),
-          xG: qualifyingTeamXG
+          xG: qualifyingTeamXG,
+          bothTeamsXGQualified
         };
         const id = String(match.eventId);
         // Keep a rolling five-minute window so activity spread across scanner cycles
@@ -1847,13 +1849,15 @@ const server = http.createServer(async (req, res) => {
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
-        // Do not count either cumulative xG or its recent change unless one team's xG reaches 2.50.
+        // One team's xG >= 2.50 is a positive supporting signal; both teams >= 2.50
+        // adds a stronger core evaluation factor, but never bypasses the mandatory SOT gate.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
+        const bothTeamsXGQualified = current.bothTeamsXGQualified === true;
         const xGDelta = xGQualifies && previous.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
-        // Missing xG or xG below 2.50 is neutral and never blocks a shot-qualified alert.
-        const xGTotalSupport = xGQualifies ? 1.5 : 0;
+        // Missing xG or xG below 2.50 is neutral; both teams qualifying gives stronger support.
+        const xGTotalSupport = bothTeamsXGQualified ? 2.5 : (xGQualifies ? 1.5 : 0);
         // Match the reference pressure model: last-five-minute corners support the signal,
         // but shots and at least one shot on target remain mandatory (no corner-only alerts).
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
