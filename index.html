@@ -3487,7 +3487,9 @@ loadHighActivityHistory();
    }
    if(key==='history'){
     const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls'),inline=document.getElementById('toggleHistoryPanel');
+    const aiPanel=document.getElementById('topAiAlerts'),aiButton=document.querySelector('[data-gp-toggle="topAiAlerts"]');
     const open=!!results?.hidden;
+    if(aiPanel)aiPanel.hidden=false;if(aiButton)aiButton.setAttribute('aria-expanded','true');
     if(results)results.hidden=!open;if(controls)controls.hidden=!open;
     button.setAttribute('aria-expanded',open?'true':'false');if(inline){inline.setAttribute('aria-expanded',open?'true':'false');inline.querySelector('#gpHistoryInlineCount').textContent=open?'ΚΛΕΙΣΙΜΟ':'ΑΝΟΙΓΜΑ';}
     document.getElementById('gpHistoryCount').textContent=String((Number(document.getElementById('historyCount')?.textContent)||0));
