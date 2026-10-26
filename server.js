@@ -1892,7 +1892,7 @@ const server = http.createServer(async (req, res) => {
         // xG >= 2.50 is supplementary support only; it never triggers or blocks an alert.
         const xGQualifies = totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
         const bothTeamsXGQualified = current.bothTeamsXGQualified === true;
-        const xGDelta = xGQualifies && previous.xG != null
+        const xGDelta = xGQualifies && previous?.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
         // Missing xG or xG below 2.50 is neutral; both teams qualifying gives stronger support.
