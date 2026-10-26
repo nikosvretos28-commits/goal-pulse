@@ -1,0 +1,47 @@
+name: Goal Pulse startup smoke test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  startup-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check server syntax
+        run: node --check server.js
+      - name: Start server and verify HTTP response
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=3000 node server.js > /tmp/goal-pulse-startup.log 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ -o /tmp/goal-pulse-home.html; then
+              echo "HTTP home endpoint responded successfully."
+              grep -E "Goal Pulse|goal-pulse" /tmp/goal-pulse-home.html | head -n 3 || true
+              cat /tmp/goal-pulse-startup.log
+              exit 0
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat /tmp/goal-pulse-startup.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat /tmp/goal-pulse-startup.log
+          echo "Server did not respond within 30 seconds."
+          exit 1
