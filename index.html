@@ -163,10 +163,10 @@ button:active{transform:scale(.98)}
  .product-nav{position:fixed;top:auto;bottom:0;left:0;right:0;margin:0;border-radius:0;border-width:1px 0 0;padding:5px 2px calc(5px + env(safe-area-inset-bottom));background:#06101ef5;backdrop-filter:blur(12px)}
  .product-nav a{font-size:9px;padding:7px 1px;white-space:normal;line-height:1.2}
  body{padding-bottom:52px}
- .top-live .live-row{grid-template-columns:20px minmax(0,1fr) 38px minmax(0,1fr) 35px;padding:8px 6px;font-size:10px}
+ .top-live .live-row{grid-template-columns:20px minmax(0,1fr) 48px minmax(0,1fr) 35px;gap:5px;padding:8px 6px;font-size:10px}.top-live .live-row>*{min-width:0}.top-live .live-row .score{justify-self:center;position:relative;z-index:1}.top-live .live-row .team,.top-live .live-row .home,.top-live .live-row .away{min-width:0;overflow-wrap:anywhere;word-break:normal;line-height:1.25}
  .scoreboard-status small{display:none}
  .filters{padding:6px}.filter{padding:7px 9px}
- .teams{grid-template-columns:minmax(0,1fr) 36px minmax(0,1fr);gap:3px}
+ .teams{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr);gap:7px}.teams .match-score{min-width:44px;font-size:16px}.teams .team{min-width:0;overflow-wrap:anywhere;line-height:1.2}
  .team{font-size:10px}.match-score{font-size:16px}
  .stat{font-size:9px}
  .panel-head h2{font-size:14px}
@@ -208,7 +208,7 @@ header nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}header nav a{f
 @media(max-width:1050px){header nav{display:none}}
 .match-meta{align-items:center;margin-bottom:7px;font-size:9px}
 .match-live{color:#ff6a83}
-.teams{grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr);gap:9px}
+.teams{grid-template-columns:minmax(0,1fr) 54px minmax(0,1fr);gap:10px;align-items:center}.teams>*{min-width:0}.teams .team{overflow-wrap:anywhere;line-height:1.25}.teams .match-score{position:relative;z-index:1;justify-self:center;min-width:48px;padding:0 3px;background:#0a1522;border-radius:6px}
 .team{font-size:12px;font-weight:650}
 .team-logo{font-size:15px;opacity:.75}
 .match-score{font-size:17px;color:#f2f7fa;font-variant-numeric:tabular-nums}
