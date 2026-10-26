@@ -2842,7 +2842,7 @@ function renderHighActivityMatches(){
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
-  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν το πρωτόκολλο: 3+ SOT/5′ ή 6+ SOT/10′, στα λεπτά 1′–40′.</div>';
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν το HI ACTIVITY: 2+ SOT/5′, 4+ SOT/10′, 8+ συνολικά SOT μίας ομάδας ή xG ≥2,00 και για τις δύο ομάδες, στα λεπτά 1′–40′.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
  const button=event.target.closest('button[data-manual-vip]');if(!button)return;
