@@ -1626,9 +1626,9 @@ function renderHighActivityMatches(){
  const scoreMatch=m=>{
   const clockText=String(m.clock||"").toLowerCase();
   const statusText=String(m.statusText||m.status||m.state||"").toLowerCase();
-  const minuteMatch=clockText.match(/(\\d{1,3})/),minute=minuteMatch?Number(minuteMatch[1]):NaN;
+  const minuteMatch=clockText.match(/(\d{1,3})/),minute=minuteMatch?Number(minuteMatch[1]):NaN;
   const eligibleMinute=Number.isFinite(minute)&&((minute>=1&&minute<=40)||(minute>=46&&minute<=88));
-  if(m.state!=="in"||!eligibleMinute||/\\b(?:ht|half[\\s-]*time|halftime|interval)\\b/i.test(clockText+" "+statusText))return null;
+  if(m.state!=="in"||!eligibleMinute||/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
   const stats=liveMetricsCache.get(String(m.id));
   if(!stats||!stats.statsAvailable||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   const teams=stats.teams,trail=signalTrails.get(String(m.id))||[];
