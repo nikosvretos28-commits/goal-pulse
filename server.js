@@ -1850,9 +1850,9 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // SOT gate can qualify through recent pressure OR a high cumulative total for one team.
-        const cumulativeTeamSOTQualified = current.maxTeamSOT != null && current.maxTeamSOT >= 10;
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeTeamSOTQualified;
+        // Mandatory automatic Over-alert trigger: recent SOT only.
+        // The obsolete cumulative >=10 team-SOT fallback is intentionally removed.
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
@@ -1923,8 +1923,8 @@ const server = http.createServer(async (req, res) => {
         // All alerts still require a valid live score and a verified active Over price below.
         // Goal Pulse protocol updated 2026-10-26:
         // first-half AI alerts: minutes 1-40; second-half AI alerts: minutes 46-88.
-        // High Activity has no minute-window restriction and is evaluated by its own pressure protocol.
-        // >=3 shots on target over ~5 minutes OR >=6 over ~10 minutes qualifies.
+        // High Activity uses the same minute windows and mandatory recent-SOT trigger as AI alerts.
+        // Eligible minutes: 1-40 and 46-88; >=3 SOT/5m OR >=6 SOT/10m.
         // Dirty Sheet history, live pressure and xG remain supporting signals when available.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const corroboratingPressure = evidenceKinds >= 2 &&
@@ -2053,7 +2053,8 @@ const server = http.createServer(async (req, res) => {
           const priceSuffix = hasVerifiedOdds
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix;
+          const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : "SOT 6+/10′";
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
