@@ -1906,11 +1906,13 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Mandatory recent-SOT gate for every automatic Over AI alert.
-        // Only the agreed rolling windows qualify: 3+ SOT in ~5m OR 6+ SOT in ~10m.
-        // Cumulative SOT and xG may support ranking, but can never replace this gate.
+        // Mandatory shooting gate for every automatic Over AI alert.
+        // Require at least 10 total shots in the match AND one agreed SOT signal:
+        // 3+ SOT in ~5m OR 6+ SOT in ~10m OR 10+ cumulative SOT.
+        // Cumulative SOT and xG do not bypass the total-shots minimum.
         const cumulativeSotStrong = current.onTarget != null && Number(current.onTarget) >= 10;
-        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong;
+        const totalShotsMinimumMet = current.shots != null && Number(current.shots) >= 10;
+        const shotsOnlyOverEvidence = totalShotsMinimumMet && (onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong);
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         const totalXG = current.xG == null ? null : Number(current.xG);
@@ -2095,7 +2097,7 @@ const server = http.createServer(async (req, res) => {
           const priceSuffix = hasVerifiedOdds
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : cumulativeSotStrong ? "SOT 10+ συνολικά" : "xG 2.50+ και στις 2 ομάδες";
+          const activatedSotRule = (onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : cumulativeSotStrong ? "SOT 10+ συνολικά" : "SOT signal") + " · 10+ συνολικές τελικές";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
           const result = await sendPushToSubscribers({
             title: alertTitle,
