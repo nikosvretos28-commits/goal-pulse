@@ -2066,6 +2066,7 @@ const server = http.createServer(async (req, res) => {
             if (shotsSinceLast < 2 && onTargetSinceLast < 1 && cornersSinceLast < 2 && xGSinceLast < 0.2 && !oddsImproved) continue;
           }
           const reason = [
+            "Ενεργοποίηση SOT: " + (onTarget >= 3 ? "3+ SOT/5′" : "") + (onTarget >= 3 && onTarget10m >= 6 ? " · " : "") + (onTarget10m >= 6 ? "6+ SOT/10′" : "") + ((onTarget >= 3 || onTarget10m >= 6) && cumulativeSOTCoreCriterion ? " · " : "") + (cumulativeSOTCoreCriterion ? "10+ συνολικά SOT" : ""),
             shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία στο 5λεπτο" : "",
             onTarget10m >= 6 ? onTarget10m + " σουτ στην εστία στα τελευταία 10′" : "",
@@ -2078,6 +2079,28 @@ const server = http.createServer(async (req, res) => {
           const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1 && Number.isFinite(Number(verifiedOdds.line)) && Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001);
           // Reuse the same validated score snapshot for the alert line and history.
           const overLine = targetOverLine.toFixed(1);
+          // Derive a transparent historical confirmation rate from settled real AI alerts.
+          // Never display a fabricated percentage; require at least 5 settled outcomes.
+          let historicalConfirmation = null;
+          try {
+            if (await ensureAlertHistoryDb()) {
+              const historyResult = await analyticsPool.query(
+                "SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE payload->>'betOutcome'='won')::int AS won FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days'"
+              );
+              const settledTotal = Number(historyResult.rows?.[0]?.total || 0);
+              const settledWon = Number(historyResult.rows?.[0]?.won || 0);
+              if (settledTotal >= 5) {
+                historicalConfirmation = { percent: Math.round(settledWon / settledTotal * 100), won: settledWon, total: settledTotal };
+              }
+            }
+          } catch (historyError) {
+            console.warn("AI alert historical confirmation rate unavailable:", historyError.message);
+          }
+          const passedSOTCriteria = [];
+          if (onTarget >= 3) passedSOTCriteria.push("3+ SOT/5′");
+          if (onTarget10m >= 6) passedSOTCriteria.push("6+ SOT/10′");
+          if (cumulativeSOTCoreCriterion) passedSOTCriteria.push("10+ συνολικά SOT");
+          const sotEvidenceLabel = passedSOTCriteria.join(" + ") || "κριτήριο SOT";
           const alertTitle = level === "VIP" ? "Goal Pulse · ◆ VIP ALERT" : "Goal Pulse · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
           const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
@@ -2085,7 +2108,8 @@ const server = http.createServer(async (req, res) => {
           const priceSuffix = hasVerifiedOdds
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix;
+          const confirmationLabel = historicalConfirmation ? " · Ιστορική επιβεβαίωση " + historicalConfirmation.percent + "% (" + historicalConfirmation.won + "/" + historicalConfirmation.total + ")" : " · Ιστορική επιβεβαίωση: ανεπαρκές δείγμα";
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · SOT: " + sotEvidenceLabel + confirmationLabel + priceSuffix;
           const result = await sendPushToSubscribers({
             title: alertTitle,
             body: alertBody.slice(0, 240),
