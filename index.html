@@ -1818,6 +1818,25 @@ async function runSignalCheck(){
  
   // Evaluate alerts only when the selected half has ended. Server push goal alerts are evaluated by the backend using persisted halftime/final scores.
   let outcomesChanged=false;
+  // Settle regular full-match AI Over bets automatically at full time, even if the alert itself
+  // was already marked "confirmed" when the target goal arrived during the match.
+  signalAlertHistory.forEach(a=>{
+    if(!a||a.level==='VIP'||a.manualOutcome||['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))return;
+    const marketText=String(a.market||'').trim();
+    if(!/^Over\s*\d+(?:[.,]\d+)?$/i.test(marketText)||String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText))return;
+    const match=allMatches.find(m=>String(m.id)===String(a.eventId));
+    if(!match||match.state!=='post')return;
+    const lineMatch=marketText.match(/^Over\s*(\d+(?:[.,]\d+)?)/i);
+    const line=Number(a.overLine??(lineMatch?lineMatch[1].replace(',','.'):NaN));
+    const homeScore=Number(match.home?.score),awayScore=Number(match.away?.score);
+    if(!Number.isFinite(line)||!Number.isFinite(homeScore)||!Number.isFinite(awayScore))return;
+    const total=homeScore+awayScore,won=total>line;
+    a.betOutcome=won?'won':'lost';
+    a.betSettlementLabel=won?'Κερδισμένο · τελικό σκορ '+homeScore+'–'+awayScore:'Χαμένο · τελικό σκορ '+homeScore+'–'+awayScore;
+    a.betSettledAt=Date.now();a.recordUpdatedAt=a.betSettledAt;
+    a.betSettlementRule='full_time_score_vs_over_line';
+    persistAlertRecord(a);outcomesChanged=true;
+  });
   signalAlertHistory.forEach(a=>{
     if(a.outcome!=='εκκρεμεί'||a.manualOutcome||!a.createdAt)return;
     if(a.source==='server-push'&&a.market==='πιθανό γκολ')return;
