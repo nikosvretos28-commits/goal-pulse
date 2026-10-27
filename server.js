@@ -2462,7 +2462,7 @@ const server = http.createServer(async (req, res) => {
             const results = await Promise.all(batch.map(async code => {
               try {
                 const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
-                  headers: { "Accept": "application/json" },
+                  headers: ESPN_HEADERS,
                   signal: AbortSignal.timeout(6000)
                 });
                 if (!response.ok) { if (response.status === 400) ESPN_UNSUPPORTED_LEAGUES.add(code); return { code, events: [], ok: false, error: "HTTP " + response.status }; }
