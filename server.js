@@ -2461,10 +2461,19 @@ const server = http.createServer(async (req, res) => {
           for (const batch of espnBatches) {
             const results = await Promise.all(batch.map(async code => {
               try {
-                const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
+                let response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
                   headers: ESPN_HEADERS,
                   signal: AbortSignal.timeout(6000)
                 });
+                // ESPN may reject one public hostname from a hosting region. Retry the
+                // equivalent public scoreboard endpoint on its web API hostname before
+                // marking this competition unavailable.
+                if (response.status === 403 || response.status === 429 || response.status >= 500) {
+                  response = await fetch("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
+                    headers: ESPN_HEADERS,
+                    signal: AbortSignal.timeout(6000)
+                  });
+                }
                 if (!response.ok) { if (response.status === 400) ESPN_UNSUPPORTED_LEAGUES.add(code); return { code, events: [], ok: false, error: "HTTP " + response.status }; }
                 const body = await response.json();
                 return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
