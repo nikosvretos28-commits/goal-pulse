@@ -2693,7 +2693,7 @@ async function loadHighActivityHistory(){
  })();
  return highActivityHistoryLoadPromise;
 }
-document.getElementById('refreshHighActivityAnalyst')?.addEventListener('click',()=>loadHighActivityHistory());
+document.getElementById('refreshHighActivityAnalyst')?.addEventListener('click',async()=>{await loadHighActivityHistory();await reconcileHistoricalHighActivityObservations();});
 document.getElementById('highActivityAnalystPanel')?.addEventListener('click',event=>{const button=event.target.closest('[data-ha-period]');if(!button)return;highActivityHistoryPeriod=button.dataset.haPeriod||'all';renderHighActivityAnalyst();});
 const highActivityScoreboardCache=new Map();
 let highActivityHistoricalSettlementPromise=null;
@@ -2719,7 +2719,22 @@ async function reconcileHistoricalHighActivityObservations(){
   }
   const changed=[],settledAt=Date.now();
   for(const item of pending){
-   const event=eventsById.get(String(item.eventId));
+   let event=eventsById.get(String(item.eventId));
+   const normalizeTeamName=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+   if(!event){
+    const wantedHome=normalizeTeamName(item.home),wantedAway=normalizeTeamName(item.away);
+    if(wantedHome&&wantedAway){
+     const candidates=[];
+     for(const cached of highActivityScoreboardCache.values())for(const candidate of (cached.events||[])){
+      const teams=candidate.competitions?.[0]?.competitors||[];
+      const h=teams.find(team=>team.homeAway==='home')||teams[0],a=teams.find(team=>team.homeAway==='away')||teams[1];
+      const ch=normalizeTeamName(h?.team?.displayName||h?.team?.name||h?.displayName||h?.name);
+      const ca=normalizeTeamName(a?.team?.displayName||a?.team?.name||a?.displayName||a?.name);
+      if((ch===wantedHome&&ca===wantedAway)||(ch===wantedAway&&ca===wantedHome))candidates.push(candidate);
+     }
+     if(candidates.length===1)event=candidates[0];
+    }
+   }
    if(!event)continue;
    const competition=event.competitions?.[0],competitors=competition?.competitors||[];
    const home=competitors.find(team=>team.homeAway==='home')||competitors[0];
