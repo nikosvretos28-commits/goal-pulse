@@ -1292,6 +1292,7 @@ const server = http.createServer(async (req, res) => {
     try {
       // Return the requested history window using Greece-local calendar boundaries.
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
       const period = String(url.searchParams.get("period") || "all").toLowerCase();
       const windowSql = period === "today"
         ? "created_at >= (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
@@ -1306,9 +1307,9 @@ const server = http.createServer(async (req, res) => {
         `SELECT payload
            FROM alert_history
           WHERE ${windowSql}
-          ORDER BY created_at DESC
-          LIMIT $1`,
-        [limit]
+          ORDER BY created_at DESC, alert_id DESC
+          LIMIT $1 OFFSET $2`,
+        [limit, offset]
       );
       return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => row.payload) });
     } catch (error) {
