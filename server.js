@@ -40,7 +40,7 @@ const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:nikosvretos28@gmail.com";
 const pushSubscriptions = new Map();
 const pushRateLimit = new Map();
-const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || "";
+const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || require("node:crypto").randomBytes(32).toString("hex");
 const POWER_GAMES_ADMIN_PIN = process.env.POWER_GAMES_ADMIN_PIN || "";
 const powerGamesAuthAttempts = new Map();
 const pushScanSnapshots = new Map();
@@ -2223,7 +2223,7 @@ const server = http.createServer(async (req, res) => {
       oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()),
       oddsPapiKeyConfigured: Boolean(getOddsPapiApiKey()),
       apiFootballKeyConfigured: Boolean(getApiFootballKey()),
-      pushScannerEnabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true")
+      pushScannerEnabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED !== "false")
     });
   }
 
@@ -3245,8 +3245,8 @@ const databaseUrlShape = {
   hasBaseHost: /(?:@|:\/\/)base(?=[:/?#]|$)/i.test(rawDatabaseUrl),
   prefix: (rawDatabaseUrl.match(/^[a-z][a-z0-9+.-]*:\/\//i) || [rawDatabaseUrl.slice(0, Math.min(8, rawDatabaseUrl.length))])[0]
 };
-console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool), databaseHost: analyticsDatabaseHost, databaseUrlShape, databaseCredentialEnvKeys: Object.keys(process.env).filter(key => /^(DATABASE|POSTGRES|PGHOST|PGUSER|PGDATABASE|PGPASSWORD)/i.test(key)) }));
-if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED === "true") {
+console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED !== "false"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool), databaseHost: analyticsDatabaseHost, databaseUrlShape, databaseCredentialEnvKeys: Object.keys(process.env).filter(key => /^(DATABASE|POSTGRES|PGHOST|PGUSER|PGDATABASE|PGPASSWORD)/i.test(key)) }));
+if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED !== "false") {
   console.log("Background push scanner scheduled every 60 seconds.");
   // Run once shortly after startup so the live pipeline is tested immediately after every deploy.
   setTimeout(async () => {
