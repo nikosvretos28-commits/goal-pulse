@@ -2646,8 +2646,8 @@ const server = http.createServer(async (req, res) => {
                 if (result.status === "live" && requestedDateIsToday && (!matchDate || !Number.isFinite(matchDate.getTime()))) matchDate = new Date();
                 if (!matchDate || !Number.isFinite(matchDate.getTime())) continue;
                 if (result.status !== "live" && matchDate.toISOString().slice(0, 10) !== requestedIsoDate) continue;
-                const homeName = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || match.participants?.find(p => p.meta?.location === "home")?.name || "").trim();
-                const awayName = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || match.participants?.find(p => p.meta?.location === "away")?.name || "").trim();
+                const homeName = String(match.home?.name || match.home_team?.name || match.homeTeam?.name || match.home_name || (typeof match.home === "string" ? match.home : "") || match.participants?.find(p => p.meta?.location === "home")?.name || "").trim();
+                const awayName = String(match.away?.name || match.away_team?.name || match.awayTeam?.name || match.away_name || (typeof match.away === "string" ? match.away : "") || match.participants?.find(p => p.meta?.location === "away")?.name || "").trim();
                 if (!homeName || !awayName) continue;
                 const rawStatus = String(match.status_text || match.status || match.state || result.status || "").toLowerCase();
                 const state = result.status === "live" || /live|in play|in-play|playing|1st half|2nd half|half time|extra time|penalt|in_progress/.test(rawStatus)
