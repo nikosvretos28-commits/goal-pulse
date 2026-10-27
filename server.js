@@ -1351,10 +1351,23 @@ const server = http.createServer(async (req, res) => {
             'outcome', COALESCE(alert_history.payload->'outcome','"εκκρεμεί"'::jsonb),
             'betSettlementLabel', alert_history.payload->'betSettlementLabel',
             'betFinalScore', alert_history.payload->'betFinalScore',
+            'betMatchFinalScore', alert_history.payload->'betMatchFinalScore',
+            'betScoreScope', alert_history.payload->'betScoreScope',
             'betSettledAt', alert_history.payload->'betSettledAt',
             'evaluatedAt', alert_history.payload->'evaluatedAt',
             'evaluationRule', alert_history.payload->'evaluationRule'
           )
+          WHEN alert_history.payload->>'betOutcome' IN ('won','lost','void','push')
+           AND EXCLUDED.payload->>'betOutcome' IN ('won','lost','void','push')
+          THEN EXCLUDED.payload || jsonb_strip_nulls(jsonb_build_object(
+            'betFinalScore', COALESCE(NULLIF(EXCLUDED.payload->'betFinalScore','null'::jsonb), alert_history.payload->'betFinalScore'),
+            'betMatchFinalScore', COALESCE(NULLIF(EXCLUDED.payload->'betMatchFinalScore','null'::jsonb), alert_history.payload->'betMatchFinalScore'),
+            'betScoreScope', COALESCE(NULLIF(EXCLUDED.payload->'betScoreScope','null'::jsonb), alert_history.payload->'betScoreScope'),
+            'betSettledAt', COALESCE(NULLIF(EXCLUDED.payload->'betSettledAt','null'::jsonb), alert_history.payload->'betSettledAt'),
+            'evaluatedAt', COALESCE(NULLIF(EXCLUDED.payload->'evaluatedAt','null'::jsonb), alert_history.payload->'evaluatedAt'),
+            'evaluationRule', COALESCE(NULLIF(EXCLUDED.payload->'evaluationRule','null'::jsonb), alert_history.payload->'evaluationRule'),
+            'betSettlementLabel', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLabel','null'::jsonb), alert_history.payload->'betSettlementLabel')
+          ))
           ELSE EXCLUDED.payload
         END, updated_at=NOW()`,
         [JSON.stringify(records)]
