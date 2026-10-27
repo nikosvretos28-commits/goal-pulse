@@ -1878,11 +1878,10 @@ async function persistAlertBatch(alerts){
 }
 async function loadPersistentAlertHistory(){
  try{
-  const response=await fetch(ANALYTICS_API+'/api/alerts/history?limit=5000&period=all',{cache:'no-store'});
-  if(!response.ok)throw new Error('HTTP '+response.status);
-  const data=await response.json();if(!Array.isArray(data.alerts))return;
+  const allAlerts=[];let offset=0;const pageSize=5000;
+  while(true){const response=await fetch(ANALYTICS_API+'/api/alerts/history?limit='+pageSize+'&offset='+offset+'&period=all',{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);const data=await response.json();if(!Array.isArray(data.alerts))throw new Error('Invalid alert history response');allAlerts.push(...data.alerts);if(data.alerts.length<pageSize)break;offset+=data.alerts.length;}
   const merged=new Map();
-  data.alerts.forEach(a=>{if(a&&Number.isFinite(Number(a.createdAt)))merged.set(alertHistoryKey(a),a)});
+  allAlerts.forEach(a=>{if(a&&Number.isFinite(Number(a.createdAt)))merged.set(alertHistoryKey(a),a)});
   const latestRecordTime=a=>Math.max(0,...['recordUpdatedAt','betUpdatedAt','manualOutcomeUpdatedAt','betSettledAt','evaluatedAt'].map(k=>Number(a?.[k])||0));
   const isSettledBet=a=>['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
   const isPendingOutcome=a=>!a?.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase());
@@ -1897,7 +1896,7 @@ async function loadPersistentAlertHistory(){
    if(a.manualOutcome&&!saved.manualOutcome){merged.set(key,a);return}
    if(!isPendingOutcome(a)&&isPendingOutcome(saved)){merged.set(key,a);return}
   });
-  signalAlertHistory=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt)).slice(0,5000);
+  signalAlertHistory=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
   signalAlertHistory.forEach(a=>{if(!a.alertId)a.alertId=alertHistoryKey(a)});
   try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
   showSignalHistory();
