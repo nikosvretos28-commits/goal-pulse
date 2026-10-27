@@ -3934,4 +3934,38 @@ header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:
  if(vipHistory)vipHistory.setAttribute('aria-label','Άνοιγμα ιστορικού VIP Alerts');
 })();
 </script>
+
+<style id="gm-mobile-premium-audit">
+/* Presentation-only mobile refinements. No app logic, alert rules, or data touched. */
+@media (max-width:700px){
+  .wrap{padding-inline:14px}
+  header{height:auto;min-height:72px;flex-wrap:wrap;gap:10px;padding-block:10px}
+  .brand{min-width:0;max-width:100%;gap:8px}
+  .brand svg{width:44px;height:44px}
+  .brand-name{font-size:22px}
+  .brand-tagline{font-size:7px;letter-spacing:1px;white-space:normal}
+  nav{order:3;width:100%;flex-wrap:wrap;justify-content:space-between;gap:6px 14px}
+  nav a{padding:8px 0;font-size:12px}
+  .header-actions{gap:8px;flex-wrap:wrap}
+  .gp-section-buttons{gap:8px;margin:12px 0 16px}
+  .gp-section-button{min-height:44px;padding:10px;gap:7px;line-height:1.25;border-radius:12px}
+  .gp-button-count{min-height:24px;padding-inline:6px;font-size:10px}
+  .top-ai-alerts{padding:12px;margin:12px 0 16px;border-radius:14px}
+  .top-ai-alerts-head{align-items:flex-start;flex-wrap:wrap;gap:8px}
+  .top-ai-alerts-head h2{font-size:16px}
+  .top-ai-alert-list{grid-template-columns:minmax(0,1fr);gap:8px}
+  .top-ai-alert-card{padding:12px;overflow-wrap:anywhere}
+  .notification-optin-global{padding:12px}
+  .gm-panel-close-wrap{align-items:flex-start}
+  .gm-panel-close{min-height:44px}
+}
+@media (max-width:380px){
+  .wrap{padding-inline:10px}
+  .brand svg{width:38px;height:38px}
+  .brand-name{font-size:20px}
+  .gp-section-buttons{gap:6px}
+  .gp-section-button{padding:9px 7px;font-size:10px}
+  .gp-button-count{min-width:20px;padding-inline:4px;font-size:9px}
+}
+</style>
 </body></html>
