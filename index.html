@@ -3870,4 +3870,56 @@ header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:
 
 </style>
 
+
+<style id="gm-panel-close-controls">
+.gm-panel-close{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:8px 13px;border:1px solid rgba(113,218,250,.32);border-radius:10px;background:rgba(7,21,34,.78);color:#b9fbe5;font:700 12px/1.2 inherit;letter-spacing:.035em;cursor:pointer;white-space:nowrap;transition:background .18s ease,border-color .18s ease,transform .18s ease}
+.gm-panel-close:hover{background:rgba(67,224,162,.13);border-color:#43e0a2;transform:translateY(-1px)}
+.gm-panel-close:focus-visible{outline:2px solid #71dafa;outline-offset:3px}
+.gm-panel-close-wrap{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap}
+.gm-history-close{margin:8px 0}
+@media(max-width:700px){.gm-panel-close{min-height:42px;padding:10px 13px}.gm-panel-close-wrap{width:100%}.gm-panel-close{max-width:100%}}
+@media(prefers-reduced-motion:reduce){.gm-panel-close{transition:none}.gm-panel-close:hover{transform:none}}
+</style>
+<script id="gm-panel-close-controls-script">
+(function(){
+ const makeClose=(label,handler)=>{
+  const b=document.createElement('button');b.type='button';b.className='gm-panel-close';b.textContent='✕ '+label;b.setAttribute('aria-label',label+' — κλείσιμο ενότητας');b.addEventListener('click',handler);return b;
+ };
+ const closePanel=(id)=>{
+  const panel=document.getElementById(id);if(!panel)return;
+  panel.hidden=true;
+  document.querySelectorAll('[data-gp-toggle="'+id+'"]').forEach(b=>{
+   b.setAttribute('aria-expanded','false');
+   const count=b.querySelector('.gp-button-count');
+   if(count&&['trends','topTrends'].includes(id))count.textContent='ΑΝΟΙΓΜΑ';
+  });
+ };
+ const addHeaderClose=(id,selector,label)=>{
+  const panel=document.getElementById(id),head=panel&&panel.querySelector(selector);if(!panel||!head||head.querySelector('.gm-panel-close'))return;
+  const button=makeClose('ΚΛΕΙΣΙΜΟ',()=>closePanel(id));
+  button.title='Κλείσιμο ενότητας '+label;
+  head.classList.add('gm-panel-close-wrap');head.appendChild(button);
+ };
+ addHeaderClose('topAiAlerts','.top-ai-alerts-head','AI Alerts');
+ addHeaderClose('topVipAlerts','.top-ai-alerts-head','VIP Alerts');
+ addHeaderClose('protocolAnalyst','.top-ai-alerts-head','AI Protocol Analyst και HI ACTIVITY');
+ addHeaderClose('powerGames','.top-ai-alerts-head','Power Games');
+ addHeaderClose('trends','.gp-trend-head','Trends');
+ addHeaderClose('topTrends','.gp-trend-head','Top Trends');
+ const historyButton=document.getElementById('toggleHistoryPanel');
+ if(historyButton&&!document.getElementById('gmHistoryClose')){
+  const close=makeClose('ΚΛΕΙΣΙΜΟ ΙΣΤΟΡΙΚΟΥ',()=>{
+   const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls');
+   if(results)results.hidden=true;if(controls)controls.hidden=true;
+   const inline=document.getElementById('toggleHistoryPanel'),main=document.querySelector('[data-gp-toggle="history"]');
+   if(inline){inline.setAttribute('aria-expanded','false');const badge=document.getElementById('gpHistoryInlineCount');if(badge)badge.textContent='ΑΝΟΙΓΜΑ';}
+   if(main)main.setAttribute('aria-expanded','false');
+   const vip=document.getElementById('vipHistoryToggle');if(vip)vip.setAttribute('aria-expanded','false');
+  });
+  close.id='gmHistoryClose';close.classList.add('gm-history-close');historyButton.insertAdjacentElement('afterend',close);
+ }
+ const vipHistory=document.getElementById('vipHistoryToggle');
+ if(vipHistory)vipHistory.setAttribute('aria-label','Άνοιγμα ιστορικού VIP Alerts');
+})();
+</script>
 </body></html>
