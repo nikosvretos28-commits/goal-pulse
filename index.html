@@ -27,8 +27,8 @@
 </script>
 <style>
 :root{--bg:#071522;--panel:#0d2232;--panel2:#112b3d;--line:#234457;--text:#f2f7fa;--muted:#a5b8c6;--green:#43e0a2;--cyan:#55c7e8;--red:#ff6b7a;--gold:#f2c879}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 55% -20%,#19435e 0,transparent 45%),var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
-button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}.wrap{max-width:1400px;margin:auto;padding:0 24px}
+*{box-sizing:border-box}html{width:100%;max-width:100%;overflow-x:clip}body{width:100%;max-width:100%;margin:0;overflow-x:clip;background:radial-gradient(ellipse at 55% -20%,#19435e 0,transparent 45%),var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}.wrap{width:min(100%,1400px);max-width:1400px;margin-inline:auto;padding:0 24px}
 header{height:84px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #214257;gap:20px}
 .brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:inherit;min-width:220px}.brand svg{width:54px;height:54px;filter:drop-shadow(0 0 12px #43e0a244);flex-shrink:0}.brand-lockup{display:flex;flex-direction:column;gap:5px}.brand-name{font-size:25px;line-height:.9;font-weight:950;letter-spacing:-1.3px;font-style:italic}.brand-name span{display:block;color:var(--green);margin-top:5px}.brand-tagline{font-size:8px;letter-spacing:1.65px;font-weight:850;color:var(--muted);white-space:nowrap}
 nav{display:flex;gap:24px;color:#d1dfe7;font-weight:650}nav a{color:inherit;text-decoration:none;padding:10px 0}nav a:first-child{color:var(--green);border-bottom:2px solid var(--green)}
@@ -1735,6 +1735,7 @@ button:focus-visible,a:focus-visible{
   letter-spacing:-.35px;
 }
 @media(max-width:700px){
+  .wrap{padding-inline:12px}
   #matches .filter{min-height:34px}
   #matchList .live-row .live-score{white-space:nowrap}
 }
@@ -1850,7 +1851,7 @@ button:focus-visible,a:focus-visible{
   }catch(_){}
  }
  window.addEventListener('error',function(e){showGoalPulseError((e.message||'Σφάλμα JavaScript')+(e.filename?' · '+String(e.filename).split('/').pop():'')+(e.lineno?':'+e.lineno:'')+(e.colno?':'+e.colno:''))});
- window.addEventListener('unhandledrejection',function(e){showGoalPulseError(e.reason&&e.reason.message||e.reason||'Αποτυχία φόρτωσης')});
+ window.addEventListener('unhandledrejection',function(e){const message=String(e.reason&&e.reason.message||e.reason||'Αποτυχία φόρτωσης');if(/history unavailable/i.test(message))return;showGoalPulseError(message)});
 })();
 </script>
 <script>
