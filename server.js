@@ -3052,6 +3052,16 @@ const server = http.createServer(async (req, res) => {
                   found = statsRows.find(row => row.label === alias);
                   if (found) break;
                 }
+                // Providers often append qualifiers such as "(including penalties)" to a
+                // stat label. Keep exact alias priority, then accept a qualified version
+                // of a known label while rejecting percentages/rates.
+                if (!found) {
+                  const qualifiedAliases = aliases.filter(alias => String(alias).length >= 5);
+                  found = statsRows.find(row =>
+                    qualifiedAliases.some(alias => row.label.startsWith(alias + "_")) &&
+                    !/(percentage|percent|rate|per_game|average)/.test(row.label)
+                  ) || null;
+                }
                 if (!found) return null;
                 const raw = found[side];
                 const n = Number.parseFloat(String(raw).replace("%", "").replace(",", "."));
@@ -3097,6 +3107,17 @@ const server = http.createServer(async (req, res) => {
                     String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") === alias
                   );
                   if (found) break;
+                }
+                if (!found) {
+                  const normalizedAliases = aliases.filter(alias => String(alias).length >= 5);
+                  found = items.find(stat => {
+                    const key = String(stat.key || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                    const title = String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                    return [key, title].some(label =>
+                      normalizedAliases.some(alias => label.startsWith(alias + "_")) &&
+                      !/(percentage|percent|rate|per_game|average)/.test(label)
+                    );
+                  }) || null;
                 }
                 if (!found) return null;
                 const value = Number.parseFloat(String(found[side] ?? "").replace(",", "."));
