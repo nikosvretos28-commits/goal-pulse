@@ -3636,4 +3636,42 @@ header nav a:hover{color:var(--gm-ice);text-shadow:0 0 16px rgba(113,218,250,.2)
 }
 </style>
 
+
+<style id="goalmatrix-premium-finish-2026">
+/* Visual-only finish: clearer interaction states and a calmer, more consistent surface hierarchy. */
+:root{
+ color-scheme:dark;
+ --gm-focus:rgba(113,218,250,.9);
+}
+:where(button,a,[role="button"],input,select,textarea,.filter,.mini-btn,.match,.live-row):focus-visible{
+ outline:2px solid var(--gm-focus)!important;
+ outline-offset:3px;
+}
+:where(button,a,[role="button"],.filter,.mini-btn){
+ -webkit-tap-highlight-color:transparent;
+}
+:where(button,.filter,.mini-btn,.primary,.login):active{
+ filter:brightness(1.08);
+}
+:where(.panel,.side-live,.hero-main,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel,.product-nav){
+ backdrop-filter:blur(8px);
+ -webkit-backdrop-filter:blur(8px);
+}
+:where(.panel,.side-live,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel) :where(h2,h3,.panel-title){
+ text-wrap:balance;
+}
+:where(.disclaimer,.muted,.subtitle,.brand-tagline){
+ text-wrap:pretty;
+}
+@media(max-width:700px){
+ :where(.panel,.side-live,.hero-main,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel){
+  box-shadow:0 10px 26px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.025);
+ }
+ :where(button,.filter,.mini-btn,.primary,.login){touch-action:manipulation}
+}
+@media(prefers-reduced-motion:reduce){
+ :where(button,a,[role="button"],.filter,.mini-btn,.primary,.login){transition:none!important}
+}
+</style>
+
 </body></html>
