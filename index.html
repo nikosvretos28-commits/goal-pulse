@@ -2686,7 +2686,7 @@ async function loadHighActivityHistory(){
 }
 document.getElementById('refreshHighActivityAnalyst')?.addEventListener('click',()=>loadHighActivityHistory());
 function evaluateHighActivityObservations(ranked){
- if(!highActivityHistoryLoaded)return;
+ if(!highActivityHistoryLoaded){void loadHighActivityHistory();return;}
  const now=Date.now(),changed=[];
  const matches=new Map(allMatches.map(m=>[String(m.id),m]));
  const active=new Map((ranked||[]).map(x=>[String(x.match.id),x.match]));
@@ -2708,16 +2708,22 @@ function evaluateHighActivityObservations(ranked){
   const match=matches.get(String(item.eventId));
   const score=highActivityScore(match);
   if(score){
-   item.currentScore=score;
+   const previous=item.currentScore;
+   if(!previous||Number(previous.home)!==score.home||Number(previous.away)!==score.away){
+    item.currentScore=score;changed.push(item);
+   }
    if(score.total>Number(item.scoreAtSignal?.total||0)){
     item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal';changed.push(item);continue;
    }
   }
-  const state=String(match?.state||match?.status||'').toLowerCase();
-  const status=String(match?.statusText||match?.clock||'').toLowerCase();
-  const finished=!!match&&(/^(post|finished|ft|full_time|fulltime|ended|complete|completed|cancelled|canceled|abandoned)$/i.test(state)||/\b(?:ft|full time|full-time|finished|ended|cancelled|abandoned)\b/i.test(status));
-  if(finished){
-   item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before full time';changed.push(item);
+  const state=String(match?.state||match?.status||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
+  const status=String(match?.statusText||match?.clock||'').trim().toLowerCase();
+  // Only settle as a loss on a confirmed full-time/final state. "postponed" must not
+  // match "post", and cancelled/abandoned fixtures are not a played loss.
+  const finishedStates=new Set(['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen']);
+  const finishedStatus=/\b(?:ft|full[ -]?time|finished|ended|final(?:\s+whistle)?|completed|after extra time|after penalties|aet)\b/i.test(status);
+  if(match&&(finishedStates.has(state)||finishedStatus)&&score){
+   item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
   }
  }
  highActivityObservations=highActivityObservations.slice(-5000);
