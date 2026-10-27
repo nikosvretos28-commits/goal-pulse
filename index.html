@@ -3839,6 +3839,35 @@ header nav a:hover{color:var(--gm-ice);text-shadow:0 0 16px rgba(113,218,250,.2)
  .top-ai-alert-card,.gp-section-button{transition:none!important}
  .top-ai-alert-card:hover{transform:none}
 }
+
+/* GoalMatrix premium brand polish — visual-only; no scanner or protocol changes */
+.brand{position:relative;transition:filter .22s ease,transform .22s ease}
+.brand svg{transition:transform .28s ease,filter .28s ease}
+.brand:hover svg{transform:rotate(-3deg) scale(1.035);filter:drop-shadow(0 0 16px #43e0a266) drop-shadow(0 0 28px #55c7e822)}
+.brand-name span{background:linear-gradient(95deg,#b7ff46 0%,#43e0a2 52%,#55c7e8 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none}
+.brand-tagline{display:flex;align-items:center;gap:6px;letter-spacing:1.55px}
+.brand-tagline:before{content:"";display:inline-block;width:15px;height:2px;flex:0 0 15px;border-radius:2px;background:linear-gradient(90deg,#b7ff46,#55c7e8);box-shadow:0 0 8px #43e0a255}
+header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:blur(5px)}
+.live-badge{box-shadow:0 0 0 1px #43e0a20a,0 0 18px #43e0a210;transition:box-shadow .2s ease,border-color .2s ease}
+.live-badge:hover{border-color:#43e0a2;box-shadow:0 0 18px #43e0a22a}
+.login{transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
+.login:hover{transform:translateY(-1px);box-shadow:0 7px 22px #43e0a22b;filter:saturate(1.12)}
+.gp-section-button{transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}
+.gp-section-button:hover{transform:translateY(-1px);box-shadow:0 8px 22px #0003,0 0 0 1px #43e0a20c}
+.gp-ai-button:hover,.gp-ai-button[aria-expanded="true"]{box-shadow:0 0 22px #55c7e81b}
+.gp-vip-button:hover,.gp-vip-button[aria-expanded="true"]{box-shadow:0 0 22px #43e0a21b}
+.gp-power-button:hover,.gp-power-button[aria-expanded="true"]{box-shadow:0 0 22px #f2c87920}
+@media(max-width:700px){
+  .brand{gap:9px}
+  .brand svg{width:49px;height:49px}
+  .brand-name{font-size:23px}
+  .brand-tagline{font-size:7px;letter-spacing:1.25px}
+}
+@media(prefers-reduced-motion:reduce){
+  .brand,.brand svg,.login,.live-badge,.gp-section-button{transition:none}
+  .brand:hover svg,.login:hover,.gp-section-button:hover{transform:none}
+}
+
 </style>
 
 </body></html>
