@@ -3525,4 +3525,115 @@ loadHighActivityHistory();
  const historyCountNode=document.getElementById('historyCount');if(historyCountNode)new MutationObserver(updateHistoryCount).observe(historyCountNode,{childList:true,characterData:true,subtree:true});updateHistoryCount();
 })();
 </script>
+
+<style id="goalmatrix-premium-branding-2026">
+/* GoalMatrix premium brand polish — visual-only; no data, protocol or behavior changes. */
+:root{
+ --gm-ink:#06111d;
+ --gm-surface:#0c1d2b;
+ --gm-surface-raised:#11283a;
+ --gm-line:rgba(111,190,215,.22);
+ --gm-mint:#4be5aa;
+ --gm-lime:#c4ff61;
+ --gm-ice:#71dafa;
+}
+body{
+ background-color:var(--gm-ink);
+ background-image:
+  radial-gradient(ellipse at 8% 0%,rgba(75,229,170,.075),transparent 32%),
+  radial-gradient(ellipse at 92% 4%,rgba(113,218,250,.075),transparent 30%),
+  linear-gradient(180deg,#071522 0%,#081725 48%,#06111d 100%);
+}
+.wrap>header{
+ border-bottom:1px solid rgba(113,218,250,.18);
+ box-shadow:0 8px 28px rgba(0,0,0,.08);
+}
+.brand{gap:12px}
+.brand svg{
+ filter:drop-shadow(0 0 13px rgba(75,229,170,.2));
+ transition:transform .22s ease,filter .22s ease;
+}
+.brand:hover svg{
+ transform:translateY(-2px) rotate(-1deg);
+ filter:drop-shadow(0 0 18px rgba(113,218,250,.3));
+}
+.brand-name{
+ font-weight:950;
+ letter-spacing:.035em;
+ text-shadow:0 2px 22px rgba(113,218,250,.09);
+}
+.brand-name span{
+ background:linear-gradient(100deg,var(--gm-mint) 0%,var(--gm-lime) 48%,var(--gm-ice) 100%);
+ -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.brand-tagline{color:#9bb5c5;letter-spacing:.18em}
+header nav a{transition:color .18s ease,text-shadow .18s ease}
+header nav a:hover{color:var(--gm-ice);text-shadow:0 0 16px rgba(113,218,250,.2)}
+.live-badge{
+ border-color:rgba(75,229,170,.35);
+ background:linear-gradient(120deg,rgba(21,77,60,.82),rgba(12,47,43,.86));
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.login,.primary{
+ background:linear-gradient(110deg,var(--gm-mint),#9af0c7 56%,var(--gm-lime));
+ box-shadow:0 7px 24px rgba(75,229,170,.13),inset 0 1px 0 rgba(255,255,255,.3);
+ transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+.login:hover,.primary:hover{
+ transform:translateY(-1px);
+ box-shadow:0 10px 28px rgba(75,229,170,.2),inset 0 1px 0 rgba(255,255,255,.35);
+ filter:saturate(1.06);
+}
+.panel,.side-live,.hero-main,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel{
+ border-color:var(--gm-line);
+ box-shadow:0 14px 38px rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.hero-main{
+ background-image:
+  radial-gradient(ellipse at 82% 34%,rgba(75,229,170,.12),transparent 34%),
+  radial-gradient(ellipse at 64% 95%,rgba(113,218,250,.08),transparent 45%),
+  linear-gradient(115deg,#0a1c2b 0%,#103149 58%,#081a29 100%);
+}
+.hero .eyebrow{color:var(--gm-ice)}
+.hero h1 span{
+ background:linear-gradient(100deg,var(--gm-mint),var(--gm-lime) 54%,var(--gm-ice));
+ -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.match,.live-row,.feature,.insight-card,.stat{
+ transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease,transform .18s ease;
+}
+.match{
+ border-color:rgba(111,190,215,.15);
+ background:linear-gradient(145deg,rgba(13,34,50,.98),rgba(8,25,39,.98));
+}
+.match:hover{
+ border-color:rgba(75,229,170,.42);
+ box-shadow:0 8px 24px rgba(0,0,0,.17),0 0 0 1px rgba(75,229,170,.045);
+}
+.count{
+ border:1px solid rgba(113,218,250,.16);
+ background:rgba(24,59,80,.72);
+}
+.filter,.mini-btn{
+ transition:transform .16s ease,border-color .16s ease,background-color .16s ease,box-shadow .16s ease;
+}
+.filter:hover,.mini-btn:hover{transform:translateY(-1px)}
+.product-nav{
+ border-color:rgba(113,218,250,.2);
+ box-shadow:0 8px 24px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.disclaimer{color:#91a9b9}
+@media(max-width:700px){
+ .brand{gap:8px}
+ .brand svg{filter:drop-shadow(0 0 9px rgba(75,229,170,.16))}
+ .brand-tagline{letter-spacing:.12em}
+ .hero-main{background-image:radial-gradient(ellipse at 85% 28%,rgba(75,229,170,.1),transparent 40%),linear-gradient(115deg,#0a1c2b,#103149 58%,#081a29)}
+ .match:hover,.filter:hover,.mini-btn:hover,.login:hover,.primary:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+ .brand svg,.login,.primary,.match,.filter,.mini-btn{transition:none!important}
+ .brand:hover svg,.login:hover,.primary:hover,.match:hover,.filter:hover,.mini-btn:hover{transform:none}
+}
+</style>
+
 </body></html>
