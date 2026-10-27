@@ -2462,7 +2462,7 @@ const server = http.createServer(async (req, res) => {
             const results = await Promise.all(batch.map(async code => {
               try {
                 let response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
-                  headers: ESPN_HEADERS,
+                  headers: { "Accept": "application/json" },
                   signal: AbortSignal.timeout(6000)
                 });
                 // ESPN may reject one public hostname from a hosting region. Retry the
@@ -2470,7 +2470,7 @@ const server = http.createServer(async (req, res) => {
                 // marking this competition unavailable.
                 if (response.status === 403 || response.status === 429 || response.status >= 500) {
                   response = await fetch("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + code + "/scoreboard?dates=" + date, {
-                    headers: ESPN_HEADERS,
+                    headers: { "Accept": "application/json" },
                     signal: AbortSignal.timeout(6000)
                   });
                 }
