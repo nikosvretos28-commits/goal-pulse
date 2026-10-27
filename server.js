@@ -2778,7 +2778,7 @@ const server = http.createServer(async (req, res) => {
           if (successfulFeeds === 0) {
             console.error("All scoreboard feeds failed:", JSON.stringify(feeds.slice(0, 6).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))));
           }
-          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok}) => ({code,events,ok})), source: successfulFeeds ? scoreboardSource : "unavailable" };
+          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok,error}) => ({code,events,ok,...(error ? {error} : {})})), source: successfulFeeds ? scoreboardSource : "unavailable" };
           if (successfulFeeds > 0) {
             scoreboardCache.set(date, { at: Date.now(), body });
             return { status: 200, body, cache: "MISS" };
