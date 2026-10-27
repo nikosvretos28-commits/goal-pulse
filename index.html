@@ -1744,6 +1744,66 @@ button:focus-visible,a:focus-visible{
 }
 
 </style>
+<style id="gm-premium-cyan-refinement-2026">
+/* GoalMatrix premium cyan refinement — CSS-only presentation layer. No application logic changes. */
+:root{
+ --gm-premium-cyan:#55dff4;
+ --gm-premium-lime:#c7f36b;
+ --gm-premium-night:#06111f;
+ --gm-premium-card:#0b1c2c;
+}
+html{scroll-behavior:smooth}
+body{
+ background-color:var(--gm-premium-night);
+ background-image:
+  radial-gradient(ellipse at 50% -15%,rgba(65,184,220,.12),transparent 46%),
+  linear-gradient(180deg,#071522 0%,#06111f 62%,#050d18 100%);
+}
+.brand svg{filter:drop-shadow(0 0 14px rgba(85,223,244,.19))}
+.brand:hover svg{filter:drop-shadow(0 0 20px rgba(85,223,244,.34))}
+.brand-name span{
+ background:linear-gradient(105deg,var(--gm-premium-cyan) 0%,#a3eff7 48%,var(--gm-premium-lime) 100%);
+ -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.brand-tagline{color:#b6d2df}
+header nav a:hover,header nav a:focus-visible{color:var(--gm-premium-cyan)}
+.live-badge{
+ border-color:rgba(85,223,244,.32);
+ background:linear-gradient(120deg,rgba(12,58,76,.84),rgba(9,35,51,.9));
+}
+.login,.primary{
+ background:linear-gradient(110deg,#55dff4 0%,#83e6ee 52%,#c7f36b 100%);
+ color:#061522;
+ box-shadow:0 8px 26px rgba(85,223,244,.14),inset 0 1px 0 rgba(255,255,255,.42);
+}
+.login:hover,.primary:hover{box-shadow:0 11px 30px rgba(85,223,244,.23),inset 0 1px 0 rgba(255,255,255,.48)}
+.panel,.side-live,.hero-main,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel{
+ border-color:rgba(85,190,220,.2);
+}
+.hero-main{
+ background-image:
+  radial-gradient(ellipse at 82% 28%,rgba(85,223,244,.14),transparent 36%),
+  radial-gradient(ellipse at 18% 100%,rgba(199,243,107,.055),transparent 42%),
+  linear-gradient(120deg,#091a2a 0%,#0c2a40 56%,#071725 100%);
+}
+.hero .eyebrow{color:var(--gm-premium-cyan)}
+.hero h1 span{
+ background:linear-gradient(100deg,var(--gm-premium-cyan),#a3eff7 48%,var(--gm-premium-lime));
+ -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.match,.live-row,.feature,.insight-card,.stat{
+ border-color:rgba(105,190,218,.16);
+}
+.match:hover,.live-row:hover,.feature:hover,.insight-card:hover{
+ border-color:rgba(85,223,244,.38);
+}
+.count{border-color:rgba(85,223,244,.2)}
+:focus-visible{outline:2px solid var(--gm-premium-cyan);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){
+ html{scroll-behavior:auto}
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
 </head>
 <body>
 <div class="wrap">
