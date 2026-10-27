@@ -1758,7 +1758,7 @@ button:focus-visible,a:focus-visible{
 <path d="m60 40 5 4-2 6h-6l-2-6z M55 44l-5-2m15 2 5-2m-10 8-2 5m7-5 3 4" fill="none" stroke="#b7ff46" stroke-width="1.6" stroke-linejoin="round"/>
 <path d="M39 71H81" stroke="#43e0a2" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
 </svg>
-<span class="brand-lockup"><span class="brand-name">GOAL<span>MATRIX</span></span><span class="brand-tagline">AI FOOTBALL INTELLIGENCE</span></span>
+<span class="brand-lockup"><span class="brand-name">GOAL<span>MATRIX</span></span><span class="brand-tagline">THE INTELLIGENCE OF FOOTBALL</span></span>
 </a>
 <nav aria-label="Κύριο μενού"><a href="#matches" data-menu-filter="live">LIVE ΤΩΡΑ</a><a href="#matches" data-menu-filter="all">Όλοι οι αγώνες</a><a href="#matches" data-menu-filter="upcoming">Πρόγραμμα</a><a href="#matches" data-menu-filter="finished">Αποτελέσματα</a><a href="#leagues">Πρωταθλήματα</a><a href="#insights">Στατιστικά</a><a href="#topAiAlerts">AI Alerts</a><a href="#trends">Trends</a></nav>
 <div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span><button class="login" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Live Score ↗</button></div>
@@ -3669,7 +3669,8 @@ body{
  background:linear-gradient(100deg,var(--gm-mint) 0%,var(--gm-lime) 48%,var(--gm-ice) 100%);
  -webkit-background-clip:text;background-clip:text;color:transparent;
 }
-.brand-tagline{color:#9bb5c5;letter-spacing:.18em}
+.brand-tagline{color:#b7cbd7;letter-spacing:.12em;font-size:clamp(6.5px,.58vw,8px);font-weight:900;text-transform:uppercase;text-shadow:0 0 18px rgba(113,218,250,.08)}
+@media(max-width:700px){.brand-tagline{letter-spacing:.085em;font-size:6.5px}}
 header nav a{transition:color .18s ease,text-shadow .18s ease}
 header nav a:hover{color:var(--gm-ice);text-shadow:0 0 16px rgba(113,218,250,.2)}
 .live-badge{
