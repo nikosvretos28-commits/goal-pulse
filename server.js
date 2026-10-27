@@ -2630,7 +2630,11 @@ const server = http.createServer(async (req, res) => {
             for (const result of sportScoreResponses) {
               for (const match of result.matches) {
                 const matchTime = match.time || match.start_time || match.starting_at || match.date || match.kickoff;
-                const matchDate = matchTime ? new Date(matchTime) : null;
+                let matchDate = matchTime ? new Date(matchTime) : null;
+                const requestedDateIsToday = requestedIsoDate === new Date().toISOString().slice(0, 10);
+                // Live-only provider responses can omit kickoff timestamps; do not discard a verified live fixture for that reason.
+                // Only apply this fallback to the current UTC date, never to historical scoreboard requests.
+                if (result.status === "live" && requestedDateIsToday && (!matchDate || !Number.isFinite(matchDate.getTime()))) matchDate = new Date();
                 if (!matchDate || !Number.isFinite(matchDate.getTime())) continue;
                 if (result.status !== "live" && matchDate.toISOString().slice(0, 10) !== requestedIsoDate) continue;
                 const homeName = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || match.participants?.find(p => p.meta?.location === "home")?.name || "").trim();
