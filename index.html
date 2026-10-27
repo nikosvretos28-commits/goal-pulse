@@ -2641,14 +2641,27 @@ function highActivityScore(match){
  const home=Number(match?.home?.score),away=Number(match?.away?.score);
  return Number.isFinite(home)&&Number.isFinite(away)?{home,away,total:home+away}:null;
 }
+let highActivityHistoryPeriod='all';
+function highActivityPeriodLabel(period){return ({day:'Ημέρα',week:'Εβδομάδα',month:'Μήνας',year:'Έτος',all:'Όλο το ιστορικό'})[period]||'Όλο το ιστορικό';}
+function highActivityInPeriod(timestamp,period){
+ if(period==='all')return true;
+ const d=new Date(Number(timestamp));if(!Number.isFinite(d.getTime()))return false;
+ const now=new Date(),start=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+ if(period==='day')return d>=start;
+ if(period==='week'){const weekday=(start.getDay()+6)%7;start.setDate(start.getDate()-weekday);return d>=start;}
+ if(period==='month')return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+ if(period==='year')return d.getFullYear()===now.getFullYear();
+ return true;
+}
 function renderHighActivityAnalyst(){
  const root=document.getElementById('highActivityAnalystPanel');if(!root)return;
- const records=highActivityObservations.slice().sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
+ const allRecords=highActivityObservations.slice().sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
+ const records=allRecords.filter(x=>highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
  const settled=records.filter(x=>x.outcome==='won'||x.outcome==='lost');
  const wins=settled.filter(x=>x.outcome==='won').length,losses=settled.length-wins;
  const rate=settled.length?Math.round(wins/settled.length*100):null;
  const pending=records.filter(x=>x.outcome==='pending').length;
- const recent=records.slice(0,15);
+ const recent=records;
  let analysis='Δεν υπάρχει ακόμη επαρκές δείγμα. Οι ενδείξεις θα αξιολογούνται μέχρι τη λήξη του αγώνα.';
  if(settled.length>=5){
   if(rate>=70)analysis='Το δείγμα δείχνει υψηλή συχνότητα γκολ μετά τις ενδείξεις HI ACTIVITY. Συνέχισε τη συλλογή αποτελεσμάτων πριν εξεταστεί οποιαδήποτε αλλαγή.';
@@ -2656,7 +2669,7 @@ function renderHighActivityAnalyst(){
   else analysis='Το ποσοστό είναι χαμηλό στο τρέχον δείγμα. Χρειάζεται έλεγχος ανά ημίχρονο, λεπτό και αρχικό σκορ, χωρίς αυτόματη αλλαγή κανόνων.';
  }
  const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- root.innerHTML='<div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details><summary>Ξεχωριστό ιστορικό HI ACTIVITY ('+records.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
+ root.innerHTML='<div class="history-period-filter" role="group" aria-label="Περίοδος ιστορικού">'+[['day','Ημέρα'],['week','Εβδομάδα'],['month','Μήνας'],['year','Έτος'],['all','Όλο το ιστορικό']].map(([key,label])=>'<button type="button" class="mini-btn '+(highActivityHistoryPeriod===key?'active':'')+'" data-ha-period="'+key+'" aria-pressed="'+(highActivityHistoryPeriod===key?'true':'false')+'">'+label+'</button>').join('')+'</div><p class="subtle">Εμφάνιση: '+highActivityPeriodLabel(highActivityHistoryPeriod)+' · Αποθηκευμένες συνολικά: '+allRecords.length+' · Δεν διαγράφεται καμία εγγραφή.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details open><summary>Ξεχωριστό ιστορικό HI ACTIVITY ('+records.length+' από '+allRecords.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
 }
 async function persistHighActivityObservations(records){
  if(!records?.length)return;
@@ -2670,21 +2683,19 @@ async function loadHighActivityHistory(){
  if(highActivityHistoryLoadPromise)return highActivityHistoryLoadPromise;
  highActivityHistoryLoadPromise=(async()=>{
   try{
-   const response=await fetch(ANALYTICS_API+'/api/high-activity/history?limit=5000',{cache:'no-store'});
-   if(!response.ok)throw new Error('HTTP '+response.status);
-   const data=await response.json();
-   if(Array.isArray(data.observations)){
-    const merged=new Map(highActivityObservations.map(x=>[String(x.observationId),x]));
-    data.observations.forEach(x=>{if(x?.observationId)merged.set(String(x.observationId),x)});
-    highActivityObservations=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt)).slice(0,5000);
-    highActivityHistoryLoaded=true;renderHighActivityAnalyst();
-   }
+   const observations=[];let offset=0;const pageSize=5000;
+   while(true){const response=await fetch(ANALYTICS_API+'/api/high-activity/history?limit='+pageSize+'&offset='+offset,{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);const data=await response.json();if(!Array.isArray(data.observations))throw new Error('Invalid history response');observations.push(...data.observations);if(data.observations.length<pageSize)break;offset+=data.observations.length;}
+   const merged=new Map(highActivityObservations.map(x=>[String(x.observationId),x]));
+   observations.forEach(x=>{if(x?.observationId)merged.set(String(x.observationId),x)});
+   highActivityObservations=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
+   highActivityHistoryLoaded=true;renderHighActivityAnalyst();
   }catch(error){console.warn('Could not load persistent High Activity history:',error.message);const root=document.getElementById('highActivityAnalystPanel');if(root&&!highActivityHistoryLoaded)root.innerHTML='<p>Το μόνιμο ιστορικό HI ACTIVITY δεν είναι διαθέσιμο αυτή τη στιγμή. Θα γίνει νέα προσπάθεια.</p>';}
   finally{highActivityHistoryLoadPromise=null;}
  })();
  return highActivityHistoryLoadPromise;
 }
 document.getElementById('refreshHighActivityAnalyst')?.addEventListener('click',()=>loadHighActivityHistory());
+document.getElementById('highActivityAnalystPanel')?.addEventListener('click',event=>{const button=event.target.closest('[data-ha-period]');if(!button)return;highActivityHistoryPeriod=button.dataset.haPeriod||'all';renderHighActivityAnalyst();});
 const highActivityScoreboardCache=new Map();
 let highActivityHistoricalSettlementPromise=null;
 async function reconcileHistoricalHighActivityObservations(){
@@ -2782,7 +2793,7 @@ function evaluateHighActivityObservations(ranked){
    item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
   }
  }
- highActivityObservations=highActivityObservations.slice(-5000);
+ // Keep the complete in-memory history; period controls only filter the display.
  if(changed.length)persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
  renderHighActivityAnalyst();
  void reconcileHistoricalHighActivityObservations();
