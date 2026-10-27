@@ -1770,6 +1770,7 @@ button:focus-visible,a:focus-visible{
  <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
+ <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
 <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst" id="highActivityHistoryToggle">📊 ΙΣΤΟΡΙΚΟ HI ACTIVITY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button>
@@ -2488,12 +2489,13 @@ function autoSettleFinishedOverBets(){
   return changed;
 }
 
+let vipHistoryOnly=false;
 function showSignalHistory(){
   autoSettleFinishedOverBets();
   
   const period=document.getElementById('signalHistoryPeriod')?.value||'7days';
   const now=new Date(),todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime(),yesterdayStart=todayStart-86400000;
-  const exactDate=document.getElementById('signalHistoryDate')?.value||'';const exactStart=exactDate?new Date(exactDate+'T00:00:00').getTime():NaN;const exactEnd=exactStart+86400000;const filtered=signalAlertHistory.filter(a=>{const t=Number(a.createdAt);if(!Number.isFinite(t))return false;if(period==='date')return Number.isFinite(exactStart)&&t>=exactStart&&t<exactEnd;if(period==='today')return t>=todayStart;if(period==='yesterday')return t>=yesterdayStart&&t<todayStart;if(period==='7days')return t>=todayStart-6*86400000;if(period==='30days')return t>=todayStart-29*86400000;return true;}).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
+  const exactDate=document.getElementById('signalHistoryDate')?.value||'';const exactStart=exactDate?new Date(exactDate+'T00:00:00').getTime():NaN;const exactEnd=exactStart+86400000;const filtered=signalAlertHistory.filter(a=>{if(vipHistoryOnly&&a.level!=='VIP')return false;const t=Number(a.createdAt);if(!Number.isFinite(t))return false;if(period==='date')return Number.isFinite(exactStart)&&t>=exactStart&&t<exactEnd;if(period==='today')return t>=todayStart;if(period==='yesterday')return t>=yesterdayStart&&t<todayStart;if(period==='7days')return t>=todayStart-6*86400000;if(period==='30days')return t>=todayStart-29*86400000;return true;}).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
   const ai=filtered.filter(a=>a.level!=='VIP'),vip=filtered.filter(a=>a.level==='VIP');
   const resolved=list=>list.filter(a=>!a.manualOutcome&&a.betOutcome!=='push'&&a.outcome&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
   const isHit=a=>a.betOutcome==='won'||String(a.outcome||'').startsWith('Επιβεβαιώθηκε')||String(a.outcome||'').startsWith('ΚΕΡΔΙΣΜΕΝΟ');
@@ -3488,6 +3490,7 @@ loadHighActivityHistory();
     return;
    }
    if(key==='history'){
+    vipHistoryOnly=false;
     const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls'),inline=document.getElementById('toggleHistoryPanel');
     const aiPanel=document.getElementById('topAiAlerts'),aiButton=document.querySelector('[data-gp-toggle="topAiAlerts"]');
     const open=!!results?.hidden;
@@ -3504,10 +3507,22 @@ loadHighActivityHistory();
    if(open)panel.scrollIntoView({behavior:'smooth',block:'start'});
   });
  });
+ const vipHistoryToggle=document.getElementById('vipHistoryToggle');
+ vipHistoryToggle?.addEventListener('click',()=>{
+  vipHistoryOnly=true;
+  const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls');
+  const mainButton=document.querySelector('[data-gp-toggle="history"]'),inline=document.getElementById('toggleHistoryPanel');
+  if(results)results.hidden=false;if(controls)controls.hidden=false;
+  if(mainButton)mainButton.setAttribute('aria-expanded','true');
+  if(inline){inline.setAttribute('aria-expanded','true');const badge=document.getElementById('gpHistoryInlineCount');if(badge)badge.textContent='ΚΛΕΙΣΙΜΟ';}
+  const badge=document.getElementById('gpVipHistoryCount');if(badge)badge.textContent='VIP';
+  showSignalHistory();results?.scrollIntoView({behavior:'smooth',block:'start'});
+ });
  const highActivityHistoryToggle=document.getElementById('highActivityHistoryToggle');
  highActivityHistoryToggle?.addEventListener('click',()=>{const panel=document.getElementById('protocolAnalyst');if(panel?.hidden){panel.hidden=false;document.querySelector('[data-gp-toggle="protocolAnalyst"]')?.setAttribute('aria-expanded','true');}loadHighActivityHistory();document.getElementById('highActivityAnalystPanel')?.scrollIntoView({behavior:'smooth',block:'start'});});
  const historyButton=document.getElementById('toggleHistoryPanel');
  historyButton?.addEventListener('click',()=>{
+  vipHistoryOnly=false;
   const results=document.getElementById('signalResults'),controls=document.getElementById('signalHistoryControls');
   const open=!!results?.hidden;if(results)results.hidden=!open;if(controls)controls.hidden=!open;
   historyButton.setAttribute('aria-expanded',open?'true':'false');
