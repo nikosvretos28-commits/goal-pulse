@@ -2720,7 +2720,7 @@ async function reconcileHistoricalHighActivityObservations(){
   const changed=[],settledAt=Date.now();
   for(const item of pending){
    let event=eventsById.get(String(item.eventId));
-   const normalizeTeamName=value=>String(value||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+   const normalizeTeamName=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
    if(!event){
     const wantedHome=normalizeTeamName(item.home),wantedAway=normalizeTeamName(item.away);
     if(wantedHome&&wantedAway){
