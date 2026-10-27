@@ -2000,10 +2000,11 @@ const server = http.createServer(async (req, res) => {
         // For Over-goal markets, alerts require 10+ total shots and either an agreed SOT signal
         // (3+ SOT in ~5m, 6+ SOT in ~10m, or 10+ cumulative SOT) or xG >=2.50 for one team
         // and >=2.00 for the other. Missing xG is neutral; valid SOT alerts remain possible.
-        // Automatic AI alerts use the agreed eligible window: minutes 1-40 inclusive.
-        // All alerts still require a valid live score and a verified active Over price below.
+        // Automatic AI alert windows: first half 1-40, second half 46-88 inclusive.
+        // Exclude 41-45 and 89+; do not change the existing SOT/shot qualification rules.
+        // All alerts still require a valid live score; odds remain optional and are never invented.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
-        const eligibleMinute = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40;
+        const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
         const isAiGoal = scoreAvailable && eligibleMinute && shotsOnlyOverEvidence;
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
