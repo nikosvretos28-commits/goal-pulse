@@ -2685,6 +2685,61 @@ async function loadHighActivityHistory(){
  return highActivityHistoryLoadPromise;
 }
 document.getElementById('refreshHighActivityAnalyst')?.addEventListener('click',()=>loadHighActivityHistory());
+const highActivityScoreboardCache=new Map();
+let highActivityHistoricalSettlementPromise=null;
+async function reconcileHistoricalHighActivityObservations(){
+ if(highActivityHistoricalSettlementPromise)return highActivityHistoricalSettlementPromise;
+ highActivityHistoricalSettlementPromise=(async()=>{
+  const pending=highActivityObservations.filter(item=>item.outcome==='pending'&&item.eventId&&Number.isFinite(Number(item.createdAt)));
+  if(!pending.length)return;
+  const dates=new Set(pending.map(item=>new Date(Number(item.createdAt)).toISOString().slice(0,10).replace(/-/g,'')));
+  const now=Date.now(),eventsById=new Map();
+  for(const date of dates){
+   let cached=highActivityScoreboardCache.get(date);
+   if(!cached||now-cached.at>120000){
+    try{
+     const response=await fetch(ANALYTICS_API+'/api/scoreboard?date='+date+'&_='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(20000)});
+     if(!response.ok)continue;
+     const data=await response.json();
+     cached={at:Date.now(),events:(data.feeds||[]).flatMap(feed=>(feed.events||[]).map(event=>({...event,__goalPulseLeagueCode:feed.code||''})))};
+     highActivityScoreboardCache.set(date,cached);
+    }catch(error){console.warn('[HI ACTIVITY settlement] Historical scoreboard unavailable:',date,error.message);continue;}
+   }
+   for(const event of (cached.events||[]))if(event.id!=null)eventsById.set(String(event.id),event);
+  }
+  const changed=[],settledAt=Date.now();
+  for(const item of pending){
+   const event=eventsById.get(String(item.eventId));
+   if(!event)continue;
+   const competition=event.competitions?.[0],competitors=competition?.competitors||[];
+   const home=competitors.find(team=>team.homeAway==='home')||competitors[0];
+   const away=competitors.find(team=>team.homeAway==='away')||competitors[1];
+   const homeScore=Number(home?.score),awayScore=Number(away?.score);
+   if(!Number.isFinite(homeScore)||!Number.isFinite(awayScore))continue;
+   const score={home:homeScore,away:awayScore,total:homeScore+awayScore};
+   if(!item.currentScore||Number(item.currentScore.home)!==score.home||Number(item.currentScore.away)!==score.away){
+    item.currentScore={home:score.home,away:score.away};changed.push(item);
+   }
+   if(score.total>Number(item.scoreAtSignal?.total||0)){
+    item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal';changed.push(item);continue;
+   }
+   const statusTypes=[event.status?.type,competition?.status?.type].filter(Boolean);
+   const state=statusTypes.map(x=>String(x.state||'').toLowerCase()).find(Boolean)||'';
+   const label=statusTypes.map(x=>[x.name,x.detail,x.shortDetail].filter(Boolean).join(' ')).join(' ').toLowerCase();
+   const finished=state==='post'||['finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen'].includes(state)||/\b(?:final|full[ -]?time|finished|ended|ft|after extra time|after penalties|aet)\b/i.test(label);
+   const excluded=/postponed|cancelled|canceled|abandoned|suspended/i.test(label)||['postponed','cancelled','canceled','abandoned','suspended'].includes(state);
+   if(finished&&!excluded){
+    item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
+   }
+  }
+  if(changed.length){
+   const unique=[...new Map(changed.map(item=>[String(item.observationId),item])).values()];
+   await persistHighActivityObservations(unique);
+   renderHighActivityAnalyst();
+  }
+ })().finally(()=>{highActivityHistoricalSettlementPromise=null;});
+ return highActivityHistoricalSettlementPromise;
+}
 function evaluateHighActivityObservations(ranked){
  if(!highActivityHistoryLoaded){void loadHighActivityHistory();return;}
  const now=Date.now(),changed=[];
@@ -2729,6 +2784,7 @@ function evaluateHighActivityObservations(ranked){
  highActivityObservations=highActivityObservations.slice(-5000);
  if(changed.length)persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
  renderHighActivityAnalyst();
+ void reconcileHistoricalHighActivityObservations();
 }
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
