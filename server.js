@@ -1097,7 +1097,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/alerts/history/verify" && req.method === "GET") {
-    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    // Read-only audit: allow direct navigation when both Origin and Referer are absent.\n    // If either header is present, it must still match the allowlist.\n    if ((req.headers.origin || req.headers.referer) && !isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       // Read-only integrity audit: it never edits or settles alerts.
