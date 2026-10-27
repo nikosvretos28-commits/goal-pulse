@@ -1914,8 +1914,10 @@ const server = http.createServer(async (req, res) => {
         // is measured together, instead of comparing only with the immediately prior scan.
         const snapshots = pushScanSnapshots.get(id) || [];
         snapshots.push(current);
-        // Keep 10 minutes of snapshots so Over alerts can use either the 5m or 10m shot-on-target threshold.
-        const windowStart = now - 10 * 60 * 1000;
+        // Keep 11 minutes of snapshots: the 10-minute SOT baseline accepts snapshots
+        // aged 9.5–11 minutes, so a 10-minute retention window silently discarded
+        // much of the valid baseline range and made the 10m trigger unreliable.
+        const windowStart = now - 11 * 60 * 1000;
         const rollingSnapshots = snapshots.filter(snapshot => snapshot.at >= windowStart);
         pushScanSnapshots.set(id, rollingSnapshots);
         const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || null;
