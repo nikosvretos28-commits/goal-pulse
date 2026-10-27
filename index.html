@@ -2714,7 +2714,8 @@ async function reconcileHistoricalHighActivityObservations(){
    const competition=event.competitions?.[0],competitors=competition?.competitors||[];
    const home=competitors.find(team=>team.homeAway==='home')||competitors[0];
    const away=competitors.find(team=>team.homeAway==='away')||competitors[1];
-   const homeScore=Number(home?.score),awayScore=Number(away?.score);
+   if(home?.score==null||away?.score==null||String(home.score).trim()===''||String(away.score).trim()==='')continue;
+   const homeScore=Number(home.score),awayScore=Number(away.score);
    if(!Number.isFinite(homeScore)||!Number.isFinite(awayScore))continue;
    const score={home:homeScore,away:awayScore,total:homeScore+awayScore};
    if(!item.currentScore||Number(item.currentScore.home)!==score.home||Number(item.currentScore.away)!==score.away){
