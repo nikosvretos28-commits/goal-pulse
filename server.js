@@ -2203,7 +2203,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const liveMatchSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shots: team.shots ?? null, shotsOnTarget: team.shotsOnTarget ?? null, shotsOffTarget: team.shotsOffTarget ?? null, xG: team.xG ?? null })) })), statsMissingShots: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shots == null))).length, statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
@@ -3052,6 +3052,16 @@ const server = http.createServer(async (req, res) => {
                   found = statsRows.find(row => row.label === alias);
                   if (found) break;
                 }
+                // Providers often append qualifiers such as "(including penalties)" to a
+                // stat label. Keep exact alias priority, then accept a qualified version
+                // of a known label while rejecting percentages/rates.
+                if (!found) {
+                  const qualifiedAliases = aliases.filter(alias => String(alias).length >= 5);
+                  found = statsRows.find(row =>
+                    qualifiedAliases.some(alias => row.label.startsWith(alias + "_")) &&
+                    !/(percentage|percent|rate|per_game|average)/.test(row.label)
+                  ) || null;
+                }
                 if (!found) return null;
                 const raw = found[side];
                 const n = Number.parseFloat(String(raw).replace("%", "").replace(",", "."));
@@ -3097,6 +3107,17 @@ const server = http.createServer(async (req, res) => {
                     String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") === alias
                   );
                   if (found) break;
+                }
+                if (!found) {
+                  const normalizedAliases = aliases.filter(alias => String(alias).length >= 5);
+                  found = items.find(stat => {
+                    const key = String(stat.key || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                    const title = String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                    return [key, title].some(label =>
+                      normalizedAliases.some(alias => label.startsWith(alias + "_")) &&
+                      !/(percentage|percent|rate|per_game|average)/.test(label)
+                    );
+                  }) || null;
                 }
                 if (!found) return null;
                 const value = Number.parseFloat(String(found[side] ?? "").replace(",", "."));
