@@ -3885,10 +3885,19 @@ header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:
  const makeClose=(label,handler)=>{
   const b=document.createElement('button');b.type='button';b.className='gm-panel-close';b.textContent='✕ '+label;b.setAttribute('aria-label',label+' — κλείσιμο ενότητας');b.addEventListener('click',handler);return b;
  };
+ const scrollPageTop=()=>{
+  const scroll=()=>{
+   window.scrollTo({top:0,left:0,behavior:'smooth'});
+   document.documentElement.scrollTo({top:0,left:0,behavior:'smooth'});
+   document.body.scrollTo({top:0,left:0,behavior:'smooth'});
+  };
+  requestAnimationFrame(()=>requestAnimationFrame(scroll));
+  setTimeout(scroll,120);
+ };
  const closePanel=(id)=>{
   const panel=document.getElementById(id);if(!panel)return;
   panel.hidden=true;
-  window.scrollTo({top:0,behavior:'smooth'});
+  scrollPageTop();
   document.querySelectorAll('[data-gp-toggle="'+id+'"]').forEach(b=>{
    b.setAttribute('aria-expanded','false');
    const count=b.querySelector('.gp-button-count');
@@ -3916,7 +3925,7 @@ header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:
    if(inline){inline.setAttribute('aria-expanded','false');const badge=document.getElementById('gpHistoryInlineCount');if(badge)badge.textContent='ΑΝΟΙΓΜΑ';}
    if(main)main.setAttribute('aria-expanded','false');
    const vip=document.getElementById('vipHistoryToggle');if(vip)vip.setAttribute('aria-expanded','false');
-   window.scrollTo({top:0,behavior:'smooth'});
+   scrollPageTop();
   });
   close.id='gmHistoryClose';close.classList.add('gm-history-close');historyButton.insertAdjacentElement('afterend',close);
  }
