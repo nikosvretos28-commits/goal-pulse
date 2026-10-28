@@ -3051,8 +3051,9 @@ function evaluateHighActivityObservations(ranked){
  if(!highActivityHistoryLoaded){void loadHighActivityHistory();return;}
  const now=Date.now(),changed=[];
  const matches=new Map(allMatches.map(m=>[String(m.id),m]));
- const active=new Map((ranked||[]).map(x=>[String(x.match.id),x.match]));
- for(const [eventId,match] of active){
+ const active=new Map((ranked||[]).map(x=>[String(x.match.id),x]));
+ for(const [eventId,rankedItem] of active){
+  const match=rankedItem.match;
   const stats=liveMetricsCache.get(eventId);
   const clockText=String(match.clock||stats?.live_minute||stats?.liveMinute||stats?.elapsed||stats?.time?.elapsed||stats?.minute||'');
   const clock=clockText.match(/\d{1,3}/);
@@ -3062,12 +3063,12 @@ function evaluateHighActivityObservations(ranked){
   const periodKey=minute<=45?'1H':'2H';
   const score=highActivityScore(match);if(!score)continue;
   const signalStats={
-   totalShots:Number.isFinite(Number(x.totalShots))?Number(x.totalShots):null,
-   totalOnTarget:Number.isFinite(Number(x.totalOnTarget))?Number(x.totalOnTarget):null,
-   recentShots:Number.isFinite(Number(x.recentShots))?Number(x.recentShots):null,
-   recentOnTarget:Number.isFinite(Number(x.recentOnTarget))?Number(x.recentOnTarget):null,
-   recentShotsOnTarget10m:Number.isFinite(Number(x.recentShotsOnTarget10m))?Number(x.recentShotsOnTarget10m):null,
-   intensity:Number.isFinite(Number(x.intensity))?Number(x.intensity):null
+   totalShots:Number.isFinite(Number(rankedItem.totalShots))?Number(rankedItem.totalShots):null,
+   totalOnTarget:Number.isFinite(Number(rankedItem.totalOnTarget))?Number(rankedItem.totalOnTarget):null,
+   recentShots:Number.isFinite(Number(rankedItem.recentShots))?Number(rankedItem.recentShots):null,
+   recentOnTarget:Number.isFinite(Number(rankedItem.recentOnTarget))?Number(rankedItem.recentOnTarget):null,
+   recentShotsOnTarget10m:Number.isFinite(Number(rankedItem.recentShotsOnTarget10m))?Number(rankedItem.recentShotsOnTarget10m):null,
+   intensity:Number.isFinite(Number(rankedItem.intensity))?Number(rankedItem.intensity):null
   };
   // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
