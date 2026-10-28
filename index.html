@@ -2268,7 +2268,40 @@ async function loadScores(){
    return {id:String(e.id||''),leagueCode:l[0],league:(e.leagueName&&!/^(?:διοργάνωση|competition|league)$/i.test(String(e.leagueName).trim()))?e.leagueName:l[1],country:l[2]||'Διεθνής',competitionType:competitionLabel(l[0]),flag:l[3],state,clock,date,dateISO:validKickoff?e.date.slice(0,10):'',kickoffAt:validKickoff?kickoff.getTime():null,home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score,logo:h.team&&h.team.logo||''},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score,logo:a.team&&a.team.logo||''}};
   });
  });
- const freshMatches=results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
+ // Collapse duplicate live fixtures returned by multiple providers, without merging
+ // different scores, youth teams, or distinct kick-off dates.
+ function normalizeDuplicateTeam(value){
+  return String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase()
+   .replace(/\b(?:esporte clube|club deportivo|deportivo|football club|fc|cf|sc|afc|ec|club|football|soccer)\b/g,' ')
+   .replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
+ }
+ function liveMatchSourceRank(match){
+  const knownCompetition=LEAGUES.some(item=>item[0]===match.leagueCode)?1:0;
+  const knownCountry=match.country&&match.country!=='International'?1:0;
+  const minute=Number(String(match.clock||'').match(/^\d{1,3}/)?.[0]);
+  const plausibleClock=Number.isFinite(minute)&&minute<=100?1:0;
+  return knownCompetition*100+knownCountry*10+plausibleClock;
+ }
+ function dedupeLiveFixtures(matches){
+  const output=[],liveIndex=new Map();
+  for(const match of matches){
+   if(match.state!=='in'){output.push(match);continue;}
+   const home=normalizeDuplicateTeam(match.home?.name),away=normalizeDuplicateTeam(match.away?.name);
+   if(!home||!away){output.push(match);continue;}
+   const score=String(match.home?.score??'')+'-'+String(match.away?.score??'');
+   const pair=home+'::'+away+'::'+score;
+   const priorIndex=liveIndex.get(pair);
+   if(priorIndex===undefined){liveIndex.set(pair,output.length);output.push(match);continue;}
+   const prior=output[priorIndex];
+   const bothDates=prior.dateISO&&match.dateISO;
+   if(bothDates&&prior.dateISO!==match.dateISO){output.push(match);continue;}
+   const priorKick=Number(prior.kickoffAt),nextKick=Number(match.kickoffAt);
+   if(Number.isFinite(priorKick)&&Number.isFinite(nextKick)&&Math.abs(priorKick-nextKick)>36*60*60*1000){output.push(match);continue;}
+   if(liveMatchSourceRank(match)>liveMatchSourceRank(prior))output[priorIndex]=match;
+  }
+  return output;
+ }
+ const freshMatches=dedupeLiveFixtures(results.flat().sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3)));
  const feedsSucceeded=successfulFeeds;
  goalFlashMatchIds=[];
  // Never replace a useful live scoreboard with an empty/failed partial response.
