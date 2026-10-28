@@ -2201,7 +2201,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, evidenceKinds, points }
+                  statsAtSignal: { shots, onTarget, onTarget10m, corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
