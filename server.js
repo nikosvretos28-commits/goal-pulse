@@ -1843,6 +1843,19 @@ const server = http.createServer(async (req, res) => {
       }
       let checked = 0, sent = 0, candidates = 0;
       let strongSignals = 0, firstHalfOddsChecks = 0, firstHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
+      // Enforce a persistent maximum of four AI alerts per match per half.
+      // Seed counts from the alert history so restarts do not reset the limit.
+      const alertCountsByMatchHalf = new Map();
+      try {
+        if (await ensureAlertHistoryDb()) {
+          const countRows = await analyticsPool.query(
+            "SELECT event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END AS alert_half, COUNT(*)::int AS alert_count FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND created_at > NOW() - INTERVAL '36 hours' GROUP BY event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END"
+          );
+          for (const row of countRows.rows) alertCountsByMatchHalf.set(String(row.event_id) + ":" + row.alert_half, Number(row.alert_count) || 0);
+        }
+      } catch (countError) {
+        console.warn("AI per-half alert counts could not be loaded; in-memory cap remains active:", countError.message);
+      }
       const parseLiveMinute = value => {
         const raw = String(value ?? "").trim();
         if (!raw || /half|period|not started|finished|full.?time|ημίχρονο|τέλος/i.test(raw)) return NaN;
@@ -2002,11 +2015,16 @@ const server = http.createServer(async (req, res) => {
         // For Over-goal markets, alerts require 10+ total shots and either an agreed SOT signal
         // (3+ SOT in ~5m, 6+ SOT in ~10m, or 10+ cumulative SOT) or xG >=2.50 for one team
         // and >=2.00 for the other. Missing xG is neutral; valid SOT alerts remain possible.
-        // Automatic AI alert windows: first half 1-40, second half 46-88 inclusive.
-        // Exclude 41-45 and 89+; do not change the existing SOT/shot qualification rules.
-        // All alerts still require a valid live score; odds remain optional and are never invented.
+        // Strict AI alert windows: first half 1-40; second half 46-80.
+        // Exclude 41-45, halftime, and 81+; keep the existing SOT/shot rules unchanged.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
-        const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
+        const aiStatus = String(match.statusText || match.status || match.status_text || "").toLowerCase();
+        const atHalfTime = /\\bht\\b|half.?time|halftime|ανάπαυλα/.test(aiStatus);
+        const secondHalfWindow = !atHalfTime && (aiMinute >= 46 || /second half|2nd half|2ο ημίχρονο/.test(aiStatus));
+        const firstHalfWindow = !atHalfTime && !secondHalfWindow && ( /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(aiStatus) || Number.isFinite(aiMinute) );
+        const eligibleMinute = Number.isFinite(aiMinute) &&
+          ((firstHalfWindow && aiMinute >= 1 && aiMinute <= 40) ||
+           (secondHalfWindow && aiMinute >= 46 && aiMinute <= 80));
         const isAiGoal = scoreAvailable && eligibleMinute && shotsOnlyOverEvidence;
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -2088,6 +2106,12 @@ const server = http.createServer(async (req, res) => {
             continue;
           }
           const cooldownKey = id + ":" + level;
+          const alertHalf = oddsPeriod === "second_half" ? "second_half" : "first_half";
+          const perHalfCountKey = id + ":" + alertHalf;
+          if ((alertCountsByMatchHalf.get(perHalfCountKey) || 0) >= 4) {
+            console.info("AI alert skipped: per-half limit reached", JSON.stringify({ eventId: id, half: alertHalf, limit: 4 }));
+            continue;
+          }
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
             const shotsSinceLast = current.shots != null && lastAlert.shots != null ? Number(current.shots) - Number(lastAlert.shots) : 0;
@@ -2127,6 +2151,7 @@ const server = http.createServer(async (req, res) => {
             url: "/"
           });
           if (result.sent > 0) {
+            alertCountsByMatchHalf.set(perHalfCountKey, (alertCountsByMatchHalf.get(perHalfCountKey) || 0) + 1);
             pushScanLastAlert.set(cooldownKey, {
               at: now,
               shots: current.shots,
