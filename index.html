@@ -2288,15 +2288,17 @@ async function loadScores(){
    if(match.state!=='in'){output.push(match);continue;}
    const home=normalizeDuplicateTeam(match.home?.name),away=normalizeDuplicateTeam(match.away?.name);
    if(!home||!away){output.push(match);continue;}
-   const score=String(match.home?.score??'')+'-'+String(match.away?.score??'');
-   const pair=home+'::'+away+'::'+score;
+   // Scores can disagree across providers for the same live fixture; do not
+   // include the score in the duplicate key. Prefer the more reliable league feed.
+   const pair=home+'::'+away;
    const priorIndex=liveIndex.get(pair);
    if(priorIndex===undefined){liveIndex.set(pair,output.length);output.push(match);continue;}
    const prior=output[priorIndex];
    const bothDates=prior.dateISO&&match.dateISO;
    if(bothDates&&prior.dateISO!==match.dateISO){output.push(match);continue;}
    const priorKick=Number(prior.kickoffAt),nextKick=Number(match.kickoffAt);
-   if(Number.isFinite(priorKick)&&Number.isFinite(nextKick)&&Math.abs(priorKick-nextKick)>36*60*60*1000){output.push(match);continue;}
+   // Keep same-team fixtures separate when their kick-off times clearly differ.
+   if(Number.isFinite(priorKick)&&Number.isFinite(nextKick)&&Math.abs(priorKick-nextKick)>6*60*60*1000){output.push(match);continue;}
    if(liveMatchSourceRank(match)>liveMatchSourceRank(prior))output[priorIndex]=match;
   }
   return output;
