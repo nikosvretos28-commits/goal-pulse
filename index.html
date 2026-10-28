@@ -1962,6 +1962,7 @@ async function loadPersistentAlertHistory(){
   showSignalHistory();
   renderTopAiAlerts();
   await persistAlertBatch(signalAlertHistory);
+  void reconcileHistoricalAlertSettlements();
   const status=document.getElementById('signalStatus');if(status)status.textContent+=' · ιστορικό μόνιμης βάσης συγχρονισμένο';
  }catch(error){console.warn('Persistent alert history unavailable:',error.message)}
 }
@@ -3100,6 +3101,110 @@ document.getElementById('highActivityRows')?.addEventListener('click',async even
  renderTopAiAlerts();showSignalHistory();const status=document.getElementById('signalStatus');if(status)status.textContent=saved?'Το VIP ALERT αποθηκεύτηκε στο ιστορικό.':'Το VIP ALERT καταχωρίστηκε στη συσκευή· ο συγχρονισμός με τη βάση θα επαναληφθεί.';
 });
 
+let historicalAlertSettlementPromise=null;
+const historicalAlertScoreboardCache=new Map();
+async function reconcileHistoricalAlertSettlements(){
+ if(historicalAlertSettlementPromise)return historicalAlertSettlementPromise;
+ historicalAlertSettlementPromise=(async()=>{
+  const pending=signalAlertHistory.filter(a=>a&&!a.manualOutcome&&a.eventId&&Number.isFinite(Number(a.createdAt))&&(
+   !['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase())||
+   !a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase())
+  ));
+  if(!pending.length)return;
+  const dates=new Set(pending.map(a=>new Date(Number(a.createdAt)).toISOString().slice(0,10).replace(/-/g,'')));
+  const eventsById=new Map(),now=Date.now();
+  for(const date of dates){
+   let cached=historicalAlertScoreboardCache.get(date);
+   if(!cached||now-cached.at>120000){
+    try{
+     const response=await fetch(ANALYTICS_API+'/api/scoreboard?date='+date+'&_='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(20000)});
+     if(!response.ok)continue;
+     const data=await response.json();
+     cached={at:Date.now(),events:(data.feeds||[]).flatMap(feed=>(feed.events||[]).map(event=>({...event,__goalMatrixLeagueCode:feed.code||''})))};
+     historicalAlertScoreboardCache.set(date,cached);
+    }catch(error){console.warn('[AI/VIP history settlement] Historical scoreboard unavailable:',date,error.message);continue;}
+   }
+   for(const event of cached.events||[])if(event.id!=null)eventsById.set(String(event.id),event);
+  }
+  const normalizeTeam=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+  const changed=new Set();
+  for(const alert of pending){
+   let event=eventsById.get(String(alert.eventId));
+   if(!event){
+    const matches=[];
+    for(const cached of historicalAlertScoreboardCache.values())for(const candidate of cached.events||[]){
+     const teams=candidate.competitions?.[0]?.competitors||[];
+     const home=teams.find(team=>team.homeAway==='home')||teams[0],away=teams.find(team=>team.homeAway==='away')||teams[1];
+     const hn=normalizeTeam(home?.team?.displayName||home?.team?.name||home?.displayName||home?.name);
+     const an=normalizeTeam(away?.team?.displayName||away?.team?.name||away?.displayName||away?.name);
+     if(hn===normalizeTeam(alert.home)&&an===normalizeTeam(alert.away))matches.push(candidate);
+    }
+    if(matches.length===1)event=matches[0];
+   }
+   if(!event)continue;
+   const competition=event.competitions?.[0],teams=competition?.competitors||[];
+   const home=teams.find(team=>team.homeAway==='home')||teams[0],away=teams.find(team=>team.homeAway==='away')||teams[1];
+   const hs=home?.score==null||String(home.score).trim()===''?NaN:Number(home.score);
+   const as=away?.score==null||String(away.score).trim()===''?NaN:Number(away.score);
+   if(!Number.isFinite(hs)||!Number.isFinite(as))continue;
+   const statusTypes=[event.status?.type,competition?.status?.type].filter(Boolean);
+   const state=statusTypes.map(x=>String(x.state||'').toLowerCase()).find(Boolean)||'';
+   const label=statusTypes.map(x=>[x.name,x.detail,x.shortDetail].filter(Boolean).join(' ')).join(' ').toLowerCase();
+   const finished=state==='post'||['finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen'].includes(state)||/\b(?:final|full[ -]?time|finished|ended|ft|after extra time|after penalties|aet)\b/i.test(label);
+   const excluded=/postponed|cancelled|canceled|abandoned|suspended/i.test(label)||['postponed','cancelled','canceled','abandoned','suspended'].includes(state);
+   if(!finished||excluded)continue;
+   const total=hs+as;
+   const firstHalfGoals=side=>{
+    const scores=(side?.linescores||[]).map(x=>Number(x.value??x.displayValue)).filter(Number.isFinite);
+    if(scores.length)return scores[0];
+    const summary=side?.statistics?.find(x=>/half.?time score/i.test(String(x.name||x.abbreviation||'')));
+    const n=Number(summary?.displayValue??summary?.value);
+    return Number.isFinite(n)?n:null;
+   };
+   const h1=firstHalfGoals(home),a1=firstHalfGoals(away);
+   const halfTotal=h1!=null&&a1!=null?h1+a1:null;
+   const market=String(alert.market||'').trim();
+   const isAsian=String(alert.lineType||'')==='asian'||/asian|ασιατικ[όο]/i.test(market);
+   const isFirstHalf=/^1ο ημίχρονο/i.test(market);
+   const isSecondHalf=/^2ο ημίχρονο/i.test(market)||isAsian&&alert.asianPeriod==='second_half';
+   let graded=false,won=false,push=false,scoreScope='full_time',scopedTotal=total;
+   const lineMatch=market.match(/over\s*(\d+(?:[.,]\d+)?)/i);
+   const line=Number(alert.overLine??(lineMatch?lineMatch[1].replace(',','.'):NaN));
+   const isOver=/over/i.test(market)&&Number.isFinite(line);
+   if(isOver){
+    if(isFirstHalf){if(halfTotal==null)continue;scopedTotal=halfTotal;scoreScope='first_half';}
+    else if(isSecondHalf){if(halfTotal==null)continue;scopedTotal=total-halfTotal;scoreScope='second_half';}
+    if(!isAsian&&Math.abs(line-Math.round(line))<1e-8)continue;
+    won=scopedTotal>line;push=isAsian&&Math.abs(scopedTotal-line)<1e-8;graded=true;
+    if(!['won','lost','void','push'].includes(String(alert.betOutcome||'').toLowerCase())||!alert.betFinalScore){
+     alert.betOutcome=won?'won':push?'push':'lost';
+     alert.betSettlementLabel=won?'Κερδισμένο · σκορ '+scopedTotal+' · Over '+line:push?'Επιστροφή · ασιατική γραμμή '+line:'Χαμένο · σκορ '+scopedTotal+' · Over '+line;
+     alert.betFinalScore=String(hs)+'-'+String(as);alert.betMatchFinalScore=alert.betFinalScore;alert.betScoreScope=scoreScope;
+     alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
+     alert.betSettlementRule='historical_final_score_vs_market_line';changed.add(alert);
+    }
+   }else if(market==='πιθανό γκολ'&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
+    const signalTotal=Number(alert.startScore??(Number(alert.scoreAtSignal?.home)+Number(alert.scoreAtSignal?.away)));
+    if(!Number.isFinite(signalTotal))continue;
+    const period=String(alert.periodAtSignal||'first_half');
+    if(period==='first_half'){if(halfTotal==null)continue;won=halfTotal>signalTotal;scoreScope='first_half';}
+    else won=total>signalTotal;
+    alert.outcome=won?'Επιβεβαιώθηκε · σημειώθηκε επιπλέον γκολ πριν από τη λήξη του ημιχρόνου/αγώνα':'Δεν επιβεβαιώθηκε · δεν σημειώθηκε επιπλέον γκολ πριν από τη λήξη του ημιχρόνου/αγώνα';
+    alert.evaluationRule='historical_period_final_score';alert.evaluatedAt=Date.now();alert.recordUpdatedAt=alert.evaluatedAt;changed.add(alert);
+   }
+   if(graded&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
+    alert.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · τελικό σκορ '+hs+'–'+as+' · Over '+line+' επιτεύχθηκε':push?'ΕΠΙΣΤΡΟΦΗ · ασιατική γραμμή '+line:'ΧΑΜΕΝΟ · τελικό σκορ '+hs+'–'+as+' · Over '+line+' δεν επιτεύχθηκε';
+    alert.evaluationRule='historical_period_final_score';alert.evaluatedAt=Date.now();alert.recordUpdatedAt=alert.evaluatedAt;changed.add(alert);
+   }
+  }
+  if(changed.size){
+   try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch(error){console.warn('Could not save reconciled alert history locally:',error)}
+   await persistAlertBatch([...changed]);showSignalHistory();renderTopAiAlerts();
+  }
+ })().finally(()=>{historicalAlertSettlementPromise=null;});
+ return historicalAlertSettlementPromise;
+}
+
 let lastPersistentAlertRefresh=0;
 async function runSignalCheck(){
  if(signalBusy)return;
@@ -3109,7 +3214,8 @@ async function runSignalCheck(){
   const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
-  const liveMatches=allMatches.filter(m=>m.state==='in');
+  void reconcileHistoricalAlertSettlements();
+   const liveMatches=allMatches.filter(m=>m.state==='in');
   setLiveMetricsCache(data.matches||[]);
   if(Date.now()-lastPersistentAlertRefresh>60000){lastPersistentAlertRefresh=Date.now();loadPersistentAlertHistory();}
    updateInsightSummary();
