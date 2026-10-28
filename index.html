@@ -2826,7 +2826,7 @@ async function loadHighActivityHistory(){
    const merged=new Map(highActivityObservations.map(x=>[String(x.observationId),x]));
    observations.forEach(x=>{if(x?.observationId)merged.set(String(x.observationId),x)});
    highActivityObservations=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
-   highActivityHistoryLoaded=true;renderHighActivityAnalyst();
+   highActivityHistoryLoaded=true;renderHighActivityAnalyst();void reconcileHistoricalHighActivityObservations();
   }catch(error){console.warn('Could not load persistent High Activity history:',error.message);const root=document.getElementById('highActivityAnalystPanel');if(root&&!highActivityHistoryLoaded)root.innerHTML='<p>Το μόνιμο ιστορικό HI ACTIVITY δεν είναι διαθέσιμο αυτή τη στιγμή. Θα γίνει νέα προσπάθεια.</p>';}
   finally{highActivityHistoryLoadPromise=null;}
  })();
