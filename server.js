@@ -2019,7 +2019,7 @@ const server = http.createServer(async (req, res) => {
         // Exclude 41-45, halftime, and 81+; keep the existing SOT/shot rules unchanged.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const aiStatus = String(match.statusText || match.status || match.status_text || "").toLowerCase();
-        const atHalfTime = /\\bht\\b|half.?time|halftime|ανάπαυλα/.test(aiStatus);
+        const atHalfTime = /\bht\b|half.?time|halftime|ανάπαυλα/.test(aiStatus);
         const secondHalfWindow = !atHalfTime && (aiMinute >= 46 || /second half|2nd half|2ο ημίχρονο/.test(aiStatus));
         const firstHalfWindow = !atHalfTime && !secondHalfWindow && ( /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(aiStatus) || Number.isFinite(aiMinute) );
         const eligibleMinute = Number.isFinite(aiMinute) &&
