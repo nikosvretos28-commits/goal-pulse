@@ -2857,7 +2857,7 @@ async function reconcileHistoricalHighActivityObservations(){
    ['oppsal u19','frigg u19'],
    ['andorra cf','burgos cf']
   ];
-  const normalizeRepairTeam=value=>String(value||'').normalize('NFD').replace(/\\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const normalizeRepairTeam=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const repairStart=Date.parse('2026-10-26T00:00:00Z'),repairEnd=Date.parse('2026-10-29T00:00:00Z');
   const repairedHistoricalLosses=[];
   for(const item of highActivityObservations){
