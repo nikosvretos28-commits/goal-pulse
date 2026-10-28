@@ -2844,7 +2844,14 @@ async function reconcileHistoricalHighActivityObservations(){
  highActivityHistoricalSettlementPromise=(async()=>{
   const pending=highActivityObservations.filter(item=>item.outcome==='pending'&&item.eventId&&Number.isFinite(Number(item.createdAt)));
   if(!pending.length)return;
-  const dates=new Set(pending.map(item=>goalMatrixHistoryDateKey(item.createdAt)).filter(Boolean));
+  const baseDates=new Set(pending.map(item=>goalMatrixHistoryDateKey(item.createdAt)).filter(Boolean));
+  const dates=new Set(baseDates);
+  // Fixtures may be indexed by the provider under the neighboring calendar day
+  // (UTC vs local kickoff), so check adjacent dates too before leaving a result pending.
+  for(const timestamp of pending.map(item=>Number(item.createdAt))){
+   const d=new Date(timestamp);if(!Number.isFinite(d.getTime()))continue;
+   for(const offset of [-1,1]){const adjacent=new Date(d);adjacent.setDate(adjacent.getDate()+offset);dates.add(goalMatrixHistoryDateKey(adjacent.getTime()));}
+  }
   const now=Date.now(),eventsById=new Map();
   for(const date of dates){
    let cached=highActivityScoreboardCache.get(date);
