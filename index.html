@@ -2779,6 +2779,7 @@ function highActivityScore(match){
  const home=Number(match?.home?.score),away=Number(match?.away?.score);
  return Number.isFinite(home)&&Number.isFinite(away)?{home,away,total:home+away}:null;
 }
+function goalMatrixHistoryDateKey(timestamp){const d=new Date(Number(timestamp));if(!Number.isFinite(d.getTime()))return '';return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');}
 let highActivityHistoryPeriod='all';
 function highActivityPeriodLabel(period){return ({day:'Ημέρα',week:'Εβδομάδα',month:'Μήνας',year:'Έτος',all:'Όλο το ιστορικό'})[period]||'Όλο το ιστορικό';}
 function highActivityInPeriod(timestamp,period){
@@ -2841,7 +2842,7 @@ async function reconcileHistoricalHighActivityObservations(){
  highActivityHistoricalSettlementPromise=(async()=>{
   const pending=highActivityObservations.filter(item=>item.outcome==='pending'&&item.eventId&&Number.isFinite(Number(item.createdAt)));
   if(!pending.length)return;
-  const dates=new Set(pending.map(item=>new Date(Number(item.createdAt)).toISOString().slice(0,10).replace(/-/g,'')));
+  const dates=new Set(pending.map(item=>goalMatrixHistoryDateKey(item.createdAt)).filter(Boolean));
   const now=Date.now(),eventsById=new Map();
   for(const date of dates){
    let cached=highActivityScoreboardCache.get(date);
@@ -3111,7 +3112,7 @@ async function reconcileHistoricalAlertSettlements(){
    !a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase())
   ));
   if(!pending.length)return;
-  const dates=new Set(pending.map(a=>new Date(Number(a.createdAt)).toISOString().slice(0,10).replace(/-/g,'')));
+  const dates=new Set(pending.map(a=>goalMatrixHistoryDateKey(a.createdAt)).filter(Boolean));
   const eventsById=new Map(),now=Date.now();
   for(const date of dates){
    let cached=historicalAlertScoreboardCache.get(date);
