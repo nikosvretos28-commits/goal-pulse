@@ -3243,6 +3243,10 @@ async function runSignalCheck(){
    });
    // xG is an optional supporting signal only: missing xG never blocks an otherwise valid evaluation.
    if(xGAvailable&&xGAdded>=0.15){goalPoints+=Math.min(2,xGAdded*2);reasons.push('αύξηση xG '+xGAdded.toFixed(2));}
+   // Optional full-match reinforcement: count SHOTS ON TARGET only (never off-target shots).
+   // 20+ cumulative SOT adds support, but is not mandatory and cannot trigger an alert alone.
+   const cumulativeMatchShotsOnTarget=values.reduce((sum,v)=>sum+(v.shotsOnTarget==null?0:Math.max(0,Number(v.shotsOnTarget)||0)),0);
+   if(cumulativeMatchShotsOnTarget>=20){goalPoints+=1;pressurePoints+=1;reasons.push('20+ συνολικά σουτ στην εστία στον αγώνα ('+cumulativeMatchShotsOnTarget+') — πρόσθετη ένδειξη, όχι υποχρεωτικό κριτήριο');}
    const sensitivity=Number(signalThreshold.value);
    const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
    const evidenceKinds=[totalShotsAdded>0||shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
