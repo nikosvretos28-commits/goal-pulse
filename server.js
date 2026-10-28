@@ -128,7 +128,7 @@ async function runProtocolAnalyst() {
     const result = await analyticsPool.query(
       "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
     );
-    const records = result.rows.map(row => {
+    const allRecords = result.rows.map(row => {
       const p = row.payload || {};
       const won = p.betOutcome === "won";
       const minute = Number(p.minuteNumber ?? String(p.minute || "").match(/\d{1,3}/)?.[0]);
@@ -141,6 +141,7 @@ async function runProtocolAnalyst() {
         minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
         shots: stats.shots !== null && stats.shots !== undefined && Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
+        onTarget10m: stats.onTarget10m !== null && stats.onTarget10m !== undefined && Number.isFinite(Number(stats.onTarget10m)) ? Number(stats.onTarget10m) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
         dirtySheetSupport: stats.dirtySheetSupport !== null && stats.dirtySheetSupport !== undefined && Number.isFinite(Number(stats.dirtySheetSupport)) ? Number(stats.dirtySheetSupport) : null,
         dirtySheetBand: stats.dirtySheetSample >= 5 && Number.isFinite(Number(stats.dirtySheetHomeRate)) && Number.isFinite(Number(stats.dirtySheetAwayRate))
@@ -148,10 +149,13 @@ async function runProtocolAnalyst() {
           : "missing",
         shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
+        onTarget10mBand: stats.onTarget10m === null || stats.onTarget10m === undefined ? "missing" : Number(stats.onTarget10m) < 3 ? "0–2" : Number(stats.onTarget10m) < 6 ? "3–5" : "6+",
         xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
         createdAt: row.created_at
       };
     });
+    // Research scope only: first half, minutes 1–40. Never mix second-half alerts into this report.
+    const records = allRecords.filter(row => row.phase === "first_half" && Number.isFinite(row.minute) && row.minute >= 1 && row.minute <= 40);
     const summarize = rows => {
       const wins = rows.filter(row => row.won).length;
       return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
@@ -219,11 +223,14 @@ async function runProtocolAnalyst() {
     const report = {
       generatedAt: new Date().toISOString(),
       windowDays: 180,
-      method: "statistical_review_of_settled_server_generated_ai_alerts",
+      method: "statistical_review_of_settled_server_generated_ai_alerts_first_half_minutes_1_to_40",
       automaticRuleChanges: false,
       sample: overall,
       dataQuality: {
         recordsAnalyzed: records.length,
+        allSettledAlertsIn180Days: allRecords.length,
+        researchScope: "first_half_minutes_1_to_40_only",
+        alertsExcludedOutsideResearchScope: allRecords.length - records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
         alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
         alertsWithDirtySheetHistory: records.filter(row => row.dirtySheetBand !== "missing").length,
@@ -235,6 +242,7 @@ async function runProtocolAnalyst() {
       byPeriod: segment("phase", "period"),
       byShots: segment("shotBand", "shotBand"),
       byOnTarget: segment("onTargetBand", "onTargetBand"),
+      byOnTarget10m: segment("onTarget10mBand", "onTarget10mBand"),
       byXG: segment("xGBand", "xGBand"),
       byDirtySheet: segment("dirtySheetBand", "dirtySheetBand"),
       recommendations
