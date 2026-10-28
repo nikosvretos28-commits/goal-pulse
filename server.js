@@ -189,7 +189,7 @@ async function runProtocolAnalyst() {
           detail: "Η ομάδα έχει " + item.successRate + "% σε " + item.settled + " περιπτώσεις, πάνω από τη συνολική επίδοση. Να ελεγχθεί σε ανεξάρτητο ιστορικό δείγμα· δεν αλλάζει αυτόματα το live πρωτόκολλο."
         });
       }
-      for (const [field, label] of [["shotBand", "τελικές στο 5λεπτο"], ["onTargetBand", "σουτ στην εστία στο 5λεπτο"], ["xGBand", "μεταβολή xG στο 5λεπτο"], ["dirtySheetBand", "ιστορικό ομάδων που δέχονται γκολ"]]) {
+      for (const [field, label] of [["shotBand", "τελικές στο 5λεπτο"], ["onTargetBand", "σουτ στην εστία στο 5λεπτο"], ["onTarget10mBand", "σουτ στην εστία στο 10λεπτο"], ["xGBand", "μεταβολή xG στο 5λεπτο"], ["dirtySheetBand", "ιστορικό ομάδων που δέχονται γκολ"]]) {
         for (const item of segment(field, field)) {
           if (item.settled < 20 || item.successRate == null || item[field] === "missing") continue;
           const difference = item.successRate - overall.successRate;
