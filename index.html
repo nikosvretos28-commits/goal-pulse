@@ -1112,6 +1112,20 @@ button:disabled{cursor:not-allowed;filter:saturate(.65)}
 
 
  
+
+/* HI ACTIVITY team analytics: scoped to the separate historical analytics tool. */
+.ha-team-analytics{margin:14px 0;padding:14px;border:1px solid rgba(85,199,232,.24);border-radius:12px;background:rgba(7,22,34,.38)}
+.ha-team-analytics h3{margin:0 0 8px;font-size:1rem}
+.ha-team-table-wrap{width:100%;overflow-x:auto}
+.ha-team-table{width:100%;border-collapse:collapse;min-width:260px}
+.ha-team-table th,.ha-team-table td{padding:9px 8px;border-bottom:1px solid rgba(150,180,200,.16);text-align:left}
+.ha-team-table th{font-size:.78rem;color:var(--muted,#a9bac7);font-weight:700}
+.ha-team-table td:last-child,.ha-team-table th:last-child{text-align:right}
+.ha-team-insufficient-list{display:grid;gap:6px;margin-top:8px}
+.ha-team-insufficient-list span{font-size:.86rem;padding:6px 8px;border-radius:8px;background:rgba(120,140,155,.08)}
+.ha-team-history-inline{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding:6px 10px 10px;font-size:.78rem;color:var(--muted,#a9bac7)}
+.ha-team-sample-rate{font-weight:800;color:#66d6a6}
+.ha-team-sample-insufficient{font-weight:600;color:#a9bac7}
 </style>
 
 <style id="goalmatrix-premium-finish">
@@ -2839,6 +2853,33 @@ function highActivityInPeriod(timestamp,period){
  if(period==='year')return d.getFullYear()===now.getFullYear();
  return true;
 }
+function highActivityTeamAnalytics(){
+ const byTeam=new Map(),seen=new Set();
+ const normalize=value=>String(value||'').normalize('NFD').replace(/\\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^a-z0-9]+/g,' ').trim();
+ for(const item of highActivityObservations){
+  const id=String(item?.observationId||'');
+  if(!id||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
+  seen.add(id);
+  for(const rawName of [item.home,item.away]){
+   const name=String(rawName||'').trim(),key=normalize(name);
+   if(!key)continue;
+   if(!byTeam.has(key))byTeam.set(key,{key,name,settled:0,wins:0,losses:0});
+   const row=byTeam.get(key);row.settled++;if(item.outcome==='won')row.wins++;else row.losses++;
+  }
+ }
+ return [...byTeam.values()].map(row=>({...row,rate:Math.round(row.wins/row.settled*100)}))
+  .sort((a,b)=>(b.settled>=4?1:0)-(a.settled>=4?1:0)||b.rate-a.rate||b.settled-a.settled||a.name.localeCompare(b.name,'el'));
+}
+function highActivityTeamMetric(name){
+ const normalize=value=>String(value||'').normalize('NFD').replace(/\\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^a-z0-9]+/g,' ').trim();
+ const key=normalize(name),row=highActivityTeamAnalytics().find(x=>x.key===key);
+ if(!row||row.settled<4)return '<span class="ha-team-sample-insufficient">Ανεπαρκές δείγμα'+(row?' · '+row.settled+'/4':'')+'</span>';
+ return '<span class="ha-team-sample-rate">'+row.rate+'% · '+row.wins+'/'+row.settled+'</span>';
+}
+function renderHighActivityTeamMetricsForMatch(match){
+ const home=String(match?.home?.name||''),away=String(match?.away?.name||'');
+ return '<div class="ha-team-history-inline"><span>'+String(home).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+': '+highActivityTeamMetric(home)+'</span><span>'+String(away).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+': '+highActivityTeamMetric(away)+'</span></div>';
+}
 function renderHighActivityAnalyst(){
  const root=document.getElementById('highActivityAnalystPanel');if(!root)return;
  const allRecords=highActivityObservations.slice().sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
@@ -2848,6 +2889,9 @@ function renderHighActivityAnalyst(){
  const rate=settled.length?Math.round(wins/settled.length*100):null;
  const pending=records.filter(x=>x.outcome==='pending').length;
  const recent=records;
+ const teams=highActivityTeamAnalytics();
+ const eligibleTeams=teams.filter(x=>x.settled>=4);
+ const insufficientTeams=teams.filter(x=>x.settled<4);
  let analysis='Δεν υπάρχει ακόμη επαρκές δείγμα. Οι ενδείξεις θα αξιολογούνται μέχρι τη λήξη του αγώνα.';
  if(settled.length>=5){
   if(rate>=70)analysis='Το δείγμα δείχνει υψηλή συχνότητα γκολ μετά τις ενδείξεις HI ACTIVITY. Συνέχισε τη συλλογή αποτελεσμάτων πριν εξεταστεί οποιαδήποτε αλλαγή.';
@@ -2855,7 +2899,9 @@ function renderHighActivityAnalyst(){
   else analysis='Το ποσοστό είναι χαμηλό στο τρέχον δείγμα. Χρειάζεται έλεγχος ανά ημίχρονο, λεπτό και αρχικό σκορ, χωρίς αυτόματη αλλαγή κανόνων.';
  }
  const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- root.innerHTML='<div class="history-period-filter" role="group" aria-label="Περίοδος ιστορικού">'+[['day','Ημέρα'],['week','Εβδομάδα'],['month','Μήνας'],['year','Έτος'],['all','Όλο το ιστορικό']].map(([key,label])=>'<button type="button" class="mini-btn '+(highActivityHistoryPeriod===key?'active':'')+'" data-ha-period="'+key+'" aria-pressed="'+(highActivityHistoryPeriod===key?'true':'false')+'">'+label+'</button>').join('')+'</div><p class="subtle">Εμφάνιση: '+highActivityPeriodLabel(highActivityHistoryPeriod)+' · Αποθηκευμένες συνολικά: '+allRecords.length+' · Δεν διαγράφεται καμία εγγραφή.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details open><summary>Ξεχωριστό ιστορικό HI ACTIVITY ('+records.length+' από '+allRecords.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
+ const leaderboard=eligibleTeams.length?'<div class="ha-team-table-wrap"><table class="ha-team-table"><thead><tr><th>Ομάδα</th><th>Επιτυχίες</th><th>Ποσοστό</th></tr></thead><tbody>'+eligibleTeams.slice(0,30).map(x=>'<tr><td>'+escHa(x.name)+'</td><td>'+x.wins+'/'+x.settled+'</td><td><strong>'+x.rate+'%</strong></td></tr>').join('')+'</tbody></table></div>':'<p class="subtle">Δεν υπάρχει ακόμη ομάδα με 4 ολοκληρωμένες καταγραφές HI ACTIVITY.</p>';
+ const insufficient=insufficientTeams.length?'<details><summary>Ομάδες με ανεπαρκές δείγμα ('+insufficientTeams.length+')</summary><div class="ha-team-insufficient-list">'+insufficientTeams.map(x=>'<span>'+escHa(x.name)+' · Ανεπαρκές δείγμα ('+x.settled+'/4)</span>').join('')+'</div></details>':'';
+ root.innerHTML='<div class="history-period-filter" role="group" aria-label="Περίοδος ιστορικού">'+[['day','Ημέρα'],['week','Εβδομάδα'],['month','Μήνας'],['year','Έτος'],['all','Όλο το ιστορικό']].map(([key,label])=>'<button type="button" class="mini-btn '+(highActivityHistoryPeriod===key?'active':'')+'" data-ha-period="'+key+'" aria-pressed="'+(highActivityHistoryPeriod===key?'true':'false')+'">'+label+'</button>').join('')+'</div><p class="subtle">Εμφάνιση: '+highActivityPeriodLabel(highActivityHistoryPeriod)+' · Αποθηκευμένες συνολικά: '+allRecords.length+' · Δεν διαγράφεται καμία εγγραφή.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><section class="ha-team-analytics"><h3>📊 HI ACTIVITY · ΣΤΑΤΙΣΤΙΚΑ ΑΝΑ ΟΜΑΔΑ</h3><p class="subtle">Κάθε ομάδα υπολογίζεται ξεχωριστά από όλες τις μοναδικές, ολοκληρωμένες καταγραφές του ιστορικού. Εκκρεμείς περιπτώσεις δεν μετρούν. Ελάχιστο δείγμα: 4.</p>'+leaderboard+insufficient+'<p class="subtle">Το ποσοστό είναι ιστορική συχνότητα, όχι εγγυημένη πιθανότητα για τον επόμενο αγώνα.</p></section><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details open><summary>Ξεχωριστό ιστορικό HI ACTIVITY ('+records.length+' από '+allRecords.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
 }
 async function persistHighActivityObservations(records){
  if(!records?.length)return;
@@ -3013,10 +3059,23 @@ function evaluateHighActivityObservations(ranked){
   const minute=clock?Number(clock[0]):null;
   if(!Number.isFinite(minute))continue;
   const half=minute<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ';
-  const observationId=eventId+(minute<=45?':1H':':2H');
-  if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
+  const periodKey=minute<=45?'1H':'2H';
   const score=highActivityScore(match);if(!score)continue;
-  const observation={observationId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,outcome:'pending'};
+  const signalStats={
+   totalShots:Number.isFinite(Number(x.totalShots))?Number(x.totalShots):null,
+   totalOnTarget:Number.isFinite(Number(x.totalOnTarget))?Number(x.totalOnTarget):null,
+   recentShots:Number.isFinite(Number(x.recentShots))?Number(x.recentShots):null,
+   recentOnTarget:Number.isFinite(Number(x.recentOnTarget))?Number(x.recentOnTarget):null,
+   recentShotsOnTarget10m:Number.isFinite(Number(x.recentShotsOnTarget10m))?Number(x.recentShotsOnTarget10m):null,
+   intensity:Number.isFinite(Number(x.intensity))?Number(x.intensity):null
+  };
+  // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
+  // of the exact same signal deduplicate, while a genuinely new signal can be counted.
+  const observationId=[eventId,periodKey,minute,score.home+'-'+score.away,
+   signalStats.totalOnTarget??'na',signalStats.recentOnTarget??'na',
+   signalStats.totalShots??'na',signalStats.recentShots??'na'].join(':');
+  if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
+  const observation={observationId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,signalStats,outcome:'pending'};
   highActivityObservations.push(observation);changed.push(observation);
  }
  for(const item of highActivityObservations){
@@ -3173,7 +3232,7 @@ function renderHighActivityMatches(){
  const topTen=ranked.slice(0,10);
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
-  ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+  ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν το HI ACTIVITY: 2+ SOT/5′, 4+ SOT/10′, 8+ συνολικά SOT μίας ομάδας ή xG ≥2,00 και για τις δύο ομάδες, στα λεπτά 1′–40′.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
