@@ -3106,7 +3106,7 @@ const historicalAlertScoreboardCache=new Map();
 async function reconcileHistoricalAlertSettlements(){
  if(historicalAlertSettlementPromise)return historicalAlertSettlementPromise;
  historicalAlertSettlementPromise=(async()=>{
-  const pending=signalAlertHistory.filter(a=>a&&!a.manualOutcome&&a.eventId&&Number.isFinite(Number(a.createdAt))&&(
+  const pending=signalAlertHistory.filter(a=>a&&a.eventId&&Number.isFinite(Number(a.createdAt))&&(
    !['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase())||
    !a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase())
   ));
@@ -3183,13 +3183,14 @@ async function reconcileHistoricalAlertSettlements(){
      alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
      alert.betSettlementRule='historical_final_score_vs_market_line';changed.add(alert);
     }
-   }else if(market==='πιθανό γκολ'&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
+   }else if(market==='πιθανό γκολ'&&!alert.manualOutcome&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
     const signalTotal=Number(alert.startScore??(Number(alert.scoreAtSignal?.home)+Number(alert.scoreAtSignal?.away)));
     if(!Number.isFinite(signalTotal))continue;
     const period=String(alert.periodAtSignal||'first_half');
     if(period==='first_half'){if(halfTotal==null)continue;won=halfTotal>signalTotal;scoreScope='first_half';}
     else won=total>signalTotal;
     alert.outcome=won?'Επιβεβαιώθηκε · σημειώθηκε επιπλέον γκολ πριν από τη λήξη του ημιχρόνου/αγώνα':'Δεν επιβεβαιώθηκε · δεν σημειώθηκε επιπλέον γκολ πριν από τη λήξη του ημιχρόνου/αγώνα';
+    alert.betOutcome=won?'won':'lost';alert.betSettlementLabel=won?'Κερδισμένο · επιτεύχθηκε επιπλέον γκολ':'Χαμένο · δεν επιτεύχθηκε επιπλέον γκολ';alert.betFinalScore=String(hs)+'-'+String(as);alert.betMatchFinalScore=alert.betFinalScore;alert.betScoreScope=scoreScope;alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
     alert.evaluationRule='historical_period_final_score';alert.evaluatedAt=Date.now();alert.recordUpdatedAt=alert.evaluatedAt;changed.add(alert);
    }
    if(graded&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
