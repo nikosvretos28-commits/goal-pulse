@@ -2215,7 +2215,7 @@ async function loadScores(){
   const types=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
   const raw=types.map(t=>String(t.state||'').toLowerCase());
   const labels=[...types.map(t=>[t.name,t.description,t.shortDetail,t.detail].filter(Boolean).join(' ')),e.status&&e.status.displayClock,comp.status&&comp.status.displayClock].filter(Boolean).join(' ').toLowerCase();
-  return raw.some(v=>['in','live','in_progress','in-play'].includes(v))||/\\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\\b/.test(labels);
+  return raw.some(v=>['in','live','in_progress','in-play'].includes(v))||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(labels);
  }));
  if(!hasProviderLive(scoreboardJson)){
   const baseDate=new Date(String(selectedMatchDate)+'T12:00:00Z');
@@ -2234,7 +2234,7 @@ async function loadScores(){
       const liveEvents=(feed.events||[]).filter(e=>{
        const comp=(e.competitions||[])[0]||{}, types=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
        const labels=[...types.map(t=>[t.state,t.name,t.description,t.shortDetail,t.detail].filter(Boolean).join(' ')),e.status&&e.status.displayClock,comp.status&&comp.status.displayClock].filter(Boolean).join(' ').toLowerCase();
-       const isLive=types.some(t=>['in','live','in_progress','in-play'].includes(String(t.state||'').toLowerCase()))||/\\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\\b/.test(labels);
+       const isLive=types.some(t=>['in','live','in_progress','in-play'].includes(String(t.state||'').toLowerCase()))||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(labels);
        const id=String(e.id||'');
        if(!isLive||!id||seenLiveIds.has(id))return false;
        seenLiveIds.add(id);return true;
