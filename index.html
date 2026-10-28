@@ -1112,55 +1112,6 @@ button:disabled{cursor:not-allowed;filter:saturate(.65)}
 
 
  
-/* GoalMatrix score alignment: pin the score to the exact horizontal midpoint of each match row */
-.teams{
-  position:relative!important;
-  display:grid!important;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
-  align-items:center!important;
-  gap:6px!important;
-  min-height:34px;
-}
-.teams>.team:first-child{
-  grid-column:1!important;
-  min-width:0;
-  padding-right:30px;
-  justify-self:stretch;
-  overflow:hidden;
-}
-.teams>.team.away{
-  grid-column:2!important;
-  min-width:0;
-  padding-left:30px;
-  justify-self:stretch;
-  overflow:hidden;
-}
-.teams>.match-score{
-  position:absolute!important;
-  left:50%!important;
-  top:50%!important;
-  transform:translate(-50%,-50%)!important;
-  z-index:3;
-  width:max-content;
-  max-width:72px;
-  margin:0!important;
-  text-align:center!important;
-  white-space:nowrap;
-  pointer-events:none;
-  font-variant-numeric:tabular-nums;
-}
-.teams>.team:first-child,
-.teams>.team.away{
-  overflow-wrap:normal;
-  word-break:normal;
-}
-@media(max-width:560px){
-  .teams{gap:4px!important;min-height:32px}
-  .teams>.team:first-child{padding-right:25px}
-  .teams>.team.away{padding-left:25px}
-  .teams>.match-score{max-width:64px;font-size:18px}
-}
-
 </style>
 
 <style id="goalmatrix-premium-finish">
