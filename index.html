@@ -4283,5 +4283,30 @@ button:not(:disabled){transition:filter .18s ease,box-shadow .18s ease}
 button:not(:disabled):hover{filter:brightness(1.06)}
 @media(prefers-reduced-motion:reduce){nav a,.gp-section-button,button:not(:disabled){transition:none}.gp-section-button:hover{transform:none}}
 
+
+/* GoalMatrix refinement pass 2 — CSS-only premium finish */
+:root{--gm-mint:#43e0a2;--gm-ice:#55c7e8;--gm-hairline:rgba(130,190,218,.18)}
+::selection{background:rgba(85,199,232,.28);color:#fff}
+body{background-color:var(--bg);background-attachment:fixed}
+.wrap{isolation:isolate}
+header{position:relative}
+header:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(67,224,162,.25),rgba(85,199,232,.32),transparent);pointer-events:none}
+.brand{transition:opacity .18s ease}
+.brand:hover{opacity:.94}
+.brand svg{transition:filter .22s ease,transform .22s ease}
+.brand:hover svg{transform:translateY(-1px);filter:drop-shadow(0 0 12px rgba(67,224,162,.3)) drop-shadow(0 0 24px rgba(85,199,232,.17))}
+.brand-tagline{letter-spacing:1.8px}
+nav a{position:relative}
+nav a:not(:first-child):after{content:"";position:absolute;left:0;right:100%;bottom:3px;height:2px;background:var(--cyan);transition:right .18s ease}
+nav a:not(:first-child):hover:after{right:0}
+.panel-head{position:relative}
+.panel-head h2{letter-spacing:.15px}
+.gp-section-button{position:relative;overflow:hidden}
+.gp-section-button:after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.035) 48%,transparent 72%);transform:translateX(-110%);transition:transform .45s ease;pointer-events:none}
+.gp-section-button:hover:after{transform:translateX(110%)}
+.live-badge{box-shadow:0 0 18px rgba(67,224,162,.08)}
+@media(max-width:600px){header{gap:10px}.brand{gap:8px;min-width:0}.brand svg{width:46px;height:46px}.brand-tagline{font-size:7px;letter-spacing:1.25px}}
+@media(prefers-reduced-motion:reduce){.brand,.brand svg,nav a:not(:first-child):after,.gp-section-button:after{transition:none}.brand:hover svg{transform:none}}
+
 </style>
 </body></html>
