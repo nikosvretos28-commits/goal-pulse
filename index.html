@@ -2791,12 +2791,16 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  // Ignore invalid negative/placeholder clocks (for example "-100") instead of displaying them as match minutes.
  const rawClockLooksNumeric=/^-\s*\d{1,3}(?:\s*\+\s*\d{1,2})?\s*['′’]?$/.test(rawClock);
  if(m.state==='in'&&!normalizedLiveClock&&!isHalfTime&&Number.isFinite(Number(m.kickoffAt))&&Number(m.kickoffAt)<=Date.now()){
+  // kickoffAt is the scheduled start, not the confirmed actual kickoff.
+  // Never fabricate a precise 91′–130′ clock from it; after 90′ show added time
+  // until the live provider supplies a reliable match minute.
   const elapsed=Math.floor((Date.now()-Number(m.kickoffAt))/60000);
-  const estimated=Math.max(1,Math.min(130,elapsed));
-  normalizedLiveClock=String(estimated);
+  const estimated=Math.max(1,elapsed);
+  normalizedLiveClock=estimated<90?String(estimated):'90+';
  }
  const safeRawClock=rawClockLooksNumeric?'LIVE':rawClock;
- const liveClock=m.state==='in'?(isHalfTime?'HT':(normalizedLiveClock?normalizedLiveClock+'′':(safeRawClock||'LIVE'))):(m.state==='post'?'FT':(rawClock||'LIVE'));
+ const displayClock=normalizedLiveClock.endsWith('+')?'90′+':(normalizedLiveClock?normalizedLiveClock+'′':(safeRawClock||'LIVE'));
+ const liveClock=m.state==='in'?(isHalfTime?'HT':displayClock):(m.state==='post'?'FT':(rawClock||'LIVE'));
   return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><div class="live-row-league">'+esc([String(m.country||m.countryName||m.region||m.area||'').trim(),matchLeague].filter(Boolean).join(' · ')||String(m.leagueCode||m.competitionCode||m.leagueId||m.tournamentCode||'').replace(/[._-]/g,' ').toUpperCase()||String(m.country||m.countryName||m.region||m.area||'').trim()||'ΔΙΟΡΓΑΝΩΣΗ')+'</div><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="minute">'+esc(liveClock)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span></button>'+alertHtml+secondaryActivityHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
 }
 let highActivityObservations = [];
