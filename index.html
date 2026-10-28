@@ -2206,6 +2206,48 @@ async function loadScores(){
    if(attempt<2)await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
   }
  }
+
+ // Midnight/time-zone safety net: some live fixtures are indexed by the provider
+ // under the adjacent UTC date. If the selected date has no live events, check
+ // the neighboring dates and merge ONLY events whose provider status is live.
+ const hasProviderLive = payload => (payload?.feeds||[]).some(feed => (feed.events||[]).some(e => {
+  const comp=(e.competitions||[])[0]||{};
+  const types=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
+  const raw=types.map(t=>String(t.state||'').toLowerCase());
+  const labels=[...types.map(t=>[t.name,t.description,t.shortDetail,t.detail].filter(Boolean).join(' ')),e.status&&e.status.displayClock,comp.status&&comp.status.displayClock].filter(Boolean).join(' ').toLowerCase();
+  return raw.some(v=>['in','live','in_progress','in-play'].includes(v))||/\\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\\b/.test(labels);
+ }));
+ if(!hasProviderLive(scoreboardJson)){
+  const baseDate=new Date(String(selectedMatchDate)+'T12:00:00Z');
+  if(!Number.isNaN(baseDate.getTime())){
+   const seenLiveIds=new Set((scoreboardJson.feeds||[]).flatMap(feed=>(feed.events||[]).filter(e=>{
+    const comp=(e.competitions||[])[0]||{}, types=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
+    return types.some(t=>['in','live','in_progress','in-play'].includes(String(t.state||'').toLowerCase()));
+   }).map(e=>String(e.id||''))));
+   for(const offset of [-1,1]){
+    const adjacent=new Date(baseDate.getTime()+offset*86400000).toISOString().slice(0,10).replace(/-/g,'');
+    try{
+     const r=await fetch(ANALYTICS_API+'/api/scoreboard?date='+adjacent+'&_='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(12000)});
+     if(!r.ok)continue;
+     const adjacentPayload=await r.json();
+     for(const feed of adjacentPayload.feeds||[]){
+      const liveEvents=(feed.events||[]).filter(e=>{
+       const comp=(e.competitions||[])[0]||{}, types=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
+       const labels=[...types.map(t=>[t.state,t.name,t.description,t.shortDetail,t.detail].filter(Boolean).join(' ')),e.status&&e.status.displayClock,comp.status&&comp.status.displayClock].filter(Boolean).join(' ').toLowerCase();
+       const isLive=types.some(t=>['in','live','in_progress','in-play'].includes(String(t.state||'').toLowerCase()))||/\\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\\b/.test(labels);
+       const id=String(e.id||'');
+       if(!isLive||!id||seenLiveIds.has(id))return false;
+       seenLiveIds.add(id);return true;
+      });
+      if(!liveEvents.length)continue;
+      let target=(scoreboardJson.feeds||[]).find(item=>item.code===feed.code);
+      if(!target){target={code:feed.code,events:[],ok:feed.ok!==false};scoreboardJson.feeds.push(target);}
+      target.events=[...(target.events||[]),...liveEvents];
+     }
+    }catch(adjacentError){console.warn('[live scoreboard] Adjacent-date fallback unavailable:',adjacent,adjacentError.message);}
+   }
+  }
+ }
  successfulFeeds=Number(scoreboardJson.successfulFeeds)||0;
  const results=(scoreboardJson.feeds||[]).map(feed=>{
   // Keep real matches visible even when the provider adds an unlisted competition.
