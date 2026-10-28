@@ -2960,10 +2960,16 @@ async function reconcileHistoricalHighActivityObservations(){
     item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal';changed.push(item);continue;
    }
    const statusTypes=[event.status?.type,competition?.status?.type].filter(Boolean);
-   const state=statusTypes.map(x=>String(x.state||'').toLowerCase()).find(Boolean)||'';
+   // A provider can expose event-level and competition-level status simultaneously.
+   // Do not trust only the first non-empty state: it may be stale ("in") while the
+   // competition status already confirms full time. Wins settle from the score delta,
+   // so this bug disproportionately leaves losses pending.
+   const states=statusTypes.map(x=>String(x.state||'').trim().toLowerCase()).filter(Boolean);
    const label=statusTypes.map(x=>[x.name,x.detail,x.shortDetail].filter(Boolean).join(' ')).join(' ').toLowerCase();
-   const finished=state==='post'||['finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen'].includes(state)||/\b(?:final|full[ -]?time|finished|ended|ft|after extra time|after penalties|aet)\b/i.test(label);
-   const excluded=/postponed|cancelled|canceled|abandoned|suspended/i.test(label)||['postponed','cancelled','canceled','abandoned','suspended'].includes(state);
+   const finishedStates=['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen'];
+   const excludedStates=['postponed','cancelled','canceled','abandoned','suspended'];
+   const finished=states.some(state=>finishedStates.includes(state))||/\b(?:final|full[ -]?time|finished|ended|ft|after extra time|after penalties|aet)\b/i.test(label);
+   const excluded=states.some(state=>excludedStates.includes(state))||/postponed|cancelled|canceled|abandoned|suspended/i.test(label);
    if(finished&&!excluded){
     item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
    }
