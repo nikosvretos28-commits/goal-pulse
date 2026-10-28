@@ -1876,7 +1876,14 @@ header nav a:hover,header nav a:focus-visible{color:var(--gm-premium-cyan)}
 <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst" id="highActivityHistoryToggle">📊 ΙΣΤΟΡΙΚΟ HI ACTIVITY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button>
+ <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
 </div>
+
+<section class="top-ai-alerts gp-matrix-analytics-panel" id="matrixAnalytics" hidden aria-labelledby="matrixAnalyticsTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="matrixAnalyticsTitle">📊 MATRIX ANALYTICS</h2><p>Ιστορική συχνότητα επιτυχίας ανά ομάδα, ξεχωριστά για κάθε κατηγορία σήματος.</p></div></div>
+ <div id="matrixAnalyticsContent" aria-live="polite"><p>Φόρτωση στατιστικών…</p></div>
+ <p class="top-ai-alert-privacy">Μετρούν μόνο μοναδικές, ολοκληρωμένες περιπτώσεις. Το ποσοστό είναι ιστορική συχνότητα και δεν εγγυάται μελλοντικό αποτέλεσμα.</p>
+</section>
 <div class="notification-optin notification-optin-global" aria-label="Ρυθμίσεις ειδοποιήσεων">
  <strong>🔔 Ειδοποιήσεις GoalMatrix</strong>
  <div class="notification-optin-row"><button type="button" id="enablePushNotifications" class="login">🔔 Ενεργοποίηση AI</button><button type="button" id="disablePushNotifications" class="login">🔕 Απενεργοποίηση AI</button><span id="pushNotificationStatus" class="subtle">AI ειδοποιήσεις</span></div>
@@ -2876,6 +2883,48 @@ function highActivityTeamMetric(name){
  if(!row||row.settled<4)return '<span class="ha-team-sample-insufficient">Ανεπαρκές δείγμα'+(row?' · '+row.settled+'/4':'')+'</span>';
  return '<span class="ha-team-sample-rate">'+row.rate+'% · '+row.wins+'/'+row.settled+'</span>';
 }
+
+function matrixAnalyticsNormalizeTeam(value){
+ return String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+}
+function matrixAnalyticsRowsForAlerts(level){
+ const byTeam=new Map(),seen=new Set();
+ for(const alert of (Array.isArray(signalAlertHistory)?signalAlertHistory:[])){
+  if(!alert||!Number.isFinite(Number(alert.createdAt)))continue;
+  const isVip=String(alert.level||'AI').toUpperCase()==='VIP';
+  if((level==='VIP')!==isVip)continue;
+  const outcome=String(alert.betOutcome||'').toLowerCase();
+  if(!['won','lost'].includes(outcome))continue;
+  const id=String(alert.alertId||alertHistoryKey(alert));
+  if(!id||seen.has(id))continue;
+  seen.add(id);
+  for(const rawName of [alert.home,alert.away]){
+   const name=String(rawName||'').trim(),key=matrixAnalyticsNormalizeTeam(name);
+   if(!key)continue;
+   if(!byTeam.has(key))byTeam.set(key,{key,name,settled:0,wins:0,losses:0});
+   const row=byTeam.get(key);row.settled++;if(outcome==='won')row.wins++;else row.losses++;
+  }
+ }
+ return [...byTeam.values()].map(row=>({...row,rate:Math.round(row.wins/row.settled*100)}))
+  .sort((a,b)=>(b.settled>=4?1:0)-(a.settled>=4?1:0)||b.rate-a.rate||b.settled-a.settled||a.name.localeCompare(b.name,'el'));
+}
+function matrixAnalyticsTeamSection(title,rows,description){
+ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const qualified=rows.filter(row=>row.settled>=4),small=rows.filter(row=>row.settled<4);
+ const table=qualified.length?'<div class="ha-team-table-wrap"><table class="ha-team-table"><thead><tr><th>Ομάδα</th><th>Επιτυχίες</th><th>Ποσοστό</th><th>Δείγμα</th></tr></thead><tbody>'+qualified.slice(0,50).map(row=>'<tr><td>'+esc(row.name)+'</td><td>'+row.wins+'/'+row.settled+'</td><td><strong>'+row.rate+'%</strong></td><td>'+row.settled+'</td></tr>').join('')+'</tbody></table></div>':'<p class="subtle">Δεν υπάρχουν ακόμη ομάδες με τουλάχιστον 4 ολοκληρωμένες περιπτώσεις.</p>';
+ const insufficient=small.length?'<details><summary>Ανεπαρκές δείγμα ('+small.length+' ομάδες)</summary><div class="ha-team-insufficient-list">'+small.map(row=>'<span>'+esc(row.name)+' · '+row.wins+'/'+row.settled+' · Ανεπαρκές δείγμα</span>').join('')+'</div></details>':'';
+ return '<section class="ha-team-analytics gm-matrix-category"><h3>'+title+'</h3><p class="subtle">'+description+' · Μετράμε όλες τις μοναδικές ολοκληρωμένες εγγραφές. Εκκρεμείς, void και push εξαιρούνται. Ελάχιστο δείγμα: 4.</p>'+table+insufficient+'</section>';
+}
+function renderMatrixAnalytics(){
+ const root=document.getElementById('matrixAnalyticsContent');if(!root)return;
+ const ha=highActivityTeamAnalytics();
+ const ai=matrixAnalyticsRowsForAlerts('AI');
+ const vip=matrixAnalyticsRowsForAlerts('VIP');
+ root.innerHTML=
+  matrixAnalyticsTeamSection('⚡ HI ACTIVITY · ΣΤΑΤΙΣΤΙΚΑ ΑΝΑ ΟΜΑΔΑ',ha,'Επιτυχία = τουλάχιστον ένα επιπλέον γκολ μετά την καταγραφή και πριν από την κανονική λήξη')+
+  matrixAnalyticsTeamSection('🧠 AI ALERTS · ΣΤΑΤΙΣΤΙΚΑ ΑΝΑ ΟΜΑΔΑ',ai,'Επιτυχία = διακανονισμένο betOutcome won από το ιστορικό AI')+
+  matrixAnalyticsTeamSection('◆ VIP ALERTS · ΣΤΑΤΙΣΤΙΚΑ ΑΝΑ ΟΜΑΔΑ',vip,'Επιτυχία = διακανονισμένο betOutcome won από το ιστορικό VIP');
+}
 function renderHighActivityTeamMetricsForMatch(match){
  const home=String(match?.home?.name||''),away=String(match?.away?.name||'');
  return '<div class="ha-team-history-inline"><span>'+String(home).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+': '+highActivityTeamMetric(home)+'</span><span>'+String(away).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+': '+highActivityTeamMetric(away)+'</span></div>';
@@ -2901,7 +2950,7 @@ function renderHighActivityAnalyst(){
  const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const leaderboard=eligibleTeams.length?'<div class="ha-team-table-wrap"><table class="ha-team-table"><thead><tr><th>Ομάδα</th><th>Επιτυχίες</th><th>Ποσοστό</th></tr></thead><tbody>'+eligibleTeams.slice(0,30).map(x=>'<tr><td>'+escHa(x.name)+'</td><td>'+x.wins+'/'+x.settled+'</td><td><strong>'+x.rate+'%</strong></td></tr>').join('')+'</tbody></table></div>':'<p class="subtle">Δεν υπάρχει ακόμη ομάδα με 4 ολοκληρωμένες καταγραφές HI ACTIVITY.</p>';
  const insufficient=insufficientTeams.length?'<details><summary>Ομάδες με ανεπαρκές δείγμα ('+insufficientTeams.length+')</summary><div class="ha-team-insufficient-list">'+insufficientTeams.map(x=>'<span>'+escHa(x.name)+' · Ανεπαρκές δείγμα ('+x.settled+'/4)</span>').join('')+'</div></details>':'';
- root.innerHTML='<div class="history-period-filter" role="group" aria-label="Περίοδος ιστορικού">'+[['day','Ημέρα'],['week','Εβδομάδα'],['month','Μήνας'],['year','Έτος'],['all','Όλο το ιστορικό']].map(([key,label])=>'<button type="button" class="mini-btn '+(highActivityHistoryPeriod===key?'active':'')+'" data-ha-period="'+key+'" aria-pressed="'+(highActivityHistoryPeriod===key?'true':'false')+'">'+label+'</button>').join('')+'</div><p class="subtle">Εμφάνιση: '+highActivityPeriodLabel(highActivityHistoryPeriod)+' · Αποθηκευμένες συνολικά: '+allRecords.length+' · Δεν διαγράφεται καμία εγγραφή.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><section class="ha-team-analytics"><h3>📊 HI ACTIVITY · ΣΤΑΤΙΣΤΙΚΑ ΑΝΑ ΟΜΑΔΑ</h3><p class="subtle">Κάθε ομάδα υπολογίζεται ξεχωριστά από όλες τις μοναδικές, ολοκληρωμένες καταγραφές του ιστορικού. Εκκρεμείς περιπτώσεις δεν μετρούν. Ελάχιστο δείγμα: 4.</p>'+leaderboard+insufficient+'<p class="subtle">Το ποσοστό είναι ιστορική συχνότητα, όχι εγγυημένη πιθανότητα για τον επόμενο αγώνα.</p></section><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details open><summary>Ξεχωριστό ιστορικό HI ACTIVITY ('+records.length+' από '+allRecords.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
+ root.innerHTML='<div class="history-period-filter" role="group" aria-label="Περίοδος ιστορικού">'+[['day','Ημέρα'],['week','Εβδομάδα'],['month','Μήνας'],['year','Έτος'],['all','Όλο το ιστορικό']].map(([key,label])=>'<button type="button" class="mini-btn '+(highActivityHistoryPeriod===key?'active':'')+'" data-ha-period="'+key+'" aria-pressed="'+(highActivityHistoryPeriod===key?'true':'false')+'">'+label+'</button>').join('')+'</div><p class="subtle">Εμφάνιση: '+highActivityPeriodLabel(highActivityHistoryPeriod)+' · Αποθηκευμένες συνολικά: '+allRecords.length+' · Δεν διαγράφεται καμία εγγραφή.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details open><summary>Ξεχωριστό ιστορικό HI ACTIVITY ('+records.length+' από '+allRecords.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
 }
 async function persistHighActivityObservations(records){
  if(!records?.length)return;
@@ -4002,7 +4051,14 @@ loadHighActivityHistory();
    const panel=document.getElementById(key);if(!panel)return;
    const open=panel.hidden;panel.hidden=!open;setButtonState(button,open);
    const count=button.querySelector('.gp-button-count');if(count&&['trends','topTrends'].includes(key))count.textContent=open?'ΚΛΕΙΣΙΜΟ':'ΑΝΟΙΓΜΑ';
-   if(open)panel.scrollIntoView({behavior:'smooth',block:'start'});
+   if(open){
+    panel.scrollIntoView({behavior:'smooth',block:'start'});
+    if(key==='matrixAnalytics'){
+     void loadHighActivityHistory().then(()=>{renderMatrixAnalytics();});
+     void loadPersistentAlertHistory().then(()=>{renderMatrixAnalytics();});
+     renderMatrixAnalytics();
+    }
+   }
   });
  });
  const vipHistoryToggle=document.getElementById('vipHistoryToggle');
@@ -4325,6 +4381,7 @@ header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:
  addHeaderClose('topVipAlerts','.top-ai-alerts-head','VIP Alerts');
  addHeaderClose('protocolAnalyst','.top-ai-alerts-head','AI Protocol Analyst και HI ACTIVITY');
  addHeaderClose('powerGames','.top-ai-alerts-head','Power Games');
+ addHeaderClose('matrixAnalytics','.top-ai-alerts-head','Matrix Analytics');
  addHeaderClose('trends','.gp-trend-head','Trends');
  addHeaderClose('topTrends','.gp-trend-head','Top Trends');
  const historyButton=document.getElementById('toggleHistoryPanel');
@@ -4444,5 +4501,20 @@ nav a:not(:first-child):hover:after{right:0}
 @media(prefers-reduced-motion:reduce){.live-match-line,.live-match-line .live-row,.stat,.top-ai-alert-card,.product-nav a{transition:none}.top-ai-alert-card:hover,.top-ai-alert-card:focus-visible{transform:none}}
 
 
+</style>
+
+<style id="gm-matrix-analytics-styles">
+.gp-matrix-analytics-button{border-color:rgba(75,229,170,.48);background:linear-gradient(135deg,#123b42,#102437);box-shadow:0 0 20px rgba(67,224,162,.07)}
+.gp-matrix-analytics-panel{border-color:rgba(75,229,170,.34);background:linear-gradient(145deg,rgba(13,34,50,.99),rgba(7,21,34,.99))}
+.gm-matrix-category{margin:14px 0;padding:15px;border:1px solid rgba(113,218,250,.2);border-radius:13px;background:rgba(7,22,34,.48)}
+.gm-matrix-category h3{margin:0 0 8px;font-size:15px;color:#e9f7fb}
+.gm-matrix-category .ha-team-table-wrap{max-height:420px;overflow:auto}
+.gm-matrix-category .ha-team-table{width:100%;border-collapse:collapse;font-size:12px}
+.gm-matrix-category .ha-team-table th,.gm-matrix-category .ha-team-table td{padding:10px 8px;border-bottom:1px solid rgba(113,218,250,.12);text-align:left}
+.gm-matrix-category .ha-team-table th{color:#9ec6d7;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+.gm-matrix-category .ha-team-table td strong{color:#43e0a2}
+.gm-matrix-category .ha-team-insufficient-list{display:grid;gap:6px;margin-top:10px}
+.gm-matrix-category .ha-team-insufficient-list span{padding:7px 9px;border-radius:7px;background:rgba(17,43,61,.72);color:#b8cbd6;font-size:11px}
+@media(max-width:600px){.gm-matrix-category{padding:11px}.gm-matrix-category .ha-team-table{font-size:11px}.gm-matrix-category .ha-team-table th,.gm-matrix-category .ha-team-table td{padding:8px 5px}}
 </style>
 </body></html>
