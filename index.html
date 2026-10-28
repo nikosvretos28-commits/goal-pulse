@@ -2620,7 +2620,7 @@ function renderTopAiAlerts(){
   const shown=alerts.filter(a=>!isExpired(a)).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));count.textContent=shown.length+' '+label;
   if(!shown.length){host.innerHTML='<div class="top-ai-alert-empty">'+emptyText+'</div>';return}
   const formatAlertIssueScore=a=>{const home=a?.scoreAtSignal?.home,away=a?.scoreAtSignal?.away;if(home!=null&&away!=null&&Number.isFinite(Number(home))&&Number.isFinite(Number(away)))return Number(home)+'–'+Number(away);const reasonMatch=String(a?.reason||'').match(/Σκορ επιλογής:\s*(\d+)\s*[–-]\s*(\d+)/i);if(reasonMatch)return reasonMatch[1]+'–'+reasonMatch[2];return '';};
-  host.innerHTML=shown.map((a,i)=>{const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;const country=a.country||(match&&match.country)||'Διεθνής';const league=a.league||(match&&match.league)||'Διοργάνωση';const issuedAt=new Date(Number(a.createdAt));const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'ώρα άγνωστη';return '<button type="button" class="top-ai-alert-card" data-top-alert="'+prefix+'" data-alert-index="'+i+'"><span class="alert-card-kicker"><span>'+prefix+' '+esc(a.level||'AI')+' ALERT</span><span>'+esc((a.minute||'LIVE')+' · '+(a.time||issuedTime))+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">'+esc(country)+' · '+esc(league)+'</div><div class="alert-card-market">'+esc(a.market||'Live signal')+(formatAlertIssueScore(a)?' · Σκορ έκδοσης '+esc(formatAlertIssueScore(a)):'')+' · '+(hasValidOdds(a)?('Απόδοση '+Number(a.odds??a.oddsAtSignal).toFixed(2)):'Απόδοση μη διαθέσιμη')+'</div><div class="alert-card-reason">'+esc(a.reason||'Νέα μεταβολή live στατιστικών')+'</div></button>';}).join('');
+  host.innerHTML=shown.map((a,i)=>{const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;const isMinuteValue=value=>/^\\s*(?:\\d{1,3}\\s*(?:['′’]|min)?(?:\\s*\\+)?|HT|FT|LIVE|ΗΜΙΧΡΟΝΟ|ΤΕΛΟΣ)\\s*$/i.test(String(value||''));const validCompetition=value=>{const text=String(value||'').trim();return Boolean(text)&&!isMinuteValue(text)&&!/^(?:διοργάνωση|competition|league|international|διεθνής|άλλη διοργάνωση)$/i.test(text)};const competition=[match&&match.league,a.league,a.country].find(validCompetition)||'Άλλη διοργάνωση';const minuteCandidate=a.minute||match&&match.clock||'LIVE';const minute=isMinuteValue(minuteCandidate)?String(minuteCandidate).trim():(match&&match.clock)||'LIVE';const market=String(a.market||'Live signal');const issuedAt=new Date(Number(a.createdAt));const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'ώρα άγνωστη';return '<button type="button" class="top-ai-alert-card" data-top-alert="'+prefix+'" data-alert-index="'+i+'"><span class="alert-card-kicker"><span>'+prefix+' '+esc(a.level||'AI')+' ALERT</span><span>'+esc(a.time||issuedTime)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">Διοργάνωση: '+esc(competition)+' · '+esc(minute)+' · '+esc(market)+'</div><div class="alert-card-market">'+(formatAlertIssueScore(a)?'Σκορ έκδοσης '+esc(formatAlertIssueScore(a))+' · ':'')+(hasValidOdds(a)?('Απόδοση '+Number(a.odds??a.oddsAtSignal).toFixed(2)):'Απόδοση μη διαθέσιμη')+'</div><div class="alert-card-reason">'+esc(a.reason||'Νέα μεταβολή live στατιστικών')+'</div></button>';}).join('');
  };
  render('topAiAlertList','topAiAlertCount',all.filter(a=>a.level!=='VIP'),'ALERTS','Δεν υπάρχει αυτή τη στιγμή νέα ένδειξη AI.','⚡');
  render('topVipAlertList','topVipAlertCount',all.filter(a=>a.level==='VIP'),'VIP','Δεν υπάρχει αυτή τη στιγμή νέα VIP ένδειξη.','◆');
@@ -4629,4 +4629,21 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
 }
 </style>
 
+
+<style id="gm-ai-alert-card-mobile-fix">
+/* Scoped presentation fix: keep alert metadata ordered and cards inside mobile viewport. */
+#topAiAlerts,#topVipAlerts,.top-ai-alert-list,.top-ai-alert-card{min-width:0;max-width:100%;box-sizing:border-box}
+.top-ai-alert-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr))}
+.top-ai-alert-card{overflow-wrap:anywhere;word-break:normal}
+.top-ai-alert-card .alert-card-kicker{min-width:0;flex-wrap:wrap;align-items:flex-start}
+.top-ai-alert-card .alert-card-kicker>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.top-ai-alert-card .alert-card-league,.top-ai-alert-card .alert-card-market,.top-ai-alert-card .alert-card-reason{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:normal}
+@media(max-width:600px){
+ #topAiAlerts,#topVipAlerts{width:100%;margin-inline:0;padding:10px}
+ .top-ai-alert-list{grid-template-columns:minmax(0,1fr);width:100%;gap:8px}
+ .top-ai-alert-card{width:100%;padding:11px}
+ .top-ai-alert-card .alert-card-kicker{gap:5px 8px}
+ .top-ai-alert-card .alert-card-match{line-height:1.3}
+}
+</style>
 </body></html>
