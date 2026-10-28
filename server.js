@@ -2867,7 +2867,9 @@ const server = http.createServer(async (req, res) => {
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
-      if (sportScoreLiveExists) {
+      // Load direct live stats for every live scoreboard, not only SportScore-ID fixtures.
+      // This is a fallback when another provider's summary omits shots/corners.
+      if (liveEvents.length) {
         try {
           const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
           const liveResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
@@ -3172,8 +3174,59 @@ const server = http.createServer(async (req, res) => {
                 xG: get("expectedgoals", "xg", "expectedgoalsfor")
               };
             });
+            const espnHasShotStats = values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "corners"].some(key => v[key] != null));
+            if (!espnHasShotStats) {
+              const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
+              const awayName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "";
+              const direct = sportScoreLiveStatsByPair.get(normFallbackTeam(homeName) + "|" + normFallbackTeam(awayName))
+                || sportScoreLiveStatsByPair.get(normFallbackTeam(awayName) + "|" + normFallbackTeam(homeName));
+              if (direct && Array.isArray(direct.stats)) {
+                const directHomeName = direct.home?.name || direct.home_team?.name || direct.home_name || (typeof direct.home === "string" ? direct.home : "");
+                const sameOrientation = normFallbackTeam(directHomeName) === normFallbackTeam(homeName);
+                const homeSide = sameOrientation ? "home" : "away";
+                const awaySide = sameOrientation ? "away" : "home";
+                const rows = [];
+                const visited = new Set();
+                const walkDirect = (node, depth = 0) => {
+                  if (!node || typeof node !== "object" || depth > 7 || visited.has(node)) return;
+                  visited.add(node);
+                  if (Array.isArray(node)) { for (const item of node) walkDirect(item, depth + 1); return; }
+                  const label = String(node.name || node.key || node.title || node.label || node.stat || node.type || node.stat_name || node.statName || node.short_name || node.shortName || node.abbreviation || node.abbr || node.display_name || node.displayName || node.description || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                  const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
+                  const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
+                  if (label && home != null && away != null && typeof home !== "object" && typeof away !== "object") rows.push({label, home, away});
+                  for (const [key, value] of Object.entries(node)) {
+                    if (!["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) walkDirect(value, depth + 1);
+                  }
+                };
+                walkDirect(direct.stats);
+                const readDirect = (side, aliases) => {
+                  let row = null;
+                  for (const alias of aliases) { row = rows.find(item => item.label === alias); if (row) break; }
+                  if (!row) return null;
+                  const n = Number.parseFloat(String(row[side]).replace("%", "").replace(",", "."));
+                  return Number.isFinite(n) ? n : null;
+                };
+                const getDirect = side => ({
+                  shots: readDirect(side, ["total_shots","total_shot","totalshots","shots","shots_total","total_attempts","total_shots_attempted","shots_attempted"]),
+                  shotsOnTarget: readDirect(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
+                  shotsOffTarget: readDirect(side, ["shots_off_target","shots_off_goal","shots_wide","off_target","shots_off_target_total"]),
+                  corners: readDirect(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
+                  possession: readDirect(side, ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"])
+                });
+                const fallbackValues = [getDirect(homeSide), getDirect(awaySide)];
+                if (fallbackValues.some(v => ["shots","shotsOnTarget","shotsOffTarget","corners","possession"].some(key => v[key] != null))) {
+                  values.forEach((v, i) => {
+                    const fallback = fallbackValues[i];
+                    for (const key of ["shots","shotsOnTarget","shotsOffTarget","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
+                  });
+                  console.log("SportScore fallback supplied missing ESPN live stats:", JSON.stringify({eventId:String(event.id),home:homeName,away:awayName,stats:values.map(v=>({team:v.team,shots:v.shots,shotsOnTarget:v.shotsOnTarget,shotsOffTarget:v.shotsOffTarget,corners:v.corners}))}));
+                }
+              }
+            }
             matches.push({
-              eventId: String(event.id), statsSource: "ESPN",
+              eventId: String(event.id), statsSource: values.some(v => ["shots","shotsOnTarget","shotsOffTarget","corners"].some(key => v[key] != null)) ? "ESPN+SportScore" : "ESPN",
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
