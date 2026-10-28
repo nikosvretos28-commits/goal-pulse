@@ -2961,10 +2961,16 @@ function renderHighActivityMatches(){
   // Accept the live-state spellings used by different feeds; the live board may already display the match.
   const liveState=/^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play)$/i.test(String(m.state||m.status||""));
   if(!liveState&& !/\b(?:live|playing|in progress)\b/i.test(statusText))return null;
-  // High Activity follows the same minute windows as automatic AI alerts.
+  // High Activity follows the same strict windows as automatic AI alerts:
+  // first half 1-40, second half 46-80; exclude 41-45, halftime, and 81+.
   const minuteMatch=String(clockText).match(/(\d{1,3})/);
   const minute=minuteMatch?Number(minuteMatch[1]):null;
-  if(!Number.isFinite(minute)||!(minute>=1&&minute<=40))return null;
+  const periodText=String(clockText)+' '+statusText;
+  const isHalfTime=/\b(?:ht|half[ -]*time|halftime|interval)\b/i.test(periodText);
+  const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο/i.test(periodText));
+  const inAllowedWindow=Number.isFinite(minute)&&!isHalfTime&&
+    (isSecondHalf?(minute>=46&&minute<=80):(minute>=1&&minute<=40));
+  if(!inAllowedWindow)return null;
   if(!stats||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   // Normalize provider stat aliases exactly as the live row renderer does.
   // Some feeds use shots_on_target / shots_on_goal rather than shotsOnTarget;
