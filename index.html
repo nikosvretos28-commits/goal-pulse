@@ -3129,7 +3129,7 @@ function evaluateHighActivityObservations(ranked){
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
   const observationId=[eventId,periodKey,minute,score.home+'-'+score.away,
    signalStats.totalOnTarget??'na',signalStats.recentOnTarget??'na',
-   signalStats.totalShots??'na',signalStats.recentShots??'na'].join(':');
+   signalStats.recentShotsOnTarget10m??'na',signalStats.totalShots??'na',signalStats.recentShots??'na'].join(':');
   if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
   const observation={observationId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,signalStats,outcome:'pending'};
   highActivityObservations.push(observation);changed.push(observation);
