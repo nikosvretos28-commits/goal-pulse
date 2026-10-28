@@ -2855,7 +2855,7 @@ function highActivityInPeriod(timestamp,period){
 }
 function highActivityTeamAnalytics(){
  const byTeam=new Map(),seen=new Set();
- const normalize=value=>String(value||'').normalize('NFD').replace(/\\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^a-z0-9]+/g,' ').trim();
+ const normalize=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  for(const item of highActivityObservations){
   const id=String(item?.observationId||'');
   if(!id||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
@@ -2871,7 +2871,7 @@ function highActivityTeamAnalytics(){
   .sort((a,b)=>(b.settled>=4?1:0)-(a.settled>=4?1:0)||b.rate-a.rate||b.settled-a.settled||a.name.localeCompare(b.name,'el'));
 }
 function highActivityTeamMetric(name){
- const normalize=value=>String(value||'').normalize('NFD').replace(/\\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^a-z0-9]+/g,' ').trim();
+ const normalize=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  const key=normalize(name),row=highActivityTeamAnalytics().find(x=>x.key===key);
  if(!row||row.settled<4)return '<span class="ha-team-sample-insufficient">Ανεπαρκές δείγμα'+(row?' · '+row.settled+'/4':'')+'</span>';
  return '<span class="ha-team-sample-rate">'+row.rate+'% · '+row.wins+'/'+row.settled+'</span>';
