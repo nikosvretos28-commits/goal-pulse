@@ -2788,6 +2788,10 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const numericClock=clockCandidates.map(v=>String(v??'').trim()).find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));
  const isHalfTime=/\b(?:HT|half[ -]?time|halftime|interval)\b/i.test(rawClock);
  let normalizedLiveClock=numericClock?numericClock.replace(/\s*['′’]?$/,'').replace(/\s*\+\s*/,'+').replace(/^(\d{1,3}):\d{2}$/,'$1'):'';
+ // Providers sometimes send impossible plain elapsed values such as 122 or 130.
+ // Football extra time should be represented as 120+N, not a bare minute beyond 120.
+ const clockMinuteMatch=normalizedLiveClock.match(/^(\d{1,3})(?:\+(\d{1,2}))?$/);
+ if(clockMinuteMatch&&Number(clockMinuteMatch[1])>120)normalizedLiveClock='90+';
  // Ignore invalid negative/placeholder clocks (for example "-100") instead of displaying them as match minutes.
  const rawClockLooksNumeric=/^-\s*\d{1,3}(?:\s*\+\s*\d{1,2})?\s*['′’]?$/.test(rawClock);
  if(m.state==='in'&&!normalizedLiveClock&&!isHalfTime&&Number.isFinite(Number(m.kickoffAt))&&Number(m.kickoffAt)<=Date.now()){
