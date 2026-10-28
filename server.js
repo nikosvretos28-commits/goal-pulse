@@ -1949,17 +1949,14 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Mandatory match-volume gate: at least 10 total shots in the match.
-        // An alert can qualify through either the existing SOT criteria or the xG trigger:
-        // 3+ SOT in ~5m OR 6+ SOT in ~10m OR 10+ cumulative SOT OR xG 2.50/2.00 across both teams.
-        // Missing xG never blocks a valid SOT-based alert.
-        const cumulativeSotStrong = current.onTarget != null && Number(current.onTarget) >= 10;
+        // Strict AI Over-alert gate: at least 10 total shots in the match AND
+        // one of the two agreed recent SOT thresholds: 3+ in ~5 minutes OR 6+ in ~10 minutes.
+        // Cumulative SOT, xG, attacks, corners, and other supporting stats cannot bypass this gate.
         const totalShotsMinimumMet = current.shots != null && Number(current.shots) >= 10;
         const totalXG = current.xG == null ? null : Number(current.xG);
-        // xG qualifies when one team is >= 2.50 and the opponent is >= 2.00.
-        // This is an alternative SOT trigger, but the 10-total-shots match minimum remains mandatory.
+        // xG remains supporting context only; it is never an alternative trigger for an AI alert.
         const xGQualifies = bothTeamsXGQualified && totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
-        const shotsOnlyOverEvidence = totalShotsMinimumMet && (onTarget >= 3 || onTarget10m >= 6 || cumulativeSotStrong || xGQualifies);
+        const shotsOnlyOverEvidence = totalShotsMinimumMet && (onTarget >= 3 || onTarget10m >= 6);
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         // Reuse bothTeamsXGQualified computed from the two team xG values above.
