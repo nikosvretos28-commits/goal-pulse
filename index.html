@@ -2181,7 +2181,7 @@ function cardFor(m){
  const label=state==='in'?'● LIVE':state==='post'?'ΟΛΟΚΛΗΡΩΘΗΚΕ':(m.clock||'ΠΡΟΣΕΧΗΣ');
  const matchTime=state==='in'?(m.clock||'LIVE'):state==='pre'?(m.clock||'ΠΡΟΣΕΧΗΣ'):(state==='post'?'FT':'');
  const minuteBadge=state==='in'&&/^\d{1,3}(?:\+\d{1,2})?′?$/.test(String(m.clock||''))?'<span class="minute">'+esc(String(m.clock).replace(/′?$/,'')+'′')+'</span>':'';
- return '<article class="match" data-event-id="'+esc(m.id)+'" data-favorite="'+(favoriteMatchIds.has(String(m.id))?'yes':'no')+'" data-status="'+(state==='in'?'live':state==='pre'?'upcoming':'finished')+'" data-match-date="'+esc(m.dateISO||'')+'" data-league-code="'+esc(m.leagueCode||'')+'" data-home="'+esc(home.name)+'" data-away="'+esc(away.name)+'" data-signal="no" data-search="'+esc((c+' '+home.name+' '+away.name).toLowerCase())+'"><div class="match-meta"><span>'+esc((matchTime?matchTime+' · ':'')+(m.country||'Διεθνής')+' · '+c.toUpperCase())+'</span><span class="'+(state==='in'?'match-live':'')+'">'+esc(label)+'</span></div><div class="teams"><div class="team">'+minuteBadge+'<span class="team-logo">'+teamBadge(home)+'</span><span class="team-name">'+esc(home.name)+'</span></div><div class="match-score">'+esc(scoreHome)+' – '+esc(scoreAway)+'<small>'+(state==='in'?'LIVE':state==='post'?'FT':'PRE-MATCH')+'</small></div><div class="team away"><span class="team-name">'+esc(away.name)+'</span><span class="team-logo">'+teamBadge(away)+'</span></div></div><div class="match-bottom"><span class="subtle">'+esc((m.competitionType||'ΔΙΟΡΓΑΝΩΣΗ')+' · '+(m.date||''))+'</span><div style="display:flex;gap:5px"><button class="mini-btn favorite-toggle" type="button" data-favorite-id="'+esc(m.id)+'" aria-label="'+(favoriteMatchIds.has(String(m.id))?'Αφαίρεση από αγαπημένα':'Προσθήκη στα αγαπημένα')+'">'+(favoriteMatchIds.has(String(m.id))?'★':'☆')+'</button><button class="mini-btn" type="button" onclick="showDetails(this)">Ανάλυση αγώνα ↗</button></div></div></article>';
+ return '<article class="match" data-event-id="'+esc(m.id)+'" data-favorite="'+(favoriteMatchIds.has(String(m.id))?'yes':'no')+'" data-status="'+(state==='in'?'live':state==='pre'?'upcoming':'finished')+'" data-match-date="'+esc(m.dateISO||'')+'" data-league-code="'+esc(m.leagueCode||'')+'" data-home="'+esc(home.name)+'" data-away="'+esc(away.name)+'" data-signal="no" data-search="'+esc((c+' '+home.name+' '+away.name).toLowerCase())+'"><div class="match-meta"><span>'+esc((matchTime?matchTime+' · ':'')+(m.country||'Διεθνής')+' · '+c.toUpperCase())+'</span><span class="'+(state==='in'?'match-live':'')+'">'+esc(label)+'</span></div><div class="teams"><div class="team">'+minuteBadge+'<span class="team-logo">'+teamBadge(home)+'</span>'+esc(home.name)</div><div class="match-score">'+esc(scoreHome)+' – '+esc(scoreAway)+'<small>'+(state==='in'?'LIVE':state==='post'?'FT':'PRE-MATCH')+'</small></div><div class="team away">'+esc(away.name)+'<span class="team-logo">'+teamBadge(away)+'</span></div></div><div class="match-bottom"><span class="subtle">'+esc((m.competitionType||'ΔΙΟΡΓΑΝΩΣΗ')+' · '+(m.date||''))+'</span><div style="display:flex;gap:5px"><button class="mini-btn favorite-toggle" type="button" data-favorite-id="'+esc(m.id)+'" aria-label="'+(favoriteMatchIds.has(String(m.id))?'Αφαίρεση από αγαπημένα':'Προσθήκη στα αγαπημένα')+'">'+(favoriteMatchIds.has(String(m.id))?'★':'☆')+'</button><button class="mini-btn" type="button" onclick="showDetails(this)">Ανάλυση αγώνα ↗</button></div></div></article>';
 }
 function updateInsightSummary(){const count=id=>{const el=document.getElementById(id);if(el)el.textContent=String(allMatches.filter(m=>m.state===({insightLive:'in',insightUpcoming:'pre',insightFinished:'post'}[id])).length)};const total=document.getElementById('insightTotal');if(total)total.textContent=String(allMatches.length);count('insightLive');count('insightUpcoming');count('insightFinished');const stats=document.getElementById('insightStats');if(stats)stats.textContent=String(allMatches.filter(m=>m.state==='in'&&liveMetricsCache.get(String(m.id))?.statsAvailable).length);const fav=document.getElementById('insightFavorites');if(fav)fav.textContent=String(favoriteMatchIds.size)}
 function render(){
@@ -4489,34 +4489,5 @@ nav a:not(:first-child):hover:after{right:0}
 }
 
 
-/* GoalMatrix match row: exact centered score, with both names constrained to their own columns */
-.teams{
-  display:grid!important;
-  grid-template-columns:minmax(0,1fr) 75px minmax(0,1fr)!important;
-  align-items:center!important;gap:8px!important;width:100%!important;min-width:0!important;
-}
-.teams>.team,.teams>.team.away{
-  display:flex!important;align-items:center!important;min-width:0!important;width:100%!important;max-width:100%!important;
-  overflow:hidden!important;padding:0!important;gap:5px!important;
-}
-.teams>.team:first-child{grid-column:1!important;justify-self:stretch!important}
-.teams>.team.away{grid-column:3!important;justify-self:stretch!important;justify-content:flex-end!important;text-align:right!important}
-.teams>.team .team-logo{flex:0 0 auto!important}
-.teams>.team .team-name{
-  display:block!important;flex:1 1 0!important;min-width:0!important;max-width:100%!important;
-  overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;
-}
-.teams>.match-score{
-  grid-column:2!important;justify-self:center!important;align-self:center!important;position:static!important;transform:none!important;
-  width:75px!important;min-width:0!important;max-width:100%!important;margin:0!important;padding:0!important;
-  text-align:center!important;white-space:nowrap!important;font-variant-numeric:tabular-nums!important;z-index:1;
-}
-@media(max-width:560px){
-  .teams{grid-template-columns:minmax(0,1fr) 56px minmax(0,1fr)!important;gap:4px!important}
-  .teams>.team,.teams>.team.away{gap:3px!important;font-size:11px!important}
-  .teams>.team .team-logo{font-size:15px!important}
-  .teams>.match-score{width:56px!important;font-size:17px!important}
-  .teams>.match-score small{font-size:8px!important}
-}
 </style>
 </body></html>
