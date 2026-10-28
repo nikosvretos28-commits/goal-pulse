@@ -2825,8 +2825,10 @@ async function loadHighActivityHistory(){
    const observations=[];let offset=0;const pageSize=5000;
    while(true){const response=await fetch(ANALYTICS_API+'/api/high-activity/history?limit='+pageSize+'&offset='+offset,{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);const data=await response.json();if(!Array.isArray(data.observations))throw new Error('Invalid history response');observations.push(...data.observations);if(data.observations.length<pageSize)break;offset+=data.observations.length;}
    const merged=new Map(highActivityObservations.map(x=>[String(x.observationId),x]));
-   observations.forEach(x=>{if(x?.observationId){const outcome=String(x.outcome||'pending').trim().toLowerCase();if(!['won','lost'].includes(outcome))x.outcome='pending';else x.outcome=outcome;merged.set(String(x.observationId),x)}});
+   const repairedSettlements=[];
+   observations.forEach(x=>{if(x?.observationId){const id=String(x.observationId),existing=merged.get(id),outcome=String(x.outcome||'pending').trim().toLowerCase();if(!['won','lost'].includes(outcome))x.outcome='pending';else x.outcome=outcome;if(existing&&['won','lost'].includes(String(existing.outcome||'').toLowerCase())&&x.outcome==='pending'){x={...x,outcome:existing.outcome,settledAt:existing.settledAt,settlementReason:existing.settlementReason};repairedSettlements.push(x)}merged.set(id,x)}});
    highActivityObservations=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
+   if(repairedSettlements.length)void persistHighActivityObservations(repairedSettlements);
    highActivityHistoryLoaded=true;renderHighActivityAnalyst();void reconcileHistoricalHighActivityObservations();
   }catch(error){console.warn('Could not load persistent High Activity history:',error.message);const root=document.getElementById('highActivityAnalystPanel');if(root&&!highActivityHistoryLoaded)root.innerHTML='<p>Το μόνιμο ιστορικό HI ACTIVITY δεν είναι διαθέσιμο αυτή τη στιγμή. Θα γίνει νέα προσπάθεια.</p>';}
   finally{highActivityHistoryLoadPromise=null;}
