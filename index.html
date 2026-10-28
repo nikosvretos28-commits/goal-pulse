@@ -4488,5 +4488,45 @@ nav a:not(:first-child):hover:after{right:0}
   .live-match-line .live-row .teamname:nth-of-type(4){padding-left:22px}
 }
 
+
+/* GoalMatrix score alignment: use a symmetric three-column match row */
+.teams{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) max-content minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:clamp(4px,1vw,8px)!important;
+}
+.teams>.team:first-child{
+  grid-column:1!important;
+  min-width:0!important;
+  justify-self:stretch!important;
+  padding:0!important;
+}
+.teams>.match-score{
+  grid-column:2!important;
+  position:relative!important;
+  left:auto!important;
+  top:auto!important;
+  transform:none!important;
+  justify-self:center!important;
+  width:max-content!important;
+  min-width:0!important;
+  max-width:none!important;
+  margin:0!important;
+  padding:0 2px!important;
+  text-align:center!important;
+  white-space:nowrap!important;
+  z-index:1;
+}
+.teams>.team.away{
+  grid-column:3!important;
+  min-width:0!important;
+  justify-self:stretch!important;
+  padding:0!important;
+}
+@media(max-width:560px){
+  .teams{gap:4px!important}
+  .teams>.match-score{padding:0 1px!important}
+}
 </style>
 </body></html>
