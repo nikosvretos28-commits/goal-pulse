@@ -1084,6 +1084,32 @@ button:disabled{cursor:not-allowed;filter:saturate(.65)}
 .top-ai-alert-card{box-shadow:inset 3px 0 0 rgba(67,224,162,.65),0 8px 24px rgba(0,0,0,.12)}
 @media(prefers-reduced-motion:reduce){.primary,.login,.filter,.mini-btn,.gp-standings-tab,.match,.league-item{transition:none!important}.primary:hover,.login:hover,.filter:hover,.mini-btn:hover,.gp-standings-tab:hover,.match:hover{transform:none}}
 
+
+/* GoalMatrix precision polish: keep the score mathematically centered between both teams */
+.live-match-line .live-row{
+  position:relative!important;
+  grid-template-columns:38px minmax(0,1fr) minmax(0,1fr)!important;
+  text-align:center;
+}
+.live-match-line .live-row .minute{grid-column:1;grid-row:1}
+.live-match-line .live-row .teamname:nth-of-type(2){
+  grid-column:2;grid-row:1;padding-right:22px;justify-self:stretch;text-align:center;
+}
+.live-match-line .live-row .score{
+  position:absolute!important;left:50%!important;top:50%;transform:translate(-50%,-50%);
+  z-index:2;min-width:46px;text-align:center;pointer-events:none;
+  box-shadow:0 0 0 2px rgba(7,19,31,.72),0 0 12px rgba(196,181,253,.14);
+}
+.live-match-line .live-row .teamname:nth-of-type(4){
+  grid-column:3;grid-row:1;padding-left:22px;justify-self:stretch;text-align:center;
+}
+@media(max-width:560px){
+  .live-match-line .live-row{grid-template-columns:36px minmax(0,1fr) minmax(0,1fr)!important;gap:2px;padding-left:3px;padding-right:3px}
+  .live-match-line .live-row .teamname:nth-of-type(2){padding-right:20px}
+  .live-match-line .live-row .teamname:nth-of-type(4){padding-left:20px}
+  .live-match-line .live-row .score{min-width:42px;padding:3px 5px}
+}
+
 </style>
 
 <style id="goalmatrix-premium-finish">
