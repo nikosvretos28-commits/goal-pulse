@@ -1863,7 +1863,7 @@ header nav a:hover,header nav a:focus-visible{color:var(--gm-premium-cyan)}
 <span class="brand-lockup"><span class="brand-name">GOAL<span>MATRIX</span></span><span class="brand-tagline">THE INTELLIGENCE OF FOOTBALL</span></span>
 </a>
 <nav aria-label="Κύριο μενού"><a href="#matches" data-menu-filter="live">LIVE ΤΩΡΑ</a><a href="#matches" data-menu-filter="all">Όλοι οι αγώνες</a><a href="#matches" data-menu-filter="upcoming">Πρόγραμμα</a><a href="#matches" data-menu-filter="finished">Αποτελέσματα</a><a href="#leagues">Πρωταθλήματα</a><a href="#insights">Στατιστικά</a><a href="#topAiAlerts">AI Alerts</a><a href="#trends">Trends</a></nav>
-<div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span><button class="login" onclick="document.getElementById('matches').scrollIntoView({behavior:'smooth'})">Live Score ↗</button></div>
+<div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span></div>
 </header>
 
 <div class="gp-section-buttons" id="gpSectionButtons" aria-label="Ενότητες GoalMatrix">
@@ -4648,11 +4648,11 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
 
 /* GoalMatrix Live badge alignment fix — stable right anchoring */
 header{position:relative}
-header .header-actions{position:absolute;top:50%;right:0;margin:0!important;flex-shrink:0;justify-content:flex-end;transform:translateY(-50%);z-index:2}
+header .header-actions{position:absolute;top:0;right:0;margin:0!important;flex-shrink:0;justify-content:flex-end;transform:none;z-index:2}
 @media(max-width:600px){
  header{padding-right:0}
  header .brand{max-width:calc(100% - 145px)}
- header .header-actions{top:10px;right:0;transform:none}
+ header .header-actions{top:0;right:0;transform:none}
 }
 </style>
 </body></html>
