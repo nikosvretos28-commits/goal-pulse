@@ -3177,7 +3177,7 @@ function renderHighActivityMatches(){
   const statusText=String(m.statusText||m.status||m.state||"").toLowerCase();
   if(/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
   // Accept the live-state spellings used by different feeds; the live board may already display the match.
-  const liveState=/^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play)$/i.test(String(m.state||m.status||""));
+  const liveState=/^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(String(m.state||m.status||"").trim());
   if(!liveState&& !/\b(?:live|playing|in progress)\b/i.test(statusText))return null;
   // High Activity follows the same strict windows as automatic AI alerts:
   // first half 1-40, second half 46-80; exclude 41-45, halftime, and 81+.
