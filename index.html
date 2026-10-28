@@ -4264,5 +4264,24 @@ header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:
   .gp-section-button{padding:9px 7px;font-size:10px}
   .gp-button-count{min-width:20px;padding-inline:4px;font-size:9px}
 }
+
+/* GoalMatrix premium polish — visual-only; no application logic changes */
+:root{--gm-glow:rgba(85,199,232,.13);--gm-edge:rgba(85,199,232,.22)}
+body{background-image:radial-gradient(ellipse at 8% -10%,rgba(67,224,162,.075),transparent 34%),radial-gradient(ellipse at 96% 4%,rgba(85,199,232,.085),transparent 30%)}
+header{background:linear-gradient(180deg,rgba(7,21,34,.97),rgba(7,21,34,.82));backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.brand svg{filter:drop-shadow(0 0 10px rgba(67,224,162,.22)) drop-shadow(0 0 18px rgba(85,199,232,.12))}
+.brand-name{letter-spacing:-1.15px;text-shadow:0 2px 18px rgba(85,199,232,.08)}
+.brand-tagline{color:#b5c8d5}
+nav a{transition:color .18s ease,border-color .18s ease}
+nav a:hover{color:var(--cyan)}
+.side-live,.panel{box-shadow:0 12px 34px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.018)}
+.panel-head{background:linear-gradient(100deg,rgba(85,199,232,.045),transparent 72%)}
+.gp-section-button{box-shadow:inset 0 1px 0 rgba(255,255,255,.025);transition:border-color .18s ease,background .18s ease,box-shadow .18s ease,transform .18s ease}
+.gp-section-button:hover{border-color:rgba(85,199,232,.5);background:linear-gradient(135deg,#132d40,#0b1d2d);box-shadow:0 7px 20px rgba(0,0,0,.16),0 0 0 1px rgba(85,199,232,.035);transform:translateY(-1px)}
+.gp-section-button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+button:not(:disabled){transition:filter .18s ease,box-shadow .18s ease}
+button:not(:disabled):hover{filter:brightness(1.06)}
+@media(prefers-reduced-motion:reduce){nav a,.gp-section-button,button:not(:disabled){transition:none}.gp-section-button:hover{transform:none}}
+
 </style>
 </body></html>
