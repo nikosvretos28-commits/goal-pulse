@@ -2860,12 +2860,17 @@ function highActivityInPeriod(timestamp,period){
  if(period==='year')return d.getFullYear()===now.getFullYear();
  return true;
 }
+function isFirstHalfResearchObservation(item){
+ const minute=Number(item?.minute);
+ const half=String(item?.half||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+ return Number.isFinite(minute)&&minute>=1&&minute<=40&&(/1\s*(?:ο|st|h|half)|first/.test(half));
+}
 function highActivityTeamAnalytics(){
  const byTeam=new Map(),seen=new Set();
  const normalize=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  for(const item of highActivityObservations){
   const id=String(item?.observationId||'');
-  if(!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
+  if(!isFirstHalfResearchObservation(item)||!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
   seen.add(id);
   for(const rawName of [item.home,item.away]){
    const name=String(rawName||'').trim(),key=normalize(name);
@@ -2932,7 +2937,8 @@ function renderHighActivityTeamMetricsForMatch(match){
 function renderHighActivityAnalyst(){
  const root=document.getElementById('highActivityAnalystPanel');if(!root)return;
  const allRecords=highActivityObservations.slice().sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
- const records=allRecords.filter(x=>highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
+ const firstHalfRecords=allRecords.filter(isFirstHalfResearchObservation);
+ const records=firstHalfRecords.filter(x=>highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
  const settled=records.filter(x=>x.outcome==='won'||x.outcome==='lost');
  const wins=settled.filter(x=>x.outcome==='won').length,losses=settled.length-wins;
  const rate=settled.length?Math.round(wins/settled.length*100):null;
@@ -2950,7 +2956,7 @@ function renderHighActivityAnalyst(){
  const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const leaderboard=eligibleTeams.length?'<div class="ha-team-table-wrap"><table class="ha-team-table"><thead><tr><th>Ομάδα</th><th>Επιτυχίες</th><th>Ποσοστό</th></tr></thead><tbody>'+eligibleTeams.slice(0,30).map(x=>'<tr><td>'+escHa(x.name)+'</td><td>'+x.wins+'/'+x.settled+'</td><td><strong>'+x.rate+'%</strong></td></tr>').join('')+'</tbody></table></div>':'<p class="subtle">Δεν υπάρχει ακόμη ομάδα με 4 ολοκληρωμένες καταγραφές HI ACTIVITY.</p>';
  const insufficient=insufficientTeams.length?'<details><summary>Ομάδες με ανεπαρκές δείγμα ('+insufficientTeams.length+')</summary><div class="ha-team-insufficient-list">'+insufficientTeams.map(x=>'<span>'+escHa(x.name)+' · Ανεπαρκές δείγμα ('+x.settled+'/4)</span>').join('')+'</div></details>':'';
- root.innerHTML='<div class="history-period-filter" role="group" aria-label="Περίοδος ιστορικού">'+[['day','Ημέρα'],['week','Εβδομάδα'],['month','Μήνας'],['year','Έτος'],['all','Όλο το ιστορικό']].map(([key,label])=>'<button type="button" class="mini-btn '+(highActivityHistoryPeriod===key?'active':'')+'" data-ha-period="'+key+'" aria-pressed="'+(highActivityHistoryPeriod===key?'true':'false')+'">'+label+'</button>').join('')+'</div><p class="subtle">Εμφάνιση: '+highActivityPeriodLabel(highActivityHistoryPeriod)+' · Αποθηκευμένες συνολικά: '+allRecords.length+' · Δεν διαγράφεται καμία εγγραφή.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details open><summary>Ξεχωριστό ιστορικό HI ACTIVITY ('+records.length+' από '+allRecords.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
+ root.innerHTML='<div class="history-period-filter" role="group" aria-label="Περίοδος ιστορικού">'+[['day','Ημέρα'],['week','Εβδομάδα'],['month','Μήνας'],['year','Έτος'],['all','Όλο το ιστορικό']].map(([key,label])=>'<button type="button" class="mini-btn '+(highActivityHistoryPeriod===key?'active':'')+'" data-ha-period="'+key+'" aria-pressed="'+(highActivityHistoryPeriod===key?'true':'false')+'">'+label+'</button>').join('')+'</div><p class="subtle">Έρευνα: 1ο ΗΜΙΧΡΟΝΟ · ΛΕΠΤΑ 1–40 · Εμφάνιση: '+highActivityPeriodLabel(highActivityHistoryPeriod)+' · Εγγραφές 1ου ημιχρόνου: '+firstHalfRecords.length+' · Συνολικά αποθηκευμένες: '+allRecords.length+' · Δεν διαγράφεται καμία εγγραφή.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΙΚΕΣ ΕΝΔΕΙΞΕΙΣ</small><strong>'+records.length+'</strong></div><div><small>ΕΠΙΤΥΧΙΕΣ / ΑΠΟΤΥΧΙΕΣ</small><strong>'+wins+' / '+losses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(rate==null?'—':rate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΕΙΣ</small><strong>'+pending+'</strong></div></div><article class="protocol-analyst-recommendation"><strong>AI Analyst · HI ACTIVITY</strong><p>'+escHa(analysis)+'</p><p class="subtle">Κανόνας: +1 ή περισσότερα γκολ μετά την καταγραφή, έως τη λήξη. Οι προτάσεις δεν αλλάζουν αυτόματα τους scanners ή τα πρωτόκολλα.</p></article><details open><summary>HI ACTIVITY · 1ο ΗΜΙΧΡΟΝΟ ('+records.length+' από '+firstHalfRecords.length+')</summary>'+(recent.length?'<div class="protocol-analyst-grid">'+recent.map(x=>'<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+(x.outcome==='won'?'ΕΠΙΤΥΧΙΑ':x.outcome==='lost'?'ΑΠΟΤΥΧΙΑ':'ΕΚΚΡΕΜΕΙ')+'</span><small>'+escHa(x.half)+' · '+escHa(x.scoreAtSignal?.home)+'-'+escHa(x.scoreAtSignal?.away)+' → '+escHa(x.currentScore?.home)+'-'+escHa(x.currentScore?.away)+' · '+escHa(new Date(Number(x.createdAt)).toLocaleString('el-GR'))+'</small></div>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
 }
 async function persistHighActivityObservations(records){
  if(!records?.length)return;
