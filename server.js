@@ -1949,14 +1949,13 @@ const server = http.createServer(async (req, res) => {
         const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
-        // Strict AI Over-alert gate: at least 10 total shots in the match AND
-        // one of the two agreed recent SOT thresholds: 3+ in ~5 minutes OR 6+ in ~10 minutes.
-        // Cumulative SOT, xG, attacks, corners, and other supporting stats cannot bypass this gate.
-        const totalShotsMinimumMet = current.shots != null && Number(current.shots) >= 10;
+        // Strict AI Over-alert gate: one of the two agreed recent SOT thresholds:
+        // 3+ in ~5 minutes OR 6+ in ~10 minutes. Total shots are not a mandatory gate.
+        // 20+ total shots may strengthen the sustained-pressure score below, but cannot trigger an alert alone.
         const totalXG = current.xG == null ? null : Number(current.xG);
         // xG remains supporting context only; it is never an alternative trigger for an AI alert.
         const xGQualifies = bothTeamsXGQualified && totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
-        const shotsOnlyOverEvidence = totalShotsMinimumMet && (onTarget >= 3 || onTarget10m >= 6);
+        const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         // Reuse bothTeamsXGQualified computed from the two team xG values above.
@@ -2018,9 +2017,9 @@ const server = http.createServer(async (req, res) => {
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
-        // For Over-goal markets, alerts require 10+ total shots and either an agreed SOT signal
-        // (3+ SOT in ~5m, 6+ SOT in ~10m, or 10+ cumulative SOT) or xG >=2.50 for one team
-        // and >=2.00 for the other. Missing xG is neutral; valid SOT alerts remain possible.
+        // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
+        // 20+ total shots can strengthen sustained-pressure scoring but is not mandatory.
+        // Cumulative SOT and xG cannot replace the recent-SOT trigger; missing xG is neutral.
         // Strict AI alert windows: first half 1-40; second half 46-80.
         // Exclude 41-45, halftime, and 81+; keep the existing SOT/shot rules unchanged.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
