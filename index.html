@@ -3673,7 +3673,7 @@ setInterval(loadProtocolAnalyst,60*60*1000);
 
 if(allMatches.length){render();renderHighActivityMatches();const cachedLive=document.getElementById('liveRows');if(cachedLive)cachedLive.innerHTML=allMatches.filter(m=>m.state==='in').map(liveMatchLine).join('')||'<div class="subtle" style="padding:10px">Δεν υπάρχουν αποθηκευμένοι live αγώνες· γίνεται νέος έλεγχος.</div>';}
 loadScores();
-setInterval(()=>{if(!document.hidden)loadScores()},30000);
+setInterval(()=>{if(!document.hidden)loadScores()},15000);
 setInterval(()=>{if(!document.hidden)runSignalCheck()},30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadScores();runSignalCheck()}});
 
