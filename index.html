@@ -2862,13 +2862,14 @@ async function reconcileHistoricalHighActivityObservations(){
   const repairedHistoricalLosses=[];
   for(const item of highActivityObservations){
    if(String(item.outcome||'').trim().toLowerCase()!=='pending')continue;
-   const created=Number(item.createdAt);
+   let created=Number(item.createdAt);
+   if(Number.isFinite(created)&&created>0&&created<1e12)created*=1000; // accept legacy Unix seconds as well as milliseconds
    if(!Number.isFinite(created)||created<repairStart||created>=repairEnd)continue;
    const home=normalizeRepairTeam(item.home),away=normalizeRepairTeam(item.away);
    const known=confirmedHistoricalLosses.some(([h,a])=>(home===normalizeRepairTeam(h)&&away===normalizeRepairTeam(a))||(home===normalizeRepairTeam(a)&&away===normalizeRepairTeam(h)));
    if(!known)continue;
-   const signalTotal=Number.isFinite(Number(item.scoreAtSignal?.total))?Number(item.scoreAtSignal.total):(Number.isFinite(Number(item.scoreAtSignal?.home))&&Number.isFinite(Number(item.scoreAtSignal?.away))?Number(item.scoreAtSignal.home)+Number(item.scoreAtSignal.away):null);
-   const currentTotal=Number.isFinite(Number(item.currentScore?.total))?Number(item.currentScore.total):(Number.isFinite(Number(item.currentScore?.home))&&Number.isFinite(Number(item.currentScore?.away))?Number(item.currentScore.home)+Number(item.currentScore.away):null);
+   const signalTotal=item.scoreAtSignal?.total!=null&&item.scoreAtSignal.total!==''&&Number.isFinite(Number(item.scoreAtSignal.total))?Number(item.scoreAtSignal.total):(item.scoreAtSignal?.home!=null&&item.scoreAtSignal?.away!=null&&Number.isFinite(Number(item.scoreAtSignal.home))&&Number.isFinite(Number(item.scoreAtSignal.away))?Number(item.scoreAtSignal.home)+Number(item.scoreAtSignal.away):null);
+   const currentTotal=item.currentScore?.total!=null&&item.currentScore.total!==''&&Number.isFinite(Number(item.currentScore.total))?Number(item.currentScore.total):(item.currentScore?.home!=null&&item.currentScore?.away!=null&&Number.isFinite(Number(item.currentScore.home))&&Number.isFinite(Number(item.currentScore.away))?Number(item.currentScore.home)+Number(item.currentScore.away):null);
    if(signalTotal==null||currentTotal==null||currentTotal!==signalTotal)continue;
    item.outcome='lost';item.settledAt=Date.now();item.settlementReason='Historical repair: confirmed finished match with no additional goal after the High Activity signal';repairedHistoricalLosses.push(item);
   }
