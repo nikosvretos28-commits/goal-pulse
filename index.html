@@ -4455,5 +4455,36 @@ nav a:not(:first-child):hover:after{right:0}
  .live-match-line .live-row > span.score:nth-of-type(3){width:46px;min-width:46px;font-size:12px}
 }
 
+
+/* GoalMatrix fix: center live match scores independently of the minute and team-name columns */
+.live-match-line .live-row{
+  position:relative;
+  grid-template-columns:38px minmax(0,1fr) minmax(0,1fr) !important;
+}
+.live-match-line .live-row .score{
+  position:absolute !important;
+  left:50% !important;
+  top:50%;
+  transform:translate(-50%,-50%);
+  z-index:2;
+  width:max-content;
+  min-width:0;
+  text-align:center;
+  pointer-events:none;
+}
+.live-match-line .live-row .teamname:nth-of-type(2){
+  padding-right:26px;
+  text-align:left;
+}
+.live-match-line .live-row .teamname:nth-of-type(4){
+  padding-left:26px;
+  text-align:right;
+}
+@media(max-width:560px){
+  .live-match-line .live-row{grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) !important}
+  .live-match-line .live-row .teamname:nth-of-type(2){padding-right:22px}
+  .live-match-line .live-row .teamname:nth-of-type(4){padding-left:22px}
+}
+
 </style>
 </body></html>
