@@ -2287,12 +2287,15 @@ async function loadScores(){
    // ESPN sometimes puts the live state on the event and sometimes on the competition.
    const statusTypes=[e.status&&e.status.type,comp.status&&comp.status.type].filter(Boolean);
    const stateText=[...statusTypes.map(x=>[x.state,x.name,x.description,x.shortDetail,x.detail].filter(Boolean).join(' ')),e.status&&e.status.displayClock,comp.status&&comp.status.displayClock].filter(Boolean).join(' ').toLowerCase();
+   // Extra-time and shootout phases are excluded from the regulation-only match clock.
+   const statusPeriod=Number((e.status&&e.status.period)??(comp.status&&comp.status.period));
+   const isIgnoredClockPhase=/\b(extra[ -]?time|extratime|penalt(?:y|ies)|shootout|aet)\b/i.test(stateText)||(Number.isFinite(statusPeriod)&&statusPeriod>2);
    const rawState=statusTypes.map(x=>String(x.state||'').toLowerCase()).find(x=>x);
    const state=['in','live','in_progress','in-play'].includes(rawState)||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(stateText)?'in':['post','finished','complete'].includes(rawState)||/\b(full time|finished|ended|ft|aet|penalties)\b/.test(stateText)?'post':(rawState||'pre');
    const st=statusTypes.find(x=>x.state===state)||statusTypes[0]||{};
    const kickoff=e.date?new Date(e.date):null;
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
-   const clockCandidates=[comp.status&&comp.status.displayClock,e.status&&e.status.displayClock,st.shortDetail,st.detail,st.name].map(v=>String(v||'').trim()).filter(Boolean);const minuteClock=clockCandidates.find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));const rawClock=minuteClock||clockCandidates[0]||'';const normalizedClock=rawClock.replace(/\s*['′’]?$/,'').replace(/\s*\+\s*/,'+');const clock=state==='in'?(minuteClock?(normalizedClock.includes(':')?normalizedClock.split(':')[0]+'′':normalizedClock+'′'):(rawClock||'LIVE')):state==='post'?'FT':validKickoff?kickoff.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'ΠΡΟΣΕΧΗΣ';
+   const clockCandidates=[comp.status&&comp.status.displayClock,e.status&&e.status.displayClock,st.shortDetail,st.detail,st.name].map(v=>String(v||'').trim()).filter(Boolean);const minuteClock=clockCandidates.find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));const rawClock=minuteClock||clockCandidates[0]||'';const normalizedClock=rawClock.replace(/\s*['′’]?$/,'').replace(/\s*\+\s*/,'+');const clock=isIgnoredClockPhase?'FT':(state==='in'?(minuteClock?(normalizedClock.includes(':')?normalizedClock.split(':')[0]+'′':normalizedClock+'′'):(rawClock||'LIVE')):state==='post'?'FT':validKickoff?kickoff.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'ΠΡΟΣΕΧΗΣ');
    const date=validKickoff?kickoff.toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit'}):'';
    return {id:String(e.id||''),leagueCode:l[0],league:(e.leagueName&&!/^(?:διοργάνωση|competition|league)$/i.test(String(e.leagueName).trim()))?e.leagueName:l[1],country:l[2]||'Διεθνής',competitionType:competitionLabel(l[0]),flag:l[3],state,clock,date,dateISO:validKickoff?e.date.slice(0,10):'',kickoffAt:validKickoff?kickoff.getTime():null,home:{name:h.team&&(h.team.displayName||h.team.name)||'Home',score:h.score,logo:h.team&&h.team.logo||''},away:{name:a.team&&(a.team.displayName||a.team.name)||'Away',score:a.score,logo:a.team&&a.team.logo||''}};
   });
@@ -2788,11 +2791,18 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const numericClock=clockCandidates.map(v=>String(v??'').trim()).find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));
  const isHalfTime=/\b(?:HT|half[ -]?time|halftime|interval)\b/i.test(rawClock);
  let normalizedLiveClock=numericClock?numericClock.replace(/\s*['′’]?$/,'').replace(/\s*\+\s*/,'+').replace(/^(\d{1,3}):\d{2}$/,'$1'):'';
- // Providers sometimes send impossible plain elapsed values such as 122 or 130.
- // Football extra time should be represented as 120+N, not a bare minute beyond 120.
+ // GoalMatrix tracks regulation time only: render ordinary stoppage time as 90+N,
+ // and hide extra-time / penalty-shootout clocks (100'+) as FT.
  const clockMinuteMatch=normalizedLiveClock.match(/^(\d{1,3})(?:\+(\d{1,2}))?$/);
- if(clockMinuteMatch&&Number(clockMinuteMatch[1])>120)normalizedLiveClock='90+';
+ if(clockMinuteMatch){
+  const minute=Number(clockMinuteMatch[1]);
+  const added=clockMinuteMatch[2];
+  if(minute>120)normalizedLiveClock='FT';
+  else if(minute>90&&!added)normalizedLiveClock='90+'+(minute-90);
+ }
  // Ignore invalid negative/placeholder clocks (for example "-100") instead of displaying them as match minutes.
+ // The source normalizer marks confirmed extra-time/shootout phases as FT.
+ if(String(m.clock||'').trim().toUpperCase()==='FT')normalizedLiveClock='FT';
  const rawClockLooksNumeric=/^-\s*\d{1,3}(?:\s*\+\s*\d{1,2})?\s*['′’]?$/.test(rawClock);
  if(m.state==='in'&&!normalizedLiveClock&&!isHalfTime&&Number.isFinite(Number(m.kickoffAt))&&Number(m.kickoffAt)<=Date.now()){
   // kickoffAt is the scheduled start, not the confirmed actual kickoff.
@@ -2803,7 +2813,8 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
   normalizedLiveClock=estimated<90?String(estimated):'90+';
  }
  const safeRawClock=rawClockLooksNumeric?'LIVE':rawClock;
- const displayClock=normalizedLiveClock.endsWith('+')?'90′+':(normalizedLiveClock?normalizedLiveClock+'′':(safeRawClock||'LIVE'));
+ const addedTimeMatch=normalizedLiveClock.match(/^90\+(\d{1,2})$/);
+ const displayClock=normalizedLiveClock==='FT'?'FT':(addedTimeMatch?'90′+'+addedTimeMatch[1]:(normalizedLiveClock==='90+'?'90′+':(normalizedLiveClock?normalizedLiveClock+'′':(safeRawClock||'LIVE'))));
  const liveClock=m.state==='in'?(isHalfTime?'HT':displayClock):(m.state==='post'?'FT':(rawClock||'LIVE'));
   return '<div class="live-match-line '+(goalFlashMatchIds.includes(String(m.id))?'goal-flash-row':'')+'"><div class="live-match-main"><div class="live-row-league">'+esc([String(m.country||m.countryName||m.region||m.area||'').trim(),matchLeague].filter(Boolean).join(' · ')||String(m.leagueCode||m.competitionCode||m.leagueId||m.tournamentCode||'').replace(/[._-]/g,' ').toUpperCase()||String(m.country||m.countryName||m.region||m.area||'').trim()||'ΔΙΟΡΓΑΝΩΣΗ')+'</div><button type="button" class="live-row" data-live-id="'+esc(m.id)+'" data-live-home="'+esc(m.home.name)+'" data-live-away="'+esc(m.away.name)+'" aria-label="Άνοιγμα αγώνα '+esc(m.home.name)+' με '+esc(m.away.name)+'"><span class="minute">'+esc(liveClock)+'</span><span class="teamname">'+esc(m.home.name)+'</span><span class="score">'+esc(m.home.score==null?'–':m.home.score)+'–'+esc(m.away.score==null?'–':m.away.score)+'</span><span class="teamname">'+esc(m.away.name)+'</span></button>'+alertHtml+secondaryActivityHtml+'</div>'+statsHtml+(highActivity?'<div class="activity-vip-action"><button type="button" class="mini-btn" data-manual-vip="'+esc(m.id)+'">◆ Κάνε το VIP ALERT</button></div>':'')+'</div>';
 }
