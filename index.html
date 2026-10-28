@@ -4409,5 +4409,51 @@ nav a:not(:first-child):hover:after{right:0}
  .live-match-line .live-row > span.score:nth-of-type(3){font-size:12px}
 }
 
+
+/* GoalMatrix true optical centering v3 — score centered on the whole row */
+.live-match-line .live-row{
+ position:relative!important;
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+ align-items:center!important;
+ gap:0!important;
+ padding:12px 8px!important;
+ min-height:52px;
+}
+.live-match-line .live-row > .minute{
+ position:absolute!important;left:7px;top:50%;transform:translateY(-50%);
+ z-index:2;min-width:32px;justify-content:center;
+}
+.live-match-line .live-row > span.teamname:nth-of-type(2){
+ grid-column:1;min-width:0;width:100%;box-sizing:border-box;
+ text-align:right;padding:0 32px 0 40px;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.live-match-line .live-row > span.score:nth-of-type(3){
+ position:absolute!important;left:50%!important;top:50%!important;
+ transform:translate(-50%,-50%)!important;
+ display:flex!important;align-items:center;justify-content:center;
+ width:54px;min-width:54px;box-sizing:border-box;margin:0!important;
+ padding:2px 0!important;text-align:center;white-space:nowrap;
+ z-index:3;pointer-events:none;font-variant-numeric:tabular-nums;
+}
+.live-match-line .live-row > span.teamname:nth-of-type(4){
+ grid-column:2;min-width:0;width:100%;box-sizing:border-box;
+ text-align:left;padding:0 40px 0 32px;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+@media(max-width:700px){
+ .live-match-line .live-row{padding:12px 7px!important;min-height:52px}
+ .live-match-line .live-row > span.teamname:nth-of-type(2){padding-right:30px;padding-left:34px;font-size:11px}
+ .live-match-line .live-row > span.teamname:nth-of-type(4){padding-left:30px;padding-right:7px;font-size:11px}
+ .live-match-line .live-row > span.score:nth-of-type(3){width:50px;min-width:50px;font-size:13px;letter-spacing:0}
+ .live-match-line .live-row > .minute{left:6px;min-width:30px;padding-inline:3px;font-size:9px}
+}
+@media(max-width:380px){
+ .live-match-line .live-row > span.teamname:nth-of-type(2){padding-right:27px;padding-left:32px;font-size:10px}
+ .live-match-line .live-row > span.teamname:nth-of-type(4){padding-left:27px;padding-right:5px;font-size:10px}
+ .live-match-line .live-row > span.score:nth-of-type(3){width:46px;min-width:46px;font-size:12px}
+}
+
 </style>
 </body></html>
