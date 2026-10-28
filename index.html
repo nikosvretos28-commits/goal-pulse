@@ -4592,4 +4592,41 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
 @media(max-width:700px){.brand{gap:8px}.brand svg{width:43px;height:43px}.brand-tagline{font-size:7px;letter-spacing:1.15px}.brand-name{font-size:21px}nav{gap:5px 12px}}
 @media(prefers-reduced-motion:reduce){.pulse-dot{animation:none}nav a{transition:none}}
 </style>
+
+<style id="gm-mobile-history-cleanup">
+/* Mobile-only cleanup for the long alert history; no alert logic or stored data changes. */
+@media (max-width: 600px) {
+  #signalResults { min-width: 0; overflow-x: clip; }
+  #signalResults .detail-heading { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; margin: 12px 0 7px !important; }
+  #signalResults .detail-heading .signal-muted { display: block; margin-top: 3px; font-size: 11px; }
+  #signalResults .signal-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+    padding: 10px;
+    margin: 7px 0;
+    border: 1px solid #234457;
+    border-radius: 12px;
+    background: rgba(17, 43, 61, .48);
+    min-width: 0;
+  }
+  #signalResults .signal-row > div { min-width: 0; overflow-wrap: anywhere; }
+  #signalResults .signal-row strong { display: block; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+  #signalResults .signal-row .signal-muted { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+  #signalResults .signal-row > .signal-score { justify-self: start; font-size: 10px; }
+  #signalResults .signal-row [style*="display:flex"] { min-width: 0; }
+  #signalResults .signal-row .mini-btn {
+    flex: 1 1 125px;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+    padding: 7px 8px;
+    font-size: 10px;
+  }
+  #signalResults .signal-row label { display: flex; flex: 1 1 100%; align-items: center; gap: 7px; min-width: 0; }
+  #signalResults .signal-row input[data-odds-input] { flex: 1 1 70px; width: auto !important; min-width: 0 !important; max-width: 110px; box-sizing: border-box; }
+}
+</style>
+
 </body></html>
