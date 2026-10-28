@@ -1276,7 +1276,16 @@ const server = http.createServer(async (req, res) => {
         `INSERT INTO high_activity_history(observation_id,event_id,created_at,payload,updated_at)
          SELECT x.observation_id,x.event_id,to_timestamp(x.created_at/1000.0),x.payload,NOW()
          FROM jsonb_to_recordset($1::jsonb) AS x(observation_id text,event_id text,created_at double precision,payload jsonb)
-         ON CONFLICT(observation_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()`,
+         ON CONFLICT(observation_id) DO UPDATE SET payload=CASE
+           WHEN high_activity_history.payload->>'outcome' IN ('won','lost')
+            AND COALESCE(EXCLUDED.payload->>'outcome','pending') NOT IN ('won','lost')
+           THEN EXCLUDED.payload || jsonb_build_object(
+             'outcome', high_activity_history.payload->'outcome',
+             'settledAt', high_activity_history.payload->'settledAt',
+             'settlementReason', high_activity_history.payload->'settlementReason'
+           )
+           ELSE EXCLUDED.payload
+         END,updated_at=NOW()`,
         [JSON.stringify(records)]
       );
       return send(res, 200, { ok: true, saved: records.length, persistent: true });
