@@ -2865,7 +2865,7 @@ function highActivityTeamAnalytics(){
  const normalize=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  for(const item of highActivityObservations){
   const id=String(item?.observationId||'');
-  if(!id||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
+  if(!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
   seen.add(id);
   for(const rawName of [item.home,item.away]){
    const name=String(rawName||'').trim(),key=normalize(name);
@@ -3066,6 +3066,12 @@ async function reconcileHistoricalHighActivityObservations(){
    const homeScore=Number(home.score),awayScore=Number(away.score);
    if(!Number.isFinite(homeScore)||!Number.isFinite(awayScore))continue;
    const score={home:homeScore,away:awayScore,total:homeScore+awayScore};
+   // Do not treat an ambiguous AET/penalty-only final score as normal-time team-stat evidence.
+   const earlyStatusTypes=[event.status?.type,competition?.status?.type].filter(Boolean);
+   const earlyStates=earlyStatusTypes.map(x=>String(x.state||'').trim().toLowerCase());
+   const earlyLabel=earlyStatusTypes.map(x=>[x.name,x.detail,x.shortDetail].filter(Boolean).join(' ')).join(' ').toLowerCase();
+   const extraTimeOrPens=earlyStates.some(state=>['after_extra_time','after_penalties','aet','pen'].includes(state))||/\b(?:after extra time|after penalties|aet|penalties)\b/i.test(earlyLabel);
+   if(extraTimeOrPens&&!item.teamStatsExcluded){item.teamStatsExcluded=true;changed.push(item);}
    if(!item.currentScore||Number(item.currentScore.home)!==score.home||Number(item.currentScore.away)!==score.away){
     item.currentScore={home:score.home,away:score.away};changed.push(item);
    }
@@ -4054,8 +4060,8 @@ loadHighActivityHistory();
    if(open){
     panel.scrollIntoView({behavior:'smooth',block:'start'});
     if(key==='matrixAnalytics'){
-     void loadHighActivityHistory().then(()=>{renderMatrixAnalytics();});
-     void loadPersistentAlertHistory().then(()=>{renderMatrixAnalytics();});
+     void loadHighActivityHistory().then(()=>reconcileHistoricalHighActivityObservations()).then(()=>{renderMatrixAnalytics();});
+     void loadPersistentAlertHistory().then(()=>reconcileHistoricalAlertSettlements()).then(()=>{renderMatrixAnalytics();});
      renderMatrixAnalytics();
     }
    }
