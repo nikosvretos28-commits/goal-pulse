@@ -3129,13 +3129,15 @@ function evaluateHighActivityObservations(ranked){
    recentShots:Number.isFinite(Number(rankedItem.recentShots))?Number(rankedItem.recentShots):null,
    recentOnTarget:Number.isFinite(Number(rankedItem.recentOnTarget))?Number(rankedItem.recentOnTarget):null,
    recentShotsOnTarget10m:Number.isFinite(Number(rankedItem.recentShotsOnTarget10m))?Number(rankedItem.recentShotsOnTarget10m):null,
+   shotsOnTargetInsideBox:Number.isFinite(Number(rankedItem.shotsOnTargetInsideBox))?Number(rankedItem.shotsOnTargetInsideBox):null,
+   bigChances:Number.isFinite(Number(rankedItem.bigChances))?Number(rankedItem.bigChances):null,
    intensity:Number.isFinite(Number(rankedItem.intensity))?Number(rankedItem.intensity):null
   };
   // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
   const observationId=[eventId,periodKey,minute,score.home+'-'+score.away,
    signalStats.totalOnTarget??'na',signalStats.recentOnTarget??'na',
-   signalStats.recentShotsOnTarget10m??'na',signalStats.totalShots??'na',signalStats.recentShots??'na'].join(':');
+   signalStats.recentShotsOnTarget10m??'na',signalStats.shotsOnTargetInsideBox??'na',signalStats.bigChances??'na',signalStats.totalShots??'na',signalStats.recentShots??'na'].join(':');
   if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
   const observation={observationId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,signalStats,outcome:'pending'};
   highActivityObservations.push(observation);changed.push(observation);
@@ -3201,6 +3203,8 @@ function renderHighActivityMatches(){
    ...team,
    shots:team.shots??team.totalShots??team.total_shots??team.total_attempts??team.totalAttempts,
    shotsOnTarget:team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots,
+   shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??team.shots_on_target_in_box??team.shots_on_target_inside_penalty_area??team.shots_on_target_in_penalty_area??team.shots_on_target_from_inside_box??team.on_target_inside_box,
+   bigChances:team.bigChances??team.big_chances??team.big_chance??team.big_chances_created??team.big_chance_created,
    shotsOffTarget:team.shotsOffTarget??team.shots_off_target??team.shots_off_goal??team.shotsOffGoal??team.offTargetShots,
    xG:team.xG??team.xg??team.expectedGoals,
    attacks:team.attacks??team.totalAttacks??team.total_attacks,
@@ -3245,7 +3249,11 @@ function renderHighActivityMatches(){
   // Do not gate recent-SOT triggers on unrelated stat availability; each SOT threshold qualifies independently.
   // High Activity uses the same four independent alert triggers.
   // Attacks and dangerous attacks rank matches but never qualify them by themselves.
-  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.shotsOffTarget||0,4)*0.35;
+  const insideBoxSotSupport=teams.reduce((sum,team)=>sum+(team.shotsOnTargetInsideBox==null||!Number.isFinite(Number(team.shotsOnTargetInsideBox))?0:Number(team.shotsOnTargetInsideBox)),0);
+  const bigChancesSupport=teams.reduce((sum,team)=>sum+(team.bigChances==null||!Number.isFinite(Number(team.bigChances))?0:Number(team.bigChances)),0);
+  // Supplementary shot-quality support only; these statistics never trigger High Activity alone.
+  const shotQualitySupport=Math.min(2,insideBoxSotSupport*0.5)+Math.min(2,bigChancesSupport*0.75);
+  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.shotsOffTarget||0,4)*0.35+shotQualitySupport;
   // HI ACTIVITY relaxed protocol: 2+ SOT in the last 5 minutes.
   const recentSotStrong=delta.shotsOnTarget>=2;
   const recentSotSupported=recentSotStrong;
@@ -3279,7 +3287,7 @@ function renderHighActivityMatches(){
   },0);
   const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
   const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+(delta.shotsOffTarget||0)*2+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
-  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
+  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
  };
  const ranked=allMatches.map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
@@ -3540,7 +3548,7 @@ async function runSignalCheck(){
    if(!live||!live.statsAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
    available++;
    const key=m.id||m.home.name+'-'+m.away.name;
-   const values=live.teams.map(t=>({shots:t.shots,shotsOnTarget:t.shotsOnTarget,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
+   const values=live.teams.map(t=>({shots:t.shots,shotsOnTarget:t.shotsOnTarget,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
    const trail=signalTrails.get(key)||[];
    trail.push({values,at:now});
    while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
