@@ -3238,6 +3238,7 @@ function evaluateHighActivityObservations(ranked){
      item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
     }
    }
+  }
  }
  // Keep the complete in-memory history; period controls only filter the display.
  if(changed.length)persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
