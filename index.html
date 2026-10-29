@@ -3378,7 +3378,7 @@ function renderHighActivityMatches(){
  }
  evaluateHighActivityObservations(ranked);
  highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
- const topTen=ranked.slice(0,10);
+ const topTen=ranked;
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
