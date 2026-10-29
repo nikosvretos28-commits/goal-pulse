@@ -3288,6 +3288,29 @@ function renderHighActivityMatches(){
   const teams=stats.teams.map(normalizeTeam),trail=signalTrails.get(String(m.id))||[];
   const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
   const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
+  // Calculate Hi Activity SOT windows independently from the general stats delta.
+  // Other stats being present must not prevent a valid SOT trend from being used.
+  const readSotValue=team=>{
+   const value=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;
+   if(value==null||value===''||!Number.isFinite(Number(value)))return null;
+   return Number(value);
+  };
+  const independentSotWindow=(savedBaseline,trend,minAge,maxAge)=>{
+   if(savedBaseline&&Array.isArray(savedBaseline.values)&&savedBaseline.values.length>=2&&teams.length>=2){
+    const current=teams.slice(0,2).map(readSotValue),previous=savedBaseline.values.slice(0,2).map(readSotValue);
+    if(current.every(value=>value!==null)&&previous.every(value=>value!==null)){
+     return current.reduce((sum,value,i)=>sum+Math.max(0,value-previous[i]),0);
+    }
+   }
+   const age=Number(trend?.sampleMinutes);
+   if(trend?.available&&Array.isArray(trend.teams)&&trend.teams.length>=2&&Number.isFinite(age)&&age>=minAge&&age<=maxAge){
+    const values=trend.teams.slice(0,2).map(readSotValue);
+    if(values.every(value=>value!==null))return values.reduce((sum,value)=>sum+Math.max(0,value),0);
+   }
+   return null;
+  };
+  const hiActivitySot5m=independentSotWindow(baseline,stats.trend?.window5m,4.5,8);
+  const hiActivitySot10m=independentSotWindow(baseline10,stats.trend?.window10m,8,13);
   const keys=["shots","shotsOnTarget","shotsOffTarget","attacks","dangerousAttacks"];
   const delta={shots:0,shotsOnTarget:0,shotsOffTarget:0,attacks:0,dangerousAttacks:0};
   let hasRecentData=false;
@@ -3343,8 +3366,8 @@ function renderHighActivityMatches(){
   // Preserve the existing Power Games qualification logic.
   const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
   // Hi Activity uses the agreed SOT-only thresholds; either window qualifies independently.
-  const strictRecentSotStrong=delta.shotsOnTarget>=3;
-  const strictRecentSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+  const strictRecentSotStrong=hiActivitySot5m!==null&&hiActivitySot5m>=3;
+  const strictRecentSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=6;
   const hiActivityActive=strictRecentSotStrong||strictRecentSot10m;
   // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
