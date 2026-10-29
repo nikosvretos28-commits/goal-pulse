@@ -797,23 +797,6 @@ nav a{flex:0 0 auto}
 .gp-h2h-preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.gp-h2h-preview-head h4{margin:0 0 10px}.gp-h2h-preview-head>span{font-size:10px;color:#55dfb0;border:1px solid #285c5a;border-radius:20px;padding:4px 8px}.gp-h2h-preview .gp-h2h-summary{margin:10px 0}
 
 /* Compact expandable section buttons: keep long panels closed until requested. */
-/* Group AI/VIP controls on the left and analyst + histories on the right. */
-#gpSectionButtons{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row}
-#gpSectionButtons>.gp-section-button:nth-child(1){grid-column:1;grid-row:1}
-#gpSectionButtons>.gp-section-button:nth-child(2){grid-column:1;grid-row:2}
-#gpSectionButtons>.gp-section-button:nth-child(3){grid-column:1;grid-row:3}
-#gpSectionButtons>.gp-section-button:nth-child(4){grid-column:1;grid-row:4}
-#gpSectionButtons>.gp-section-button:nth-child(5){grid-column:1;grid-row:5}
-#gpSectionButtons>.gp-section-button:nth-child(6){grid-column:2;grid-row:1}
-#gpSectionButtons>.gp-section-button:nth-child(7){grid-column:2;grid-row:2}
-#gpSectionButtons>.gp-section-button:nth-child(8){grid-column:2;grid-row:3}
-#gpSectionButtons>.gp-section-button:nth-child(9){grid-column:2;grid-row:4}
-@media(max-width:700px){
- #gpSectionButtons{grid-template-columns:repeat(2,minmax(0,1fr))}
- #gpSectionButtons>.gp-section-button{grid-column:auto;grid-row:auto}
- #gpSectionButtons>.gp-section-button:nth-child(6){grid-column:1/-1}
- #gpSectionButtons>.gp-section-button:nth-child(7),#gpSectionButtons>.gp-section-button:nth-child(8),#gpSectionButtons>.gp-section-button:nth-child(9){grid-column:1/-1}
-}
 .gp-section-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0 18px}
 .gp-section-button{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:12px 13px;border:1px solid #25465b;border-radius:13px;background:linear-gradient(135deg,#102437,#0a1928);color:#e9f5ff;font-size:12px;font-weight:900;letter-spacing:.25px;cursor:pointer;box-shadow:0 5px 16px #0002}
 .gp-section-button:hover,.gp-section-button[aria-expanded="true"]{border-color:#48d8b0;background:linear-gradient(135deg,#123b42,#102437)}
@@ -1924,8 +1907,8 @@ nav a:first-child{color:var(--gm-lime);border-bottom-color:var(--gm-lime)}
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
- <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
+ <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst" id="highActivityHistoryToggle">📊 ΙΣΤΟΡΙΚΟ HI ACTIVITY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
