@@ -220,9 +220,26 @@ async function runProtocolAnalyst() {
         detail: "Το τρέχον δείγμα δεν δείχνει αρκετά μεγάλη, επαρκώς τεκμηριωμένη διαφορά ανά ομάδα. Διατηρούμε τους κανόνες και συνεχίζουμε τη μέτρηση."
       });
     }
+    const dailyResult = await analyticsPool.query(
+      "SELECT payload FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND created_at >= ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens')) AT TIME ZONE 'Europe/Athens') ORDER BY created_at DESC LIMIT 5000"
+    );
+    const dailyOutcomes = dailyResult.rows.map(row => String(row.payload?.betOutcome || 'pending').toLowerCase());
+    const dailyWins = dailyOutcomes.filter(value => value === 'won').length;
+    const dailyLosses = dailyOutcomes.filter(value => value === 'lost').length;
+    const dailyPending = dailyOutcomes.filter(value => !['won','lost','push','void'].includes(value)).length;
+    const dailyPushes = dailyOutcomes.filter(value => value === 'push').length;
+    const dailyVoids = dailyOutcomes.filter(value => value === 'void').length;
+    const dailySettled = dailyWins + dailyLosses;
     const report = {
       generatedAt: new Date().toISOString(),
       windowDays: 180,
+      dailySummary: {
+        date: new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+        total: dailyOutcomes.length, wins: dailyWins, losses: dailyLosses, pending: dailyPending,
+        pushes: dailyPushes, voids: dailyVoids, settled: dailySettled,
+        successRate: dailySettled ? Math.round(dailyWins / dailySettled * 1000) / 10 : null,
+        note: "AI alerts created today in Greece local time; excludes HI ACTIVITY observations."
+      },
       method: "statistical_review_of_settled_server_generated_ai_alerts_first_half_minutes_1_to_40",
       automaticRuleChanges: false,
       sample: overall,
