@@ -699,6 +699,10 @@ header nav a{padding:9px 0;font-size:11px}
 nav{gap:15px;overflow-x:auto;white-space:nowrap}
 nav a{flex:0 0 auto}
 .scoreboard-top{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.gp-power-between-live{grid-column:1/-1;width:100%;min-height:48px;justify-content:center;gap:12px;border-color:rgba(183,255,70,.42);background:linear-gradient(110deg,rgba(25,61,57,.96),rgba(14,39,55,.98));color:#eafff5;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 22px rgba(0,0,0,.16)}
+.gp-power-between-live .gp-button-count{border-color:rgba(183,255,70,.2);background:rgba(183,255,70,.08);color:#d9ff9b}
+.gp-power-between-live:hover,.gp-power-between-live[aria-expanded="true"]{border-color:rgba(183,255,70,.72);background:linear-gradient(110deg,rgba(28,76,65,.98),rgba(15,47,62,.98));box-shadow:0 8px 24px rgba(0,0,0,.2),0 0 20px rgba(183,255,70,.08)}
+@media(max-width:700px){.gp-power-between-live{grid-column:1;width:100%;min-height:46px}}
 .scoreboard-title{grid-column:1/-1;padding:16px 20px;border:1px solid #234457;border-radius:14px;background:linear-gradient(105deg,#102c40,#0b1d2c)}
 .scoreboard-title h1{font-size:26px;margin:3px 0}
 .scoreboard-title p{margin:4px 0 0;font-size:12px;color:var(--muted)}
@@ -1907,7 +1911,6 @@ nav a:first-child{color:var(--gm-lime);border-bottom-color:var(--gm-lime)}
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
 <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst" id="highActivityHistoryToggle">📊 ΙΣΤΟΡΙΚΟ HI ACTIVITY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
- <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button>
  <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
 </div>
 
@@ -1957,7 +1960,7 @@ nav a:first-child{color:var(--gm-lime);border-bottom-color:var(--gm-lime)}
 
 <section class="scoreboard-top">
  <div class="scoreboard-title"><div><div class="eyebrow">GOALMATRIX · AI FOOTBALL INTELLIGENCE</div><h1>Live Score <span>+</span></h1><p>Όλοι οι διαθέσιμοι αγώνες και τα live δεδομένα σε μία οθόνη.</p></div><div class="scoreboard-status"><span class="pulse-dot"></span><span id="liveCountTop">LIVE CENTER</span><small id="topUpdated">Αυτόματη ενημέρωση</small></div></div>
- <div class="top-live live-match-centre" id="highActivity"><div class="top-live-head"><strong>⚡ High Activity Matches</strong><span class="subtle">Αγώνες με έντονη επιθετική πίεση</span></div><div id="highActivityRows"><div class="subtle" style="padding:10px">Αναμονή πραγματικών live στατιστικών…</div></div></div><div class="top-live live-match-centre" id="live"><div class="top-live-head"><strong>● Live Matches</strong><span class="subtle">Αγώνας και στατιστικά στην ίδια γραμμή</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
+ <div class="top-live live-match-centre" id="highActivity"><div class="top-live-head"><strong>⚡ High Activity Matches</strong><span class="subtle">Αγώνες με έντονη επιθετική πίεση</span></div><div id="highActivityRows"><div class="subtle" style="padding:10px">Αναμονή πραγματικών live στατιστικών…</div></div></div><button type="button" class="gp-section-button gp-power-button gp-power-between-live" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button><div class="top-live live-match-centre" id="live"><div class="top-live-head"><strong>● Live Matches</strong><span class="subtle">Αγώνας και στατιστικά στην ίδια γραμμή</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
 </section>
 <nav class="product-nav" aria-label="Μενού LIVE αγώνων"><a class="selected" href="#matches" data-menu-filter="live">🔴 LIVE ΤΩΡΑ</a><a href="#matches" data-menu-filter="all">⚽ Όλοι οι αγώνες</a><a href="#matches" data-menu-filter="upcoming">📅 Πρόγραμμα</a><a href="#matches" data-menu-filter="finished">✓ Αποτελέσματα</a><a href="#leagues">🏆 Πρωταθλήματα</a><a href="#matches" data-menu-filter="favorites">★ Αγαπημένα</a><a href="#insights">📊 Στατιστικά</a><a href="#gpSectionButtons">⚡ AI Alerts</a><a href="#gpSectionButtons">◆ VIP Alerts</a><a href="#gpSectionButtons">↗ Trends</a><a href="#gpSectionButtons">★ Top Trends</a><a href="#savedScanner">☷ Προσωπικά φίλτρα</a><a href="#gpSectionButtons">◷ Ιστορικό</a></nav>
 
