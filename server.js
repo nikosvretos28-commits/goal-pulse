@@ -2160,7 +2160,7 @@ const server = http.createServer(async (req, res) => {
           const priceSuffix = hasVerifiedOdds
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const activatedSotRule = (onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : cumulativeSotStrong ? "SOT 10+ συνολικά" : "SOT signal") + " · 10+ συνολικές τελικές";
+          const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
           const result = await sendPushToSubscribers({
             title: alertTitle,
