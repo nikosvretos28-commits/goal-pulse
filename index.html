@@ -3132,28 +3132,31 @@ async function reconcileHistoricalHighActivityObservations(){
    const signalMinute=Number(item.minute);
    const firstHalfSignal=/first|1\s*(?:ο|st|h|half)|protero|proto/.test(halfText)||(!/second|2\s*(?:ο|nd|h|half)|deutero/.test(halfText)&&Number.isFinite(signalMinute)&&signalMinute>=1&&signalMinute<=45);
    if(firstHalfSignal){
-    // First-half signals are judged only against the first-half score, never a later second-half goal.
-    const periodNumbers=statusTypes.map(x=>Number(x.period)).filter(Number.isFinite);
-    const period=periodNumbers.length?Math.max(...periodNumbers):Number(event.status?.period||competition?.status?.period||0);
-    const firstHalfClosed=finished||period>=2||/half[ -]?time|halftime|ημιχρονο|half ended/i.test(label);
-    if(!firstHalfClosed)continue;
-    const homeLines=Array.isArray(home.linescores)?home.linescores:[];
-    const awayLines=Array.isArray(away.linescores)?away.linescores:[];
-    const lineValue=lines=>{const line=lines.find(x=>Number(x.period||x.periodNumber||x.number)===1)||lines[0];if(!line)return null;const value=Number(line.value??line.displayValue??line.score);return Number.isFinite(value)?value:null;};
-    const homeFirst=lineValue(homeLines),awayFirst=lineValue(awayLines);
-    let firstHalfTotal=homeFirst!=null&&awayFirst!=null?homeFirst+awayFirst:null;
-    if(firstHalfTotal==null&&/half[ -]?time|halftime|ημιχρονο|half ended/i.test(label)&&!finished)firstHalfTotal=score.total;
-    // If the feed cannot establish the half-time score, leave pending rather than
-    // wrongly counting a goal scored after the interval as a first-half success.
-    if(signalTotal==null||firstHalfTotal==null)continue;
-    if(firstHalfTotal>signalTotal){
-     item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';changed.push(item);
-    }else{
-     item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before the end of the first half';changed.push(item);
+    const periods=statusTypes.map(x=>Number(x.period)).filter(Number.isFinite);
+    const period=periods.length?Math.max(...periods):0;
+    const halfClosed=finished||period>=2||/half[ -]?time|halftime|interval|ημιχρονο|half ended/i.test(label);
+    if(!halfClosed||signalTotal==null)continue;
+    const lineValue=team=>{
+     const lines=Array.isArray(team?.linescores)?team.linescores:[];
+     const first=lines.find(x=>Number(x.period??x.periodNumber??x.number)===1)||lines[0];
+     if(!first)return null;
+     const value=Number(first.value??first.displayValue??first.score);
+     return Number.isFinite(value)?value:null;
+    };
+    let firstHalfHome=lineValue(home),firstHalfAway=lineValue(away);
+    if((firstHalfHome==null||firstHalfAway==null)&&/half[ -]?time|halftime|interval|ημιχρονο|half ended/i.test(label)){
+     firstHalfHome=homeScore;firstHalfAway=awayScore;
     }
-    continue;
+    if(firstHalfHome==null||firstHalfAway==null)continue;
+    const firstHalfTotal=firstHalfHome+firstHalfAway;
+    item.currentScore={home:homeScore,away:awayScore,total:score.total};
+    if(firstHalfTotal>signalTotal){
+     item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';
+    }else{
+     item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before the end of the first half';
+    }
+    changed.push(item);continue;
    }
-   // Second-half signals are judged until full time.
    if(signalTotal!=null&&score.total>signalTotal){
     item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before full time';changed.push(item);continue;
    }
@@ -3212,19 +3215,29 @@ function evaluateHighActivityObservations(ranked){
    if(!previous||Number(previous.home)!==score.home||Number(previous.away)!==score.away){
     item.currentScore=score;changed.push(item);
    }
-   if(score.total>Number(item.scoreAtSignal?.total||0)){
-    item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal';changed.push(item);continue;
+   const signalTotal=Number(item.scoreAtSignal?.total||0);
+   const itemMinute=Number(item.minute);
+   const halfText=String(item.half||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+   const isFirstHalf=/first|1\s*(?:ο|st|h|half)|protero|proto/.test(halfText)||(!/second|2\s*(?:ο|nd|h|half)|deutero/.test(halfText)&&Number.isFinite(itemMinute)&&itemMinute>=1&&itemMinute<=45);
+   const state=String(match?.state||match?.status||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
+   const status=String(match?.statusText||match?.clock||'').trim().toLowerCase();
+   const finishedStates=new Set(['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen']);
+   const finishedStatus=/\b(?:ft|full[ -]?time|finished|ended|final(?:\s+whistle)?|completed|after extra time|after penalties|aet)\b/i.test(status);
+   const finished=finishedStates.has(state)||finishedStatus;
+   const secondHalfStarted=/second half|2nd half|2ο ημίχρονο/i.test(status)||Number(match?.period||match?.statusPeriod||0)>=2||/^(?:2h|second_half)$/i.test(state);
+   const halfTime=/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(status);
+   if(isFirstHalf){
+    if(!halfTime&&!secondHalfStarted&&!finished&&score.total>signalTotal){
+     item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';changed.push(item);
+    }
+   }else{
+    if(score.total>signalTotal){
+     item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal before full time';changed.push(item);continue;
+    }
+    if(match&&(finishedStates.has(state)||finishedStatus)&&score){
+     item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
+    }
    }
-  }
-  const state=String(match?.state||match?.status||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
-  const status=String(match?.statusText||match?.clock||'').trim().toLowerCase();
-  // Only settle as a loss on a confirmed full-time/final state. "postponed" must not
-  // match "post", and cancelled/abandoned fixtures are not a played loss.
-  const finishedStates=new Set(['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen']);
-  const finishedStatus=/\b(?:ft|full[ -]?time|finished|ended|final(?:\s+whistle)?|completed|after extra time|after penalties|aet)\b/i.test(status);
-  if(match&&(finishedStates.has(state)||finishedStatus)&&score){
-   item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
-  }
  }
  // Keep the complete in-memory history; period controls only filter the display.
  if(changed.length)persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
