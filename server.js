@@ -2048,8 +2048,8 @@ const server = http.createServer(async (req, res) => {
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
         // 20+ total shots can strengthen sustained-pressure scoring but is not mandatory.
         // Cumulative SOT and xG cannot replace the recent-SOT trigger; missing xG is neutral.
-        // Strict AI alert windows: first half 1-40; second half 46-88.
-        // Exclude 41-45 and halftime; keep the agreed recent-SOT thresholds unchanged.
+        // Strict AI alert windows: first half 1-40; second half 46-80.
+        // Exclude 41-45, 81-90+, and halftime; keep the agreed recent-SOT thresholds unchanged.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const aiStatus = String(match.statusText || match.status || match.status_text || "").toLowerCase();
         const atHalfTime = /\bht\b|half.?time|halftime|ανάπαυλα/.test(aiStatus);
@@ -2057,7 +2057,7 @@ const server = http.createServer(async (req, res) => {
         const firstHalfWindow = !atHalfTime && !secondHalfWindow && ( /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(aiStatus) || Number.isFinite(aiMinute) );
         const eligibleMinute = Number.isFinite(aiMinute) &&
           ((firstHalfWindow && aiMinute >= 1 && aiMinute <= 40) ||
-           (secondHalfWindow && aiMinute >= 46 && aiMinute <= 88));
+           (secondHalfWindow && aiMinute >= 46 && aiMinute <= 80));
         const isAiGoal = scoreAvailable && eligibleMinute && shotsOnlyOverEvidence;
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
