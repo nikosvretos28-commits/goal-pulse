@@ -3296,18 +3296,24 @@ function renderHighActivityMatches(){
    return Number(value);
   };
   const independentSotWindow=(savedBaseline,trend,minAge,maxAge)=>{
+   // Evaluate both independent sources. A valid local baseline must not mask a
+   // qualifying provider trend just because its snapshot delta is zero/stale.
+   let best=null;
    if(savedBaseline&&Array.isArray(savedBaseline.values)&&savedBaseline.values.length>=2&&teams.length>=2){
     const current=teams.slice(0,2).map(readSotValue),previous=savedBaseline.values.slice(0,2).map(readSotValue);
     if(current.every(value=>value!==null)&&previous.every(value=>value!==null)){
-     return current.reduce((sum,value,i)=>sum+Math.max(0,value-previous[i]),0);
+     best=current.reduce((sum,value,i)=>sum+Math.max(0,value-previous[i]),0);
     }
    }
    const age=Number(trend?.sampleMinutes);
    if(trend?.available&&Array.isArray(trend.teams)&&trend.teams.length>=2&&Number.isFinite(age)&&age>=minAge&&age<=maxAge){
     const values=trend.teams.slice(0,2).map(readSotValue);
-    if(values.every(value=>value!==null))return values.reduce((sum,value)=>sum+Math.max(0,value),0);
+    if(values.every(value=>value!==null)){
+     const trendTotal=values.reduce((sum,value)=>sum+Math.max(0,value),0);
+     best=best===null?trendTotal:Math.max(best,trendTotal);
+    }
    }
-   return null;
+   return best;
   };
   const hiActivitySot5m=independentSotWindow(baseline,stats.trend?.window5m,4.5,8);
   const hiActivitySot10m=independentSotWindow(baseline10,stats.trend?.window10m,8,13);
