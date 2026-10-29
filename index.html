@@ -1942,7 +1942,7 @@ nav a:first-child{color:var(--gm-lime);border-bottom-color:var(--gm-lime)}
  <div id="protocolAnalystPanel" aria-live="polite"><p>Φόρτωση ανάλυσης πρωτοκόλλων…</p></div>
  <div class="gp-high-activity-analyst" style="margin:0 18px 18px;padding:16px;border:1px solid rgba(85,199,232,.22);border-radius:14px;background:rgba(7,22,34,.52)">
   <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><h3 style="margin:0">⚡ HI ACTIVITY · ΞΕΧΩΡΙΣΤΟ ΙΣΤΟΡΙΚΟ & AI ANALYST</h3><button type="button" class="login" id="refreshHighActivityAnalyst">↻ Ανανέωση</button></div>
-  <p class="subtle" style="margin:8px 0 12px">Επιτυχία = τουλάχιστον 1 νέο γκολ από οποιαδήποτε ομάδα μετά την ένδειξη και μέχρι τη λήξη του αγώνα. Ισχύει για 1ο και 2ο ημίχρονο, ακόμη κι αν ο αγώνας φύγει από τη λίστα HI ACTIVITY.</p>
+  <p class="subtle" style="margin:8px 0 12px">Διακανονισμός ανά ημίχρονο: για ένδειξη 1ου ημιχρόνου μετρά νέο γκολ μετά την ένδειξη μέχρι τη λήξη του 1ου ημιχρόνου· για ένδειξη 2ου ημιχρόνου μετρά νέο γκολ μετά την ένδειξη μέχρι τη λήξη του αγώνα. Κάθε ένδειξη αξιολογείται ξεχωριστά, ακόμη κι αν ο αγώνας φύγει από τη λίστα HI ACTIVITY.</p>
   <div id="highActivityAnalystPanel" aria-live="polite"><p>Φόρτωση ξεχωριστού ιστορικού…</p></div>
  </div>
  <p class="top-ai-alert-privacy">Ο αναλυτής δεν αλλάζει αυτόματα τα live πρωτόκολλα. Προτείνει δοκιμές μόνο όταν υπάρχει επαρκές πραγματικό δείγμα· δεν επινοεί ποσοστά ή αποτελέσματα.</p>
@@ -3120,21 +3120,47 @@ async function reconcileHistoricalHighActivityObservations(){
     item.currentScore={home:score.home,away:score.away};changed.push(item);
    }
    const signalTotal=Number.isFinite(Number(item.scoreAtSignal?.total))?Number(item.scoreAtSignal.total):(Number.isFinite(Number(item.scoreAtSignal?.home))&&Number.isFinite(Number(item.scoreAtSignal?.away))?Number(item.scoreAtSignal.home)+Number(item.scoreAtSignal.away):null);
-    if(signalTotal!=null&&score.total>signalTotal){
-    item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal';changed.push(item);continue;
-   }
    const statusTypes=[event.status?.type,competition?.status?.type].filter(Boolean);
-   // A provider can expose event-level and competition-level status simultaneously.
-   // Do not trust only the first non-empty state: it may be stale ("in") while the
-   // competition status already confirms full time. Wins settle from the score delta,
-   // so this bug disproportionately leaves losses pending.
    const states=statusTypes.map(x=>String(x.state||'').trim().toLowerCase()).filter(Boolean);
    const label=statusTypes.map(x=>[x.name,x.detail,x.shortDetail].filter(Boolean).join(' ')).join(' ').toLowerCase();
    const finishedStates=['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen'];
    const excludedStates=['postponed','cancelled','canceled','abandoned','suspended'];
    const finished=states.some(state=>finishedStates.includes(state))||/\b(?:final|full[ -]?time|finished|ended|ft|after extra time|after penalties|aet)\b/i.test(label);
    const excluded=states.some(state=>excludedStates.includes(state))||/postponed|cancelled|canceled|abandoned|suspended/i.test(label);
-   if(finished&&!excluded){
+   if(excluded)continue;
+   const halfText=String(item.half||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+   const signalMinute=Number(item.minute);
+   const firstHalfSignal=/first|1\s*(?:ο|st|h|half)|protero|proto/.test(halfText)||(!/second|2\s*(?:ο|nd|h|half)|deutero/.test(halfText)&&Number.isFinite(signalMinute)&&signalMinute>=1&&signalMinute<=45);
+   if(firstHalfSignal){
+    const periods=statusTypes.map(x=>Number(x.period)).filter(Number.isFinite);
+    const period=periods.length?Math.max(...periods):0;
+    const halfClosed=finished||period>=2||/half[ -]?time|halftime|interval|ημιχρονο|half ended/i.test(label);
+    if(!halfClosed||signalTotal==null)continue;
+    const lineValue=team=>{
+     const lines=Array.isArray(team?.linescores)?team.linescores:[];
+     const first=lines.find(x=>Number(x.period??x.periodNumber??x.number)===1)||lines[0];
+     if(!first)return null;
+     const value=Number(first.value??first.displayValue??first.score);
+     return Number.isFinite(value)?value:null;
+    };
+    let firstHalfHome=lineValue(home),firstHalfAway=lineValue(away);
+    if((firstHalfHome==null||firstHalfAway==null)&&/half[ -]?time|halftime|interval|ημιχρονο|half ended/i.test(label)){
+     firstHalfHome=homeScore;firstHalfAway=awayScore;
+    }
+    if(firstHalfHome==null||firstHalfAway==null)continue;
+    const firstHalfTotal=firstHalfHome+firstHalfAway;
+    item.currentScore={home:homeScore,away:awayScore,total:score.total};
+    if(firstHalfTotal>signalTotal){
+     item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';
+    }else{
+     item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before the end of the first half';
+    }
+    changed.push(item);continue;
+   }
+   if(signalTotal!=null&&score.total>signalTotal){
+    item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before full time';changed.push(item);continue;
+   }
+   if(finished&&!excluded&&signalTotal!=null){
     item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
    }
   }
@@ -3189,19 +3215,29 @@ function evaluateHighActivityObservations(ranked){
    if(!previous||Number(previous.home)!==score.home||Number(previous.away)!==score.away){
     item.currentScore=score;changed.push(item);
    }
-   if(score.total>Number(item.scoreAtSignal?.total||0)){
-    item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal';changed.push(item);continue;
+   const signalTotal=Number(item.scoreAtSignal?.total||0);
+   const itemMinute=Number(item.minute);
+   const halfText=String(item.half||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+   const isFirstHalf=/first|1\s*(?:ο|st|h|half)|protero|proto/.test(halfText)||(!/second|2\s*(?:ο|nd|h|half)|deutero/.test(halfText)&&Number.isFinite(itemMinute)&&itemMinute>=1&&itemMinute<=45);
+   const state=String(match?.state||match?.status||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
+   const status=String(match?.statusText||match?.clock||'').trim().toLowerCase();
+   const finishedStates=new Set(['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen']);
+   const finishedStatus=/\b(?:ft|full[ -]?time|finished|ended|final(?:\s+whistle)?|completed|after extra time|after penalties|aet)\b/i.test(status);
+   const finished=finishedStates.has(state)||finishedStatus;
+   const secondHalfStarted=/second half|2nd half|2ο ημίχρονο/i.test(status)||Number(match?.period||match?.statusPeriod||0)>=2||/^(?:2h|second_half)$/i.test(state);
+   const halfTime=/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(status);
+   if(isFirstHalf){
+    if(!halfTime&&!secondHalfStarted&&!finished&&score.total>signalTotal){
+     item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';changed.push(item);
+    }
+   }else{
+    if(score.total>signalTotal){
+     item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal before full time';changed.push(item);continue;
+    }
+    if(match&&(finishedStates.has(state)||finishedStatus)&&score){
+     item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
+    }
    }
-  }
-  const state=String(match?.state||match?.status||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
-  const status=String(match?.statusText||match?.clock||'').trim().toLowerCase();
-  // Only settle as a loss on a confirmed full-time/final state. "postponed" must not
-  // match "post", and cancelled/abandoned fixtures are not a played loss.
-  const finishedStates=new Set(['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen']);
-  const finishedStatus=/\b(?:ft|full[ -]?time|finished|ended|final(?:\s+whistle)?|completed|after extra time|after penalties|aet)\b/i.test(status);
-  if(match&&(finishedStates.has(state)||finishedStatus)&&score){
-   item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
-  }
  }
  // Keep the complete in-memory history; period controls only filter the display.
  if(changed.length)persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
