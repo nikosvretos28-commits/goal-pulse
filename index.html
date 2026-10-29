@@ -3349,7 +3349,7 @@ function renderHighActivityMatches(){
   }
   const cumulativeSotStrong=teams.some(team=>team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number(team.shotsOnTarget)>=8);
   const xGValues=teams.map(team=>team.xG==null?null:Number(team.xG));
-  const xGStandaloneTrigger=xGValues.length===2&&xGValues.every(value=>value!=null&&Number.isFinite(value)&&value>=2.0);
+  // xG is supplementary ranking context only; missing xG is neutral.
   // Do not gate recent-SOT triggers on unrelated stat availability; each SOT threshold qualifies independently.
   // High Activity uses the same four independent alert triggers.
   // Attacks and dangerous attacks rank matches but never qualify them by themselves.
@@ -3358,22 +3358,23 @@ function renderHighActivityMatches(){
   // Supplementary shot-quality support only; these statistics never trigger High Activity alone.
   const shotQualitySupport=Math.min(2,insideBoxSotSupport*0.5)+Math.min(2,bigChancesSupport*0.75);
   const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.shotsOffTarget||0,4)*0.35+shotQualitySupport;
-  // HI ACTIVITY relaxed protocol: 2+ SOT in the last 5 minutes.
-  const recentSotStrong=delta.shotsOnTarget>=2;
-  const recentSotSupported=recentSotStrong;
+  // Strict shared protocol: 3+ SOT in 5m OR 6+ SOT in 10m.
+  const strictRecentSotStrong=hiActivitySot5m!==null&&hiActivitySot5m>=3;
+  const strictRecentSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=6;
+  const protocolQualified=strictRecentSotStrong||strictRecentSot10m;
+  const recentSotStrong=strictRecentSotStrong;
+  const recentSotSupported=strictRecentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
   if(baseline10&&Array.isArray(baseline10.values)){
    teams.forEach((team,i)=>{const prev=baseline10.values[i]||{};if(team.shotsOnTarget!=null&&prev.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number.isFinite(Number(prev.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget)-Number(prev.shotsOnTarget));hasSot10mData=true;}});
   }else if(stats.trend?.window10m?.available&&Array.isArray(stats.trend.window10m.teams)){
    stats.trend.window10m.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
   }
-  const sixSot10m=hasSot10mData&&shotsOnTarget10m>=4;
-  const recentSot10mSupported=sixSot10m;
-  // Preserve the existing Power Games qualification logic.
-  const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
-  // Hi Activity uses the exact same qualification protocol as Power Games.
-  // This avoids maintaining two conflicting sets of activation criteria.
-  const hiActivityActive=active;
+  const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+  const recentSot10mSupported=strictRecentSot10m;
+  // Cumulative SOT and xG cannot qualify a match on their own.
+  const active=protocolQualified;
+  const hiActivityActive=protocolQualified;
   // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
@@ -3398,8 +3399,9 @@ function renderHighActivityMatches(){
  };
  const candidates=allMatches.map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
- const ranked=candidates.filter(x=>x.active);
  const hiActivityRanked=candidates.filter(x=>x.hiActivityActive);
+ // Power Games is a curated shortlist selected only from qualifying Hi Activity matches.
+ const ranked=hiActivityRanked.slice(0,5);
  // Evaluate and display EVERY qualifying live match, not a five-match shortlist.
  // Recalculate each refresh so matches leave when pressure fades and re-enter when it returns.
  if(powerGamesUnlocked){
