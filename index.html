@@ -3371,10 +3371,9 @@ function renderHighActivityMatches(){
   const recentSot10mSupported=sixSot10m;
   // Preserve the existing Power Games qualification logic.
   const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
-  // Hi Activity uses the agreed SOT-only thresholds; either window qualifies independently.
-  const strictRecentSotStrong=hiActivitySot5m!==null&&hiActivitySot5m>=3;
-  const strictRecentSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=6;
-  const hiActivityActive=strictRecentSotStrong||strictRecentSot10m;
+  // Hi Activity uses the exact same qualification protocol as Power Games.
+  // This avoids maintaining two conflicting sets of activation criteria.
+  const hiActivityActive=active;
   // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
