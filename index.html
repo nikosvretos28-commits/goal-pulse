@@ -1846,6 +1846,38 @@ header nav a:hover,header nav a:focus-visible{color:var(--gm-premium-cyan)}
  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 </style>
+
+<style id="goalmatrix-brand-identity">
+/* GoalMatrix brand identity refresh — visual-only; no gameplay, data, alert, or protocol logic changes. */
+:root{--gm-lime:#c7ff4a;--gm-mint:#43e0a2;--gm-cyan:#55c7e8;--gm-ink:#06111d}
+header{border-bottom-color:rgba(85,199,232,.24);background:linear-gradient(180deg,rgba(5,16,28,.38),rgba(5,16,28,0));}
+.brand{gap:13px;min-width:238px}
+.brand svg{width:58px;height:58px;filter:drop-shadow(0 0 9px #43e0a233) drop-shadow(0 0 20px #55c7e81a);transition:filter .2s ease,transform .2s ease}
+.brand:hover svg{filter:drop-shadow(0 0 12px #c7ff4a55) drop-shadow(0 0 22px #55c7e833);transform:translateY(-1px)}
+.brand-lockup{gap:6px}
+.brand-name{font-size:26px;letter-spacing:-1.45px;font-weight:950;line-height:.86;text-shadow:0 2px 18px #55c7e80d}
+.brand-name span{background:linear-gradient(95deg,var(--gm-lime) 0%,var(--gm-mint) 55%,var(--gm-cyan) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:6px}
+.brand-tagline{font-size:8px;letter-spacing:1.8px;color:#b2c7d5;font-weight:900}
+nav{gap:clamp(12px,1.7vw,24px);font-size:12px;letter-spacing:.35px}
+nav a{transition:color .18s ease,border-color .18s ease}
+nav a:hover{color:var(--gm-lime)}
+nav a:first-child{color:var(--gm-lime);border-bottom-color:var(--gm-lime)}
+.live-badge{border-color:#43e0a255;background:linear-gradient(120deg,#10362e,#0d2b31);box-shadow:inset 0 0 0 1px #43e0a20a,0 0 22px #43e0a20b;letter-spacing:.35px}
+.pulse-dot{background:var(--gm-lime);box-shadow:0 0 9px #c7ff4a99}
+.hero-main{border-color:#55c7e84d;background:radial-gradient(ellipse at 82% 42%,#55c7e824 0,transparent 35%),radial-gradient(ellipse at 12% 100%,#43e0a216 0,transparent 43%),linear-gradient(112deg,#081725 0%,#102b40 56%,#071522 100%);box-shadow:inset 0 1px 0 #ffffff08,0 16px 48px #0000001c}
+.hero-main:after{border-color:#55c7e82b;box-shadow:0 -15px 0 -13px #c7ff4a,0 -30px 0 -28px #55c7e8}
+.eyebrow{color:var(--gm-lime);letter-spacing:2.4px}
+.hero h1{letter-spacing:-2.35px;text-shadow:0 4px 28px #00000024}
+.hero h1 span{background:linear-gradient(100deg,var(--gm-lime),var(--gm-mint) 52%,var(--gm-cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.primary,.login{background:linear-gradient(105deg,var(--gm-lime),var(--gm-mint) 58%,#73e5d0);box-shadow:0 5px 24px #43e0a21c, inset 0 1px 0 #ffffff55;transition:transform .18s ease,filter .18s ease,box-shadow .18s ease}
+.primary:hover,.login:hover{box-shadow:0 7px 30px #43e0a233,inset 0 1px 0 #ffffff66;filter:saturate(1.08)}
+.panel,.side-live{box-shadow:inset 0 1px 0 #ffffff06,0 12px 32px #00000012}
+.panel-head{background:linear-gradient(90deg,#ffffff03,transparent)}
+.count{background:#15394a;border:1px solid #55c7e81c;color:var(--gm-cyan)}
+@media(max-width:760px){.brand{min-width:0;gap:9px}.brand svg{width:48px;height:48px}.brand-name{font-size:23px}.brand-tagline{font-size:7px;letter-spacing:1.35px}}
+@media(prefers-reduced-motion:reduce){.brand svg,.primary,.login{transition:none}}
+</style>
+
 </head>
 <body>
 <div class="wrap">
