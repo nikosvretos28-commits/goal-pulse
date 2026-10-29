@@ -2066,6 +2066,23 @@ const server = http.createServer(async (req, res) => {
         if (isVip) levels.push("VIP");
         else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
+          // Final fail-closed guard immediately before any AI push work.
+          // Do not rely only on the earlier candidate calculation: the exact displayed
+          // minute is checked again at dispatch so stale/mismatched clock fields cannot
+          // send an alert after the agreed window.
+          const dispatchMinute = parseLiveMinute(getMatchMinute(match));
+          const dispatchMinuteAllowed = Number.isFinite(dispatchMinute) &&
+            ((dispatchMinute >= 1 && dispatchMinute <= 40) ||
+             (dispatchMinute >= 46 && dispatchMinute <= 80));
+          if (level === "AI" && !dispatchMinuteAllowed) {
+            console.warn("[AI push blocked: minute outside protocol window]", JSON.stringify({
+              eventId: String(match.eventId),
+              minute: getMatchMinute(match),
+              parsedMinute: Number.isFinite(dispatchMinute) ? dispatchMinute : null,
+              status: String(match.statusText || match.status || match.status_text || "")
+            }));
+            continue;
+          }
           // Prefer a verified, active quote for the exact score-derived line and period.
           // If the provider has no licensed live-bookmaker coverage, keep the qualified
           // pressure signal but label the missing price explicitly; never invent odds.
