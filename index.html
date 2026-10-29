@@ -3340,8 +3340,12 @@ function renderHighActivityMatches(){
   }
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=4;
   const recentSot10mSupported=sixSot10m;
-  // All four agreed HI ACTIVITY triggers qualify independently.
+  // Preserve the existing Power Games qualification logic.
   const active=recentSotSupported||recentSot10mSupported||cumulativeSotStrong||xGStandaloneTrigger;
+  // Hi Activity uses the agreed SOT-only thresholds; either window qualifies independently.
+  const strictRecentSotStrong=delta.shotsOnTarget>=3;
+  const strictRecentSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+  const hiActivityActive=strictRecentSotStrong||strictRecentSot10m;
   // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
@@ -3362,10 +3366,12 @@ function renderHighActivityMatches(){
   },0);
   const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
   const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+(delta.shotsOffTarget||0)*2+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
-  return active?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport}:null;
+  return (active||hiActivityActive)?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport,active,hiActivityActive}:null;
  };
- const ranked=allMatches.map(scoreMatch).filter(Boolean)
+ const candidates=allMatches.map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
+ const ranked=candidates.filter(x=>x.active);
+ const hiActivityRanked=candidates.filter(x=>x.hiActivityActive);
  // Evaluate and display EVERY qualifying live match, not a five-match shortlist.
  // Recalculate each refresh so matches leave when pressure fades and re-enter when it returns.
  if(powerGamesUnlocked){
@@ -3376,13 +3382,13 @@ function renderHighActivityMatches(){
   const status=document.getElementById("powerGamesStatus");if(status)status.textContent=ranked.length+" ΙΣΧΥΡΑ ΣΗΜΑΤΑ";
   const count=document.getElementById("powerGamesCount");if(count)count.textContent=String(ranked.length);
  }
- evaluateHighActivityObservations(ranked);
- highActivityEligibleIds=new Set(ranked.map(x=>String(x.match.id)));
- const topTen=ranked;
+ evaluateHighActivityObservations(hiActivityRanked);
+ highActivityEligibleIds=new Set(hiActivityRanked.map(x=>String(x.match.id)));
+ const topTen=hiActivityRanked;
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
-  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν το HI ACTIVITY: 2+ SOT/5′, 4+ SOT/10′, 8+ συνολικά SOT μίας ομάδας ή xG ≥2,00 και για τις δύο ομάδες, στα λεπτά 1′–40′.</div>';
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν το HI ACTIVITY: 3+ SOT/5′ ή 6+ SOT/10′, στα λεπτά 1′–40′ και 46′–80′.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
  const button=event.target.closest('button[data-manual-vip]');if(!button)return;
