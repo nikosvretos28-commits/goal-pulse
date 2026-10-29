@@ -3401,7 +3401,7 @@ function renderHighActivityMatches(){
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
  const hiActivityRanked=candidates.filter(x=>x.hiActivityActive);
  // Power Games is a curated shortlist selected only from qualifying Hi Activity matches.
- const ranked=hiActivityRanked.slice(0,5);
+ const ranked=hiActivityRanked.slice(0,3);
  // Evaluate and display EVERY qualifying live match, not a five-match shortlist.
  // Recalculate each refresh so matches leave when pressure fades and re-enter when it returns.
  if(powerGamesUnlocked){
