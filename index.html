@@ -2599,10 +2599,11 @@ function setLiveMetricsCache(rows){
  liveMetricsCache=next;
 }
 let selectedLiveStatsId="";
-let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalCandidateLastAt=new Map(), signalAlertHistory=[];
+let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), highActivityTrails=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalCandidateLastAt=new Map(), signalAlertHistory=[];
 
 const liveStatsStorageKey=()=> 'goalMatrixLiveStats:'+selectedMatchDate;
 const liveTrailStorageKey=()=> 'goalMatrixSignalTrails:'+selectedMatchDate;
+const highActivityTrailStorageKey=()=> 'goalMatrixHighActivityTrails:'+selectedMatchDate;
 const LIVE_STATS_RESTORE_TTL=120000;
 const LIVE_TRAIL_RETENTION=11*60*1000;
 function persistLiveMetricsState(){
@@ -2610,8 +2611,10 @@ function persistLiveMetricsState(){
   const now=Date.now();
   const metrics=[...liveMetricsCache.entries()].filter(([,row])=>row&&Number.isFinite(Number(row._goalMatrixReceivedAt))&&now-Number(row._goalMatrixReceivedAt)<=LIVE_STATS_RESTORE_TTL);
   const trails=[...signalTrails.entries()].map(([id,items])=>[id,(Array.isArray(items)?items:[]).filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)<=LIVE_TRAIL_RETENTION).slice(-50)]).filter(([,items])=>items.length);
+  const hiTrails=[...highActivityTrails.entries()].map(([id,items])=>[id,(Array.isArray(items)?items:[]).filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)<=LIVE_TRAIL_RETENTION).slice(-50)]).filter(([,items])=>items.length);
   localStorage.setItem(liveStatsStorageKey(),JSON.stringify({savedAt:now,metrics}));
   localStorage.setItem(liveTrailStorageKey(),JSON.stringify({savedAt:now,trails}));
+  localStorage.setItem(highActivityTrailStorageKey(),JSON.stringify({savedAt:now,trails:hiTrails}));
  }catch(error){console.warn('Could not persist short-lived live stats:',error.message)}
 }
 function restoreLiveMetricsState(){
@@ -2630,8 +2633,18 @@ function restoreLiveMetricsState(){
   if(saved&&Array.isArray(saved.trails)){
    for(const [id,items] of saved.trails){
     if(id==null||!Array.isArray(items))continue;
-    const fresh=items.filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)>=0&&now-Number(item.at)<=LIVE_TRAIL_RETENTION&&Array.isArray(item.values)).slice(-50);
+    const fresh=items.filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)>=0&&now-Number(item.at)<=LIVE_TRAIL_RETENTION&&Array.isArray(item.values)&&item.values.length>=2&&item.values.every(team=>team&&Object.prototype.hasOwnProperty.call(team,'shots'))).slice(-50);
     if(fresh.length)signalTrails.set(String(id),fresh);
+   }
+  }
+ }catch{}
+ try{
+  const saved=JSON.parse(localStorage.getItem(highActivityTrailStorageKey())||'null');
+  if(saved&&Array.isArray(saved.trails)){
+   for(const [id,items] of saved.trails){
+    if(id==null||!Array.isArray(items))continue;
+    const fresh=items.filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)>=0&&now-Number(item.at)<=LIVE_TRAIL_RETENTION&&Array.isArray(item.values)&&item.values.length>=2).slice(-50);
+    if(fresh.length)highActivityTrails.set(String(id),fresh);
    }
   }
  }catch{}
@@ -3360,7 +3373,7 @@ function renderHighActivityMatches(){
   // HI ACTIVITY must maintain its own rolling SOT snapshots. The general AI
   // scanner can skip a match when a provider omits statsAvailable even though
   // usable team SOT values are present, leaving this panel without 5/10m data.
-  const trailKey=String(m.id),trail=signalTrails.get(trailKey)||[];
+  const trailKey=String(m.id),trail=highActivityTrails.get(trailKey)||[];
   const snapshotValues=teams.slice(0,2).map(team=>({
    shots:team.shots,
    shotsOnTarget:(()=>{const value=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value)})(),
@@ -3376,7 +3389,7 @@ function renderHighActivityMatches(){
   if(snapshotValues.length===2&&snapshotValues.every(team=>team.shotsOnTarget!==null)&&(!lastSnapshot||now-Number(lastSnapshot.at)>=25000)){
    trail.push({values:snapshotValues,at:now});
    while(trail.length&&now-Number(trail[0].at)>LIVE_TRAIL_RETENTION)trail.shift();
-   signalTrails.set(trailKey,trail);
+   highActivityTrails.set(trailKey,trail);
    persistLiveMetricsState();
   }
   const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
@@ -3659,18 +3672,26 @@ function captureHighActivitySotSnapshots(){
   };
   const values=live.teams.slice(0,2).map(team=>({
    homeAway:team.homeAway,
-   shotsOnTarget:readSot(team)
+   shots:team.shots??team.totalShots??team.total_shots??team.total_attempts??team.totalAttempts??null,
+   shotsOnTarget:readSot(team),
+   shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??null,
+   bigChances:team.bigChances??team.big_chances??null,
+   shotsOffTarget:team.shotsOffTarget??team.shots_off_target??null,
+   corners:team.corners??null,
+   attacks:team.attacks??team.totalAttacks??team.total_attacks??null,
+   dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??null,
+   xG:team.xG??team.xg??team.expectedGoals??null
   }));
   if(!values.every(team=>team.shotsOnTarget!==null))continue;
   const key=String(m.id??(m.home?.name+'-'+m.away?.name));
-  const trail=signalTrails.get(key)||[];
+  const trail=highActivityTrails.get(key)||[];
   const last=trail[trail.length-1];
   // The regular renderer may collect the same match in the same refresh cycle.
   // Keep one sample per match per 25 seconds, matching the established cadence.
   if(last&&now-Number(last.at)<25000)continue;
   trail.push({values,at:now});
   while(trail.length&&now-Number(trail[0].at)>LIVE_TRAIL_RETENTION)trail.shift();
-  signalTrails.set(key,trail);
+  highActivityTrails.set(key,trail);
  }
  persistLiveMetricsState();
 }
