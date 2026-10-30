@@ -2005,7 +2005,7 @@ nav a:first-child{color:var(--gm-lime);border-bottom-color:var(--gm-lime)}
 })();
 </script>
 <script>
-const ANALYTICS_API=(location.hostname==='vibenest.net'||location.hostname.endsWith('.vibenest.net'))?window.location.origin:'https://goal-pulse-analytics.onrender.com';
+const ANALYTICS_API=window.location.origin;
 function alertHistoryKey(a){return String(a?.alertId||[a?.eventId||'unknown',a?.level||'AI',a?.createdAt||0,a?.market||''].join(':'))}
 async function persistAlertRecord(a){
  if(!a||!a.eventId||!Number.isFinite(Number(a.createdAt)))return false;
