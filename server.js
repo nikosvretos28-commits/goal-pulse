@@ -2999,14 +2999,27 @@ const server = http.createServer(async (req, res) => {
         return send(res, 503, { error: "Live scoreboard feed unavailable; retry shortly", matches: [] });
       }
       const isHighActivityLiveEvent = event => {
-        const status = event.status?.type || event.competitions?.[0]?.status?.type || {};
-        const state = String(status.state || "").trim().toLowerCase();
-        const label = String(status.name || status.detail || status.shortDetail || "").trim().toLowerCase();
-        return /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/.test(state)
-          || /\b(?:live|playing|in progress)\b/.test(label);
+        // ESPN/provider payloads can contain both event-level and competition-level
+        // status objects. The event-level value is sometimes stale ("pre") while
+        // the competition-level value already says "in"; inspect both instead of
+        // letting the first non-empty object mask the actual live state.
+        const competitions = Array.isArray(event.competitions) ? event.competitions : [];
+        const statusTypes = [
+          event.status?.type,
+          ...competitions.map(competition => competition?.status?.type)
+        ].filter(status => status && typeof status === "object");
+        const states = statusTypes.map(status => String(status.state || "").trim().toLowerCase());
+        const labels = [
+          ...statusTypes.flatMap(status => [status.name, status.description, status.detail, status.shortDetail]),
+          event.status?.displayClock,
+          ...competitions.map(competition => competition?.status?.displayClock)
+        ].filter(value => value != null).join(" ").trim().toLowerCase();
+        return states.some(state => /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/.test(state))
+          || /\b(?:live|playing|in progress|first half|second half|half time|1st half|2nd half)\b/.test(labels);
       };
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
         .filter(event => {
+          // Keep the AI/VIP default feed's exact original state check unchanged.
           const state = String(event.status?.type?.state || event.competitions?.[0]?.status?.type?.state || "").trim().toLowerCase();
           return highActivityOnly ? isHighActivityLiveEvent(event) : state === "in";
         })
