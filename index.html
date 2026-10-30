@@ -3668,11 +3668,11 @@ async function runSignalCheck(){
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
   for(const m of liveMatches){
    const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;
-   const live=(data.matches||[]).find(x=>x.eventId===m.id);
+   const live=(data.matches||[]).find(x=>x.eventId!=null&&m.id!=null&&String(x.eventId)===String(m.id));
    if(!live||!live.statsAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
    available++;
-   const key=m.id||m.home.name+'-'+m.away.name;
-   const values=live.teams.map(t=>({shots:t.shots,shotsOnTarget:t.shotsOnTarget,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
+   const key=String(m.id??(m.home?.name+'-'+m.away?.name));
+   const values=live.teams.map(t=>({shots:t.shots,shotsOnTarget:t.shotsOnTarget??t.shots_on_target??t.shots_on_goal??t.shotsOnGoal??t.onTargetShots,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
    const trail=signalTrails.get(key)||[];
    trail.push({values,at:now});
    while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
