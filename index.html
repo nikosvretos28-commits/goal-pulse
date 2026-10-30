@@ -2550,12 +2550,14 @@ function setLiveMetricsCache(rows){
  // Keep the last usable metrics during transient empty/partial API responses.
  const incoming=Array.isArray(rows)?rows:[];
  const next=new Map(liveMetricsCache);
+ const receivedAt=Date.now();
+ const hasUsableStats=row=>!!row&&(row.statsAvailable===true||(Array.isArray(row.teams)&&row.teams.some(t=>t&&Object.keys(t).some(k=>t[k]!=null&&t[k]!==''))));
+ const stamp=row=>({...row,_goalMatrixReceivedAt:Number(row?._goalMatrixReceivedAt)||receivedAt});
  for(const row of incoming){
   if(!row||row.eventId==null)continue;
   const id=String(row.eventId);
   const old=next.get(id);
-  const usable=row.statsAvailable===true||(Array.isArray(row.teams)&&row.teams.some(t=>t&&Object.keys(t).some(k=>t[k]!=null&&t[k]!=='')));
-  if(usable)next.set(id,{...row,_goalMatrixReceivedAt:Date.now()});else if(!old)next.set(id,row);
+  if(hasUsableStats(row))next.set(id,stamp(row));else if(!old)next.set(id,row);
  }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
  const live=Array.isArray(allMatches)?allMatches:[];
@@ -2564,15 +2566,16 @@ function setLiveMetricsCache(rows){
   if(next.has(id))continue;
   const home=norm(match.home?.name),away=norm(match.away?.name);
   if(!home||!away)continue;
-  const found=(Array.isArray(rows)?rows:[]).find(row=>norm(row.home)===home&&norm(row.away)===away);
-  if(found)next.set(id,found);
+  const found=incoming.find(row=>norm(row.home)===home&&norm(row.away)===away);
+  if(found)next.set(id,hasUsableStats(found)?stamp(found):found);
   else{
-   const reverse=(Array.isArray(rows)?rows:[]).find(row=>norm(row.home)===away&&norm(row.away)===home);
+   const reverse=incoming.find(row=>norm(row.home)===away&&norm(row.away)===home);
    if(reverse){
     const teams=Array.isArray(reverse.teams)?reverse.teams:[];
     const swap=team=>({...team,homeAway:team.homeAway==='home'?'away':team.homeAway==='away'?'home':team.homeAway});
     const trend=reverse.trend?{...reverse.trend,window5m:reverse.trend.window5m?{...reverse.trend.window5m,teams:(reverse.trend.window5m.teams||[]).slice().reverse().map(swap)}:reverse.trend.window5m,window10m:reverse.trend.window10m?{...reverse.trend.window10m,teams:(reverse.trend.window10m.teams||[]).slice().reverse().map(swap)}:reverse.trend.window10m}:reverse.trend;
-    next.set(id,{...reverse,eventId:id,home:match.home?.name||reverse.away,away:match.away?.name||reverse.home,teams:teams.slice().reverse().map(swap),trend});
+    const mapped={...reverse,eventId:id,home:match.home?.name||reverse.away,away:match.away?.name||reverse.home,teams:teams.slice().reverse().map(swap),trend};
+    next.set(id,hasUsableStats(mapped)?stamp(mapped):mapped);
    }
   }
  }
