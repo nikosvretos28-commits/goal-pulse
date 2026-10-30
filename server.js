@@ -1325,8 +1325,8 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readJsonBody(req, 512 * 1024);
       const incoming = Array.isArray(body.observations) ? body.observations.slice(0, 100) : [];
-      const normalize = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-      const slug = value => normalize(value).replace(/\\s+/g, "-");
+      const normalize = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const slug = value => normalize(value).replace(/\s+/g, "-");
       const parseScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
       const resolved = [];
       for (const item of incoming) {
