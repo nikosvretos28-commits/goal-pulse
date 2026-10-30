@@ -3720,11 +3720,19 @@ async function runSignalCheck(){
   if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}void persistAlertBatch(signalAlertHistory.filter(a=>a&&(['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))));showSignalHistory();}
   let available=0,newAlerts=0;
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
-  // HI ACTIVITY has its own SOT-only snapshot path. Do not promote statsAvailable:
-  // the general AI/VIP scanner must continue requiring the provider's full stats flag.
-  for(const m of liveMatches){
+  // HI ACTIVITY collects SOT snapshots independently of the general AI/VIP scanner.
+  // Accept every live-state spelling used by the scoreboard, while leaving liveMatches
+  // and the full-stat AI/VIP scanner untouched.
+  const hiActivityLiveMatches=allMatches.filter(m=>{
+   const state=String(m.state||m.status||'').trim();
+   const status=String(m.statusText||'').trim();
+   return /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(state)||/\b(?:live|playing|in progress)\b/i.test(status);
+  });
+  for(const m of hiActivityLiveMatches){
    const live=liveMetricsCache.get(String(m.id));
-   if(!live||live.statsAvailable||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
+   // The normal full-stat scanner already records exact "in" matches.
+   // This isolated path fills gaps for alternate live states and SOT-only provider rows.
+   if(!live||(live.statsAvailable&&String(m.state).toLowerCase()==='in')||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
    const values=live.teams.slice(0,2).map(team=>({
     homeAway:team.homeAway,
     shotsOnTarget:Number(team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots)
