@@ -3630,7 +3630,7 @@ async function runSignalCheck(){
     const hiResponse=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date+'&scope=high-activity',{signal:AbortSignal.timeout(20000)});
     if(hiResponse.ok){
      const hiData=await hiResponse.json();
-     setLiveMetricsCache(hiData.matches||[]);
+     setLiveMetricsCache([...(data.matches||[]),...(hiData.matches||[])]);
      renderHighActivityMatches();
     }
    }catch(hiError){console.warn('Hi Activity isolated metrics temporarily unavailable:',hiError?.message||hiError)}
