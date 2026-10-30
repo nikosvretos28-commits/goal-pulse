@@ -3820,16 +3820,23 @@ async function runSignalCheck(){
   for(const m of liveMatches){
    const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;
    const live=liveMetricsCache.get(String(m.id)); // Use the canonical scoreboard-ID mapping, including team-name/reversed-team matches.
-   if(!live||!live.statsAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
-   available++;
+   if(!live||!Array.isArray(live.teams)||live.teams.length<2)continue;
    const key=String(m.id??(m.home?.name+'-'+m.away?.name));
-   const values=live.teams.map(t=>({shots:t.shots,shotsOnTarget:t.shotsOnTarget??t.shots_on_target??t.shots_on_goal??t.shotsOnGoal??t.onTargetShots,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
-   const trail=signalTrails.get(key)||[];
-   trail.push({values,at:now});
-   while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
-   signalTrails.set(key,trail);
+   const values=live.teams.map(t=>({shots:t.shots??t.totalShots??t.total_shots??t.total_attempts??t.totalAttempts,shotsOnTarget:t.shotsOnTarget??t.shots_on_target??t.shots_on_goal??t.shotsOnGoal??t.onTargetShots,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
+   // Keep the display's rolling 5/10-minute trail whenever both teams provide
+   // cumulative shots, even if the provider's aggregate statsAvailable flag is false.
+   const hasComparableShots=values.every(v=>v.shots!==null&&v.shots!==undefined&&v.shots!==''&&Number.isFinite(Number(v.shots)));
+   let trail=signalTrails.get(key)||[];
+   if(hasComparableShots){
+    trail.push({values,at:now});
+    while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
+    signalTrails.set(key,trail);
     updateIntervalStats(m,trail,values,now);
-   signalSnapshots.set(key,{values,at:now});
+    signalSnapshots.set(key,{values,at:now});
+   }
+   // The alert scanner still requires the provider's complete stats flag.
+   if(!live.statsAvailable)continue;
+   available++;
    // Collect rolling 5/10-minute history for every live match with stats.
    // Apply the user's alert filters only after saving the snapshot, so display
    // windows do not remain blank merely because a match is outside scanner filters.
