@@ -1333,7 +1333,14 @@ const server = http.createServer(async (req, res) => {
         if (!item || !item.observationId || !item.home || !item.away || !Number.isFinite(Number(item.createdAt))) continue;
         let createdAt = Number(item.createdAt);
         if (createdAt > 0 && createdAt < 1e12) createdAt *= 1000;
-        const date = new Date(createdAt).toISOString().slice(0, 10);
+        // High Activity timestamps are created in the user's Greece-local match day.
+        // Query the historical provider with the same Europe/Athens calendar date,
+        // not the UTC date (which differs for late-evening Greek matches).
+        const dateParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit"
+        }).formatToParts(new Date(createdAt));
+        const datePart = type => dateParts.find(part => part.type === type)?.value || "";
+        const date = datePart("year") + "-" + datePart("month") + "-" + datePart("day");
         let match = null;
         for (const teamName of [item.home, item.away]) {
           const key = date + "|" + slug(teamName);
