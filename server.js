@@ -497,7 +497,9 @@ async function persistRollingTrends(matches, date) {
         snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
       }
     }
-    if (!snapshots.length) return true;
+    // No persisted samples means PostgreSQL cannot provide rolling deltas yet.
+    // Return false so the caller builds the in-memory rolling-trend fallback.
+    if (!snapshots.length) return false;
     const values = [];
     const tuples = snapshots.map((row, index) => {
       const n = index * 9;
