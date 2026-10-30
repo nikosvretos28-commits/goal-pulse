@@ -2567,9 +2567,13 @@ function setLiveMetricsCache(rows){
  const stamp=row=>({...row,_goalMatrixReceivedAt:Number(row?._goalMatrixReceivedAt)||receivedAt});
  for(const rawRow of incoming){
   if(!rawRow||rawRow.eventId==null)continue;
-  const row=normalizeForHighActivity(rawRow);
-  const id=String(row.eventId);
+  const normalizedRow=normalizeForHighActivity(rawRow);
+  const id=String(normalizedRow.eventId);
   const old=next.get(id);
+  // The isolated Hi Activity endpoint intentionally omits shared rolling trends.
+  // Preserve the default scanner's 5/10-minute SOT trend when this parallel response
+  // arrives later, otherwise it can erase the only usable recent-window baseline.
+  const row=old?.trend&&!normalizedRow.trend?{...normalizedRow,trend:old.trend}:normalizedRow;
   if(hasUsableStats(row))next.set(id,stamp(row));else if(!old)next.set(id,row);
  }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
