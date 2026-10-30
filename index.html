@@ -3620,7 +3620,7 @@ function captureHighActivitySotSnapshots(){
  const hiActivityLiveMatches=allMatches.filter(m=>{
   const state=String(m.state||m.status||'').trim();
   const status=String(m.statusText||'').trim();
-  return /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(state)||/\\b(?:live|playing|in progress)\\b/i.test(status);
+  return /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(state)||/\b(?:live|playing|in progress)\b/i.test(status);
  });
  for(const m of hiActivityLiveMatches){
   const live=liveMetricsCache.get(String(m.id));
