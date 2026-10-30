@@ -2555,7 +2555,7 @@ function setLiveMetricsCache(rows){
   const id=String(row.eventId);
   const old=next.get(id);
   const usable=row.statsAvailable===true||(Array.isArray(row.teams)&&row.teams.some(t=>t&&Object.keys(t).some(k=>t[k]!=null&&t[k]!=='')));
-  if(usable||!old)next.set(id,row);
+  if(usable)next.set(id,{...row,_goalMatrixReceivedAt:Date.now()});else if(!old)next.set(id,row);
  }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
  const live=Array.isArray(allMatches)?allMatches:[];
@@ -2579,7 +2579,45 @@ function setLiveMetricsCache(rows){
  liveMetricsCache=next;
 }
 let selectedLiveStatsId="";
-let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalCandidateLastAt=new Map(), signalAlertHistory=[];try{signalAlertHistory=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(!Array.isArray(signalAlertHistory))signalAlertHistory=[];signalAlertHistory=signalAlertHistory.filter(a=>a&&Number.isFinite(Number(a.createdAt))).slice(0,5000);signalAlertHistory.forEach(a=>{if(a.eventId&&a.createdAt){const marketKey=a.market==='πιθανό γκολ'?'goal':a.market==='πιθανό κόρνερ'?'corner':'pressure';const k=String(a.eventId)+':'+marketKey;signalLastAlertAt.set(k,Math.max(signalLastAlertAt.get(k)||0,Number(a.createdAt)))}})}catch{}
+let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalCandidateLastAt=new Map(), signalAlertHistory=[];
+
+const liveStatsStorageKey=()=> 'goalMatrixLiveStats:'+selectedMatchDate;
+const liveTrailStorageKey=()=> 'goalMatrixSignalTrails:'+selectedMatchDate;
+const LIVE_STATS_RESTORE_TTL=120000;
+const LIVE_TRAIL_RETENTION=11*60*1000;
+function persistLiveMetricsState(){
+ try{
+  const now=Date.now();
+  const metrics=[...liveMetricsCache.entries()].filter(([,row])=>row&&Number.isFinite(Number(row._goalMatrixReceivedAt))&&now-Number(row._goalMatrixReceivedAt)<=LIVE_STATS_RESTORE_TTL);
+  const trails=[...signalTrails.entries()].map(([id,items])=>[id,(Array.isArray(items)?items:[]).filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)<=LIVE_TRAIL_RETENTION).slice(-50)]).filter(([,items])=>items.length);
+  localStorage.setItem(liveStatsStorageKey(),JSON.stringify({savedAt:now,metrics}));
+  localStorage.setItem(liveTrailStorageKey(),JSON.stringify({savedAt:now,trails}));
+ }catch(error){console.warn('Could not persist short-lived live stats:',error.message)}
+}
+function restoreLiveMetricsState(){
+ const now=Date.now();
+ try{
+  const saved=JSON.parse(localStorage.getItem(liveStatsStorageKey())||'null');
+  if(saved&&Array.isArray(saved.metrics)){
+   for(const [id,row] of saved.metrics){
+    const at=Number(row?._goalMatrixReceivedAt);
+    if(row&&id!=null&&Number.isFinite(at)&&now-at>=0&&now-at<=LIVE_STATS_RESTORE_TTL)liveMetricsCache.set(String(id),row);
+   }
+  }
+ }catch{}
+ try{
+  const saved=JSON.parse(localStorage.getItem(liveTrailStorageKey())||'null');
+  if(saved&&Array.isArray(saved.trails)){
+   for(const [id,items] of saved.trails){
+    if(id==null||!Array.isArray(items))continue;
+    const fresh=items.filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)>=0&&now-Number(item.at)<=LIVE_TRAIL_RETENTION&&Array.isArray(item.values)).slice(-50);
+    if(fresh.length)signalTrails.set(String(id),fresh);
+   }
+  }
+ }catch{}
+}
+restoreLiveMetricsState();
+try{signalAlertHistory=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(!Array.isArray(signalAlertHistory))signalAlertHistory=[];signalAlertHistory=signalAlertHistory.filter(a=>a&&Number.isFinite(Number(a.createdAt))).slice(0,5000);signalAlertHistory.forEach(a=>{if(a.eventId&&a.createdAt){const marketKey=a.market==='πιθανό γκολ'?'goal':a.market==='πιθανό κόρνερ'?'corner':'pressure';const k=String(a.eventId)+':'+marketKey;signalLastAlertAt.set(k,Math.max(signalLastAlertAt.get(k)||0,Number(a.createdAt)))}})}catch{}
 signalThreshold.addEventListener('input',()=>signalThresholdLabel.textContent=signalThreshold.value+'/10');
 document.getElementById('testNotifications')?.addEventListener('click',async()=>{
  const button=document.getElementById('testNotifications');
@@ -3771,6 +3809,7 @@ async function runSignalCheck(){
     }
    }
   }
+  persistLiveMetricsState();
   renderHighActivityMatches();
   renderTopAiAlerts();
   showSignalHistory();
