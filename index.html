@@ -3709,7 +3709,7 @@ async function runSignalCheck(){
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
   for(const m of liveMatches){
    const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;
-   const live=(data.matches||[]).find(x=>x.eventId!=null&&m.id!=null&&String(x.eventId)===String(m.id));
+   const live=liveMetricsCache.get(String(m.id)); // Use the canonical scoreboard-ID mapping, including team-name/reversed-team matches.
    if(!live||!live.statsAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
    available++;
    const key=String(m.id??(m.home?.name+'-'+m.away?.name));
