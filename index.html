@@ -3228,14 +3228,23 @@ function evaluateHighActivityObservations(ranked){
    const halfText=String(item.half||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
    const isFirstHalf=/first|1\s*(?:ο|st|h|half)|protero|proto/.test(halfText)||(!/second|2\s*(?:ο|nd|h|half)|deutero/.test(halfText)&&Number.isFinite(itemMinute)&&itemMinute>=1&&itemMinute<=45);
    const state=String(match?.state||match?.status||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
-   const status=String(match?.statusText||match?.clock||'').trim().toLowerCase();
+   const status=[match?.statusText,match?.clock,match?.state].filter(Boolean).join(' ').trim().toLowerCase();
    const finishedStates=new Set(['post','finished','ft','full_time','fulltime','ended','complete','completed','final','after_extra_time','after_penalties','aet','pen']);
    const finishedStatus=/\b(?:ft|full[ -]?time|finished|ended|final(?:\s+whistle)?|completed|after extra time|after penalties|aet)\b/i.test(status);
    const finished=finishedStates.has(state)||finishedStatus;
    const secondHalfStarted=/second half|2nd half|2ο ημίχρονο/i.test(status)||Number(match?.period||match?.statusPeriod||0)>=2||/^(?:2h|second_half)$/i.test(state);
    const halfTime=/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(status);
    if(isFirstHalf){
-    if(!halfTime&&!secondHalfStarted&&!finished&&score.total>signalTotal){
+    // Settle first-half observations at the half-time boundary, even if the
+    // provider changes status before the next live refresh.
+    if(halfTime){
+     item.outcome=score.total>signalTotal?'won':'lost';
+     item.settledAt=now;
+     item.settlementReason=score.total>signalTotal
+      ?'At least one additional goal after the High Activity signal before half-time'
+      :'No additional goal after the High Activity signal before half-time';
+     changed.push(item);
+    }else if(!secondHalfStarted&&!finished&&score.total>signalTotal){
      item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';changed.push(item);
     }
    }else{
