@@ -3346,7 +3346,7 @@ function renderHighActivityMatches(){
   const trailKey=String(m.id),trail=signalTrails.get(trailKey)||[];
   const snapshotValues=teams.slice(0,2).map(team=>({
    shots:team.shots,
-   shotsOnTarget:readSotValue(team),
+   shotsOnTarget:(()=>{const value=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value)})(),
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox,
    bigChances:team.bigChances,
    shotsOffTarget:team.shotsOffTarget,
