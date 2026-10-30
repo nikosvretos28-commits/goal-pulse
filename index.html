@@ -3241,7 +3241,7 @@ function evaluateHighActivityObservations(ranked){
     // Settle second-half observations ONLY at confirmed end of normal time.
     // A live goal must not settle the observation early; extra time/penalties
     // are not valid substitutes for a confirmed 90-minute full-time result.
-    const normalTimeFinished=match&&finished&&(state!=='after_extra_time'&&state!=='after_penalties'&&state!=='aet'&&state!=='pen')&&!/after extra time|after penalties|\\baet\\b|\\bpen(?:alties)?\\b/i.test(status);
+    const normalTimeFinished=match&&finished&&(state!=='after_extra_time'&&state!=='after_penalties'&&state!=='aet'&&state!=='pen')&&!/after extra time|after penalties|\baet\b|\bpen(?:alties)?\b/i.test(status);
     if(normalTimeFinished){
      item.outcome=score.total>signalTotal?'won':'lost';
      item.settledAt=now;
