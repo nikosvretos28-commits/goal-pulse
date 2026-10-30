@@ -3624,14 +3624,17 @@ async function runSignalCheck(){
   if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
   void reconcileHistoricalAlertSettlements();
    const liveMatches=allMatches.filter(m=>m.state==='in');
-  // Hi Activity has its own isolated feed. A failure here must not interrupt AI/VIP scanning.
-  try{
-   const hiResponse=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date+'&scope=high-activity',{signal:AbortSignal.timeout(20000)});
-   if(hiResponse.ok){
-    const hiData=await hiResponse.json();
-    setLiveMetricsCache(hiData.matches||[]);
-   }
-  }catch(hiError){console.warn('Hi Activity isolated metrics temporarily unavailable:',hiError?.message||hiError)}
+  // Refresh Hi Activity independently without delaying the AI/VIP scanner.
+  void (async()=>{
+   try{
+    const hiResponse=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date+'&scope=high-activity',{signal:AbortSignal.timeout(20000)});
+    if(hiResponse.ok){
+     const hiData=await hiResponse.json();
+     setLiveMetricsCache(hiData.matches||[]);
+     renderHighActivityMatches();
+    }
+   }catch(hiError){console.warn('Hi Activity isolated metrics temporarily unavailable:',hiError?.message||hiError)}
+  })();
 
   if(Date.now()-lastPersistentAlertRefresh>60000){lastPersistentAlertRefresh=Date.now();loadPersistentAlertHistory();}
    updateInsightSummary();
