@@ -3513,8 +3513,8 @@ function renderHighActivityMatches(){
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν διαθέσιμες επιλογές αυτή τη στιγμή.</div>';
 }
-document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
- const button=event.target.closest('button[data-manual-vip]');if(!button)return;
+document.addEventListener('click',async event=>{
+ const button=event.target.closest('button[data-manual-vip]');if(!button||!button.closest('#highActivityRows,#powerGamesRows'))return;
  const eventId=String(button.dataset.manualVip||'');const match=allMatches.find(m=>String(m.id)===eventId);if(!match)return;
  const now=Date.now();const clock=String(match.clock||'LIVE');const statusText=String(match.statusText||match.status||'');const clockMinuteMatch=clock.match(/(\d{1,3})\s*(?:['′:]|MIN\b)/i)||clock.match(/^\s*(\d{1,3})\s*$/);const minute=clockMinuteMatch?Number(clockMinuteMatch[1]):null;const periodHint=(clock+' '+statusText);const isHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(periodHint);const isSecondHalf=/SECOND[_ -]?HALF|\b2H\b|2ND\s*HALF|SEGUNDO\s*TIEMPO|2(?:ο|ου|º|°)\s*ΗΜΙΧΡΟΝΟ/i.test(periodHint)||(minute!==null&&minute>45);const periodAtSignal=isHalfTime||isSecondHalf?'second_half':'first_half';if(signalAlertHistory.some(a=>a.level==='VIP'&&String(a.eventId)===eventId&&a.periodAtSignal===periodAtSignal&&Number(a.minuteNumber)===minute&&now-Number(a.createdAt)<2*60*1000)){button.textContent='◆ VIP ALERT ήδη καταχωρισμένο για αυτό το λεπτό';button.disabled=true;return;}
  const stats=liveMetricsCache.get(eventId),teams=Array.isArray(stats?.teams)?stats.teams:[];
