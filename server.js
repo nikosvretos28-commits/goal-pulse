@@ -1320,6 +1320,62 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/high-activity/resolve" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    try {
+      const body = await readJsonBody(req, 512 * 1024);
+      const incoming = Array.isArray(body.observations) ? body.observations.slice(0, 100) : [];
+      const normalize = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const slug = value => normalize(value).replace(/\\s+/g, "-");
+      const parseScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+      const resolved = [];
+      for (const item of incoming) {
+        if (!item || !item.observationId || !item.home || !item.away || !Number.isFinite(Number(item.createdAt))) continue;
+        let createdAt = Number(item.createdAt);
+        if (createdAt > 0 && createdAt < 1e12) createdAt *= 1000;
+        const date = new Date(createdAt).toISOString().slice(0, 10);
+        let match = null;
+        for (const teamName of [item.home, item.away]) {
+          const key = date + "|" + slug(teamName);
+          let cached = historicalTeamResultCache.get(key);
+          const ttl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
+          if (!cached || Date.now() - cached.at > ttl) {
+            try {
+              const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(date) + "&status=finished&team=" + encodeURIComponent(slug(teamName)) + "&limit=200&src=goal-pulse", {
+                headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000)
+              });
+              const payload = response.ok ? await response.json() : {};
+              const matches = Array.isArray(payload.matches) ? payload.matches : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.fixtures) ? payload.fixtures : [];
+              cached = { at: Date.now(), matches };
+              historicalTeamResultCache.set(key, cached);
+              if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
+            } catch (error) {
+              cached = { at: Date.now(), matches: [] };
+              historicalTeamResultCache.set(key, cached);
+            }
+          }
+          match = cached.matches.find(candidate => {
+            const home = candidate.home || candidate.home_name || candidate.home_team?.name || candidate.homeTeam?.name || "";
+            const away = candidate.away || candidate.away_name || candidate.away_team?.name || candidate.awayTeam?.name || "";
+            return normalize(home) === normalize(item.home) && normalize(away) === normalize(item.away);
+          }) || match;
+          if (match) break;
+        }
+        if (!match) continue;
+        const homeScore = parseScore(match.home_score ?? match.homeScore ?? match.scores?.home ?? match.score?.home);
+        const awayScore = parseScore(match.away_score ?? match.awayScore ?? match.scores?.away ?? match.score?.away);
+        if (homeScore == null || awayScore == null) continue;
+        const homeHtScore = parseScore(match.home_ht_score ?? match.homeHtScore ?? match.half_time_score?.home);
+        const awayHtScore = parseScore(match.away_ht_score ?? match.awayHtScore ?? match.half_time_score?.away);
+        resolved.push({ observationId: String(item.observationId), homeScore, awayScore, homeHtScore, awayHtScore, status: "post", source: "SportScore" });
+      }
+      return send(res, 200, { ok: true, resolved });
+    } catch (error) {
+      console.error("High Activity historical resolution failed:", error.message);
+      return send(res, 503, { error: "Could not resolve High Activity history" });
+    }
+  }
+
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
