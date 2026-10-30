@@ -3006,8 +3006,10 @@ const server = http.createServer(async (req, res) => {
           || /\b(?:live|playing|in progress)\b/.test(label);
       };
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
-        .filter(event => highActivityOnly ? isHighActivityLiveEvent(event)
-          : (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
+        .filter(event => {
+          const state = String(event.status?.type?.state || event.competitions?.[0]?.status?.type?.state || "").trim().toLowerCase();
+          return highActivityOnly ? isHighActivityLiveEvent(event) && state !== "in" : state === "in";
+        })
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
