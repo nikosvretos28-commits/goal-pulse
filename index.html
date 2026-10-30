@@ -3356,7 +3356,29 @@ function renderHighActivityMatches(){
    attacks:team.attacks??team.totalAttacks??team.total_attacks,
    dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??team.dangerousAttack
   });
-  const teams=stats.teams.map(normalizeTeam),trail=signalTrails.get(String(m.id))||[];
+  const teams=stats.teams.map(normalizeTeam);
+  // HI ACTIVITY must maintain its own rolling SOT snapshots. The general AI
+  // scanner can skip a match when a provider omits statsAvailable even though
+  // usable team SOT values are present, leaving this panel without 5/10m data.
+  const trailKey=String(m.id),trail=signalTrails.get(trailKey)||[];
+  const snapshotValues=teams.slice(0,2).map(team=>({
+   shots:team.shots,
+   shotsOnTarget:(()=>{const value=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value)})(),
+   shotsOnTargetInsideBox:team.shotsOnTargetInsideBox,
+   bigChances:team.bigChances,
+   shotsOffTarget:team.shotsOffTarget,
+   corners:team.corners,
+   attacks:team.attacks,
+   dangerousAttacks:team.dangerousAttacks,
+   xG:team.xG
+  }));
+  const lastSnapshot=trail[trail.length-1];
+  if(snapshotValues.length===2&&snapshotValues.every(team=>team.shotsOnTarget!==null)&&(!lastSnapshot||now-Number(lastSnapshot.at)>=25000)){
+   trail.push({values:snapshotValues,at:now});
+   while(trail.length&&now-Number(trail[0].at)>LIVE_TRAIL_RETENTION)trail.shift();
+   signalTrails.set(trailKey,trail);
+   persistLiveMetricsState();
+  }
   const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
   const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
   // Calculate Hi Activity SOT windows independently from the general stats delta.
