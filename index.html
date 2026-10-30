@@ -3642,7 +3642,9 @@ async function reconcileHistoricalAlertSettlements(){
 let lastPersistentAlertRefresh=0;
 function captureHighActivitySotSnapshots(){
  const now=Date.now();
- // Keep SOT-only snapshots for alternate LIVE states separate from the full-stat AI scanner loop.
+ // Collect a separate rolling SOT history for every live match, even before its
+ // minute enters the alert window. Otherwise the 5/10-minute baselines can be
+ // empty when a match becomes eligible or when its clock format is unavailable.
  const hiActivityLiveMatches=allMatches.filter(m=>{
   const state=String(m.state||m.status||'').trim();
   const status=String(m.statusText||'').trim();
@@ -3650,19 +3652,27 @@ function captureHighActivitySotSnapshots(){
  });
  for(const m of hiActivityLiveMatches){
   const live=liveMetricsCache.get(String(m.id));
-  // The normal full-stat scanner records exact "in" matches; this path fills alternate states and SOT-only rows.
-  if(!live||(live.statsAvailable&&m.state==='in')||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
+  if(!live||!Array.isArray(live.teams)||live.teams.length<2)continue;
+  const readSot=team=>{
+   const value=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;
+   return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value);
+  };
   const values=live.teams.slice(0,2).map(team=>({
    homeAway:team.homeAway,
-   shotsOnTarget:Number(team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots)
+   shotsOnTarget:readSot(team)
   }));
-  if(!values.every(team=>Number.isFinite(team.shotsOnTarget)))continue;
+  if(!values.every(team=>team.shotsOnTarget!==null))continue;
   const key=String(m.id??(m.home?.name+'-'+m.away?.name));
   const trail=signalTrails.get(key)||[];
+  const last=trail[trail.length-1];
+  // The regular renderer may collect the same match in the same refresh cycle.
+  // Keep one sample per match per 25 seconds, matching the established cadence.
+  if(last&&now-Number(last.at)<25000)continue;
   trail.push({values,at:now});
-  while(trail.length&&now-trail[0].at>LIVE_TRAIL_RETENTION)trail.shift();
+  while(trail.length&&now-Number(trail[0].at)>LIVE_TRAIL_RETENTION)trail.shift();
   signalTrails.set(key,trail);
  }
+ persistLiveMetricsState();
 }
 async function runSignalCheck(){
  if(signalBusy)return;
