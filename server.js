@@ -3424,6 +3424,31 @@ const server = http.createServer(async (req, res) => {
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
       const trendHistory = highActivityOnly ? "isolated high-activity feed; shared trend history untouched" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
+      // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
+      const diagnosticFields = ["shots","shotsOnTarget","shotsOffTarget","corners","possession","xG"];
+      const liveMetricsAudit = {
+        scope: highActivityOnly ? "high-activity" : "default",
+        totalLiveEvents: liveEvents.length,
+        checkedEvents: work.length,
+        returnedMatches: matches.length,
+        matchesWithTwoTeams: matches.filter(match => Array.isArray(match.teams) && match.teams.length >= 2).length,
+        matchesWithAnyStats: matches.filter(match => match.statsAvailable).length,
+        providers: matches.reduce((counts, match) => {
+          const provider = match.statsSource || "unknown";
+          counts[provider] = (counts[provider] || 0) + 1;
+          return counts;
+        }, {}),
+        fieldCoverage: Object.fromEntries(diagnosticFields.map(field => [field,
+          matches.filter(match => Array.isArray(match.teams) && match.teams.length >= 2
+            && match.teams.slice(0, 2).every(team => team[field] != null && Number.isFinite(Number(team[field])))).length
+        ])),
+        sample: matches.slice(0, 8).map(match => ({
+          eventId: match.eventId, home: match.home, away: match.away,
+          statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable),
+          teamCount: Array.isArray(match.teams) ? match.teams.length : 0
+        }))
+      };
+      console.log("[GoalMatrix live-metrics audit]", JSON.stringify(liveMetricsAudit));
       const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory };
       cache.set(cacheKey, { at: Date.now(), body });
       return send(res, 200, body);
