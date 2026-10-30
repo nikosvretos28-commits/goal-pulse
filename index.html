@@ -3156,12 +3156,14 @@ async function reconcileHistoricalHighActivityObservations(){
     }
     changed.push(item);continue;
    }
-   if(signalTotal!=null&&score.total>signalTotal){
-    item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before full time';changed.push(item);continue;
+   // Second-half observations are settled only after confirmed normal-time full time.
+   // Never mark a live observation WON just because a goal has arrived; extra-time
+   // and penalty results are excluded because they are not normal-time settlement.
+   if(!finished||excluded||extraTimeOrPens||signalTotal==null)continue;
+   if(score.total>signalTotal){
+    item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before confirmed full time';changed.push(item);continue;
    }
-   if(finished&&!excluded&&signalTotal!=null){
-    item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
-   }
+   item.outcome='lost';item.settledAt=settledAt;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
   }
   if(changed.length){
    const unique=[...new Map(changed.map(item=>[String(item.observationId),item])).values()];
