@@ -3732,7 +3732,7 @@ async function runSignalCheck(){
    const live=liveMetricsCache.get(String(m.id));
    // The normal full-stat scanner already records exact "in" matches.
    // This isolated path fills gaps for alternate live states and SOT-only provider rows.
-   if(!live||(live.statsAvailable&&String(m.state).toLowerCase()==='in')||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
+   if(!live||(live.statsAvailable&&m.state==='in')||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
    const values=live.teams.slice(0,2).map(team=>({
     homeAway:team.homeAway,
     shotsOnTarget:Number(team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots)
