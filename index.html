@@ -2561,7 +2561,7 @@ function setLiveMetricsCache(rows){
   // because an unrelated statistic (such as shots or possession) is missing.
   // HI ACTIVITY needs the real SOT values to build its rolling 5/10-minute trail.
   const bothTeamsHaveSot=teams.slice(0,2).every(team=>team.shotsOnTarget!=null&&team.shotsOnTarget!==''&&Number.isFinite(Number(team.shotsOnTarget)));
-  return bothTeamsHaveSot?{...row,teams,statsAvailable:true}: {...row,teams};
+  return {...row,teams,_hiActivitySotAvailable:bothTeamsHaveSot};
  };
  const hasUsableStats=row=>!!row&&(row.statsAvailable===true||(Array.isArray(row.teams)&&row.teams.some(t=>t&&Object.keys(t).some(k=>t[k]!=null&&t[k]!==''))));
  const stamp=row=>({...row,_goalMatrixReceivedAt:Number(row?._goalMatrixReceivedAt)||receivedAt});
@@ -3720,6 +3720,22 @@ async function runSignalCheck(){
   if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}void persistAlertBatch(signalAlertHistory.filter(a=>a&&(['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))));showSignalHistory();}
   let available=0,newAlerts=0;
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
+  // HI ACTIVITY has its own SOT-only snapshot path. Do not promote statsAvailable:
+  // the general AI/VIP scanner must continue requiring the provider's full stats flag.
+  for(const m of liveMatches){
+   const live=liveMetricsCache.get(String(m.id));
+   if(!live||live.statsAvailable||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
+   const values=live.teams.slice(0,2).map(team=>({
+    homeAway:team.homeAway,
+    shotsOnTarget:Number(team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots)
+   }));
+   if(!values.every(team=>Number.isFinite(team.shotsOnTarget)))continue;
+   const key=String(m.id??(m.home?.name+'-'+m.away?.name));
+   const trail=signalTrails.get(key)||[];
+   trail.push({values,at:now});
+   while(trail.length&&now-trail[0].at>LIVE_TRAIL_RETENTION)trail.shift();
+   signalTrails.set(key,trail);
+  }
   for(const m of liveMatches){
    const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;
    const live=liveMetricsCache.get(String(m.id)); // Use the canonical scoreboard-ID mapping, including team-name/reversed-team matches.
