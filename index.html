@@ -3614,27 +3614,56 @@ async function reconcileHistoricalAlertSettlements(){
 }
 
 let lastPersistentAlertRefresh=0;
+function captureHighActivitySotSnapshots(){
+ const now=Date.now();
+ // Keep SOT-only snapshots for alternate LIVE states separate from the full-stat AI scanner loop.
+ const hiActivityLiveMatches=allMatches.filter(m=>{
+  const state=String(m.state||m.status||'').trim();
+  const status=String(m.statusText||'').trim();
+  return /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(state)||/\\b(?:live|playing|in progress)\\b/i.test(status);
+ });
+ for(const m of hiActivityLiveMatches){
+  const live=liveMetricsCache.get(String(m.id));
+  // The normal full-stat scanner records exact "in" matches; this path fills alternate states and SOT-only rows.
+  if(!live||(live.statsAvailable&&m.state==='in')||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
+  const values=live.teams.slice(0,2).map(team=>({
+   homeAway:team.homeAway,
+   shotsOnTarget:Number(team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots)
+  }));
+  if(!values.every(team=>Number.isFinite(team.shotsOnTarget)))continue;
+  const key=String(m.id??(m.home?.name+'-'+m.away?.name));
+  const trail=signalTrails.get(key)||[];
+  trail.push({values,at:now});
+  while(trail.length&&now-trail[0].at>LIVE_TRAIL_RETENTION)trail.shift();
+  signalTrails.set(key,trail);
+ }
+}
 async function runSignalCheck(){
  if(signalBusy)return;
  signalBusy=true;
  try{
   const date=selectedMatchDate.replace(/-/g,'');
-  const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
-  const data=await response.json();
-  if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
-  void reconcileHistoricalAlertSettlements();
-   const liveMatches=allMatches.filter(m=>m.state==='in');
-  // Refresh Hi Activity independently without delaying the AI/VIP scanner.
+  // Start the Hi Activity request independently, before the AI/VIP metrics request.
+  // A failure in the default scanner must not prevent Hi Activity from refreshing.
   void (async()=>{
    try{
     const hiResponse=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date+'&scope=high-activity',{signal:AbortSignal.timeout(20000)});
     if(hiResponse.ok){
      const hiData=await hiResponse.json();
-     setLiveMetricsCache([...(data.matches||[]),...(hiData.matches||[])]);
+     setLiveMetricsCache(hiData.matches||[]);
+     captureHighActivitySotSnapshots();
      renderHighActivityMatches();
     }
    }catch(hiError){console.warn('Hi Activity isolated metrics temporarily unavailable:',hiError?.message||hiError)}
   })();
+  const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
+  // Always update the existing AI/VIP metrics cache from its original endpoint,
+  // regardless of whether the isolated Hi Activity request succeeds.
+  setLiveMetricsCache(data.matches||[]);
+  void reconcileHistoricalAlertSettlements();
+  const liveMatches=allMatches.filter(m=>m.state==='in');
 
   if(Date.now()-lastPersistentAlertRefresh>60000){lastPersistentAlertRefresh=Date.now();loadPersistentAlertHistory();}
    updateInsightSummary();
@@ -3731,30 +3760,6 @@ async function runSignalCheck(){
   if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}void persistAlertBatch(signalAlertHistory.filter(a=>a&&(['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))));showSignalHistory();}
   let available=0,newAlerts=0;
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
-  // HI ACTIVITY collects SOT snapshots independently of the general AI/VIP scanner.
-  // Accept every live-state spelling used by the scoreboard, while leaving liveMatches
-  // and the full-stat AI/VIP scanner untouched.
-  const hiActivityLiveMatches=allMatches.filter(m=>{
-   const state=String(m.state||m.status||'').trim();
-   const status=String(m.statusText||'').trim();
-   return /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(state)||/\b(?:live|playing|in progress)\b/i.test(status);
-  });
-  for(const m of hiActivityLiveMatches){
-   const live=liveMetricsCache.get(String(m.id));
-   // The normal full-stat scanner already records exact "in" matches.
-   // This isolated path fills gaps for alternate live states and SOT-only provider rows.
-   if(!live||(live.statsAvailable&&m.state==='in')||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
-   const values=live.teams.slice(0,2).map(team=>({
-    homeAway:team.homeAway,
-    shotsOnTarget:Number(team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots)
-   }));
-   if(!values.every(team=>Number.isFinite(team.shotsOnTarget)))continue;
-   const key=String(m.id??(m.home?.name+'-'+m.away?.name));
-   const trail=signalTrails.get(key)||[];
-   trail.push({values,at:now});
-   while(trail.length&&now-trail[0].at>LIVE_TRAIL_RETENTION)trail.shift();
-   signalTrails.set(key,trail);
-  }
   for(const m of liveMatches){
    const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;
    const live=liveMetricsCache.get(String(m.id)); // Use the canonical scoreboard-ID mapping, including team-name/reversed-team matches.
