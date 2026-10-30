@@ -2551,10 +2551,23 @@ function setLiveMetricsCache(rows){
  const incoming=Array.isArray(rows)?rows:[];
  const next=new Map(liveMetricsCache);
  const receivedAt=Date.now();
+ const normalizeForHighActivity=row=>{
+  if(!row||!Array.isArray(row.teams)||row.teams.length<2)return row;
+  const teams=row.teams.map(team=>({
+   ...team,
+   shotsOnTarget:team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots
+  }));
+  // Some providers return valid SOT for both teams but leave statsAvailable=false
+  // because an unrelated statistic (such as shots or possession) is missing.
+  // HI ACTIVITY needs the real SOT values to build its rolling 5/10-minute trail.
+  const bothTeamsHaveSot=teams.slice(0,2).every(team=>team.shotsOnTarget!=null&&team.shotsOnTarget!==''&&Number.isFinite(Number(team.shotsOnTarget)));
+  return {...row,teams,_hiActivitySotAvailable:bothTeamsHaveSot};
+ };
  const hasUsableStats=row=>!!row&&(row.statsAvailable===true||(Array.isArray(row.teams)&&row.teams.some(t=>t&&Object.keys(t).some(k=>t[k]!=null&&t[k]!==''))));
  const stamp=row=>({...row,_goalMatrixReceivedAt:Number(row?._goalMatrixReceivedAt)||receivedAt});
- for(const row of incoming){
-  if(!row||row.eventId==null)continue;
+ for(const rawRow of incoming){
+  if(!rawRow||rawRow.eventId==null)continue;
+  const row=normalizeForHighActivity(rawRow);
   const id=String(row.eventId);
   const old=next.get(id);
   if(hasUsableStats(row))next.set(id,stamp(row));else if(!old)next.set(id,row);
@@ -2566,10 +2579,10 @@ function setLiveMetricsCache(rows){
   if(next.has(id))continue;
   const home=norm(match.home?.name),away=norm(match.away?.name);
   if(!home||!away)continue;
-  const found=incoming.find(row=>norm(row.home)===home&&norm(row.away)===away);
+  const found=incoming.map(normalizeForHighActivity).find(row=>norm(row.home)===home&&norm(row.away)===away);
   if(found)next.set(id,hasUsableStats(found)?stamp(found):found);
   else{
-   const reverse=incoming.find(row=>norm(row.home)===away&&norm(row.away)===home);
+   const reverse=incoming.map(normalizeForHighActivity).find(row=>norm(row.home)===away&&norm(row.away)===home);
    if(reverse){
     const teams=Array.isArray(reverse.teams)?reverse.teams:[];
     const swap=team=>({...team,homeAway:team.homeAway==='home'?'away':team.homeAway==='away'?'home':team.homeAway});
@@ -3707,6 +3720,22 @@ async function runSignalCheck(){
   if(outcomesChanged){try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}void persistAlertBatch(signalAlertHistory.filter(a=>a&&(['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))));showSignalHistory();}
   let available=0,newAlerts=0;
   const now=Date.now(),windowMs=Number(signalWindow.value)*60*1000;
+  // HI ACTIVITY has its own SOT-only snapshot path. Do not promote statsAvailable:
+  // the general AI/VIP scanner must continue requiring the provider's full stats flag.
+  for(const m of liveMatches){
+   const live=liveMetricsCache.get(String(m.id));
+   if(!live||live.statsAvailable||!live._hiActivitySotAvailable||!Array.isArray(live.teams)||live.teams.length<2)continue;
+   const values=live.teams.slice(0,2).map(team=>({
+    homeAway:team.homeAway,
+    shotsOnTarget:Number(team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots)
+   }));
+   if(!values.every(team=>Number.isFinite(team.shotsOnTarget)))continue;
+   const key=String(m.id??(m.home?.name+'-'+m.away?.name));
+   const trail=signalTrails.get(key)||[];
+   trail.push({values,at:now});
+   while(trail.length&&now-trail[0].at>LIVE_TRAIL_RETENTION)trail.shift();
+   signalTrails.set(key,trail);
+  }
   for(const m of liveMatches){
    const minuteMatch=String(m.clock||'').match(/\d+/);const minute=minuteMatch?Number(minuteMatch[0]):null;const minuteMode=scannerMinute.value;
    const live=liveMetricsCache.get(String(m.id)); // Use the canonical scoreboard-ID mapping, including team-name/reversed-team matches.
