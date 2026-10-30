@@ -3426,7 +3426,7 @@ function renderHighActivityMatches(){
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
-  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν αγώνες που να πληρούν το HI ACTIVITY: 3+ SOT/5′ ή 6+ SOT/10′, στα λεπτά 1′–40′ και 46′–80′.</div>';
+  :'<div class="subtle" style="padding:10px">Δεν υπάρχουν διαθέσιμες επιλογές αυτή τη στιγμή.</div>';
 }
 document.getElementById('highActivityRows')?.addEventListener('click',async event=>{
  const button=event.target.closest('button[data-manual-vip]');if(!button)return;
