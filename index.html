@@ -3094,8 +3094,28 @@ async function reconcileHistoricalHighActivityObservations(){
    for(const event of (cached.events||[]))if(event.id!=null)eventsById.set(String(event.id),event);
   }
   const changed=[],settledAt=Date.now();
+  const providerResults=new Map();
+  try{
+   const response=await fetch(ANALYTICS_API+'/api/high-activity/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({observations:pending.map(item=>({observationId:item.observationId,eventId:item.eventId,createdAt:item.createdAt,home:item.home,away:item.away}))}),signal:AbortSignal.timeout(30000)});
+   if(response.ok){
+    const data=await response.json();
+    for(const result of (data.resolved||[]))providerResults.set(String(result.observationId),result);
+   }
+  }catch(error){console.warn('[HI ACTIVITY settlement] Secondary historical provider unavailable:',error.message);}
   for(const item of pending){
    let event=eventsById.get(String(item.eventId));
+   if(!event){
+    const result=providerResults.get(String(item.observationId));
+    if(result){
+     const homeTeam={homeAway:'home',score:String(result.homeScore),team:{displayName:item.home}};
+     const awayTeam={homeAway:'away',score:String(result.awayScore),team:{displayName:item.away}};
+     if(result.homeHtScore!=null&&result.awayHtScore!=null){
+      homeTeam.linescores=[{period:1,value:result.homeHtScore}];
+      awayTeam.linescores=[{period:1,value:result.awayHtScore}];
+     }
+     event={id:String(item.eventId),competitions:[{competitors:[homeTeam,awayTeam]}],status:{type:{state:'post',name:'Final'}}};
+    }
+   }
    const normalizeTeamName=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
    if(!event){
     const wantedHome=normalizeTeamName(item.home),wantedAway=normalizeTeamName(item.away);
