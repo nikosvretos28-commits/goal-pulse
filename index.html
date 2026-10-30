@@ -3228,24 +3228,27 @@ function evaluateHighActivityObservations(ranked){
    const secondHalfStarted=minute>=46||/second half|2nd half|2ο ημίχρονο/i.test(status)||Number(match?.period||match?.statusPeriod||0)>=2||/^(?:2h|second_half)$/i.test(state);
    const halfTime=/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(status);
    if(isFirstHalf){
-    // A first-half observation is settled as soon as the half-time boundary
-    // is confirmed. Never use second-half/full-time score to infer first-half goals.
+    // Settle first-half observations ONLY at confirmed half-time.
     if(halfTime){
      item.outcome=score.total>signalTotal?'won':'lost';
      item.settledAt=now;
      item.settlementReason=score.total>signalTotal
-      ?'At least one additional goal after the High Activity signal before half-time'
-      :'No additional goal after the High Activity signal before half-time';
+      ?'At least one additional goal after the High Activity signal by confirmed half-time'
+      :'No additional goal after the High Activity signal by confirmed half-time';
      changed.push(item);
-    }else if(!secondHalfStarted&&!finished&&score.total>signalTotal){
-     item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';changed.push(item);
     }
    }else{
-    if(score.total>signalTotal){
-     item.outcome='won';item.settledAt=now;item.settlementReason='At least one additional goal after the High Activity signal before full time';changed.push(item);continue;
-    }
-    if(match&&(finishedStates.has(state)||finishedStatus)&&score){
-     item.outcome='lost';item.settledAt=now;item.settlementReason='No additional goal after the High Activity signal before confirmed full time';changed.push(item);
+    // Settle second-half observations ONLY at confirmed end of normal time.
+    // A live goal must not settle the observation early; extra time/penalties
+    // are not valid substitutes for a confirmed 90-minute full-time result.
+    const normalTimeFinished=match&&finished&&(state!=='after_extra_time'&&state!=='after_penalties'&&state!=='aet'&&state!=='pen')&&!/after extra time|after penalties|\\baet\\b|\\bpen(?:alties)?\\b/i.test(status);
+    if(normalTimeFinished){
+     item.outcome=score.total>signalTotal?'won':'lost';
+     item.settledAt=now;
+     item.settlementReason=score.total>signalTotal
+      ?'At least one additional goal after the High Activity signal by confirmed end of normal time'
+      :'No additional goal after the High Activity signal by confirmed end of normal time';
+     changed.push(item);
     }
    }
   }
