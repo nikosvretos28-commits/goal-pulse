@@ -3135,7 +3135,9 @@ async function reconcileHistoricalHighActivityObservations(){
     if(!halfClosed||signalTotal==null)continue;
     const lineValue=team=>{
      const lines=Array.isArray(team?.linescores)?team.linescores:[];
-     const first=lines.find(x=>Number(x.period??x.periodNumber??x.number)===1)||lines[0];
+     // Only accept an explicitly identified first-period score. If the provider omits
+     // period metadata, keep the first-half observation pending rather than guessing.
+     const first=lines.find(x=>Number(x.period??x.periodNumber??x.number)===1);
      if(!first)return null;
      const value=Number(first.value??first.displayValue??first.score);
      return Number.isFinite(value)?value:null;
