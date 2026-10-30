@@ -3037,38 +3037,6 @@ let highActivityHistoricalSettlementPromise=null;
 async function reconcileHistoricalHighActivityObservations(){
  if(highActivityHistoricalSettlementPromise)return highActivityHistoricalSettlementPromise;
  highActivityHistoricalSettlementPromise=(async()=>{
-  // Narrow one-time repair for the 12 confirmed-finished HI ACTIVITY records shown on 28 Oct 2026.
-  const confirmedHistoricalLosses=[
-   ['neo pipil san juan nonualco','independiente san vicente'],
-   ['port vale','manchester city u21'],
-   ['cardiff city u21','coventry u21'],
-   ['ca pontalinense u20','goiatuba u20'],
-   ['arnett gardens','molynes united'],
-   ['nacional potosi','club guabira'],
-   ['coritiba saf pr','gremio rs'],
-   ['olancho fc reserves','estrella roja reserves'],
-   ['montpellier herault sc','red star fc 93'],
-   ['mosta fc','hibernians fc'],
-   ['oppsal u19','frigg u19'],
-   ['andorra cf','burgos cf']
-  ];
-  const normalizeRepairTeam=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-  const repairStart=Date.parse('2026-10-26T00:00:00Z'),repairEnd=Date.parse('2026-10-29T00:00:00Z');
-  const repairedHistoricalLosses=[];
-  for(const item of highActivityObservations){
-   if(String(item.outcome||'').trim().toLowerCase()!=='pending')continue;
-   let created=Number(item.createdAt);
-   if(Number.isFinite(created)&&created>0&&created<1e12)created*=1000; // accept legacy Unix seconds as well as milliseconds
-   if(!Number.isFinite(created)||created<repairStart||created>=repairEnd)continue;
-   const home=normalizeRepairTeam(item.home),away=normalizeRepairTeam(item.away);
-   const known=confirmedHistoricalLosses.some(([h,a])=>(home===normalizeRepairTeam(h)&&away===normalizeRepairTeam(a))||(home===normalizeRepairTeam(a)&&away===normalizeRepairTeam(h)));
-   if(!known)continue;
-   const signalTotal=item.scoreAtSignal?.total!=null&&item.scoreAtSignal.total!==''&&Number.isFinite(Number(item.scoreAtSignal.total))?Number(item.scoreAtSignal.total):(item.scoreAtSignal?.home!=null&&item.scoreAtSignal?.away!=null&&Number.isFinite(Number(item.scoreAtSignal.home))&&Number.isFinite(Number(item.scoreAtSignal.away))?Number(item.scoreAtSignal.home)+Number(item.scoreAtSignal.away):null);
-   const currentTotal=item.currentScore?.total!=null&&item.currentScore.total!==''&&Number.isFinite(Number(item.currentScore.total))?Number(item.currentScore.total):(item.currentScore?.home!=null&&item.currentScore?.away!=null&&Number.isFinite(Number(item.currentScore.home))&&Number.isFinite(Number(item.currentScore.away))?Number(item.currentScore.home)+Number(item.currentScore.away):null);
-   if(signalTotal==null||currentTotal==null||currentTotal!==signalTotal)continue;
-   item.outcome='lost';item.settledAt=Date.now();item.settlementReason='Historical repair: confirmed finished match with no additional goal after the High Activity signal';repairedHistoricalLosses.push(item);
-  }
-  if(repairedHistoricalLosses.length){await persistHighActivityObservations(repairedHistoricalLosses);renderHighActivityAnalyst();}
   const pending=highActivityObservations.filter(item=>item.outcome==='pending'&&item.eventId&&Number.isFinite(Number(item.createdAt)));
   if(!pending.length)return;
   const baseDates=new Set(pending.map(item=>goalMatrixHistoryDateKey(item.createdAt)).filter(Boolean));
@@ -3167,7 +3135,9 @@ async function reconcileHistoricalHighActivityObservations(){
     if(!halfClosed||signalTotal==null)continue;
     const lineValue=team=>{
      const lines=Array.isArray(team?.linescores)?team.linescores:[];
-     const first=lines.find(x=>Number(x.period??x.periodNumber??x.number)===1)||lines[0];
+     // Only accept an explicitly identified first-period score. If the provider omits
+     // period metadata, keep the first-half observation pending rather than guessing.
+     const first=lines.find(x=>Number(x.period??x.periodNumber??x.number)===1);
      if(!first)return null;
      const value=Number(first.value??first.displayValue??first.score);
      return Number.isFinite(value)?value:null;
