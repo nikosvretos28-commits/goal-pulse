@@ -2976,7 +2976,10 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/live-metrics") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
-      const cacheKey = "live-metrics:" + date;
+      // High Activity uses an isolated cache and broader LIVE-state recognition.
+      // The default endpoint remains unchanged for AI/VIP scanners.
+      const highActivityOnly = url.searchParams.get("scope") === "high-activity";
+      const cacheKey = (highActivityOnly ? "high-activity-metrics:" : "live-metrics:") + date;
       const cachedMetrics = cache.get(cacheKey);
       if (cachedMetrics && Date.now() - cachedMetrics.at < 15000) return send(res, 200, cachedMetrics.body);
       let scoreboard = scoreboardCache.get(date);
@@ -2995,8 +2998,16 @@ const server = http.createServer(async (req, res) => {
       if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
         return send(res, 503, { error: "Live scoreboard feed unavailable; retry shortly", matches: [] });
       }
+      const isHighActivityLiveEvent = event => {
+        const status = event.status?.type || event.competitions?.[0]?.status?.type || {};
+        const state = String(status.state || "").trim().toLowerCase();
+        const label = String(status.name || status.detail || status.shortDetail || "").trim().toLowerCase();
+        return /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/.test(state)
+          || /\b(?:live|playing|in progress)\b/.test(label);
+      };
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
-        .filter(event => (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
+        .filter(event => highActivityOnly ? isHighActivityLiveEvent(event)
+          : (event.status?.type?.state || event.competitions?.[0]?.status?.type?.state) === "in")
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
@@ -3403,13 +3414,14 @@ const server = http.createServer(async (req, res) => {
           statsAvailable: matches.filter(match => isSportScoreEvent(match.eventId) && match.statsAvailable).length
         }));
       }
-      const persisted = await persistRollingTrends(matches, date);
-      if (!persisted) addRollingTrends(matches);
+      // High Activity must not write to or mutate the shared AI/VIP rolling-trend history.
+      const persisted = highActivityOnly ? null : await persistRollingTrends(matches, date);
+      if (!highActivityOnly && !persisted) addRollingTrends(matches);
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
         team.team && ["shots", "shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
-      const trendHistory = !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
+      const trendHistory = highActivityOnly ? "isolated high-activity feed; shared trend history untouched" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory };
       cache.set(cacheKey, { at: Date.now(), body });
       return send(res, 200, body);
