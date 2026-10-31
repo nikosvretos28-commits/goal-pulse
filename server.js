@@ -241,6 +241,7 @@ async function runProtocolAnalyst() {
       const phaseOverall = summarize(phaseRows);
       if (phaseOverall.settled < 20) continue;
       for (const [field, label] of [
+        ["minuteBand", "χρονικό παράθυρο έκδοσης alert"],
         ["onTargetBand", "πρόσφατα SOT 5λέπτου"],
         ["onTarget10mBand", "πρόσφατα SOT 10λέπτου"],
         ["shotQualityBand", "ποιότητα τελικών εντός περιοχής / μεγάλες ευκαιρίες"],
