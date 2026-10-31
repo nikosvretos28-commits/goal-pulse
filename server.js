@@ -2252,13 +2252,9 @@ const server = http.createServer(async (req, res) => {
             : " (χωρίς επιβεβαιωμένη απόδοση)";
           const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
-          const result = await sendPushToSubscribers({
-            title: alertTitle,
-            body: alertBody.slice(0, 240),
-            tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
-            url: "/"
-          });
-          if (result.sent > 0) {
+          // Persist every protocol-qualified AI alert independently of push delivery.
+          // Push subscriptions are optional; an empty subscriber list must not hide alerts in-app.
+          {
             alertCountsByMatchHalf.set(perHalfCountKey, (alertCountsByMatchHalf.get(perHalfCountKey) || 0) + 1);
             pushScanLastAlert.set(cooldownKey, {
               at: now,
@@ -2268,7 +2264,6 @@ const server = http.createServer(async (req, res) => {
               xG: current.xG,
               price: hasVerifiedOdds ? Number(verifiedOdds.price) : null
             });
-            sent += result.sent;
             // Persist the actual server-generated push, not just browser-side test signals.
             // This record becomes the source of truth for later 10-minute outcome evaluation.
             try {
@@ -2317,6 +2312,17 @@ const server = http.createServer(async (req, res) => {
             } catch (historyError) {
               console.error("Actual push alert history save failed:", historyError.message);
             }
+          }
+          try {
+            const pushResult = await sendPushToSubscribers({
+              title: alertTitle,
+              body: alertBody.slice(0, 240),
+              tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
+              url: "/"
+            });
+            sent += Number(pushResult?.sent || 0);
+          } catch (pushError) {
+            console.warn("AI alert push delivery failed; in-app alert remains saved:", pushError.message);
           }
           candidates++;
         }
