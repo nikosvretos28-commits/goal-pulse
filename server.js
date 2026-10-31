@@ -147,6 +147,16 @@ async function runProtocolAnalyst() {
         dirtySheetBand: stats.dirtySheetSample >= 5 && Number.isFinite(Number(stats.dirtySheetHomeRate)) && Number.isFinite(Number(stats.dirtySheetAwayRate))
           ? ((Number(stats.dirtySheetHomeRate) + Number(stats.dirtySheetAwayRate)) / 2 >= 0.8 ? "80%+" : (Number(stats.dirtySheetHomeRate) + Number(stats.dirtySheetAwayRate)) / 2 >= 0.6 ? "60–79%" : "<60%")
           : "missing",
+        shotsOnTargetInsideBox: stats.shotsOnTargetInsideBox !== null && stats.shotsOnTargetInsideBox !== undefined && Number.isFinite(Number(stats.shotsOnTargetInsideBox)) ? Number(stats.shotsOnTargetInsideBox) : null,
+        bigChances: stats.bigChances !== null && stats.bigChances !== undefined && Number.isFinite(Number(stats.bigChances)) ? Number(stats.bigChances) : null,
+        liveConversionSupport: stats.liveConversionSupport !== null && stats.liveConversionSupport !== undefined && Number.isFinite(Number(stats.liveConversionSupport)) ? Number(stats.liveConversionSupport) : null,
+        totalSotSupport: stats.totalSotSupport !== null && stats.totalSotSupport !== undefined && Number.isFinite(Number(stats.totalSotSupport)) ? Number(stats.totalSotSupport) : null,
+        historicalOverSupport: stats.historicalOverSupport !== null && stats.historicalOverSupport !== undefined && Number.isFinite(Number(stats.historicalOverSupport)) ? Number(stats.historicalOverSupport) : null,
+        shotQualityBand: stats.shotsOnTargetInsideBox == null && stats.bigChances == null ? "missing"
+          : (Number(stats.shotsOnTargetInsideBox || 0) >= 4 || Number(stats.bigChances || 0) >= 3 ? "strong"
+            : (Number(stats.shotsOnTargetInsideBox || 0) >= 2 || Number(stats.bigChances || 0) >= 1 ? "some" : "low")),
+        liveConversionBand: stats.liveConversionSupport == null ? "missing"
+          : (Number(stats.liveConversionSupport) >= 1.5 ? "high" : Number(stats.liveConversionSupport) > 0 ? "some" : "none"),
         shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
         onTarget10mBand: stats.onTarget10m === null || stats.onTarget10m === undefined ? "missing" : Number(stats.onTarget10m) < 3 ? "0–2" : Number(stats.onTarget10m) < 6 ? "3–5" : "6+",
@@ -154,16 +164,20 @@ async function runProtocolAnalyst() {
         createdAt: row.created_at
       };
     });
-    // Research scope only: first half, minutes 1–40. Never mix second-half alerts into this report.
-    const records = allRecords.filter(row => row.phase === "first_half" && Number.isFinite(row.minute) && row.minute >= 1 && row.minute <= 40);
+    // Analyze the two live protocol windows independently: first half 1–40 and second half 46–80.
+    // Never mix halftime, stoppage/out-of-window alerts, or unknown periods into either sample.
+    const records = allRecords.filter(row =>
+      (row.phase === "first_half" && Number.isFinite(row.minute) && row.minute >= 1 && row.minute <= 40) ||
+      (row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 80)
+    );
     const summarize = rows => {
       const wins = rows.filter(row => row.won).length;
       return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
     };
     const overall = summarize(records);
-    const segment = (field, label) => {
-      const values = [...new Set(records.map(row => row[field]))].sort();
-      return values.map(value => ({ [label]: value, ...summarize(records.filter(row => row[field] === value)) }))
+    const segment = (field, label, sourceRows = records) => {
+      const values = [...new Set(sourceRows.map(row => row[field]))].sort();
+      return values.map(value => ({ [label]: value, ...summarize(sourceRows.filter(row => row[field] === value)) }))
         .filter(row => row.settled >= 5)
         .sort((a,b) => b.settled - a.settled);
     };
@@ -220,6 +234,38 @@ async function runProtocolAnalyst() {
         detail: "Το τρέχον δείγμα δεν δείχνει αρκετά μεγάλη, επαρκώς τεκμηριωμένη διαφορά ανά ομάδα. Διατηρούμε τους κανόνες και συνεχίζουμε τη μέτρηση."
       });
     }
+    // Compare signal groups within each half, never against a pooled cross-half baseline.
+    // Recommendations are research-only and require at least 20 settled alerts per segment.
+    for (const phase of ["first_half", "second_half"]) {
+      const phaseRows = records.filter(row => row.phase === phase);
+      const phaseOverall = summarize(phaseRows);
+      if (phaseOverall.settled < 20) continue;
+      for (const [field, label] of [
+        ["onTargetBand", "πρόσφατα SOT 5λέπτου"],
+        ["onTarget10mBand", "πρόσφατα SOT 10λέπτου"],
+        ["shotQualityBand", "ποιότητα τελικών εντός περιοχής / μεγάλες ευκαιρίες"],
+        ["liveConversionBand", "αποτελεσματικότητα SOT"],
+        ["dirtySheetBand", "Dirty Sheet ιστορικό"],
+        ["xGBand", "μεταβολή xG"],
+        ["totalSotSupport", "υποστήριξη συνολικών SOT"],
+        ["historicalOverSupport", "ιστορική υποστήριξη Over"]
+      ]) {
+        for (const item of segment(field, field, phaseRows)) {
+          if (item.settled < 20 || item.successRate == null || item[field] === "missing") continue;
+          const difference = item.successRate - phaseOverall.successRate;
+          if (difference <= -10) recommendations.push({
+            priority: "review",
+            title: (phase === "first_half" ? "1ο ημίχρονο" : "2ο ημίχρονο") + " · επανέλεγχος " + label + " (" + item[field] + ")",
+            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, " + Math.abs(difference).toFixed(1) + " μονάδες κάτω από το αντίστοιχο ημίχρονο (" + phaseOverall.successRate + "%). Απαιτείται έλεγχος πριν από οποιαδήποτε αλλαγή."
+          });
+          if (difference >= 8) recommendations.push({
+            priority: "test",
+            title: (phase === "first_half" ? "1ο ημίχρονο" : "2ο ημίχρονο") + " · θετικό σήμα " + label + " (" + item[field] + ")",
+            detail: "Επιτυχία " + item.successRate + "% σε " + item.settled + " settled alerts, " + difference.toFixed(1) + " μονάδες πάνω από το αντίστοιχο ημίχρονο. Χρειάζεται ανεξάρτητη επιβεβαίωση· δεν αλλάζει αυτόματα το live πρωτόκολλο."
+          });
+        }
+      }
+    }
     const dailyResult = await analyticsPool.query(
       "SELECT payload FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND created_at >= ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens')) AT TIME ZONE 'Europe/Athens') ORDER BY created_at DESC LIMIT 5000"
     );
@@ -240,13 +286,13 @@ async function runProtocolAnalyst() {
         successRate: dailySettled ? Math.round(dailyWins / dailySettled * 1000) / 10 : null,
         note: "AI alerts created today in Greece local time; excludes HI ACTIVITY observations."
       },
-      method: "statistical_review_of_settled_server_generated_ai_alerts_first_half_minutes_1_to_40",
+      method: "statistical_review_of_settled_server_generated_ai_alerts_both_halves_with_separate_phase_comparisons",
       automaticRuleChanges: false,
       sample: overall,
       dataQuality: {
         recordsAnalyzed: records.length,
         allSettledAlertsIn180Days: allRecords.length,
-        researchScope: "first_half_minutes_1_to_40_only",
+        researchScope: "first_half_1_to_40_and_second_half_46_to_80_analyzed_separately",
         alertsExcludedOutsideResearchScope: allRecords.length - records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
         alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
@@ -262,6 +308,10 @@ async function runProtocolAnalyst() {
       byOnTarget10m: segment("onTarget10mBand", "onTarget10mBand"),
       byXG: segment("xGBand", "xGBand"),
       byDirtySheet: segment("dirtySheetBand", "dirtySheetBand"),
+      byShotQuality: segment("shotQualityBand", "shotQualityBand"),
+      byLiveConversion: segment("liveConversionBand", "liveConversionBand"),
+      byTotalSotSupport: segment("totalSotSupport", "totalSotSupport"),
+      byHistoricalOverSupport: segment("historicalOverSupport", "historicalOverSupport"),
       recommendations
     };
     await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
