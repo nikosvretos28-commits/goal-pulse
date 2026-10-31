@@ -2857,11 +2857,18 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const normalizeStatTeamName=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
  // Scoreboard IDs can arrive after the metrics response or differ between providers.
  // If the ID-keyed cache misses, recover the matching live row by normalized team names.
- const stats=liveMetricsCache.get(String(m.id))||[...liveMetricsCache.values()].find(row=>{
+ const stats=liveMetricsCache.get(String(m.id))||[...liveMetricsCache.values()].map(row=>{
   const rowHome=normalizeStatTeamName(row?.home),rowAway=normalizeStatTeamName(row?.away);
   const matchHome=normalizeStatTeamName(m.home?.name),matchAway=normalizeStatTeamName(m.away?.name);
-  return (rowHome===matchHome&&rowAway===matchAway)||(rowHome===matchAway&&rowAway===matchHome);
- });
+  if(rowHome===matchHome&&rowAway===matchAway)return row;
+  if(rowHome===matchAway&&rowAway===matchHome){
+   const teams=Array.isArray(row.teams)?row.teams.slice().reverse().map(team=>({
+    ...team,homeAway:team?.homeAway==='home'?'away':team?.homeAway==='away'?'home':team?.homeAway
+   })):row.teams;
+   return {...row,home:m.home?.name||row.away,away:m.away?.name||row.home,teams};
+  }
+  return null;
+ }).find(Boolean);
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams.find(team=>team?.homeAway==='home')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.home?.name))||teams[0]||{};
  const away=teams.find(team=>team?.homeAway==='away')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.away?.name))||teams.find(team=>team!==home)||{};
