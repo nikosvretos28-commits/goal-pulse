@@ -2264,8 +2264,8 @@ const server = http.createServer(async (req, res) => {
               xG: current.xG,
               price: hasVerifiedOdds ? Number(verifiedOdds.price) : null
             });
-            // Persist the actual server-generated push, not just browser-side test signals.
-            // This record becomes the source of truth for later 10-minute outcome evaluation.
+            // Persist the server-generated AI alert, whether or not any browser push subscriber exists.
+            // This record is also the source of truth for later outcome evaluation.
             try {
               if (await ensureAlertHistoryDb()) {
                 const alertId = "push:" + id + ":" + level + ":" + now;
@@ -2305,12 +2305,12 @@ const server = http.createServer(async (req, res) => {
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
                   [alertId, id, level, now, JSON.stringify(alertRecord)]
                 );
-                console.log("Actual push alert history saved:", JSON.stringify({ alertId, eventId: id, level, alertType: alertRecord.alertType || "verified_odds" }));
+                console.log("AI alert history saved independently of push delivery:", JSON.stringify({ alertId, eventId: id, level, alertType: alertRecord.alertType || "verified_odds" }));
               } else {
-                console.error("Actual push alert was sent but persistent history database is unavailable:", id);
+                console.error("Qualified AI alert could not be saved because persistent history database is unavailable:", id);
               }
             } catch (historyError) {
-              console.error("Actual push alert history save failed:", historyError.message);
+              console.error("Qualified AI alert history save failed:", historyError.message);
             }
           }
           try {
