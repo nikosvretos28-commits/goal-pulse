@@ -2026,10 +2026,9 @@ const server = http.createServer(async (req, res) => {
         );
         const validTeamXGValues = teamXGValues.filter(value => value != null);
         const qualifyingTeamXG = validTeamXGValues.length ? Math.max(...validTeamXGValues) : null;
-        const bothTeamsXGQualified = teamXGValues.length === 2 &&
-          teamXGValues.every(value => value != null) &&
-          Math.max(...teamXGValues) >= 2.5 &&
-          Math.min(...teamXGValues) >= 2.0;
+        // xG is a supporting signal when at least one team reaches 2.50.
+        // Missing xG remains neutral and never blocks an otherwise valid SOT alert.
+        const atLeastOneTeamXGQualified = teamXGValues.some(value => value != null && value >= 2.5);
         const teamSOTValues = teams
           .map(team => team.shotsOnTarget == null ? null : Number(team.shotsOnTarget))
           .filter(value => value != null && Number.isFinite(value));
@@ -2045,7 +2044,7 @@ const server = http.createServer(async (req, res) => {
           attacks: total("attacks"),
           dangerous: total("dangerousAttacks"),
           xG: qualifyingTeamXG,
-          bothTeamsXGQualified
+          atLeastOneTeamXGQualified
         };
         const id = String(match.eventId);
         // Keep a rolling five-minute window so activity spread across scanner cycles
@@ -2061,8 +2060,10 @@ const server = http.createServer(async (req, res) => {
         const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || null;
         const previous10 = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 9.5 * 60 * 1000 && now - snapshot.at <= 11 * 60 * 1000) || null;
         checked++;
-        if (!previous || now - previous.at < 35000) continue;
-        const delta = key => current[key] == null || previous[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
+        // Either rolling baseline may qualify independently: do not require a 5-minute
+        // snapshot when the 10-minute SOT baseline is available.
+        if ((!previous || now - previous.at < 35000) && !previous10) continue;
+        const delta = key => current[key] == null || previous?.[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const shots = delta("shots"), onTarget = delta("onTarget");
         const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
         // Strict AI Over-alert gate: one of the two agreed recent SOT thresholds:
@@ -2070,16 +2071,16 @@ const server = http.createServer(async (req, res) => {
         // 20+ total shots may strengthen the sustained-pressure score below, but cannot trigger an alert alone.
         const totalXG = current.xG == null ? null : Number(current.xG);
         // xG remains supporting context only; it is never an alternative trigger for an AI alert.
-        const xGQualifies = bothTeamsXGQualified && totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
+        const xGQualifies = atLeastOneTeamXGQualified && totalXG != null && Number.isFinite(totalXG) && totalXG >= 2.5;
         const shotsOnlyOverEvidence = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
-        // Reuse bothTeamsXGQualified computed from the two team xG values above.
+        // Reuse atLeastOneTeamXGQualified computed from the two team xG values above.
         const xGDelta = xGQualifies && previous.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
         // Missing xG or xG below 2.50 is neutral; both teams qualifying gives stronger support.
-        const xGTotalSupport = bothTeamsXGQualified ? 2.5 : (xGQualifies ? 1.5 : 0);
+        const xGTotalSupport = atLeastOneTeamXGQualified ? 2.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
         // but shots and at least one shot on target remain mandatory (no corner-only alerts).
         const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
@@ -2141,8 +2142,9 @@ const server = http.createServer(async (req, res) => {
         const historicalOver = livePressureCandidate && supportingOverLine != null
           ? await getHistoricalOverSupport(match.leagueCode, match.home, match.away, supportingOverLine)
           : { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: supportingOverLine };
-        // 15+ combined SOT is a positive supporting signal, not a mandatory condition.
-        const totalSotSupport = totalOnTarget >= 15 ? 1.5 : 0;
+        // 20+ combined SOT (both teams together) is a positive supporting signal,
+        // not a mandatory condition and never a standalone alert trigger.
+        const totalSotSupport = totalOnTarget >= 20 ? 1.5 : 0;
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + liveConversionSupport + totalSotSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
@@ -2283,7 +2285,7 @@ const server = http.createServer(async (req, res) => {
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : "",
             current.shotsOnTargetInsideBox != null ? current.shotsOnTargetInsideBox + " σουτ εντός εστίας από την περιοχή" : "",
             current.bigChances != null ? current.bigChances + " μεγάλες ευκαιρίες" : "",
-            totalOnTarget >= 15 ? "15+ συνολικά SOT" : "",
+            totalOnTarget >= 20 ? "20+ συνολικά SOT" : "",
             dirtySheetSupport > 0 ? "Dirty Sheet +" + dirtySheetSupport.toFixed(1) : "",
             historicalOver.support > 0 ? "Ιστορικό Over " + supportingOverLine + " +" + Number(historicalOver.support).toFixed(1) : "",
             liveConversionSupport > 0 ? "Αποτελεσματικότητα SOT +" + liveConversionSupport.toFixed(1) : ""
