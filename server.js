@@ -3462,9 +3462,16 @@ const server = http.createServer(async (req, res) => {
                 xG: get("expectedgoals", "xg", "expectedgoalsfor")
               };
             });
+            // Ensure both scoreboard sides exist, even when ESPN omits its boxscore teams.
+            const eventHomeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
+            const eventAwayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
+            const normalizeBoxscoreTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+            const emptyTeamStats = { shots: null, shotsOnTarget: null, shotsOnTargetInsideBox: null, bigChances: null, shotsOffTarget: null, blockedShots: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null };
+            if (eventHomeName && !values.some(value => value.homeAway === "home" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventHomeName))) values.unshift({ ...emptyTeamStats, team: eventHomeName, homeAway: "home" });
+            if (eventAwayName && !values.some(value => value.homeAway === "away" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventAwayName))) values.push({ ...emptyTeamStats, team: eventAwayName, homeAway: "away" });
             // Keep ESPN boxscore teams in home/away order before pairing them with SportScore fallback values.
-            const homeTeamIndex = values.findIndex(value => value.homeAway === "home");
-            const awayTeamIndex = values.findIndex(value => value.homeAway === "away");
+            const homeTeamIndex = values.findIndex(value => value.homeAway === "home" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventHomeName));
+            const awayTeamIndex = values.findIndex(value => value.homeAway === "away" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventAwayName));
             if (homeTeamIndex >= 0 && awayTeamIndex >= 0 && homeTeamIndex > awayTeamIndex) values.reverse();
             const espnHasShotStats = values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "corners"].some(key => v[key] != null));
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
