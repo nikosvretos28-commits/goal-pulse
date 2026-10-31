@@ -2854,9 +2854,14 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const cardLeague=matchCard?.closest('.gp-live-league')?.querySelector('.gp-live-league-name')?.textContent?.trim()||[...(matchCard?.querySelector('.match-meta')?.textContent||'').split('·')].map(x=>x.trim()).filter(x=>x&&!/^(?:διοργάνωση|competition|league|live|international)$/i.test(x)&&!/^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$/.test(x)&&!/^(?:1st|2nd) half$/i.test(x)).slice(-1)[0]||matchCard?.querySelector('.match-meta span')?.textContent?.trim()||'';
  const leagueCandidates=[typeof m.league==='object'?(m.league.name||m.league.displayName||m.league.shortName):m.league,m.leagueName,typeof m.competition==='object'?(m.competition.name||m.competition.displayName):m.competition,m.competitionName,typeof m.tournament==='object'?(m.tournament.name||m.tournament.displayName):m.tournament,m.tournamentName,LEAGUES.find(l=>String(l[0])===String(m.leagueCode||m.competitionCode||m.leagueId||m.tournamentCode||''))?.[1],cardLeague,m.competitionType].map(v=>String(v||'').trim()).filter(v=>v&&!/^(?:διοργάνωση|competition|league)$/i.test(v));
  const matchLeague=leagueCandidates[0]||String(m.leagueCode||m.competitionCode||m.leagueId||m.tournamentCode||'').replace(/[._-]/g,' ').toUpperCase()||'ΔΙΟΡΓΑΝΩΣΗ';
- const stats=liveMetricsCache.get(String(m.id));
- const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const normalizeStatTeamName=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+ // Scoreboard IDs can arrive after the metrics response or differ between providers.
+ // If the ID-keyed cache misses, recover the matching live row by normalized team names.
+ const stats=liveMetricsCache.get(String(m.id))||[...liveMetricsCache.values()].find(row=>
+  normalizeStatTeamName(row?.home)===normalizeStatTeamName(m.home?.name)&&
+  normalizeStatTeamName(row?.away)===normalizeStatTeamName(m.away?.name)
+ );
+ const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
  const home=teams.find(team=>team?.homeAway==='home')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.home?.name))||teams[0]||{};
  const away=teams.find(team=>team?.homeAway==='away')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.away?.name))||teams.find(team=>team!==home)||{};
  const metric=(team,key,eventTeam=null)=>{
