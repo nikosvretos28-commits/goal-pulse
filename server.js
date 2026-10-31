@@ -754,7 +754,7 @@ async function getHistoricalOverSupport(leagueCode, homeName, awayName, targetLi
     if (!cached || !Array.isArray(cached.completed)) {
       return { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line };
     }
-    const norm = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const profile = name => {
       const target = norm(name);
       const matches = cached.completed.filter(m => m.home === target || m.away === target)
