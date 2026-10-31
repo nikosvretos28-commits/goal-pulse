@@ -3161,7 +3161,7 @@ const server = http.createServer(async (req, res) => {
           }
         } catch (error) { console.warn("SportScore direct live stats feed unavailable:", error.message || "request failed"); }
       }
-      if (sportScoreLiveExists && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
+      if (liveEvents.length && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
         try {
           const liveDateForSlugMap = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
           const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
@@ -3462,14 +3462,47 @@ const server = http.createServer(async (req, res) => {
                 xG: get("expectedgoals", "xg", "expectedgoalsfor")
               };
             });
+            // Ensure both scoreboard sides exist, even when ESPN omits its boxscore teams.
+            const eventHomeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
+            const eventAwayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
+            const normalizeBoxscoreTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+            const emptyTeamStats = { shots: null, shotsOnTarget: null, shotsOnTargetInsideBox: null, bigChances: null, shotsOffTarget: null, blockedShots: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null };
+            if (eventHomeName && !values.some(value => value.homeAway === "home" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventHomeName))) values.unshift({ ...emptyTeamStats, team: eventHomeName, homeAway: "home" });
+            if (eventAwayName && !values.some(value => value.homeAway === "away" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventAwayName))) values.push({ ...emptyTeamStats, team: eventAwayName, homeAway: "away" });
+            // Keep ESPN boxscore teams in home/away order before pairing them with SportScore fallback values.
+            const homeTeamIndex = values.findIndex(value => value.homeAway === "home" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventHomeName));
+            const awayTeamIndex = values.findIndex(value => value.homeAway === "away" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventAwayName));
+            if (homeTeamIndex >= 0 && awayTeamIndex >= 0 && homeTeamIndex > awayTeamIndex) values.reverse();
             const espnHasShotStats = values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "corners"].some(key => v[key] != null));
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
-            if (!espnHasShotStats) {
+            // Try the fallback whenever either team has a missing core shot metric,
+            // not only when ESPN returns absolutely no shot statistics.
+            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "corners"].some(key => v[key] == null));
+            if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
               const awayName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "";
-              const direct = sportScoreLiveStatsByPair.get(normFallbackTeam(homeName) + "|" + normFallbackTeam(awayName))
+              let direct = sportScoreLiveStatsByPair.get(normFallbackTeam(homeName) + "|" + normFallbackTeam(awayName))
                 || sportScoreLiveStatsByPair.get(normFallbackTeam(awayName) + "|" + normFallbackTeam(homeName));
+              // The fixtures list may not include stats. For ESPN matches, use its
+              // mapped SportScore slug to request the actual match-detail payload.
+              if (!direct || !Array.isArray(direct.stats) || !direct.stats.length) {
+                const fallbackSlug = sportScoreWidgetSlugCache.map.get(normFallbackTeam(homeName) + "|" + normFallbackTeam(awayName))
+                  || sportScoreWidgetSlugCache.map.get(normFallbackTeam(awayName) + "|" + normFallbackTeam(homeName));
+                if (fallbackSlug) {
+                  try {
+                    const detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(fallbackSlug) + "&src=goal-pulse", {
+                      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
+                    });
+                    if (detailResponse.ok) {
+                      const detailPayload = await detailResponse.json();
+                      direct = detailPayload.match || detailPayload.data || detailPayload.fixture || detailPayload;
+                    }
+                  } catch (fallbackError) {
+                    console.warn("SportScore per-match fallback unavailable:", JSON.stringify({ eventId: String(event.id), error: fallbackError.message || "request failed" }));
+                  }
+                }
+              }
               if (direct && Array.isArray(direct.stats)) {
                 const directHomeName = direct.home?.name || direct.home_team?.name || direct.home_name || (typeof direct.home === "string" ? direct.home : "");
                 const sameOrientation = normFallbackTeam(directHomeName) === normFallbackTeam(homeName);

@@ -2555,7 +2555,9 @@ function setLiveMetricsCache(rows){
   const bothTeamsHaveSot=teams.slice(0,2).every(team=>team.shotsOnTarget!=null&&team.shotsOnTarget!==''&&Number.isFinite(Number(team.shotsOnTarget)));
   return {...row,teams,_hiActivitySotAvailable:bothTeamsHaveSot};
  };
- const hasUsableStats=row=>!!row&&(row.statsAvailable===true||(Array.isArray(row.teams)&&row.teams.some(t=>t&&Object.keys(t).some(k=>t[k]!=null&&t[k]!==''))));
+ const metricKeys=['shots','shotsOnTarget','shotsOnTargetInsideBox','shotsOffTarget','blockedShots','corners','attacks','dangerousAttacks','bigChances','possession','xG'];
+ const statsQuality=row=>Array.isArray(row?.teams)?row.teams.slice(0,2).reduce((total,team)=>total+metricKeys.filter(key=>team?.[key]!=null&&team[key]!==''&&Number.isFinite(Number(team[key]))).length,0):0;
+ const hasUsableStats=row=>statsQuality(row)>0;
  const stamp=row=>({...row,_goalMatrixReceivedAt:Number(row?._goalMatrixReceivedAt)||receivedAt});
  for(const rawRow of incoming){
   if(!rawRow||rawRow.eventId==null)continue;
@@ -2566,7 +2568,7 @@ function setLiveMetricsCache(rows){
   // Preserve the default scanner's 5/10-minute SOT trend when this parallel response
   // arrives later, otherwise it can erase the only usable recent-window baseline.
   const row=old?.trend&&!normalizedRow.trend?{...normalizedRow,trend:old.trend}:normalizedRow;
-  if(hasUsableStats(row))next.set(id,stamp(row));else if(!old)next.set(id,row);
+  if(hasUsableStats(row)){if(!old||statsQuality(row)>=statsQuality(old))next.set(id,stamp(row));}else if(!old)next.set(id,row);
  }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
  const live=Array.isArray(allMatches)?allMatches:[];
@@ -2854,7 +2856,9 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const matchLeague=leagueCandidates[0]||String(m.leagueCode||m.competitionCode||m.leagueId||m.tournamentCode||'').replace(/[._-]/g,' ').toUpperCase()||'ΔΙΟΡΓΑΝΩΣΗ';
  const stats=liveMetricsCache.get(String(m.id));
  const teams=stats&&Array.isArray(stats.teams)?stats.teams:[];
- const home=teams[0]||{},away=teams[1]||{};
+ const normalizeStatTeamName=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+ const home=teams.find(team=>team?.homeAway==='home')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.home?.name))||teams[0]||{};
+ const away=teams.find(team=>team?.homeAway==='away')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.away?.name))||teams.find(team=>team!==home)||{};
  const metric=(team,key,eventTeam=null)=>{
   const aliases={
    shots:['shots','totalShots','total_shots','total_attempts','totalAttempts'],
