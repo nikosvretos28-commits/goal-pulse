@@ -742,6 +742,38 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
     return { support: 0, homeRate: null, awayRate: null, sample: 0 };
   }
 }
+// Supporting historical Over profile for the exact live market line.
+// Uses the same completed league-season cache as Dirty Sheet; small samples stay neutral.
+async function getHistoricalOverSupport(leagueCode, homeName, awayName, targetLine) {
+  try {
+    const line = Number(targetLine);
+    if (!leagueCode || !homeName || !awayName || !Number.isFinite(line)) {
+      return { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: Number.isFinite(line) ? line : null };
+    }
+    const cached = dirtySheetLeagueCache.get(String(leagueCode));
+    if (!cached || !Array.isArray(cached.completed)) {
+      return { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line };
+    }
+    const norm = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const profile = name => {
+      const target = norm(name);
+      const matches = cached.completed.filter(m => m.home === target || m.away === target)
+        .sort((a,b) => b.date.localeCompare(a.date)).slice(0, 15);
+      if (matches.length < 5) return { rate: null, sample: matches.length };
+      const wins = matches.filter(m => (m.hs + m.as) > line).length;
+      return { rate: wins / matches.length, sample: matches.length };
+    };
+    const home = profile(homeName), away = profile(awayName);
+    const usable = [home, away].filter(x => x.rate != null && x.sample >= 5);
+    const best = usable.length ? Math.max(...usable.map(x => x.rate)) : null;
+    const support = best == null ? 0 : best >= 0.75 ? 2 : best >= 0.65 ? 1.5 : best >= 0.55 ? 1 : best >= 0.5 ? 0.5 : 0;
+    return { support, homeRate: home.rate, awayRate: away.rate, homeSample: home.sample, awaySample: away.sample, line };
+  } catch (error) {
+    console.warn("Historical Over profile unavailable; neutral fallback:", String(error.message || error).slice(0,160));
+    return { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: Number.isFinite(Number(targetLine)) ? Number(targetLine) : null };
+  }
+}
+
 async function pitchGet(apiPath) {
   const key = process.env.PITCH_API_KEY;
   if (!key) {
@@ -2095,13 +2127,25 @@ const server = http.createServer(async (req, res) => {
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
         const shotQualitySupport = (current.shotsOnTargetInsideBox == null ? 0 : Math.min(2, current.shotsOnTargetInsideBox * 0.5)) + (current.bigChances == null ? 0 : Math.min(2, current.bigChances * 0.75));
-        const points = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + shotQualitySupport;
-        const sustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport + shotQualitySupport;
+        const basePoints = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + shotQualitySupport;
+        const baseSustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport + shotQualitySupport;
         // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
         // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
+        // Evaluate the exact Over line implied by the live score; one team's recent
+        // league Over record can add support, but never blocks or triggers an alert.
+        const liveGoalsForLine = Number(match.homeScore) + Number(match.awayScore);
+        const supportingOverLine = Number.isFinite(liveGoalsForLine) ? Number((liveGoalsForLine + 0.5).toFixed(1)) : null;
+        const historicalOver = livePressureCandidate && supportingOverLine != null
+          ? await getHistoricalOverSupport(match.leagueCode, match.home, match.away, supportingOverLine)
+          : { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: supportingOverLine };
+        // 15+ combined SOT is a positive supporting signal, not a mandatory condition.
+        const totalSotSupport = totalOnTarget >= 15 ? 1.5 : 0;
+        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + liveConversionSupport + totalSotSupport;
+        const points = basePoints + supportingCriteriaScore;
+        const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
         // 20+ total shots can strengthen sustained-pressure scoring but is not mandatory.
         // Cumulative SOT and xG cannot replace the recent-SOT trigger; missing xG is neutral.
@@ -2238,7 +2282,11 @@ const server = http.createServer(async (req, res) => {
             attacks ? attacks + " νέες επιθέσεις" : "",
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : "",
             current.shotsOnTargetInsideBox != null ? current.shotsOnTargetInsideBox + " σουτ εντός εστίας από την περιοχή" : "",
-            current.bigChances != null ? current.bigChances + " μεγάλες ευκαιρίες" : ""
+            current.bigChances != null ? current.bigChances + " μεγάλες ευκαιρίες" : "",
+            totalOnTarget >= 15 ? "15+ συνολικά SOT" : "",
+            dirtySheetSupport > 0 ? "Dirty Sheet +" + dirtySheetSupport.toFixed(1) : "",
+            historicalOver.support > 0 ? "Ιστορικό Over " + supportingOverLine + " +" + Number(historicalOver.support).toFixed(1) : "",
+            liveConversionSupport > 0 ? "Αποτελεσματικότητα SOT +" + liveConversionSupport.toFixed(1) : ""
           ].filter(Boolean).join(" · ");
           // Store a price only when the exact active market quote was verified.
           const hasVerifiedOdds = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) > 1 && Number.isFinite(Number(verifiedOdds.line)) && Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001);
@@ -2300,7 +2348,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, onTarget10m, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, evidenceKinds, points }
+                  statsAtSignal: { shots, onTarget, onTarget10m, totalOnTarget, totalSotSupport, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
