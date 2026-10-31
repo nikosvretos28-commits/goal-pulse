@@ -2860,6 +2860,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const stats=liveMetricsCache.get(String(m.id))||[...liveMetricsCache.values()].map(row=>{
   const rowHome=normalizeStatTeamName(row?.home),rowAway=normalizeStatTeamName(row?.away);
   const matchHome=normalizeStatTeamName(m.home?.name),matchAway=normalizeStatTeamName(m.away?.name);
+  if(!rowHome||!rowAway||!matchHome||!matchAway)return null;
   if(rowHome===matchHome&&rowAway===matchAway)return row;
   if(rowHome===matchAway&&rowAway===matchHome){
    const teams=Array.isArray(row.teams)?row.teams.slice().reverse().map(team=>({
