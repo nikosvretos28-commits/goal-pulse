@@ -2131,7 +2131,7 @@ const server = http.createServer(async (req, res) => {
         const baseSustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport + shotQualitySupport;
         // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
         // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
-        const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && points + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && sustainedPoints + liveConversionSupport >= 8));
+        const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && basePoints + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && baseSustainedPoints + liveConversionSupport >= 8));
         const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
         const dirtySheetSupport = Number(dirtySheet.support || 0);
         // Evaluate the exact Over line implied by the live score; one team's recent
