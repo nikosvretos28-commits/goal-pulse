@@ -2076,10 +2076,10 @@ const server = http.createServer(async (req, res) => {
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
         // Reuse atLeastOneTeamXGQualified computed from the two team xG values above.
-        const xGDelta = xGQualifies && previous.xG != null
+        const xGDelta = xGQualifies && previous?.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
-        // Missing xG or xG below 2.50 is neutral; both teams qualifying gives stronger support.
+        // Missing xG or xG below 2.50 is neutral; one team at 2.50+ adds support.
         const xGTotalSupport = atLeastOneTeamXGQualified ? 2.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
         // but shots and at least one shot on target remain mandatory (no corner-only alerts).
