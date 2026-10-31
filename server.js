@@ -3205,7 +3205,7 @@ const server = http.createServer(async (req, res) => {
       let cursor = 0;
       const matches = [];
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
-      const workers = Array.from({ length: Math.min(4, work.length) }, async () => {
+      const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
           const event = item.event;
