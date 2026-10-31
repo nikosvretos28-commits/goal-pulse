@@ -3408,10 +3408,20 @@ const server = http.createServer(async (req, res) => {
               continue;
             }
             espnSummaryDiagnostics.attempted++;
-            const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
+            let response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
               headers: { "Accept": "application/json" },
               signal: AbortSignal.timeout(8000)
             });
+            // Match the proven scoreboard fallback: ESPN can deny the site.api hostname
+            // from this hosting region while its equivalent site.web.api endpoint works.
+            // Retry only explicit HTTP denial/throttling/server errors; do not alter
+            // provider selection, match parsing, or any alert/protocol behavior.
+            if (response.status === 403 || response.status === 429 || response.status >= 500) {
+              response = await fetch("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
+                headers: { "Accept": "application/json" },
+                signal: AbortSignal.timeout(8000)
+              });
+            }
             if (!response.ok) {
               const statusKey = String(response.status);
               espnSummaryDiagnostics.httpErrors[statusKey] = (espnSummaryDiagnostics.httpErrors[statusKey] || 0) + 1;
