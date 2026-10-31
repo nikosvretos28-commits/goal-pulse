@@ -3144,7 +3144,7 @@ const server = http.createServer(async (req, res) => {
           });
           if (liveResponse.ok) {
             const livePayload = await liveResponse.json();
-            const liveFixtures = Array.isArray(livePayload) ? livePayload : (livePayload.matches || livePayload.data || livePayload.fixtures || livePayload.events || livePayload.results || []);
+            const liveFixtures = extractFixtureArray(livePayload);
             const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             for (const fixture of liveFixtures) {
               const statusText = [fixture.status, fixture.status_text, fixture.status_name, fixture.state, fixture.minute, fixture.elapsed].filter(v => v != null).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(" ").toLowerCase();
@@ -3172,7 +3172,7 @@ const server = http.createServer(async (req, res) => {
             const payload = await response.json();
             const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             const map = new Map();
-            const liveSlugFixtures = Array.isArray(payload) ? payload : (payload.matches || payload.data || payload.fixtures || payload.events || payload.results || []);
+            const liveSlugFixtures = extractFixtureArray(payload);
             for (const match of liveSlugFixtures) {
               const homeName = match.home?.name || match.home_team?.name || match.home_name || (typeof match.home === "string" ? match.home : "");
               const awayName = match.away?.name || match.away_team?.name || match.away_name || (typeof match.away === "string" ? match.away : "");
