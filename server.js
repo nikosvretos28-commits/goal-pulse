@@ -3205,6 +3205,7 @@ const server = http.createServer(async (req, res) => {
       let cursor = 0;
       const matches = [];
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
+      const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0 };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
@@ -3406,13 +3407,21 @@ const server = http.createServer(async (req, res) => {
               });
               continue;
             }
+            espnSummaryDiagnostics.attempted++;
             const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
               headers: { "Accept": "application/json" },
               signal: AbortSignal.timeout(8000)
             });
-            if (!response.ok) continue;
+            if (!response.ok) {
+              const statusKey = String(response.status);
+              espnSummaryDiagnostics.httpErrors[statusKey] = (espnSummaryDiagnostics.httpErrors[statusKey] || 0) + 1;
+              continue;
+            }
+            espnSummaryDiagnostics.httpOk++;
             const summary = await response.json();
             const teams = summary?.boxscore?.teams || [];
+            if (!teams.length) espnSummaryDiagnostics.missingBoxscoreTeams++;
+            espnSummaryDiagnostics.teamsFound += teams.length;
             const values = teams.map(team => {
               const stats = team.statistics || [];
               const get = (...names) => {
@@ -3444,6 +3453,7 @@ const server = http.createServer(async (req, res) => {
               };
             });
             const espnHasShotStats = values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "corners"].some(key => v[key] != null));
+            if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
             if (!espnHasShotStats) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
@@ -3503,11 +3513,13 @@ const server = http.createServer(async (req, res) => {
               teams: values
             });
           } catch (error) {
+            if (!String(event.id || "").startsWith("m_") && !String(event.id || "").startsWith("sportscore:") && !String(event.id || "").startsWith("sportscore-widget:") && /abort|timeout/i.test(String(error.message || ""))) espnSummaryDiagnostics.timeoutErrors++;
             console.error("Live stats fetch failed:", JSON.stringify({ eventId: String(event.id || ""), leagueCode: item.leagueCode, provider: String(event.id || "").startsWith("m_") ? "PitchAPI" : "ESPN", error: error.message || "unknown error" }));
           }
         }
       });
       await Promise.all(workers);
+      console.log("[GoalMatrix ESPN summary audit]", JSON.stringify(espnSummaryDiagnostics));
       // Temporary live-stat audit: log provider and the raw normalized shot components
       // so discrepancies can be traced without guessing or silently altering totals.
       for (const match of matches) {
