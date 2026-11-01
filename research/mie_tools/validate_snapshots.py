@@ -52,6 +52,13 @@ def finite_number(value: Any, field: str, *, minimum: float = 0.0) -> float:
     return number
 
 
+def integer_number(value: Any, field: str, *, minimum: float = 0.0) -> int:
+    number = finite_number(value, field, minimum=minimum)
+    if not number.is_integer():
+        raise ValueError(f"{field} must be an integer")
+    return int(number)
+
+
 def load_jsonl(path: Path) -> tuple[list[dict], list[str]]:
     rows, errors = [], []
     with path.open(encoding="utf-8") as handle:
@@ -76,8 +83,8 @@ def normalize_snapshot(row: dict) -> dict:
     period = str(row.get("period", "")).upper()
     if period not in PERIODS:
         raise ValueError(f"period must be one of {sorted(PERIODS)}")
-    minute = int(finite_number(row.get("minute"), "minute"))
-    second = int(finite_number(row.get("second", 0), "second"))
+    minute = integer_number(row.get("minute"), "minute")
+    second = integer_number(row.get("second", 0), "second")
     if minute > 140 or second > 59:
         raise ValueError("implausible match clock")
     result = {
@@ -85,7 +92,7 @@ def normalize_snapshot(row: dict) -> dict:
         "minute": minute, "second": second,
     }
     for field in ("home_score", "away_score", "home_red_cards", "away_red_cards"):
-        result[field] = int(finite_number(row.get(field, 0), field))
+        result[field] = integer_number(row.get(field, 0), field)
     for side in ("home", "away"):
         values = row.get(side)
         if not isinstance(values, dict):
@@ -132,6 +139,16 @@ def main() -> int:
             events.append(normalize_event(row))
         except Exception as exc:
             errors.append(f"event row {index}: {exc}")
+
+    # Preserve evidence of provider row order before sorting for deterministic processing.
+    input_previous: dict[str, datetime] = {}
+    for row in snapshots:
+        previous_at = input_previous.get(row["match_id"])
+        if previous_at is not None and row["snapshot_at"] < previous_at:
+            errors.append(
+                f"{row['match_id']}: snapshots arrived out of timestamp order; source order needs review"
+            )
+        input_previous[row["match_id"]] = row["snapshot_at"]
 
     snapshots.sort(key=lambda r: (r["match_id"], r["snapshot_at"]))
     events_by_match: dict[str, list[dict]] = defaultdict(list)
