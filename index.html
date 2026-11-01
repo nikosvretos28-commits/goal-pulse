@@ -3131,17 +3131,15 @@ function highActivityInPeriod(timestamp,period){
  if(period==='year')return d.getFullYear()===now.getFullYear();
  return true;
 }
-function isFirstHalfResearchObservation(item){
- const minute=Number(item?.minute);
- const half=String(item?.half||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
- return Number.isFinite(minute)&&minute>=1&&minute<=40&&(/1\s*(?:ο|st|h|half)|first/.test(half));
+function isHighActivityResearchObservation(item){
+ return Boolean(item?.observationId)&&Number.isFinite(Number(item?.createdAt));
 }
 function highActivityTeamAnalytics(){
  const byTeam=new Map(),seen=new Set();
  const normalize=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  for(const item of highActivityObservations){
   const id=String(item?.observationId||'');
-  if(!isFirstHalfResearchObservation(item)||!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
+  if(!isHighActivityResearchObservation(item)||!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
   seen.add(id);
   for(const rawName of [item.home,item.away]){
    const name=String(rawName||'').trim(),key=normalize(name);
@@ -3208,8 +3206,7 @@ function renderHighActivityTeamMetricsForMatch(match){
 function renderHighActivityAnalyst(){
  const root=document.getElementById('highActivityAnalystPanel');if(!root)return;
  const allRecords=highActivityObservations.slice().sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
- const firstHalfRecords=allRecords.filter(isFirstHalfResearchObservation);
- const records=firstHalfRecords.filter(x=>highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
+ const records=allRecords.filter(x=>highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
  const settled=records.filter(x=>x.outcome==='won'||x.outcome==='lost');
  const wins=settled.filter(x=>x.outcome==='won').length,losses=settled.length-wins;
  const rate=settled.length?Math.round(wins/settled.length*100):null;
@@ -3236,13 +3233,23 @@ const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':
  const historyRows=allRecords;
  root.innerHTML='<h3>📅 ΗΜΕΡΗΣΙΑ ΑΝΑΦΟΡΑ · HI ACTIVITY</h3><p class="subtle">Ανεξάρτητη αναφορά όλων των ενδείξεων HI ACTIVITY της σημερινής ημερομηνίας Ελλάδας, για 1ο και 2ο ημίχρονο.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΟ ΣΗΜΕΡΑ</small><strong>'+dailyRecords.length+'</strong></div><div><small>ΚΕΡΔΙΣΜΕΝΑ / ΧΑΜΕΝΑ</small><strong>'+dailyWins+' / '+dailyLosses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΣΤΑ SETTLED</small><strong>'+(dailyRate==null?'—':dailyRate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΗ</small><strong>'+dailyPending+'</strong></div></div><p class="subtle">Ημερομηνία Ελλάδας: '+todayAthens+' · Επιτυχία HI ACTIVITY = τουλάχιστον 1 νέο γκολ μετά την ένδειξη έως τη λήξη.</p><details open><summary>📋 ΙΣΤΟΡΙΚΟ ΑΓΩΝΩΝ HI ACTIVITY ('+allRecords.length+')</summary>'+(historyRows.length?'<div class="protocol-analyst-grid">'+historyRows.map(x=>{const outcome=x.outcome==='won'?'WON':x.outcome==='lost'?'LOST':'ΕΚΚΡΕΜΕΙ';const issuedMinute=x.minute!=null&&x.minute!==''&&Number.isFinite(Number(x.minute))?Number(x.minute)+'′':(x.minute||'—');const signalScore=x.scoreAtSignal?String(x.scoreAtSignal.home??'—')+'–'+String(x.scoreAtSignal.away??'—'):'—';const currentScore=x.currentScore?String(x.currentScore.home??'—')+'–'+String(x.currentScore.away??'—'):'—';const scoreLabel=x.outcome==='won'||x.outcome==='lost'?'Τελικό σκορ':'Τρέχον σκορ';const stamp=Number(x.createdAt);const issuedAt=Number.isFinite(stamp)?new Date(stamp<1e12?stamp*1000:stamp).toLocaleString('el-GR'):'—';return '<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+outcome+'</span><small>'+escHa(x.half||'')+' · Καταγραφή '+escHa(issuedMinute)+' · Σκορ τότε '+escHa(signalScore)+' · '+scoreLabel+' '+escHa(currentScore)+' · '+escHa(issuedAt)+'</small></div>'}).join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
 }
+const highActivityHistoryPendingWrites=new Map();
+let highActivityHistorySavePromise=null;
 async function persistHighActivityObservations(records){
- if(!records?.length)return;
- try{
-  const response=await fetch(ANALYTICS_API+'/api/high-activity/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({observations:records})});
-  if(!response.ok)throw new Error('HTTP '+response.status);
-  highActivityHistoryLastSave=Date.now();
- }catch(error){console.warn('High Activity history sync unavailable:',error.message);}
+ (records||[]).forEach(item=>{if(item?.observationId)highActivityHistoryPendingWrites.set(String(item.observationId),JSON.parse(JSON.stringify(item)));});
+ if(!highActivityHistoryPendingWrites.size)return;
+ if(highActivityHistorySavePromise)return highActivityHistorySavePromise;
+ highActivityHistorySavePromise=(async()=>{
+  const batch=[...highActivityHistoryPendingWrites.values()];
+  try{
+   const response=await fetch(ANALYTICS_API+'/api/high-activity/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({observations:batch})});
+   if(!response.ok)throw new Error('HTTP '+response.status);
+   batch.forEach(item=>{const id=String(item.observationId);if(highActivityHistoryPendingWrites.get(id)===item)highActivityHistoryPendingWrites.delete(id);});
+   highActivityHistoryLastSave=Date.now();
+  }catch(error){console.warn('High Activity history sync unavailable; records remain queued for retry:',error.message);}
+  finally{highActivityHistorySavePromise=null;}
+ })();
+ return highActivityHistorySavePromise;
 }
 async function loadHighActivityHistory(){
  if(highActivityHistoryLoadPromise)return highActivityHistoryLoadPromise;
@@ -3255,8 +3262,8 @@ async function loadHighActivityHistory(){
    observations.forEach(x=>{if(x?.observationId){const id=String(x.observationId),existing=merged.get(id),outcome=String(x.outcome||'pending').trim().toLowerCase();if(!['won','lost'].includes(outcome))x.outcome='pending';else x.outcome=outcome;if(existing&&['won','lost'].includes(String(existing.outcome||'').toLowerCase())&&x.outcome==='pending'){x={...x,outcome:existing.outcome,settledAt:existing.settledAt,settlementReason:existing.settlementReason};repairedSettlements.push(x)}merged.set(id,x)}});
    highActivityObservations=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
    if(repairedSettlements.length)void persistHighActivityObservations(repairedSettlements);
-   highActivityHistoryLoaded=true;renderHighActivityAnalyst();void reconcileHistoricalHighActivityObservations();
-  }catch(error){console.warn('Could not load persistent High Activity history:',error.message);const root=document.getElementById('highActivityAnalystPanel');if(root&&!highActivityHistoryLoaded)root.innerHTML='<p>Το μόνιμο ιστορικό HI ACTIVITY δεν είναι διαθέσιμο αυτή τη στιγμή. Θα γίνει νέα προσπάθεια.</p>';}
+   highActivityHistoryLoaded=true;renderHighActivityAnalyst();void persistHighActivityObservations([]);void reconcileHistoricalHighActivityObservations();
+  }catch(error){console.warn('Could not load persistent High Activity history:',error.message);const root=document.getElementById('highActivityAnalystPanel');if(!highActivityHistoryLoaded)renderHighActivityAnalyst();}
   finally{highActivityHistoryLoadPromise=null;}
  })();
  return highActivityHistoryLoadPromise;
@@ -3405,7 +3412,7 @@ async function reconcileHistoricalHighActivityObservations(){
  return highActivityHistoricalSettlementPromise;
 }
 function evaluateHighActivityObservations(ranked){
- if(!highActivityHistoryLoaded){void loadHighActivityHistory();return;}
+ if(!highActivityHistoryLoaded)void loadHighActivityHistory();
  const now=Date.now(),changed=[];
  const matches=new Map(allMatches.map(m=>[String(m.id),m]));
  const active=new Map((ranked||[]).map(x=>[String(x.match.id),x]));
@@ -3485,7 +3492,7 @@ function evaluateHighActivityObservations(ranked){
   }
  }
  // Keep the complete in-memory history; period controls only filter the display.
- if(changed.length)persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
+ void persistHighActivityObservations([...new Map(changed.map(x=>[x.observationId,x])).values()]);
  renderHighActivityAnalyst();
  void reconcileHistoricalHighActivityObservations();
 }
