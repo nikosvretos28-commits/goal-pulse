@@ -1955,6 +1955,70 @@ nav a:first-child{color:var(--gm-lime);border-bottom-color:var(--gm-lime)}
 @media(prefers-reduced-motion:reduce){.brand svg,.primary,.login{transition:none}}
 </style>
 
+<style id="gp-premium-brand-color-lift">
+/* Goal Pulse premium color lift — CSS only. Existing logo/photo, data and app behavior remain untouched. */
+:root{
+ --bg:#071321;--panel:#0d2032;--panel2:#122b40;--line:#29465d;
+ --text:#f4f8fc;--muted:#a8bacb;
+ --green:#42e6a4;--cyan:#55d5f2;--red:#ff7185;--gold:#e8c47c;
+ --gm-brand-lime:#e8c47c;--gm-brand-mint:#42e6a4;--gm-brand-ice:#55d5f2;
+ --gm-hairline:rgba(145,190,218,.2);
+}
+body{
+ background:
+  radial-gradient(ellipse at 12% -12%,rgba(45,113,145,.23),transparent 38%),
+  radial-gradient(ellipse at 92% 4%,rgba(35,119,104,.13),transparent 32%),
+  #071321;
+ color:var(--text);
+}
+header{border-bottom-color:rgba(85,213,242,.2)}
+header:after{background:linear-gradient(90deg,transparent,rgba(232,196,124,.34),rgba(85,213,242,.34),transparent)}
+nav a:first-child{color:#e8c47c;border-bottom-color:#e8c47c}
+nav a:hover{color:#e8c47c;text-shadow:0 0 15px rgba(232,196,124,.18)}
+.brand-name span{
+ background:linear-gradient(95deg,#e8c47c 0%,#42e6a4 52%,#55d5f2 100%);
+ -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.brand-tagline{color:#c2d0dc}
+.live-badge{border-color:rgba(66,230,164,.42);background:linear-gradient(135deg,#10382f,#102c39);color:#68f0b7}
+.pulse-dot{background:#42e6a4;box-shadow:0 0 10px #42e6a4}
+.login,.primary{
+ background:linear-gradient(105deg,#e8c47c 0%,#42e6a4 58%,#55d5f2 100%);
+ color:#071b25;box-shadow:0 7px 24px rgba(66,230,164,.14);
+}
+.hero-main{
+ border-color:rgba(85,213,242,.28);
+ background:
+  radial-gradient(ellipse at 78% 45%,rgba(42,163,167,.2),transparent 38%),
+  linear-gradient(112deg,#0b1d2d 0%,#12354a 58%,#0a1b2a 100%);
+}
+.hero-main:after{border-color:rgba(85,213,242,.25);box-shadow:0 -15px 0 -13px #42e6a4,0 -30px 0 -28px #e8c47c}
+.hero .eyebrow,.eyebrow{color:#e8c47c}
+.hero h1 span{color:#42e6a4}
+.panel,.side-live,.analysis-box{background:linear-gradient(150deg,#112a3e,#0a1b2b);border-color:rgba(85,213,242,.2)}
+.panel-head{border-bottom-color:rgba(85,213,242,.14)}
+.live-row,.match{border-color:rgba(85,213,242,.14)}
+.score,.match-score{color:#42e6a4}
+.filter.active,.filter:hover{background:#42e6a4;border-color:#42e6a4;color:#071b25}
+.filter,.date-label,.search,.mini-btn{border-color:#31516a;background:#10283b;color:#e5eff6}
+.count{background:#17384c;color:#55d5f2}
+.stat,.insight-card,.analysis-stat{background:#17364a;border-color:rgba(85,213,242,.13)}
+.live-tag{background:#123f36;color:#68f0b7}
+.feature{background:linear-gradient(145deg,#0d2233,#091a29);border-color:rgba(85,213,242,.14)}
+.gp-section-button{border-color:rgba(85,213,242,.22)}
+.gp-section-button[aria-expanded=true]{box-shadow:inset 0 0 0 1px rgba(66,230,164,.18),0 8px 22px rgba(0,0,0,.18)}
+.top-ai-alert-card{border-color:rgba(85,213,242,.2);background:linear-gradient(145deg,#132d40,#0a1d2c)}
+.top-ai-alert-card .alert-card-market{border-color:rgba(66,230,164,.26);background:linear-gradient(100deg,rgba(66,230,164,.1),rgba(85,213,242,.07))}
+.gp-matrix-analytics-button{border-color:rgba(66,230,164,.55)!important;background:linear-gradient(112deg,#123e3b,#102d40 58%,#102238)!important}
+.gp-matrix-analytics-panel{border-color:rgba(85,213,242,.28);background:radial-gradient(ellipse at 2% 0%,rgba(66,230,164,.1),transparent 34%),radial-gradient(ellipse at 100% 0%,rgba(85,213,242,.09),transparent 32%),linear-gradient(145deg,#10283b,#071827)}
+.gp-matrix-analytics-panel:before{background:linear-gradient(90deg,#e8c47c,#42e6a4 48%,#55d5f2)}
+#matrixAnalyticsTitle{background:linear-gradient(100deg,#f4f8fc,#9af4d2 55%,#9ae7f7)!important;-webkit-background-clip:text!important;background-clip:text!important}
+.gm-matrix-category{border-color:rgba(85,213,242,.17);background:linear-gradient(145deg,rgba(17,44,62,.88),rgba(8,25,39,.76))}
+.gm-matrix-category:before{background:linear-gradient(180deg,#e8c47c,#42e6a4,#55d5f2)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
+::selection{background:rgba(85,213,242,.3);color:#fff}
+@media(prefers-reduced-motion:reduce){.pulse-dot{animation:none}}
+</style>
 </head>
 <body>
 <div class="wrap">
