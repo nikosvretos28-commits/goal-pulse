@@ -195,7 +195,7 @@ Do not connect this component to the running GoalMatrix service. Until a legitim
 
 ## 14. First executable modelling baseline — 2026-11-01
 
-An isolated standard-library implementation now exists in `research/mie_tools/train_model.py`. It is a deliberately transparent first model, not a claim that the final MIE is complete.
+An isolated standard-library implementation now exists in `research/mie_tools/train_model.py` (baseline v0.2). It is a deliberately transparent first model, not a claim that the final MIE is complete.
 
 ### Feature layer
 
@@ -204,7 +204,8 @@ At each snapshot, construct point-in-time features for:
 - current score total and difference;
 - red-card total and difference;
 - cumulative SOT, shots, xG and big chances, including team differences and time-normalized SOT/xG rates;
-- explicit missingness flags for unavailable numeric inputs.
+- explicit missingness flags for unavailable numeric inputs;
+- interactions between score state and match time, red-card balance and time, and shot/xG rates and remaining regulation time.
 
 No feature is sourced from a future event. The current input contract does not contain reliable rolling-window SOT values, so the first baseline must not pretend it can calculate recent 5-minute/10-minute pressure from cumulative totals.
 
@@ -216,7 +217,7 @@ For each target (goal in next 5 minutes, next 10 minutes, and before full time):
 3. Fit a Platt calibration layer on validation matches only, and only when that validation partition contains at least 30 positive and 30 negative examples.
 4. Evaluate once on the held-out test matches using Brier score, log loss, constant-prevalence baselines and reliability bins.
 
-The script requires at least 200 training rows. It reports insufficient data instead of presenting an uncalibrated score as a reliable probability. It refuses to train unless the structural validator reports `validated_structure_only`.
+The script requires at least 200 training snapshots, at least 30 distinct training matches, and at least 10 distinct matches in each validation and test partition. It requires at least 30 examples of each class for training, calibration and final test scoring. Each match receives equal total weight, so matches with dense snapshot feeds cannot dominate the fit or evaluation. The constant-rate comparator is calculated from training prevalence, never from test outcomes. It reports insufficient data instead of presenting an uncalibrated score as a reliable probability. It refuses to train unless the structural validator reports `validated_structure_only`.
 
 This first model intentionally does not yet estimate expected remaining goals or model the two teams' goal processes separately. Those are later experiments, and must be evaluated against this transparent baseline.
 
