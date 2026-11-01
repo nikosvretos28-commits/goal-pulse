@@ -3058,6 +3058,16 @@ const server = http.createServer(async (req, res) => {
           if (successfulFeeds === 0) {
             console.error("All scoreboard feeds failed:", JSON.stringify(feeds.slice(0, 6).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))));
           }
+          // Read-only per-competition coverage audit. Does not alter feed selection or alert logic.
+          console.log("[GoalMatrix ESPN competition coverage]", JSON.stringify({
+            date,
+            configured: SCOREBOARD_LEAGUES.length,
+            attempted: feeds.length,
+            staticallySkipped: SCOREBOARD_LEAGUES.filter(code => ESPN_UNSUPPORTED_LEAGUES.has(code)),
+            nonEmpty: feeds.filter(feed => feed.ok && (feed.events || []).length > 0).map(feed => ({ code: feed.code, events: feed.events.length })),
+            empty: feeds.filter(feed => feed.ok && !(feed.events || []).length).map(feed => feed.code),
+            failed: feeds.filter(feed => !feed.ok).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))
+          }));
           const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok,error}) => ({code,events,ok,...(error ? {error} : {})})), source: successfulFeeds ? scoreboardSource : "unavailable" };
           if (successfulFeeds > 0) {
             scoreboardCache.set(date, { at: Date.now(), body });
