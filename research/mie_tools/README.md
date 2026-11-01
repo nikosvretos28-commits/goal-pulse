@@ -140,3 +140,11 @@ Run adapter tests with the rest of the suite:
 cd research/mie_tools
 python -m unittest -v
 ```
+
+### First real-match structural audit (Wyscout match 2499841)
+
+The public processed-v2 event file for the repository's documented default match (Huddersfield Town–Manchester City) was inspected directly from the dataset repository. The event payload contains 1,593 events across two teams: 844 first-half and 749 second-half events. It contains 17 primary `Shot` events, four `Shot` events with the source accurate tag 1801, eleven opportunity tags 201, no duplicate event IDs, and no within-period source-clock regressions.
+
+**Goal-tag audit:** the raw file has five occurrences of tag 101, but three are on goalkeeper `Save attempt` events. Counting every tag-101 row as a goal would therefore double-count associated goalkeeper events. The adapter was corrected to count tag 101 only on `Shot` / `Free Kick` goal-attempt events, and to count tag 102 as the explicit own-goal event. For this match, that yields three goal events (two goal-attempt rows plus one own-goal row), while retaining the three goalkeeper tag-101 rows as warnings/source metadata rather than separate goals.
+
+The embedded team metadata includes names but not home/away sides; the adapter now preserves team names and leaves `team_side` null unless explicit match metadata supplies it. The event file does not provide continuous live-stat snapshots or xG. This is a structural source audit, not a model-performance test. The complete raw match file is not copied into this repository.
