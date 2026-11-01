@@ -152,7 +152,7 @@ The embedded team metadata includes names but not home/away sides; the adapter n
 
 ### Multi-match source audit (six additional matches)
 
-A read-only structural scan was performed on six additional processed-v2 event files: Euro 2016 France–Romania (1694390), Switzerland–Poland (1694426, includes extra time and a shootout), and four 2018 World Cup matches (2057954, 2057960, 2057983), plus Wyscout match 2499843. Across these six files there were 10,146 event rows, each with two team IDs; all six had zero duplicate event IDs and zero within-period clock regressions. Period coverage included 1H/2H throughout and E1/E2/P in the Euro knockout match.
+A read-only structural scan was performed on six additional processed-v2 event files: Euro 2016 France–Romania (1694390), Switzerland–Poland (1694426, includes extra time and a shootout), and three 2018 World Cup matches (2057954, 2057960, 2057983), plus Wyscout match 2499843. Across these six files there were 10,146 event rows, each with two team IDs; all six had zero duplicate event IDs and zero within-period clock regressions. Period coverage included 1H/2H throughout and E1/E2/P in the Euro knockout match.
 
 The audit exposed a label-boundary issue: tag 101 is also present on goalkeeper `Save attempt` events associated with goal sequences, and the shootout period contains goal-tagged penalty attempts. The adapter already avoids counting the goalkeeper event as a second goal; it now additionally separates period-P shootout goals into `is_shootout_goal` and excludes them from `is_goal` / match-play goal counts. Extra-time goals (E1/E2) remain match-play goals. New tests cover all three cases: a scored shootout attempt, a saved shootout attempt, and an extra-time goal.
 
