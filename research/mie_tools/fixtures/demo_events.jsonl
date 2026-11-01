@@ -1,0 +1,5 @@
+{"match_id":"demo-goal-4m","event_type":"goal","event_at_utc":"2026-01-01T12:16:00Z","team":"home"}
+{"match_id":"demo-goal-4m","event_type":"final_time","event_at_utc":"2026-01-01T13:30:00Z"}
+{"match_id":"demo-goal-8m","event_type":"goal","event_at_utc":"2026-01-01T12:20:00Z","team":"away"}
+{"match_id":"demo-goal-8m","event_type":"final_time","event_at_utc":"2026-01-01T13:30:00Z"}
+{"match_id":"demo-no-goal","event_type":"final_time","event_at_utc":"2026-01-01T13:30:00Z"}
