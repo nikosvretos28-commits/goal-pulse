@@ -18,6 +18,9 @@ from typing import Optional
 TARGETS = ("label_goal_next_5m", "label_goal_next_10m", "label_goal_before_ft")
 PERIODS = ("1H", "2H", "ET1", "ET2")
 MIN_TRAIN_ROWS = 200
+MIN_TRAIN_MATCHES = 30
+MIN_VALIDATION_MATCHES = 10
+MIN_TEST_MATCHES = 10
 MIN_TRAIN_PER_CLASS = 30
 MIN_CALIBRATION_PER_CLASS = 30
 MIN_TEST_PER_CLASS = 30
@@ -66,6 +69,20 @@ def features(row: dict) -> dict[str, Optional[float]]:
         "home_sot": home_sot, "away_sot": away_sot,
         "home_xg": home_xg, "away_xg": away_xg,
     }
+    score_diff = result["score_difference"]
+    red_diff = result["red_card_difference"]
+    minute_fraction = result["minute_fraction"]
+    remaining = result["remaining_regulation"]
+    result["home_leading"] = None if score_diff is None else float(score_diff > 0)
+    result["away_leading"] = None if score_diff is None else float(score_diff < 0)
+    result["score_pressure_interaction"] = (None if score_diff is None or minute_fraction is None
+                                             else score_diff * minute_fraction)
+    result["red_card_time_interaction"] = (None if red_diff is None or minute_fraction is None
+                                            else red_diff * minute_fraction)
+    result["sot_remaining_interaction"] = (None if result["sot_rate_total"] is None or remaining is None
+                                            else result["sot_rate_total"] * remaining)
+    result["xg_remaining_interaction"] = (None if result["xg_rate_total"] is None or remaining is None
+                                           else result["xg_rate_total"] * remaining)
     period = str(row.get("period", "")).upper()
     for candidate in PERIODS:
         result[f"period_{candidate}"] = 1.0 if period == candidate else 0.0
@@ -115,26 +132,34 @@ def fit_transform(train_rows: list[dict], feature_names: list[str]):
     return names, transform(train_rows), transform, {"median": medians, "mean": means, "scale": scales}
 
 
-def fit_logistic(matrix: list[list[float]], labels: list[int], *, l2: float = 1.0,
-                 steps: int = 1800, learning_rate: float = 0.08):
+def match_weights(rows: list[dict]) -> list[float]:
+    counts = {}
+    for row in rows:
+        counts[row["match_id"]] = counts.get(row["match_id"], 0) + 1
+    return [1.0 / counts[row["match_id"]] for row in rows]
+
+
+def fit_logistic(matrix: list[list[float]], labels: list[int], sample_weights: list[float] | None = None,
+                 *, l2: float = 1.0, steps: int = 1800, learning_rate: float = 0.08):
     width = len(matrix[0]) if matrix else 0
     weights = [0.0] * width
     prevalence = (sum(labels) + 0.5) / (len(labels) + 1.0)
     intercept = logit(prevalence)
-    n = len(labels)
+    sample_weights = sample_weights or [1.0] * len(labels)
+    total_weight = sum(sample_weights) or 1.0
     for step in range(steps):
         grad = [0.0] * width
         grad_intercept = 0.0
-        for vector, label in zip(matrix, labels):
+        for vector, label, sample_weight in zip(matrix, labels, sample_weights):
             score = intercept + sum(w * x for w, x in zip(weights, vector))
-            error = sigmoid(score) - label
+            error = (sigmoid(score) - label) * sample_weight
             grad_intercept += error
             for j, x in enumerate(vector):
                 grad[j] += error * x
         rate = learning_rate / math.sqrt(1.0 + step / 80.0)
-        intercept -= rate * grad_intercept / n
+        intercept -= rate * grad_intercept / total_weight
         for j in range(width):
-            weights[j] -= rate * (grad[j] / n + l2 * weights[j] / n)
+            weights[j] -= rate * (grad[j] / total_weight + l2 * weights[j] / total_weight)
     return {"intercept": intercept, "weights": weights}
 
 
@@ -142,44 +167,48 @@ def scores(model: dict, matrix: list[list[float]]) -> list[float]:
     return [model["intercept"] + sum(w * x for w, x in zip(model["weights"], row)) for row in matrix]
 
 
-def fit_platt(validation_scores: list[float], labels: list[int]):
+def fit_platt(validation_scores: list[float], labels: list[int], sample_weights: list[float] | None = None):
     a, b = 1.0, 0.0
-    n = len(labels)
+    sample_weights = sample_weights or [1.0] * len(labels)
+    total_weight = sum(sample_weights) or 1.0
     for step in range(2500):
         ga = gb = 0.0
-        for score, label in zip(validation_scores, labels):
-            error = sigmoid(a * score + b) - label
+        for score, label, sample_weight in zip(validation_scores, labels, sample_weights):
+            error = (sigmoid(a * score + b) - label) * sample_weight
             ga += error * score
             gb += error
         rate = 0.04 / math.sqrt(1.0 + step / 100.0)
-        a -= rate * (ga / n + 0.001 * a)
-        b -= rate * gb / n
+        a -= rate * (ga / total_weight + 0.001 * a)
+        b -= rate * gb / total_weight
     return {"slope": a, "intercept": b}
 
 
-def metrics(probabilities: list[float], labels: list[int], baseline_probability: float) -> dict:
+def metrics(probabilities: list[float], labels: list[int], baseline_probability: float,
+            sample_weights: list[float] | None = None) -> dict:
     if not labels:
         return {"n": 0}
     clipped = [min(1.0 - 1e-12, max(1e-12, p)) for p in probabilities]
-    brier = sum((p - y) ** 2 for p, y in zip(clipped, labels)) / len(labels)
-    loss = -sum(y * math.log(p) + (1 - y) * math.log(1 - p)
-                for p, y in zip(clipped, labels)) / len(labels)
+    sample_weights = sample_weights or [1.0] * len(labels)
+    total_weight = sum(sample_weights) or 1.0
+    brier = sum(w * (p - y) ** 2 for p, y, w in zip(clipped, labels, sample_weights)) / total_weight
+    loss = -sum(w * (y * math.log(p) + (1 - y) * math.log(1 - p))
+                for p, y, w in zip(clipped, labels, sample_weights)) / total_weight
     baseline_p = min(1.0 - 1e-8, max(1e-8, baseline_probability))
-    baseline_brier = sum((baseline_p - y) ** 2 for y in labels) / len(labels)
-    baseline_loss = -sum(y * math.log(baseline_p) +
-                         (1-y) * math.log(1-baseline_p)
-                         for y in labels) / len(labels)
-    prevalence = sum(labels) / len(labels)
+    baseline_brier = sum(w * (baseline_p - y) ** 2 for y, w in zip(labels, sample_weights)) / total_weight
+    baseline_loss = -sum(w * (y * math.log(baseline_p) + (1-y) * math.log(1-baseline_p))
+                         for y, w in zip(labels, sample_weights)) / total_weight
+    prevalence = sum(w * y for y, w in zip(labels, sample_weights)) / total_weight
     bins = []
     for index in range(10):
-        members = [(p, y) for p, y in zip(clipped, labels)
+        members = [(p, y, w) for p, y, w in zip(clipped, labels, sample_weights)
                    if index / 10 <= p < (index + 1) / 10 or
                    (index == 9 and p == 1.0)]
         if members:
+            bin_weight = sum(w for _, _, w in members)
             bins.append({"lower": index / 10, "upper": (index + 1) / 10,
                          "n": len(members),
-                         "mean_probability": sum(p for p, _ in members) / len(members),
-                         "observed_rate": sum(y for _, y in members) / len(members)})
+                         "mean_probability": sum(p * w for p, _, w in members) / bin_weight,
+                         "observed_rate": sum(y * w for _, y, w in members) / bin_weight})
     return {"n": len(labels), "event_rate": prevalence, "brier": brier,
             "log_loss": loss, "constant_baseline_brier": baseline_brier,
             "constant_baseline_log_loss": baseline_loss,
@@ -212,12 +241,17 @@ def main() -> int:
         "sot_total", "sot_difference", "sot_rate_total", "shots_total",
         "shots_difference", "xg_total", "xg_difference", "xg_rate_total",
         "big_chances_total", "big_chances_difference", "home_sot", "away_sot",
-        "home_xg", "away_xg", *[f"period_{p}" for p in PERIODS],
+        "home_xg", "away_xg", "home_leading", "away_leading",
+        "score_pressure_interaction", "red_card_time_interaction",
+        "sot_remaining_interaction", "xg_remaining_interaction",
+        *[f"period_{p}" for p in PERIODS],
     ]
     output = {
-        "model": "MIE logistic baseline v0.1",
+        "model": "MIE logistic baseline v0.2",
         "method": "L2-regularized logistic regression with train-only imputation/standardization and validation-only Platt calibration",
-        "split": {key: len(value) for key, value in partitions.items()},
+        "split": {key: {"snapshot_rows": len(value),
+                        "unique_matches": len({r["match_id"] for r in value})}
+                  for key, value in partitions.items()},
         "targets": {},
         "guardrails": [
             "No model is trained if the structural validator reports errors.",
@@ -235,25 +269,36 @@ def main() -> int:
         result = {"train_n": len(train), "validation_n": len(valid), "test_n": len(test)}
         train_labels = [int(float(r[target])) for r in train]
         train_counts = {0: train_labels.count(0), 1: train_labels.count(1)}
-        if len(train) < MIN_TRAIN_ROWS or min(train_counts.values(), default=0) < MIN_TRAIN_PER_CLASS:
+        train_match_count = len({r["match_id"] for r in train})
+        valid_match_count = len({r["match_id"] for r in valid})
+        test_match_count = len({r["match_id"] for r in test})
+        result["unique_matches"] = {"train": train_match_count,
+                                    "validation": valid_match_count,
+                                    "test": test_match_count}
+        if (len(train) < MIN_TRAIN_ROWS or train_match_count < MIN_TRAIN_MATCHES
+                or min(train_counts.values(), default=0) < MIN_TRAIN_PER_CLASS):
             result["status"] = "insufficient_training_class_coverage"
             result["training_class_counts"] = {str(k): v for k, v in train_counts.items()}
             output["targets"][target] = result
             continue
         names, x_train, transform, prep = fit_transform(train, feature_names)
-        model = fit_logistic(x_train, train_labels)
+        train_weights = match_weights(train)
+        model = fit_logistic(x_train, train_labels, train_weights)
         valid_scores = scores(model, transform(valid))
         valid_labels = [int(float(r[target])) for r in valid]
         class_counts = {0: valid_labels.count(0), 1: valid_labels.count(1)}
-        if min(class_counts.values(), default=0) < MIN_CALIBRATION_PER_CLASS:
+        valid_weights = match_weights(valid)
+        if (valid_match_count < MIN_VALIDATION_MATCHES
+                or min(class_counts.values(), default=0) < MIN_CALIBRATION_PER_CLASS):
             result["status"] = "uncalibrated_insufficient_validation"
             result["validation_class_counts"] = {str(k): v for k, v in class_counts.items()}
             output["targets"][target] = result
             continue
-        calibrator = fit_platt(valid_scores, valid_labels)
+        calibrator = fit_platt(valid_scores, valid_labels, valid_weights)
         test_labels = [int(float(r[target])) for r in test]
         test_counts = {0: test_labels.count(0), 1: test_labels.count(1)}
-        if min(test_counts.values(), default=0) < MIN_TEST_PER_CLASS:
+        if (test_match_count < MIN_TEST_MATCHES
+                or min(test_counts.values(), default=0) < MIN_TEST_PER_CLASS):
             result["status"] = "insufficient_test_class_coverage"
             result["test_class_counts"] = {str(k): v for k, v in test_counts.items()}
             output["targets"][target] = result
@@ -261,12 +306,14 @@ def main() -> int:
         test_scores = scores(model, transform(test))
         calibrated = [sigmoid(calibrator["slope"] * s + calibrator["intercept"])
                       for s in test_scores]
-        train_prevalence = sum(train_labels) / len(train_labels)
+        train_weight_total = sum(train_weights)
+        train_prevalence = sum(w * y for w, y in zip(train_weights, train_labels)) / train_weight_total
+        test_weights = match_weights(test)
         result.update({
             "status": "calibrated_evaluation",
             "validation_class_counts": {str(k): v for k, v in class_counts.items()},
             "calibration": calibrator,
-            "test_metrics": metrics(calibrated, test_labels, train_prevalence),
+            "test_metrics": metrics(calibrated, test_labels, train_prevalence, test_weights),
             "training_event_rate_baseline": train_prevalence,
             "test_class_counts": {str(k): v for k, v in test_counts.items()},
             "feature_coefficients": sorted(
