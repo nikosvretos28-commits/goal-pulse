@@ -157,3 +157,24 @@ A read-only structural scan was performed on six additional processed-v2 event f
 The audit exposed a label-boundary issue: tag 101 is also present on goalkeeper `Save attempt` events associated with goal sequences, and the shootout period contains goal-tagged penalty attempts. The adapter already avoids counting the goalkeeper event as a second goal; it now additionally separates period-P shootout goals into `is_shootout_goal` and excludes them from `is_goal` / match-play goal counts. Extra-time goals (E1/E2) remain match-play goals. New tests cover all three cases: a scored shootout attempt, a saved shootout attempt, and an extra-time goal.
 
 This remains a source-structure and label-semantics audit, not a model training run or predictive-performance result. No raw match data has been committed.
+
+
+## Audit a collection of Wyscout match files
+
+After downloading authorized processed Wyscout match JSON files into a local folder, run the collection-level audit:
+
+```bash
+python research/mie_tools/audit_wyscout_collection.py \
+  --input-dir /path/to/wyscout-matches \
+  --pattern "*.json" \
+  --out /path/to/wyscout-collection-audit.json
+```
+
+The tool parses each file independently through the same tested adapter, aggregates event/shot/goal/period counts, detects duplicate match IDs across files, and records per-file structural errors and warnings. It does not write raw events into the report or repository. An empty directory, malformed file, or duplicate match ID cannot be reported as a clean pass. A structural pass still does not prove completeness, licensing, or predictive value.
+
+Run its tests with the complete offline suite:
+
+```bash
+cd research/mie_tools
+python -m unittest -v
+```
