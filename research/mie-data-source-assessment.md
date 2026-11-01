@@ -121,3 +121,12 @@ A direct inspection of the processed-v2 JSON file documented as the default Hudd
 An important tag-semantic issue was found and fixed before any labels are built: tag 101 appears five times, including three goalkeeper `Save attempt` events associated with goals. Counting all tag-101 rows would double-count goalkeeper events. The adapter now counts tag 101 only on `Shot` / `Free Kick` goal-attempt events and tag 102 as an explicit own-goal event. This yields three goal events for the sample. Embedded team names are retained; home/away remains unknown without explicit match metadata.
 
 This audit establishes source-format compatibility and event-quality checks only. It does not establish continuous live-stat coverage, xG availability, model performance, or suitability as a direct replacement for commercial live feeds. The raw match file is not committed.
+
+
+### Multi-match Wyscout event audit — 2026-11-01
+
+Six additional processed-v2 event files were inspected read-only: 1694390 (France–Romania), 1694426 (Switzerland–Poland, with extra time and a penalty shootout), 2057954, 2057960, 2057983, and 2499843. Across the six files: 10,146 event rows; two team IDs per match; zero duplicate event IDs; zero within-period event-clock regressions. Period coverage included 1H/2H in every match and E1/E2/P in the Euro knockout match.
+
+The audit confirmed two distinct semantic safeguards. First, tag 101 may occur on goalkeeper `Save attempt` events associated with a goal sequence; these must not be counted as a second goal. Second, tag 101 appears on successful post-match shootout attempts, which must not be included in match-play next-goal or before-full-time labels. The adapter now exposes these separately as `is_shootout_goal`, excludes period-P goals from `is_goal` and regulation goal counts, and continues to include extra-time (E1/E2) goals as match-play goals. Unit tests cover scored and saved shootout attempts plus extra-time goals.
+
+This is structural/semantic validation only. The data are historical event logs, not continuous live-stat snapshots; no predictive model has been trained on these files. No raw match files are committed.
