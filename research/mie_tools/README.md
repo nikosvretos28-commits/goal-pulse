@@ -131,7 +131,7 @@ If the corresponding Wyscout match metadata JSON is available, also pass `--matc
 Important semantics:
 - Wyscout `eventSec` is seconds since the beginning of its match period. The adapter preserves it as `period_seconds` and provides a nominal period-offset `elapsed_seconds_nominal` only for event ordering/horizon prototypes. It does **not** fabricate UTC timestamps or exact wall-clock kickoff offsets.
 - Tag 101 is retained as a goal indicator; tag 1801 on a shot is retained as a source-tagged accurate shot; tag 201 remains an opportunity tag, not a provider-independent Big Chance.
-- No xG, final-time marker, or live rolling-stat snapshot is invented. Penalty-shootout events remain identified as period `P` and are excluded from the nominal regulation clock.
+- No xG, final-time marker, or live rolling-stat snapshot is invented. Penalty-shootout events remain identified as period `P`, have no regulation elapsed clock, and any goal-tagged shootout attempt is exposed separately as `is_shootout_goal`; it is excluded from `is_goal` and regulation goal counts. Extra-time goals in `E1`/`E2` remain match-play goals.
 - The source dataset repository describes 2016/2017–2018 competitions and states CC BY 4.0. Cite Pappalardo et al. and the Wyscout dataset; verify current source terms and attribution before publication or any commercial use.
 
 Run adapter tests with the rest of the suite:
@@ -148,3 +148,12 @@ The public processed-v2 event file for the repository's documented default match
 **Goal-tag audit:** the raw file has five occurrences of tag 101, but three are on goalkeeper `Save attempt` events. Counting every tag-101 row as a goal would therefore double-count associated goalkeeper events. The adapter was corrected to count tag 101 only on `Shot` / `Free Kick` goal-attempt events, and to count tag 102 as the explicit own-goal event. For this match, that yields three goal events (two goal-attempt rows plus one own-goal row), while retaining the three goalkeeper tag-101 rows as warnings/source metadata rather than separate goals.
 
 The embedded team metadata includes names but not home/away sides; the adapter now preserves team names and leaves `team_side` null unless explicit match metadata supplies it. The event file does not provide continuous live-stat snapshots or xG. This is a structural source audit, not a model-performance test. The complete raw match file is not copied into this repository.
+
+
+### Multi-match source audit (six additional matches)
+
+A read-only structural scan was performed on six additional processed-v2 event files: Euro 2016 France–Romania (1694390), Switzerland–Poland (1694426, includes extra time and a shootout), and four 2018 World Cup matches (2057954, 2057960, 2057983), plus Wyscout match 2499843. Across these six files there were 10,146 event rows, each with two team IDs; all six had zero duplicate event IDs and zero within-period clock regressions. Period coverage included 1H/2H throughout and E1/E2/P in the Euro knockout match.
+
+The audit exposed a label-boundary issue: tag 101 is also present on goalkeeper `Save attempt` events associated with goal sequences, and the shootout period contains goal-tagged penalty attempts. The adapter already avoids counting the goalkeeper event as a second goal; it now additionally separates period-P shootout goals into `is_shootout_goal` and excludes them from `is_goal` / match-play goal counts. Extra-time goals (E1/E2) remain match-play goals. New tests cover all three cases: a scored shootout attempt, a saved shootout attempt, and an extra-time goal.
+
+This remains a source-structure and label-semantics audit, not a model training run or predictive-performance result. No raw match data has been committed.
