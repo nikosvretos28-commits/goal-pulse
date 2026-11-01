@@ -2210,9 +2210,7 @@ const server = http.createServer(async (req, res) => {
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
         // 20+ total shots can strengthen sustained-pressure scoring but is not mandatory.
-        // Cumulative SOT and xG cannot replace the recent-SOT trigger; missing xG is neutral.
-        // Strict AI alert windows: first half 1-40; second half 46-80.
-        // Exclude 41-45, 81-90+, and halftime; keep the agreed recent-SOT thresholds unchanged.
+        // Trigger evidence is recent SOT OR the two-team xG alternative above.
         // AI Alerts are restricted to minutes 1-40, as agreed.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40;
