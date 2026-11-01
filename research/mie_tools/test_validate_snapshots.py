@@ -23,6 +23,8 @@ class ValidatorIntegrationTests(unittest.TestCase):
              "--events", str(event_file), "--out", str(out)],
             capture_output=True, text=True, check=False
         )
+        if not (out / "report.json").exists():
+            self.fail(f"validator produced no report; returncode={result.returncode}; stdout={result.stdout}; stderr={result.stderr}")
         report = json.loads((out / "report.json").read_text(encoding="utf-8"))
         with (out / "features.csv").open(encoding="utf-8", newline="") as handle:
             rows = list(csv.DictReader(handle))
