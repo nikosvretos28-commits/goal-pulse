@@ -40,7 +40,7 @@ class MieModelTests(unittest.TestCase):
         self.assertGreater(probabilities[-1], probabilities[0])
 
     def test_metrics_include_constant_baseline_and_reliability(self):
-        result = metrics([0.1, 0.2, 0.8, 0.9], [0, 0, 1, 1])
+        result = metrics([0.1, 0.2, 0.8, 0.9], [0, 0, 1, 1], 0.5)
         self.assertEqual(result["n"], 4)
         self.assertIn("constant_baseline_brier", result)
         self.assertTrue(result["reliability_bins"])
