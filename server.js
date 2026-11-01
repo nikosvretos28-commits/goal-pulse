@@ -713,13 +713,18 @@ function pitchLeagueAliases(code) {
     "eng.1":["premier league"],"eng.2":["championship"],"eng.3":["league one"],"eng.4":["league two"],
     "esp.1":["laliga","la liga"],"esp.2":["laliga 2","segunda division"],
     "ita.1":["serie a"],"ita.2":["serie b"],"ita.3":["serie c"],
-    "ger.1":["bundesliga"],"ger.2":["2. bundesliga"],"fra.1":["ligue 1"],"fra.2":["ligue 2"],
-    "por.1":["primeira liga","liga portugal"],"por.2":["liga portugal 2"],
-    "ned.1":["eredivisie"],"ned.2":["eerste divisie"],"sco.1":["premiership"],"sco.2":["championship"],
-    "gre.1":["super league greece","super league"],"tur.1":["super lig","süper lig"],
-    "bra.1":["serie a"],"bra.2":["serie b"],"arg.1":["liga profesional","primera division"],"arg.2":["primera nacional"],
+    "ger.1":["bundesliga"],"ger.2":["2. bundesliga"],"ger.3":["3. liga"],
+    "fra.1":["ligue 1"],"fra.2":["ligue 2"],"fra.3":["championnat national"],"fra.4":["national 2"],
+    "por.1":["primeira liga","liga portugal"],"por.2":["liga portugal 2"],"por.3":["liga 3"],
+    "ned.1":["eredivisie"],"ned.2":["eerste divisie"],"ned.3":["tweede divisie"],
+    "sco.1":["premiership"],"sco.2":["championship"],
+    "gre.1":["super league greece","super league"],"gre.2":["super league 2"],
+    "tur.1":["super lig","süper lig"],
+    "bra.1":["serie a"],"bra.2":["serie b"],"arg.1":["liga profesional","primera division"],"arg.2":["primera nacional"],"arg.3":["primera b metropolitana"],
     "usa.1":["major league soccer","mls"],"usa.2":["usl championship"],"mex.1":["liga mx"],"aus.1":["a-league men","a-league"],
-    "bel.1":["pro league"],"aut.1":["bundesliga"],"sui.1":["super league"],"den.1":["superliga"],"nor.1":["eliteserien"],"swe.1":["allsvenskan"],
+    "bel.1":["pro league"],"bel.2":["challenger pro league"],
+    "aut.1":["bundesliga"],"aut.2":["2. liga"],
+    "sui.1":["super league"],"den.1":["superliga"],"nor.1":["eliteserien"],"nor.2":["obos-ligaen"],"swe.1":["allsvenskan"],"swe.2":["superettan"],
     "pol.1":["ekstraklasa"],"jpn.1":["j1 league"],"kor.1":["k league 1"],"sau.1":["saudi pro league"],
     "uefa.champions":["uefa champions league","champions league"],"uefa.europa":["uefa europa league","europa league"],
     "uefa.europa.conf":["uefa conference league","conference league"],"eng.fa":["fa cup"],"eng.league_cup":["efl cup","league cup"],
@@ -728,7 +733,7 @@ function pitchLeagueAliases(code) {
   return aliases[code] || [];
 }
 function pitchSeasonForCode(code, year, seasons) {
-  const calendar = ["bra.1","arg.1","usa.1","mex.1","aus.1","bra.2","arg.2"].includes(code);
+  const calendar = ["bra.1","arg.1","usa.1","mex.1","aus.1","bra.2","arg.2","arg.3"].includes(code);
   const wanted = calendar ? String(year) : String(year)+"/"+String(year+1);
   const available = Array.isArray(seasons) ? seasons.map(String) : [];
   if (available.includes(wanted)) return wanted;
