@@ -16,6 +16,7 @@ from typing import Any
 PERIOD_BASE_SECONDS = {"1H": 0, "2H": 45 * 60, "E1": 90 * 60, "E2": 105 * 60}
 PENALTY_PERIOD = "P"
 GOAL_TAG = 101
+OWN_GOAL_TAG = 102
 ACCURATE_TAG = 1801
 OPPORTUNITY_TAG = 201
 
@@ -71,9 +72,28 @@ def _team_sides(match_meta: Any) -> dict[str, str]:
     return sides
 
 
+def _team_names(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        return {}
+    raw = payload.get("teams") or {}
+    if not isinstance(raw, dict):
+        return {}
+    names = {}
+    for key, details in raw.items():
+        if not isinstance(details, dict):
+            continue
+        team = details.get("team") or details
+        if isinstance(team, dict):
+            name = team.get("name") or team.get("officialName")
+            if name:
+                names[str(team.get("wyId", key))] = str(name)
+    return names
+
+
 def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], dict]:
     rows = _event_rows(payload)
     team_sides = _team_sides(match_meta)
+    team_names = _team_names(payload)
     normalized = []
     errors = []
     warnings = []
@@ -113,10 +133,16 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
             team_key = "" if team_id is None else str(team_id)
             tags = _tags(row)
             shot = event_name.lower() == "shot" or "shot" in sub_event_name.lower()
-            goal = GOAL_TAG in tags
-            if goal and not shot:
+            # Wyscout also places tag 101 on goalkeeper "Save attempt"
+            # events associated with a goal. Do not count those as a second
+            # goal. Count tag 101 only on the attacking shot/free-kick event;
+            # tag 102 is the explicit own-goal event.
+            own_goal = OWN_GOAL_TAG in tags
+            goal_attempt_event = event_name.lower() in {"shot", "free kick"}
+            goal = own_goal or (GOAL_TAG in tags and goal_attempt_event)
+            if GOAL_TAG in tags and not goal_attempt_event and not own_goal:
                 warnings.append(
-                    f"row {line_no}: goal tag on a non-shot event; retained as goal event"
+                    f"row {line_no}: tag 101 on {event_name!r} retained as source tag, not counted as a separate goal"
                 )
 
             # eventSec is period-relative. This nominal elapsed clock is useful
@@ -137,6 +163,7 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
                 "match_id": match_id,
                 "source_event_id": event_id,
                 "team_id": team_key or None,
+                "team_name": team_names.get(team_key),
                 "team_side": team_sides.get(team_key),
                 "period": period,
                 "period_seconds": event_sec,
@@ -146,6 +173,7 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
                 "is_shot": shot,
                 "is_shot_on_target_tagged": bool(shot and ACCURATE_TAG in tags),
                 "is_goal": goal,
+                "is_own_goal": own_goal,
                 "is_opportunity_tagged": OPPORTUNITY_TAG in tags,
                 "tags": sorted(tags),
             })
@@ -154,6 +182,8 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
             counts["shots"] += int(shot)
             counts["tagged_shots_on_target"] += int(shot and ACCURATE_TAG in tags)
             counts["goals"] += int(goal)
+            counts["own_goals"] += int(own_goal)
+            counts["goal_tagged_save_attempts_ignored"] += int(GOAL_TAG in tags and event_name.lower() == "save attempt")
             counts["opportunity_tagged"] += int(OPPORTUNITY_TAG in tags)
             counts[f"period_{period}"] += 1
         except Exception as exc:
@@ -172,6 +202,7 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
             "elapsed_seconds_nominal uses 45-minute period offsets and is not an exact wall-clock timeline.",
             "Wyscout event logs are not continuous live-stat snapshots.",
             "No xG is inferred; this adapter preserves no xG field unless a future documented source mapping is added.",
+            "Wyscout tag 101 on goalkeeper Save attempt events is retained but not counted as a separate goal; own-goal tag 102 is counted as an own goal.",
             "The opportunity tag is not silently relabelled as a provider-independent Big Chance.",
             "Tagged accurate shots are preserved as a source-specific field; validate its definition before comparing with other providers.",
             "Penalty-shootout events are retained but have no regulation elapsed_seconds_nominal.",
