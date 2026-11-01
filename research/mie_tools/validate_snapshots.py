@@ -219,8 +219,9 @@ def main() -> int:
     # All snapshots from one match remain together to prevent same-match leakage.
     first_seen = {}
     for row in output_rows:
+        snapshot_at = parse_time(row["snapshot_at_utc"])
         first_seen[row["match_id"]] = min(
-            first_seen.get(row["match_id"], row["snapshot_at"]), row["snapshot_at"]
+            first_seen.get(row["match_id"], snapshot_at), snapshot_at
         )
     match_ids = sorted(first_seen, key=lambda match_id: (first_seen[match_id], match_id))
     n = len(match_ids)
