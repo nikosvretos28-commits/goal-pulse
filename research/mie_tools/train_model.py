@@ -295,6 +295,11 @@ def main() -> int:
             output["targets"][target] = result
             continue
         calibrator = fit_platt(valid_scores, valid_labels, valid_weights)
+        if calibrator["slope"] <= 0:
+            result["status"] = "calibration_unstable_nonpositive_slope"
+            result["calibration"] = calibrator
+            output["targets"][target] = result
+            continue
         test_labels = [int(float(r[target])) for r in test]
         test_counts = {0: test_labels.count(0), 1: test_labels.count(1)}
         if (test_match_count < MIN_TEST_MATCHES
