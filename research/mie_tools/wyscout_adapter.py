@@ -139,7 +139,11 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
             # tag 102 is the explicit own-goal event.
             own_goal = OWN_GOAL_TAG in tags
             goal_attempt_event = event_name.lower() in {"shot", "free kick"}
-            goal = own_goal or (GOAL_TAG in tags and goal_attempt_event)
+            goal_signal = own_goal or (GOAL_TAG in tags and goal_attempt_event)
+            # Post-match shootout goals are not match-play goals and must not
+            # enter next-goal / before-full-time labels. Preserve them separately.
+            shootout_goal = period == PENALTY_PERIOD and goal_signal
+            goal = period != PENALTY_PERIOD and goal_signal
             if GOAL_TAG in tags and not goal_attempt_event and not own_goal:
                 warnings.append(
                     f"row {line_no}: tag 101 on {event_name!r} retained as source tag, not counted as a separate goal"
@@ -173,6 +177,7 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
                 "is_shot": shot,
                 "is_shot_on_target_tagged": bool(shot and ACCURATE_TAG in tags),
                 "is_goal": goal,
+                "is_shootout_goal": shootout_goal,
                 "is_own_goal": own_goal,
                 "is_opportunity_tagged": OPPORTUNITY_TAG in tags,
                 "tags": sorted(tags),
@@ -182,6 +187,7 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
             counts["shots"] += int(shot)
             counts["tagged_shots_on_target"] += int(shot and ACCURATE_TAG in tags)
             counts["goals"] += int(goal)
+            counts["shootout_goals"] += int(shootout_goal)
             counts["own_goals"] += int(own_goal)
             counts["goal_tagged_save_attempts_ignored"] += int(GOAL_TAG in tags and event_name.lower() == "save attempt")
             counts["opportunity_tagged"] += int(OPPORTUNITY_TAG in tags)
@@ -205,7 +211,7 @@ def normalize_events(payload: Any, match_meta: Any = None) -> tuple[list[dict], 
             "Wyscout tag 101 on goalkeeper Save attempt events is retained but not counted as a separate goal; own-goal tag 102 is counted as an own goal.",
             "The opportunity tag is not silently relabelled as a provider-independent Big Chance.",
             "Tagged accurate shots are preserved as a source-specific field; validate its definition before comparing with other providers.",
-            "Penalty-shootout events are retained but have no regulation elapsed_seconds_nominal.",
+            "Penalty-shootout events are retained but have no regulation elapsed_seconds_nominal; shootout goals are flagged separately and excluded from is_goal / regulation goal counts.",
             "No final-time marker is inferred; before-full-time labels require separate validated match-end metadata.",
             "This converter does not establish data completeness, source licensing for a particular use, or predictive value."
         ],
