@@ -190,8 +190,8 @@ def main() -> int:
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     report = json.loads(args.validation_report.read_text(encoding="utf-8"))
-    if report.get("errors"):
-        raise SystemExit("Refusing to train: validator report contains errors.")
+    if report.get("status") != "validated_structure_only" or report.get("errors"):
+        raise SystemExit("Refusing to train: validator status is not validated_structure_only. Resolve missing event streams or data errors first.")
     with args.features.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     split_map = {}
