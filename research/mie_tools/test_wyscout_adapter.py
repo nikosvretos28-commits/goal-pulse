@@ -57,6 +57,37 @@ class WyscoutAdapterTests(unittest.TestCase):
         rows, _ = normalize_events([self.event(1, "1H", 1)])
         self.assertNotIn("xg", rows[0])
 
+
+    def test_goal_tag_on_save_attempt_is_not_counted_as_second_goal(self):
+        rows, report = normalize_events({
+            "events": [self.event(1, "1H", 100, name="Save attempt", sub="Reflexes", tags=[101])]
+        })
+        self.assertFalse(rows[0]["is_goal"])
+        self.assertEqual(report["counts"]["goals"], 0)
+        self.assertEqual(report["counts"]["goal_tagged_save_attempts_ignored"], 1)
+        self.assertTrue(any("not counted as a separate goal" in item for item in report["warnings"]))
+
+    def test_goal_shot_and_own_goal_are_counted_once(self):
+        rows, report = normalize_events({
+            "events": [
+                self.event(1, "1H", 100, name="Free Kick", sub="Penalty", tags=[101]),
+                self.event(2, "1H", 101, name="Others on the ball", sub="Touch", tags=[102]),
+            ]
+        })
+        self.assertTrue(rows[0]["is_goal"])
+        self.assertTrue(rows[1]["is_goal"])
+        self.assertTrue(rows[1]["is_own_goal"])
+        self.assertEqual(report["counts"]["goals"], 2)
+        self.assertEqual(report["counts"]["own_goals"], 1)
+
+    def test_embedded_team_names_are_preserved(self):
+        payload = {
+            "events": [self.event(1, "1H", 1, team=10)],
+            "teams": {"10": {"team": {"wyId": 10, "name": "Home FC"}}},
+        }
+        rows, _ = normalize_events(payload)
+        self.assertEqual(rows[0]["team_name"], "Home FC")
+
     def test_unknown_period_is_rejected(self):
         rows, report = normalize_events([self.event(1, "HT", 0)])
         self.assertEqual(rows, [])
