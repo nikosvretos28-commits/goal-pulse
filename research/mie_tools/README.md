@@ -57,7 +57,7 @@ python research/mie_tools/train_model.py \\
 
 The baseline is L2-regularized logistic regression for each of the three horizons. It builds time, score-state, red-card, shot, SOT, xG, big-chance and period features. Missing numeric inputs are median-imputed using training rows only, with explicit missingness indicators; scaling is also fitted on training rows only. A Platt calibration layer is fitted on validation rows only. The test partition is used only for final evaluation.
 
-The report includes Brier score, log loss, a constant-prevalence baseline, reliability bins, sample counts and the strongest signed coefficients. It will not label an output calibrated unless validation contains at least 30 positive and 30 negative examples for that horizon. It requires at least 200 training rows. Insufficient data is reported, not disguised.
+The report includes Brier score, log loss, a constant-prevalence baseline derived from the training partition (not the test set), reliability bins, sample counts and the strongest signed coefficients. It requires at least 200 training rows and at least 30 examples of each class in train, validation and test. It will not label an output calibrated unless validation contains at least 30 positive and 30 negative examples for that horizon. Insufficient data is reported, not disguised.
 
 Run the unit tests:
 
