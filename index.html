@@ -3636,7 +3636,7 @@ function renderHighActivityMatches(){
   const xGBothTeamsQualified=xGValues.length>=2&&xGValues.every(value=>value!==null&&Number.isFinite(value)&&value>=2.0);
   const protocolQualified=strictRecentSotStrong||strictRecentSot10m||cumulativeSotStrong||xGBothTeamsQualified;
   const recentSotStrong=strictRecentSotStrong;
-  const recentSotSupported=strictRecentSotStrong;  const recentSotSupported=strictRecentSotStrong;
+  const recentSotSupported=strictRecentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
   if(baseline10&&Array.isArray(baseline10.values)){
    teams.forEach((team,i)=>{const prev=baseline10.values[i]||{};if(team.shotsOnTarget!=null&&prev.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))&&Number.isFinite(Number(prev.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget)-Number(prev.shotsOnTarget));hasSot10mData=true;}});
