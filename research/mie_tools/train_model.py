@@ -159,7 +159,7 @@ def fit_logistic(matrix: list[list[float]], labels: list[int], sample_weights: l
         rate = learning_rate / math.sqrt(1.0 + step / 80.0)
         intercept -= rate * grad_intercept / total_weight
         for j in range(width):
-            weights[j] -= rate * (grad[j] / total_weight + l2 * weights[j] / total_weight)
+            weights[j] -= rate * (grad[j] / total_weight + l2 * weights[j])
     return {"intercept": intercept, "weights": weights}
 
 
