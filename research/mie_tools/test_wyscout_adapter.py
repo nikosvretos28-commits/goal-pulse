@@ -41,6 +41,29 @@ class WyscoutAdapterTests(unittest.TestCase):
         rows, report = normalize_events([self.event(1, "P", 1, tags=[101])])
         self.assertIsNone(rows[0]["elapsed_seconds_nominal"])
         self.assertEqual(report["counts"]["period_P"], 1)
+        self.assertFalse(rows[0]["is_goal"])
+        self.assertTrue(rows[0]["is_shootout_goal"])
+        self.assertEqual(report["counts"]["goals"], 0)
+        self.assertEqual(report["counts"]["shootout_goals"], 1)
+
+
+    def test_extra_time_goal_remains_a_match_play_goal(self):
+        rows, report = normalize_events([
+            self.event(1, "E1", 30, name="Shot", tags=[101, 1801])
+        ])
+        self.assertTrue(rows[0]["is_goal"])
+        self.assertFalse(rows[0]["is_shootout_goal"])
+        self.assertEqual(report["counts"]["goals"], 1)
+        self.assertEqual(report["counts"]["shootout_goals"], 0)
+
+    def test_saved_penalty_shootout_attempt_is_not_a_shootout_goal(self):
+        rows, report = normalize_events([
+            self.event(1, "P", 20, name="Save attempt", sub="Reflexes", tags=[101, 1802])
+        ])
+        self.assertFalse(rows[0]["is_goal"])
+        self.assertFalse(rows[0]["is_shootout_goal"])
+        self.assertEqual(report["counts"]["goals"], 0)
+        self.assertEqual(report["counts"]["shootout_goals"], 0)
 
     def test_clock_regression_and_duplicate_ids_are_reported(self):
         rows, report = normalize_events([
