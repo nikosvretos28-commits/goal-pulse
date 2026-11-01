@@ -1143,6 +1143,66 @@ button:disabled{cursor:not-allowed;filter:saturate(.65)}
 .ha-team-history-inline{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding:6px 10px 10px;font-size:.78rem;color:var(--muted,#a9bac7)}
 .ha-team-sample-rate{font-weight:800;color:#66d6a6}
 .ha-team-sample-insufficient{font-weight:600;color:#a9bac7}
+
+/* GoalMatrix branding refresh — visual-only overrides */
+:root{
+  --bg:#050b12;--panel:#0c1724;--panel2:#111f30;--line:#26364a;
+  --text:#f6f8fc;--muted:#a6b4c7;--green:#43f12b;--cyan:#48e5c2;
+  --red:#ff3658;--gold:#ffc928;
+}
+body{
+  background:
+    radial-gradient(ellipse at 50% -12%,#17462a 0,transparent 34%),
+    radial-gradient(ellipse at 100% 10%,#12223b 0,transparent 36%),
+    var(--bg);
+}
+header{
+  position:relative;
+  background:linear-gradient(100deg,#050a10ee,#0b1b29d9 52%,#07130dee);
+  border-bottom:1px solid #2a4b3a;
+}
+.brand img{filter:drop-shadow(0 0 14px #43f12b55)}
+.brand-name span{color:var(--green);text-shadow:0 0 22px #43f12b22}
+.brand-tagline{letter-spacing:2px}
+nav a:first-child{color:var(--green);border-bottom-color:var(--green)}
+.live-badge{border-color:#286c3a;background:#102b1a;color:var(--green)}
+.hero-main{
+  border-color:#27543a;
+  background:
+    radial-gradient(ellipse at 82% 30%,#35ed4a20,transparent 34%),
+    linear-gradient(115deg,#07111b 2%,#10251e 54%,#091622);
+  box-shadow:inset 0 1px #ffffff08,0 14px 36px #00000022;
+}
+.hero-main:after{border-color:#43f12b2b;box-shadow:0 -15px 0 -13px #43f12b,0 -30px 0 -28px #48e5c2}
+.eyebrow{color:var(--green)}
+.primary,.login{
+  background:linear-gradient(105deg,#39e927,#8af56a);
+  box-shadow:0 0 24px #43f12b22;
+}
+.side-live,.panel{
+  background:linear-gradient(145deg,#101d2b,#09131f);
+  border-color:#25364a;
+  box-shadow:0 10px 28px #00000014;
+}
+.panel-head{background:linear-gradient(90deg,#142335,#0d1927);border-bottom-color:#26364a}
+.filter.active,.filter:hover{background:var(--green);border-color:var(--green);color:#06120a}
+.match:hover{border-color:#3c9c54}
+.score{color:var(--green)}
+.live-row .score{color:#d9ff68;text-shadow:0 0 10px #9cfb3540}
+.count{background:#143322;color:#72ff64}
+.stat{background:#142638}
+.stat b{color:#f3f7fb}
+.live-tag{background:#123a25;color:#71ff63}
+.insight-card{background:#102b20;border-color:#27543a}
+.feature{background:linear-gradient(145deg,#0e1d2a,#091522);border-color:#20394a}
+.bottom-strip .feature-icon{filter:drop-shadow(0 0 8px #43f12b20)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline-color:var(--green)}
+@media(max-width:760px){
+  header{background:linear-gradient(100deg,#050a10,#0b1b29)}
+  .brand-name{letter-spacing:-1px}
+  .brand-tagline{letter-spacing:1.2px}
+}
+
 </style>
 
 <style id="goalmatrix-premium-finish">
