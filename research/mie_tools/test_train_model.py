@@ -24,7 +24,7 @@ class MieModelTests(unittest.TestCase):
     def test_logistic_model_learns_separable_signal(self):
         matrix = [[-2.0], [-1.0], [1.0], [2.0]] * 30
         labels = [0, 0, 1, 1] * 30
-        model = fit_logistic(matrix, labels, steps=1200)
+        model = fit_logistic(matrix, labels, steps=1200, l2=0.01)
         low = sigmoid(model["intercept"] + model["weights"][0] * -2)
         high = sigmoid(model["intercept"] + model["weights"][0] * 2)
         self.assertLess(low, 0.2)
