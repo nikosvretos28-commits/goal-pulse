@@ -79,5 +79,29 @@ class ValidatorIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[0]["label_goal_before_ft"], "")
 
 
+    def test_out_of_order_source_snapshots_are_flagged(self):
+        temp, result, report, rows = self.run_case(
+            [self.snapshot(at="2026-01-01T12:05:00Z"),
+             self.snapshot(at="2026-01-01T12:00:00Z")],
+            [{"match_id": "m1", "event_type": "final_time",
+              "event_at_utc": "2026-01-01T13:30:00Z"}]
+        )
+        self.addCleanup(temp.cleanup)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["status"], "needs_review")
+        self.assertTrue(any("out of timestamp order" in error for error in report["errors"]))
+
+    def test_fractional_match_minute_is_rejected(self):
+        row = self.snapshot()
+        row["minute"] = 12.5
+        temp, result, report, rows = self.run_case(
+            [row],
+            [{"match_id": "m1", "event_type": "final_time",
+              "event_at_utc": "2026-01-01T13:30:00Z"}]
+        )
+        self.addCleanup(temp.cleanup)
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(any("minute must be an integer" in error for error in report["errors"]))
+
 if __name__ == "__main__":
     unittest.main()
