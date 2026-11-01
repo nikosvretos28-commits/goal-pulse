@@ -75,3 +75,26 @@ python -m unittest -v
 - Corrections, clock semantics, stoppage time and extra-time policy require provider-specific review before model training.
 - The first baseline is deliberately interpretable. More complex models must beat it on held-out data and remain calibrated before they are considered.
 - Use only data the project is authorized to access and process. No Forebet scraping or unlicensed reuse is supported.
+
+## Run the repeatable synthetic demo
+
+The repository includes a clearly labelled **synthetic** three-match fixture. It is for checking the validator and future-goal labels only; it is not real match data and must not be used to train or evaluate a predictive model.
+
+From the repository root:
+
+```bash
+python research/mie_tools/validate_snapshots.py \
+  --snapshots research/mie_tools/fixtures/demo_snapshots.jsonl \
+  --events research/mie_tools/fixtures/demo_events.jsonl \
+  --out /tmp/mie-demo
+```
+
+Expected structural result: `validated_structure_only`, 3 snapshot rows accepted, 3 matches with goal-event streams, and 0 errors. Expected labels:
+
+| Synthetic match | Goal timing | Next 5m | Next 10m | Before FT |
+|---|---:|---:|---:|---:|
+| demo-goal-4m | +4 minutes | 1 | 1 | 1 |
+| demo-goal-8m | +8 minutes | 0 | 1 | 1 |
+| demo-no-goal | No goal | 0 | 0 | 0 |
+
+The dedicated automated test checks these exact labels. The fixture deliberately has only three matches, so it does **not** meet the training minimums and the logistic model must not be trained on it.
