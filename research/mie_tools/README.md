@@ -98,3 +98,18 @@ Expected structural result: `validated_structure_only`, 3 snapshot rows accepted
 | demo-no-goal | No goal | 0 | 0 | 0 |
 
 The dedicated automated test checks these exact labels. The fixture deliberately has only three matches, so it does **not** meet the training minimums and the logistic model must not be trained on it.
+
+
+## Audit a timestamped event stream
+
+Before using an event-log source for event-sequence research, run the independent timeline audit:
+
+```bash
+python research/mie_tools/audit_event_stream.py \
+  --events /path/to/events.jsonl \
+  --out /path/to/event-audit.json
+```
+
+The audit checks required match IDs, event types and timezone-aware timestamps; preserves and checks source row order per match; validates goal team labels; flags multiple final-time markers and events after final time; and warns when a completed-match boundary is absent. It does not sort away source-order problems, infer missing events, or prove source completeness/licensing. A structural pass is not predictive validation.
+
+The accompanying `test_audit_event_stream.py` checks these cases using small in-memory examples. The audit is independent of the snapshot validator and remains offline/research-only.
