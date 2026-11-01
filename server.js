@@ -2748,8 +2748,8 @@ const server = http.createServer(async (req, res) => {
           feeds.push(...batchResults.flat());
           let finalFeeds = feeds;
           let successfulFeeds = feeds.filter(feed => feed.ok).length;
-          if (process.env.PITCH_API_KEY && process.env.PITCH_API_SCOREBOARD_FALLBACK_ENABLED === "true" && !feeds.some(feed => feed.ok)) {
-            // Use PitchAPI as a fallback only when ESPN returned no fixtures; avoid delaying the live scoreboard when ESPN already has data.
+          if (process.env.PITCH_API_KEY && process.env.PITCH_API_SCOREBOARD_FALLBACK_ENABLED === "true") {
+            // Supplement partial ESPN coverage with PitchAPI fixtures; merge by team pair to avoid duplicates.
             try {
               const isoDate = date.slice(0,4) + "-" + date.slice(4,6) + "-" + date.slice(6,8);
               const directory = (await pitchGet("/v1/leagues"))?.data?.leagues || [];
