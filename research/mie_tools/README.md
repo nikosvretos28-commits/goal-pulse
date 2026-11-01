@@ -113,3 +113,30 @@ python research/mie_tools/audit_event_stream.py \
 The audit checks required match IDs, event types and timezone-aware timestamps; preserves and checks source row order per match; validates goal team labels; flags multiple final-time markers and events after final time; and warns when a completed-match boundary is absent. It does not sort away source-order problems, infer missing events, or prove source completeness/licensing. A structural pass is not predictive validation.
 
 The accompanying `test_audit_event_stream.py` checks these cases using small in-memory examples. The audit is independent of the snapshot validator and remains offline/research-only.
+
+
+## Import a Wyscout open event match (offline)
+
+The optional adapter accepts the processed Wyscout match-event JSON format documented by the public dataset repository. Download the source files separately after reviewing the current dataset terms; do not commit the raw match files to this repository.
+
+```bash
+python research/mie_tools/wyscout_adapter.py \
+  --events /path/to/one-match-events.json \
+  --out /path/to/mie-wyscout-events.jsonl \
+  --report /path/to/mie-wyscout-report.json
+```
+
+If the corresponding Wyscout match metadata JSON is available, also pass `--match-meta /path/to/match.json` to map team IDs to home/away. The adapter emits the provider-neutral `mie.event.v1` shape while retaining source event IDs, names, tags, period and team identifiers.
+
+Important semantics:
+- Wyscout `eventSec` is seconds since the beginning of its match period. The adapter preserves it as `period_seconds` and provides a nominal period-offset `elapsed_seconds_nominal` only for event ordering/horizon prototypes. It does **not** fabricate UTC timestamps or exact wall-clock kickoff offsets.
+- Tag 101 is retained as a goal indicator; tag 1801 on a shot is retained as a source-tagged accurate shot; tag 201 remains an opportunity tag, not a provider-independent Big Chance.
+- No xG, final-time marker, or live rolling-stat snapshot is invented. Penalty-shootout events remain identified as period `P` and are excluded from the nominal regulation clock.
+- The source dataset repository describes 2016/2017–2018 competitions and states CC BY 4.0. Cite Pappalardo et al. and the Wyscout dataset; verify current source terms and attribution before publication or any commercial use.
+
+Run adapter tests with the rest of the suite:
+
+```bash
+cd research/mie_tools
+python -m unittest -v
+```
