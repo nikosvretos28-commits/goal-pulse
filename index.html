@@ -3236,7 +3236,7 @@ const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':
 const highActivityHistoryPendingWrites=new Map();
 let highActivityHistorySavePromise=null;
 async function persistHighActivityObservations(records){
- (records||[]).forEach(item=>{if(item?.observationId)highActivityHistoryPendingWrites.set(String(item.observationId),item);});
+ (records||[]).forEach(item=>{if(item?.observationId)highActivityHistoryPendingWrites.set(String(item.observationId),JSON.parse(JSON.stringify(item)));});
  if(!highActivityHistoryPendingWrites.size)return;
  if(highActivityHistorySavePromise)return highActivityHistorySavePromise;
  highActivityHistorySavePromise=(async()=>{
@@ -3262,7 +3262,7 @@ async function loadHighActivityHistory(){
    observations.forEach(x=>{if(x?.observationId){const id=String(x.observationId),existing=merged.get(id),outcome=String(x.outcome||'pending').trim().toLowerCase();if(!['won','lost'].includes(outcome))x.outcome='pending';else x.outcome=outcome;if(existing&&['won','lost'].includes(String(existing.outcome||'').toLowerCase())&&x.outcome==='pending'){x={...x,outcome:existing.outcome,settledAt:existing.settledAt,settlementReason:existing.settlementReason};repairedSettlements.push(x)}merged.set(id,x)}});
    highActivityObservations=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
    if(repairedSettlements.length)void persistHighActivityObservations(repairedSettlements);
-   highActivityHistoryLoaded=true;renderHighActivityAnalyst();void reconcileHistoricalHighActivityObservations();
+   highActivityHistoryLoaded=true;renderHighActivityAnalyst();void persistHighActivityObservations([]);void reconcileHistoricalHighActivityObservations();
   }catch(error){console.warn('Could not load persistent High Activity history:',error.message);const root=document.getElementById('highActivityAnalystPanel');if(!highActivityHistoryLoaded)renderHighActivityAnalyst();}
   finally{highActivityHistoryLoadPromise=null;}
  })();
