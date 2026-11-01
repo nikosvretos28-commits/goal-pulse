@@ -3058,7 +3058,7 @@ const server = http.createServer(async (req, res) => {
             date,
             configured: SCOREBOARD_LEAGUES.length,
             attempted: feeds.length,
-            staticallySkipped: SCOREBOARD_LEAGUES.filter(code => ESPN_UNSUPPORTED_LEAGUES.has(code)),
+            skippedAfterHttp400: SCOREBOARD_LEAGUES.filter(code => ESPN_UNSUPPORTED_LEAGUES.has(code)),
             nonEmpty: feeds.filter(feed => feed.ok && (feed.events || []).length > 0).map(feed => ({ code: feed.code, events: feed.events.length })),
             empty: feeds.filter(feed => feed.ok && !(feed.events || []).length).map(feed => feed.code),
             failed: feeds.filter(feed => !feed.ok).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))
