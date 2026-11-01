@@ -17,7 +17,6 @@ import argparse
 import csv
 import json
 import math
-import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -137,8 +136,7 @@ def main() -> int:
     snapshots.sort(key=lambda r: (r["match_id"], r["snapshot_at"]))
     events_by_match: dict[str, list[dict]] = defaultdict(list)
     for event in events:
-        if event["event_type"] == "goal":
-            events_by_match[event["match_id"]].append(event)
+        events_by_match[event["match_id"]].append(event)
     for values in events_by_match.values():
         values.sort(key=lambda e: e["at"])
 
@@ -170,21 +168,21 @@ def main() -> int:
     output_rows = []
     missing_event_matches = set()
     for row in accepted:
-        goals = events_by_match.get(row["match_id"])
-        if goals is None:
+        match_events = events_by_match.get(row["match_id"])
+        if match_events is None:
             missing_event_matches.add(row["match_id"])
             continue
-        future = [goal for goal in goals if goal["at"] > row["snapshot_at"]]
+        goals = [event for event in match_events if event["event_type"] == "goal"]
+        final_events = [event for event in match_events if event["event_type"] == "final_time"]
+        final_at = min((event["at"] for event in final_events), default=None)
+        future = [goal for goal in goals if goal["at"] > row["snapshot_at"]
+                  and (final_at is None or goal["at"] <= final_at)]
         next5 = any((goal["at"] - row["snapshot_at"]).total_seconds() <= 5 * 60 for goal in future)
         next10 = any((goal["at"] - row["snapshot_at"]).total_seconds() <= 10 * 60 for goal in future)
-        # The event feed must mark the end of regulation/extra time as final_time.
-        # Without that marker, "before FT" cannot be labelled safely.
-        final_events = [e for e in events if e["match_id"] == row["match_id"] and e["event_type"] == "final_time"]
-        if not final_events:
-            before_ft = None
-        else:
-            final_at = min(e["at"] for e in final_events)
-            before_ft = any(row["snapshot_at"] < goal["at"] <= final_at for goal in future)
+        # Without a final_time marker, "before FT" cannot be labelled safely.
+        before_ft = None if final_at is None else any(
+            row["snapshot_at"] < goal["at"] <= final_at for goal in future
+        )
         output = {key: value for key, value in row.items() if key not in {"snapshot_at", "provider"}}
         output["snapshot_at_utc"] = row["snapshot_at"].isoformat().replace("+00:00", "Z")
         output["label_goal_next_5m"] = int(next5)
@@ -200,8 +198,14 @@ def main() -> int:
         for row in output_rows:
             writer.writerow({key: row.get(key) for key in FEATURE_FIELDS})
 
-    # Holdout assignment is by match, not snapshot, to prevent same-match leakage.
-    match_ids = sorted({row["match_id"] for row in output_rows})
+    # Chronological holdout assignment is by match, never by snapshot.
+    # All snapshots from one match remain together to prevent same-match leakage.
+    first_seen = {}
+    for row in output_rows:
+        first_seen[row["match_id"]] = min(
+            first_seen.get(row["match_id"], row["snapshot_at"]), row["snapshot_at"]
+        )
+    match_ids = sorted(first_seen, key=lambda match_id: (first_seen[match_id], match_id))
     n = len(match_ids)
     train_end, valid_end = int(n * 0.70), int(n * 0.85)
     split = {match_id: ("train" if i < train_end else "validation" if i < valid_end else "test")
