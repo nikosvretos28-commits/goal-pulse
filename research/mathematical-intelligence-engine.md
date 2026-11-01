@@ -136,3 +136,58 @@ Promotion requires:
 - Is there enough historical data to estimate team strength without leakage?
 
 **Decision:** Begin with data inventory and an offline baseline. Do not implement live predictions until historical point-in-time data quality is proven.
+
+
+## 10. Research findings and model direction (2026-11-01)
+
+Recent statistical literature supports a time-aware event-intensity approach for in-play football rather than treating a live match as a static pre-match forecast:
+
+- Maia et al., *Stochastic modelling of football matches using dynamic regressors*, International Journal of Forecasting 42(2), 2026, DOI: 10.1016/j.ijforecast.2025.10.006. The paper models goals and other match events as Cox processes whose intensities vary with match state and external factors. This supports testing dynamic, state-dependent goal intensity, while its reported coefficients must not be copied as GoalMatrix coefficients.
+- *Real-time forecasting within soccer matches through a Bayesian lens*, Journal of the Royal Statistical Society Series A, 2024, DOI: 10.1093/jrsssa/qnad136. This supports sequential updating from time-ordered in-match events and evaluating forecasts at multiple match times.
+- The standard Poisson / Dixon–Coles family remains a transparent baseline. More complex models must demonstrate out-of-sample improvement over it rather than being assumed superior.
+
+The first MIE experiment should therefore compare:
+1. A simple time-band / league-rate baseline.
+2. A transparent Poisson goal-intensity baseline.
+3. A dynamic state-dependent intensity model (Cox-process-style / regularized regression).
+4. A sequential Bayesian update only if the timestamped event history is sufficiently complete.
+
+The final model is chosen by chronological holdout performance and calibration, not by complexity or attractive live percentages.
+
+## 11. Initial repository data audit — read-only
+
+A source inspection of `server.js` confirms that the existing history tables include:
+- `alert_history`: alert ID, event ID, level, creation timestamp and JSON payload;
+- `high_activity_history`: observation ID, event ID, creation timestamp and JSON payload;
+- `protocol_analyst_reports`: report generation timestamp and JSON report.
+
+The existing AI Analyst reads settled AI-alert payloads and their signal-time statistics for retrospective segment summaries. These are useful for studying the alerts that were actually emitted, but they are not equivalent to a complete minute-by-minute match dataset.
+
+**Current limitation:** an alert-history row is a selected observation, not a full match timeline. It cannot by itself support unbiased estimates for every match-minute or reliable next-5 / next-10-minute probabilities. We must not train a general goal model from alert-only samples because that would introduce selection bias. We also must not substitute final match statistics for live values that were available at the forecast timestamp.
+
+This is a code/schema inspection only. No database was queried, no production data was changed, and no application code was edited.
+
+## 12. Independent MIE input contract
+
+The offline research engine should accept versioned, provider-neutral records with at least:
+
+- `match_id`, competition, season, home/away team IDs;
+- `snapshot_at_utc`, provider event timestamp, match minute/second and period;
+- score at snapshot, red cards at snapshot, match status;
+- per-team cumulative SOT, shots, xG and big chances **as they stood at that timestamp**;
+- optional event-level records with event timestamp and event type;
+- final outcome / goal timestamps, stored separately as labels and never exposed to feature generation;
+- provenance, provider, ingestion timestamp, field coverage and correction/version metadata.
+
+Each row must represent a point-in-time snapshot. A later correction or final value must not overwrite what the model would have known earlier. The dataset builder must enforce a strict cutoff: features at time t can only use information timestamped at or before t; target windows are calculated only from subsequent goal events.
+
+## 13. Next external deliverable
+
+Build the offline data validator and feature-dataset builder as an isolated research component. It should:
+- ingest a documented CSV/JSON snapshot format;
+- reject duplicate or out-of-order snapshots, impossible clocks, score/stat regressions that cannot be explained by provider corrections, and missing timestamps;
+- generate next-5m, next-10m and remaining-match goal labels from later goal events;
+- split by match and chronologically, never by randomly mixing snapshots from the same match across train and test;
+- emit a data-quality report before any model is fitted.
+
+Do not connect this component to the running GoalMatrix service. Until a legitimate timestamped dataset is available, the correct result is a data-readiness report, not invented model accuracy.
