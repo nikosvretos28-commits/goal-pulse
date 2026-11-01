@@ -113,3 +113,11 @@ The converter deliberately:
 The processed dataset repository lists 380 matches each for Ligue 1, Premier League, Serie A and La Liga (2017/18), 306 Bundesliga matches (2017/18), 64 World Cup matches (2018), and 51 Euro matches (2016). Its README states CC BY 4.0. This is an event-sequence research sample, not a current-season live-stat archive. No raw match files are stored in this repository; download and use must follow the dataset's attribution and current terms.
 
 The adapter is software preparation only. It has not yet been run against a downloaded real match file, and no predictive model has been trained on this dataset. CI for the newest adapter revision is not yet confirmed.
+
+### First real-match audit — Wyscout match 2499841
+
+A direct inspection of the processed-v2 JSON file documented as the default Huddersfield Town–Manchester City match found 1,593 event rows (844 first half, 749 second half), 17 primary Shot events, four accurate-tagged shots (tag 1801), 11 opportunity tags (201), two team IDs, no duplicate event IDs and no within-period clock regressions.
+
+An important tag-semantic issue was found and fixed before any labels are built: tag 101 appears five times, including three goalkeeper `Save attempt` events associated with goals. Counting all tag-101 rows would double-count goalkeeper events. The adapter now counts tag 101 only on `Shot` / `Free Kick` goal-attempt events and tag 102 as an explicit own-goal event. This yields three goal events for the sample. Embedded team names are retained; home/away remains unknown without explicit match metadata.
+
+This audit establishes source-format compatibility and event-quality checks only. It does not establish continuous live-stat coverage, xG availability, model performance, or suitability as a direct replacement for commercial live feeds. The raw match file is not committed.
