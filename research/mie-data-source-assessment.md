@@ -96,3 +96,20 @@ This adapter would be a research utility only. It would not connect to the live 
 ## Decision
 
 Open event data can move the MIE forward on methodology and software validation, but it does **not** remove the main data bottleneck: large-scale, lawful, point-in-time in-play snapshots. The DFL set is a valuable small benchmark; StatsBomb and Wyscout are stronger candidates for event-sequence research; a licensed snapshot archive remains necessary for a credible snapshot-based probability model.
+
+
+## Adapter implementation update — 2026-11-01
+
+A research-only converter now exists at `research/mie_tools/wyscout_adapter.py`, with focused tests in `test_wyscout_adapter.py`. It consumes one processed Wyscout event JSON file and emits provider-neutral `mie.event.v1` JSONL plus a coverage/quality report.
+
+The converter deliberately:
+- preserves period-relative `eventSec` rather than fabricating UTC timestamps;
+- marks the nominal period-offset clock as approximate and unsuitable as a wall-clock timestamp;
+- preserves source tags 101 (goal), 1801 (accurate shot) and 201 (opportunity) without claiming that opportunity equals Big Chance;
+- does not invent xG, rolling SOT windows, final-time markers or full-time labels;
+- keeps penalty-shootout events separate from regulation-time calculations;
+- flags duplicate event IDs and source clock regressions.
+
+The processed dataset repository lists 380 matches each for Ligue 1, Premier League, Serie A and La Liga (2017/18), 306 Bundesliga matches (2017/18), 64 World Cup matches (2018), and 51 Euro matches (2016). Its README states CC BY 4.0. This is an event-sequence research sample, not a current-season live-stat archive. No raw match files are stored in this repository; download and use must follow the dataset's attribution and current terms.
+
+The adapter is software preparation only. It has not yet been run against a downloaded real match file, and no predictive model has been trained on this dataset. CI for the newest adapter revision is not yet confirmed.
