@@ -191,3 +191,48 @@ Build the offline data validator and feature-dataset builder as an isolated rese
 - emit a data-quality report before any model is fitted.
 
 Do not connect this component to the running GoalMatrix service. Until a legitimate timestamped dataset is available, the correct result is a data-readiness report, not invented model accuracy.
+
+
+## 14. First executable modelling baseline — 2026-11-01
+
+An isolated standard-library implementation now exists in `research/mie_tools/train_model.py`. It is a deliberately transparent first model, not a claim that the final MIE is complete.
+
+### Feature layer
+
+At each snapshot, construct point-in-time features for:
+- match time and period;
+- current score total and difference;
+- red-card total and difference;
+- cumulative SOT, shots, xG and big chances, including team differences and time-normalized SOT/xG rates;
+- explicit missingness flags for unavailable numeric inputs.
+
+No feature is sourced from a future event. The current input contract does not contain reliable rolling-window SOT values, so the first baseline must not pretend it can calculate recent 5-minute/10-minute pressure from cumulative totals.
+
+### Baseline and calibration
+
+For each target (goal in next 5 minutes, next 10 minutes, and before full time):
+1. Fit L2-regularized logistic regression on the chronological training matches.
+2. Fit imputation and standardization statistics on training rows only.
+3. Fit a Platt calibration layer on validation matches only, and only when that validation partition contains at least 30 positive and 30 negative examples.
+4. Evaluate once on the held-out test matches using Brier score, log loss, constant-prevalence baselines and reliability bins.
+
+The script requires at least 200 training rows. It reports insufficient data instead of presenting an uncalibrated score as a reliable probability. It refuses to train unless the structural validator reports `validated_structure_only`.
+
+This first model intentionally does not yet estimate expected remaining goals or model the two teams' goal processes separately. Those are later experiments, and must be evaluated against this transparent baseline.
+
+### Further research safeguards
+
+- Validate source row order before sorting; flag out-of-order provider snapshots.
+- Reject fractional values for integer match-clock and count fields rather than silently truncating them.
+- Preserve same-match grouping across train/validation/test.
+- Keep test data closed until final scoring; never tune features or calibration against test outcomes.
+- Do not infer rolling pressure from cumulative totals.
+
+### Research references
+
+- Maia et al. (2026), [Stochastic modelling of football matches using dynamic regressors](https://doi.org/10.1016/j.ijforecast.2025.10.006), *International Journal of Forecasting*. Supports testing state-dependent event intensities and dynamic match-state regressors; published coefficients are not transplanted into MIE.
+- [Real-time forecasting within soccer matches through a Bayesian lens](https://doi.org/10.1093/jrsssa/qnad136), *Journal of the Royal Statistical Society: Series A* (2024). Supports sequential updates from time-ordered match events.
+- Klemp, Wunderlich & Memmert (2021), [In-play forecasting in football using event and positional data](https://doi.org/10.1038/s41598-021-03157-3), *Scientific Reports*. Important counterweight: in-play indicators should be tested for incremental value after controlling for team strength and pre-match expectation, not assumed predictive.
+- Clegg, Song & Cartlidge (2026), [A market-calibrated accelerated failure time model for in-play football forecasting](https://doi.org/10.48550/arXiv.2605.16066), arXiv preprint. Useful as a research comparator; its results are not a guarantee and its market inputs/data are not assumed available to GoalMatrix.
+
+**Current status:** implementation and unit tests have been added to the draft research PR. They have not yet been executed in a test environment, and no historical dataset has been fitted. No accuracy claim is made.
