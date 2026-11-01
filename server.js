@@ -86,8 +86,8 @@ async function ensureAlertHistoryDb() {
 
 let highActivityHistoryDbInit = null;
 async function ensureHighActivityHistoryDb() {
-  if (!analyticsPool) return false;
-  if (!highActivityHistoryDbInit) highActivityHistoryDbInit = analyticsPool.query(`
+  if (!highActivityHistoryPool) return false;
+  if (!highActivityHistoryDbInit) highActivityHistoryDbInit = highActivityHistoryPool.query(`
     CREATE TABLE IF NOT EXISTS high_activity_history (
       observation_id TEXT PRIMARY KEY,
       event_id TEXT NOT NULL,
@@ -467,6 +467,14 @@ const analyticsPool = resolvedDatabaseUrl && Pool ? new Pool({
   max: 3,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000
+}) : null;
+// Dedicated pool prevents shared analytics traffic from starving HI Activity history.
+const highActivityHistoryPool = resolvedDatabaseUrl && Pool ? new Pool({
+  connectionString: resolvedDatabaseUrl,
+  ssl: resolvedDatabaseUrl.includes("localhost") ? false : { rejectUnauthorized: false },
+  max: 2,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000
 }) : null;
 ensureAlertHistoryDb().then(ready => console.log('Persistent alert history schema:', ready ? 'ready' : 'unavailable')).catch(error => console.error('Persistent alert history initialization failed:', error.message));
 let analyticsDbInit = null;
@@ -1361,7 +1369,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
       const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
-      const result = await analyticsPool.query("SELECT payload FROM high_activity_history ORDER BY created_at DESC, observation_id DESC LIMIT $1 OFFSET $2", [limit, offset]);
+      const result = await highActivityHistoryPool.query("SELECT payload FROM high_activity_history ORDER BY created_at DESC, observation_id DESC LIMIT $1 OFFSET $2", [limit, offset]);
       return send(res, 200, { ok: true, persistent: true, observations: result.rows.map(row => row.payload) });
     } catch (error) {
       console.error("High Activity history read failed:", error.message);
@@ -1381,7 +1389,7 @@ const server = http.createServer(async (req, res) => {
         payload: x
       }));
       if (!records.length) return send(res, 400, { error: "No valid High Activity observations supplied" });
-      await analyticsPool.query(
+      await highActivityHistoryPool.query(
         `INSERT INTO high_activity_history(observation_id,event_id,created_at,payload,updated_at)
          SELECT x.observation_id,x.event_id,to_timestamp(x.created_at/1000.0),x.payload,NOW()
          FROM jsonb_to_recordset($1::jsonb) AS x(observation_id text,event_id text,created_at double precision,payload jsonb)
