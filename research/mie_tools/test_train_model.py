@@ -1,6 +1,6 @@
 import unittest
 
-from train_model import features, fit_logistic, fit_platt, metrics, sigmoid
+from train_model import features, fit_logistic, fit_platt, match_weights, metrics, sigmoid
 
 
 class MieModelTests(unittest.TestCase):
@@ -46,6 +46,27 @@ class MieModelTests(unittest.TestCase):
         self.assertTrue(result["reliability_bins"])
         self.assertLess(result["brier"], result["constant_baseline_brier"])
 
+
+    def test_match_weights_prevent_dense_matches_dominating(self):
+        rows = [{"match_id": "a"}, {"match_id": "a"}, {"match_id": "b"}]
+        weights = match_weights(rows)
+        self.assertEqual(weights, [0.5, 0.5, 1.0])
+        self.assertAlmostEqual(sum(weights[:2]), weights[2])
+
+    def test_state_interactions_are_explicit(self):
+        row = {
+            "minute": "60", "second": "0", "period": "2H",
+            "home_score": "0", "away_score": "1",
+            "home_red_cards": "0", "away_red_cards": "1",
+            "home_sot": "4", "away_sot": "2",
+            "home_shots": "9", "away_shots": "6",
+            "home_xg": "0.8", "away_xg": "0.4",
+            "home_big_chances": "1", "away_big_chances": "0",
+        }
+        values = features(row)
+        self.assertEqual(values["away_leading"], 1.0)
+        self.assertAlmostEqual(values["score_pressure_interaction"], -2 / 3)
+        self.assertAlmostEqual(values["red_card_time_interaction"], -2 / 3)
 
 if __name__ == "__main__":
     unittest.main()
