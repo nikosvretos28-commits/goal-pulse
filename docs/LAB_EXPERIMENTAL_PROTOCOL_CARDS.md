@@ -127,7 +127,7 @@ For each team, use its current league season and show the competition baseline a
 - Home and away splits, plus overall season figures.
 - The league's own goals-for, goals-against, total-goals averages and Over percentages as a comparison baseline.
 
-**Experimental full-match Over 3.5 filter:** before an Over 3.5 candidate can pass the historical team-profile gate, at least one of the two teams must have an average of **3.00 or more total goals per match in its own league-season matches** (goals scored plus goals conceded). If neither team reaches 3.00, reject that Over 3.5 candidate at this gate. This is only a historical eligibility filter; it does not itself create or approve an alert. Also display each team's Over 3.5 percentage and sample size. Do not confuse the 3.00 average-total-goals condition with a 3.5-goal outcome threshold.
+**Experimental full-match Over 3.5 filter:** before an Over 3.5 candidate can pass the historical team-profile gate, at least one of the two teams must have an average of **strictly more than 3.00 total goals per match in its own league-season matches** (goals scored plus goals conceded). An average of exactly 3.00 does not qualify. If neither team is above 3.00, reject that Over 3.5 candidate at this gate. This is only a historical eligibility filter; it does not itself create or approve an alert. Also display each team's Over 3.5 percentage and sample size. The qualifying average must be >3.00; exactly 3.00 is insufficient. Do not confuse this average-total-goals condition with a 3.5-goal outcome threshold.
 
 ### D. First-half team and league goal profile
 For each team, in its current league season, calculate:
