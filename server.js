@@ -10,6 +10,12 @@ const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
 
+// SportAPI is a supplemental live-stat source. Cache fixture IDs longer than
+// stats so the free API quota is not consumed by the 15-second UI polling loop.
+const sportApiFixtureDateCache = new Map();
+const sportApiStatsCache = new Map();
+let sportApiRotationIndex = 0;
+
 // Normalize common football API response envelopes. Several providers wrap the
 // fixture array in data.matches/data.fixtures rather than returning data as an array.
 function extractFixtureArray(body) {
@@ -3573,6 +3579,172 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
+
+      // Supplement missing cumulative shot statistics from SportAPI. Scoreboard,
+      // match clock, alert rules and existing provider values remain authoritative.
+      const sportApiDiagnostics = { configured: Boolean(process.env.SPORTAPI_API_KEY), fixtureListStatus: null, fixtureCount: 0, candidates: 0, attempted: 0, supplied: 0, unavailable: 0, errors: {} };
+      const sportApiKey = process.env.SPORTAPI_API_KEY;
+      if (sportApiKey && matches.length) {
+        const normalizeSportApiTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+          .replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+        const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+        let fixtureEntry = sportApiFixtureDateCache.get(liveDate);
+        if (!fixtureEntry || Date.now() - fixtureEntry.at > (fixtureEntry.ttl || 300000)) {
+          try {
+            const fixtureResponse = await fetch("https://sportapi.ai/api/fixtures/date/" + liveDate, {
+              headers: { "Accept": "application/json", "X-Api-Key": sportApiKey },
+              signal: AbortSignal.timeout(9000)
+            });
+            sportApiDiagnostics.fixtureListStatus = fixtureResponse.status;
+            if (fixtureResponse.ok) {
+              const fixturePayload = await fixtureResponse.json();
+              const fixtureRows = Array.isArray(fixturePayload?.data) ? fixturePayload.data : [];
+              fixtureEntry = { at: Date.now(), ttl: 300000, rows: fixtureRows };
+              sportApiFixtureDateCache.set(liveDate, fixtureEntry);
+            } else {
+              sportApiDiagnostics.errors[String(fixtureResponse.status)] = (sportApiDiagnostics.errors[String(fixtureResponse.status)] || 0) + 1;
+              fixtureEntry = { at: Date.now(), ttl: 60000, rows: [] };
+              sportApiFixtureDateCache.set(liveDate, fixtureEntry);
+            }
+          } catch (error) {
+            sportApiDiagnostics.errors.timeout = (sportApiDiagnostics.errors.timeout || 0) + 1;
+            fixtureEntry = { at: Date.now(), ttl: 60000, rows: [] };
+            sportApiFixtureDateCache.set(liveDate, fixtureEntry);
+            console.warn("SportAPI fixture list unavailable:", error.message || "request failed");
+          }
+        }
+        const fixtureRows = fixtureEntry?.rows || [];
+        sportApiDiagnostics.fixtureCount = fixtureRows.length;
+        if (fixtureRows.length) {
+          const liveFixturesByPair = new Map();
+          for (const fixture of fixtureRows) {
+            if (String(fixture.status || "").trim().toUpperCase() !== "LIVE") continue;
+            const home = normalizeSportApiTeam(fixture.home_team);
+            const away = normalizeSportApiTeam(fixture.away_team);
+            if (!home || !away || fixture.id == null) continue;
+            liveFixturesByPair.set(home + "|" + away, { fixture, sameOrientation: true });
+            liveFixturesByPair.set(away + "|" + home, { fixture, sameOrientation: false });
+          }
+          const applySportApiValues = (match, values) => {
+            if (!Array.isArray(values) || values.length < 2 || !Array.isArray(match.teams)) return;
+            match.teams.slice(0, 2).forEach((team, index) => {
+              const supplemental = values[index] || {};
+              for (const field of ["shots", "shotsOnTarget", "shotsOffTarget"]) {
+                if (team[field] == null && supplemental[field] != null) team[field] = supplemental[field];
+              }
+            });
+            if (values.some(value => value && ["shots", "shotsOnTarget", "shotsOffTarget"].some(field => value[field] != null))) {
+              match.statsSource = match.statsSource ? match.statsSource + "+SportAPI(cache)" : "SportAPI";
+              match.statsAvailable = match.teams.some(team =>
+                ["shots", "shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "possession", "xG"]
+                  .some(field => team[field] != null)
+              );
+              sportApiDiagnostics.supplied++;
+            }
+          };
+          // Reuse cached values on every poll; the cache is not just a request throttle.
+          for (const match of matches) {
+            const home = normalizeSportApiTeam(match.home || match.teams?.[0]?.team);
+            const away = normalizeSportApiTeam(match.away || match.teams?.[1]?.team);
+            const mapped = liveFixturesByPair.get(home + "|" + away);
+            if (!mapped) continue;
+            const cached = sportApiStatsCache.get(String(mapped.fixture.id));
+            if (cached && Date.now() - cached.at < cached.ttl && cached.data) {
+              const values = mapped.sameOrientation ? cached.data : [cached.data[1], cached.data[0]];
+              applySportApiValues(match, values);
+            }
+          }
+          const candidates = matches.filter(match => {
+            const teams = Array.isArray(match.teams) ? match.teams.slice(0, 2) : [];
+            return teams.length >= 2 && teams.some(team => team.shotsOnTarget == null);
+          }).map(match => {
+            const home = normalizeSportApiTeam(match.home || match.teams?.[0]?.team);
+            const away = normalizeSportApiTeam(match.away || match.teams?.[1]?.team);
+            const mapped = liveFixturesByPair.get(home + "|" + away);
+            if (!mapped) return null;
+            const cached = sportApiStatsCache.get(String(mapped.fixture.id));
+            if (cached && Date.now() - cached.at < cached.ttl) return null;
+            return { match, fixture: mapped.fixture, sameOrientation: mapped.sameOrientation };
+          }).filter(Boolean);
+          sportApiDiagnostics.candidates = candidates.length;
+          // Two uncached fixture-stat calls per 2-minute window keeps the free
+          // daily quota safe even while the frontend polls live metrics frequently.
+          const selected = [];
+          if (candidates.length) {
+            const start = sportApiRotationIndex % candidates.length;
+            for (let offset = 0; offset < Math.min(2, candidates.length); offset++) {
+              selected.push(candidates[(start + offset) % candidates.length]);
+            }
+            sportApiRotationIndex = (start + selected.length) % candidates.length;
+          }
+          for (const candidate of selected) {
+            const fixtureId = String(candidate.fixture.id);
+            sportApiDiagnostics.attempted++;
+            try {
+              const statsResponse = await fetch("https://sportapi.ai/api/fixtures/" + encodeURIComponent(fixtureId) + "/stats", {
+                headers: { "Accept": "application/json", "X-Api-Key": sportApiKey },
+                signal: AbortSignal.timeout(9000)
+              });
+              if (!statsResponse.ok) {
+                const statusKey = String(statsResponse.status);
+                sportApiDiagnostics.errors[statusKey] = (sportApiDiagnostics.errors[statusKey] || 0) + 1;
+                sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 120000, data: null });
+                continue;
+              }
+              const statsPayload = await statsResponse.json();
+              const available = statsPayload?.available === true && statsPayload?.data && typeof statsPayload.data === "object";
+              if (!available) {
+                sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 600000, data: null });
+                sportApiDiagnostics.unavailable++;
+                continue;
+              }
+              const apiHome = statsPayload.data.home || {};
+              const apiAway = statsPayload.data.away || {};
+              const homeStats = candidate.sameOrientation ? apiHome : apiAway;
+              const awayStats = candidate.sameOrientation ? apiAway : apiHome;
+              const parseNumber = value => {
+                if (value == null || value === "") return null;
+                const number = Number(String(value).replace("%", "").replace(",", "."));
+                return Number.isFinite(number) ? number : null;
+              };
+              const sportApiHomeValues = {
+                shots: parseNumber(apiHome.shots),
+                shotsOnTarget: parseNumber(apiHome.shots_on_target),
+                shotsOffTarget: parseNumber(apiHome.shots_off_target)
+              };
+              const sportApiAwayValues = {
+                shots: parseNumber(apiAway.shots),
+                shotsOnTarget: parseNumber(apiAway.shots_on_target),
+                shotsOffTarget: parseNumber(apiAway.shots_off_target)
+              };
+              const apiValues = candidate.sameOrientation
+                ? [sportApiHomeValues, sportApiAwayValues]
+                : [sportApiAwayValues, sportApiHomeValues];
+              const teams = candidate.match.teams.slice(0, 2);
+              teams.forEach((team, index) => {
+                const supplemental = apiValues[index];
+                for (const field of ["shots", "shotsOnTarget", "shotsOffTarget"]) {
+                  if (team[field] == null && supplemental[field] != null) team[field] = supplemental[field];
+                }
+              });
+              candidate.match.statsSource = candidate.match.statsSource
+                ? candidate.match.statsSource + "+SportAPI"
+                : "SportAPI";
+              candidate.match.statsAvailable = candidate.match.teams.some(team =>
+                ["shots", "shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "possession", "xG"]
+                  .some(field => team[field] != null)
+              );
+              sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 120000, data: [sportApiHomeValues, sportApiAwayValues] });
+              sportApiDiagnostics.supplied++;
+            } catch (error) {
+              sportApiDiagnostics.errors.timeout = (sportApiDiagnostics.errors.timeout || 0) + 1;
+              sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 120000, data: null });
+              console.warn("SportAPI fixture stats unavailable:", JSON.stringify({ fixtureId, error: error.message || "request failed" }));
+            }
+          }
+        }
+      }
+      console.log("[GoalMatrix SportAPI fallback audit]", JSON.stringify(sportApiDiagnostics));
       console.log("[GoalMatrix ESPN summary audit]", JSON.stringify(espnSummaryDiagnostics));
       // Temporary live-stat audit: log provider and the raw normalized shot components
       // so discrepancies can be traced without guessing or silently altering totals.
