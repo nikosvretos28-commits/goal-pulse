@@ -2175,8 +2175,11 @@ const server = http.createServer(async (req, res) => {
         const memory10mSot = current.onTarget == null || previous10?.onTarget == null
           ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
         const shots = delta("shots");
-        const onTarget = persisted5mSot == null ? memory5mSot : persisted5mSot;
-        const onTarget10m = persisted10mSot == null ? memory10mSot : persisted10mSot;
+        // A persisted baseline can be present but stale or undercounted (including a zero delta).
+        // Never let that persisted value mask stronger independently observed in-memory SOT activity.
+        // Use the stronger of the two measurements for each window; never add them together.
+        const onTarget = Math.max(memory5mSot, persisted5mSot ?? 0);
+        const onTarget10m = Math.max(memory10mSot, persisted10mSot ?? 0);
         // AI trigger: recent SOT threshold OR the agreed two-team xG alternative.
         // Total shots and supporting metrics cannot trigger an alert by themselves.
         // The agreed xG alternative requires BOTH teams to qualify:
