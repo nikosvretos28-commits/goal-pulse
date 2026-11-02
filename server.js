@@ -10,6 +10,17 @@ const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
 
+// SportAPI is a strictly supplemental, budget-capped canary for cumulative live stats.
+// Free-plan guardrail: one fixture-list request per 10 minutes and at most one
+// per-fixture stats request globally every 5 minutes (~432 requests/day at most).
+const SPORTAPI_API_KEY = process.env.SPORTAPI_API_KEY || "";
+const sportApiDateFixturesCache = new Map();
+const sportApiFixtureStatsCache = new Map();
+let sportApiLastStatsRequestAt = 0;
+const SPORTAPI_FIXTURE_CACHE_MS = 10 * 60 * 1000;
+const SPORTAPI_STATS_REFRESH_MS = 5 * 60 * 1000;
+const SPORTAPI_STATS_REQUEST_GAP_MS = 5 * 60 * 1000;
+
 // Normalize common football API response envelopes. Several providers wrap the
 // fixture array in data.matches/data.fixtures rather than returning data as an array.
 function extractFixtureArray(body) {
@@ -3573,6 +3584,143 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
+      // SportAPI canary: supplement only missing cumulative match statistics.
+      // It deliberately does not replace the scoreboard/clock and does not change
+      // rolling-window, AI Alert, HI Activity, VIP, or settlement protocol logic.
+      if (SPORTAPI_API_KEY && matches.length) {
+        const now = Date.now();
+        const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+        let sportApiFixtures = sportApiDateFixturesCache.get(liveDate);
+        if (!sportApiFixtures || now - sportApiFixtures.at >= SPORTAPI_FIXTURE_CACHE_MS) {
+          try {
+            const response = await fetch("https://sportapi.ai/api/fixtures/date/" + liveDate, {
+              headers: { "Accept": "application/json", "X-Api-Key": SPORTAPI_API_KEY },
+              signal: AbortSignal.timeout(10000)
+            });
+            if (response.ok) {
+              const payload = await response.json();
+              const rows = Array.isArray(payload?.data) ? payload.data : extractFixtureArray(payload);
+              sportApiFixtures = { at: now, rows };
+              sportApiDateFixturesCache.set(liveDate, sportApiFixtures);
+              console.log("[SportAPI canary] fixture list:", JSON.stringify({ date: liveDate, status: response.status, fixtures: rows.length }));
+            } else {
+              sportApiFixtures = { at: now, rows: [] };
+              sportApiDateFixturesCache.set(liveDate, sportApiFixtures);
+              console.warn("[SportAPI canary] fixture list unavailable:", JSON.stringify({ status: response.status }));
+            }
+          } catch (error) {
+            sportApiFixtures = { at: now, rows: [] };
+            sportApiDateFixturesCache.set(liveDate, sportApiFixtures);
+            console.warn("[SportAPI canary] fixture list request failed:", error.message || "request failed");
+          }
+        }
+        const normalizeSportApiTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+        const fixtureByPair = new Map();
+        for (const fixture of sportApiFixtures?.rows || []) {
+          const home = normalizeSportApiTeam(fixture.home_team || fixture.home || fixture.home_short);
+          const away = normalizeSportApiTeam(fixture.away_team || fixture.away || fixture.away_short);
+          if (home && away && fixture.id != null) {
+            fixtureByPair.set(home + "|" + away, fixture);
+            fixtureByPair.set(away + "|" + home, fixture);
+          }
+        }
+        const matched = matches.map(match => {
+          const home = normalizeSportApiTeam(match.home);
+          const away = normalizeSportApiTeam(match.away);
+          return { match, fixture: fixtureByPair.get(home + "|" + away) || fixtureByPair.get(away + "|" + home) || null };
+        }).filter(item => item.fixture);
+        const applySportApiStats = (match, fixture, cached) => {
+          if (!cached?.values) return false;
+          const fixtureHome = normalizeSportApiTeam(fixture.home_team || fixture.home || fixture.home_short);
+          const sameOrientation = fixtureHome === normalizeSportApiTeam(match.home);
+          const homeStats = sameOrientation ? cached.values.home : cached.values.away;
+          const awayStats = sameOrientation ? cached.values.away : cached.values.home;
+          const sides = [match.teams?.find(team => team.homeAway === "home") || match.teams?.[0], match.teams?.find(team => team.homeAway === "away") || match.teams?.[1]];
+          let supplied = false;
+          for (const [index, team] of sides.entries()) {
+            if (!team) continue;
+            const source = index === 0 ? homeStats : awayStats;
+            for (const [key, value] of Object.entries(source || {})) {
+              if (team[key] == null && value != null && Number.isFinite(Number(value))) {
+                team[key] = Number(value);
+                supplied = true;
+              }
+            }
+          }
+          if (supplied) {
+            const currentSource = String(match.statsSource || "unknown");
+            if (!currentSource.includes("SportAPI")) match.statsSource = currentSource + "+SportAPI";
+            match.statsAvailable = true;
+          }
+          return supplied;
+        };
+        // Reuse cached samples for every matching fixture without extra API calls.
+        for (const item of matched) {
+          const cached = sportApiFixtureStatsCache.get(String(item.fixture.id));
+          if (cached) applySportApiStats(item.match, item.fixture, cached);
+        }
+        // Canary budget: one fixture's stats endpoint at most every five minutes.
+        // This intentionally tests real provider coverage before scaling beyond the
+        // free monthly allowance. Missing values remain null; none are fabricated.
+        const candidate = matched.find(item => {
+          const sides = item.match.teams || [];
+          const missingSot = sides.length >= 2 && sides.slice(0, 2).some(team => team.shotsOnTarget == null);
+          const cached = sportApiFixtureStatsCache.get(String(item.fixture.id));
+          return missingSot && (!cached || now - cached.at >= SPORTAPI_STATS_REFRESH_MS);
+        });
+        if (candidate && now - sportApiLastStatsRequestAt >= SPORTAPI_STATS_REQUEST_GAP_MS) {
+          sportApiLastStatsRequestAt = now;
+          const fixtureId = String(candidate.fixture.id);
+          try {
+            const response = await fetch("https://sportapi.ai/api/fixtures/" + encodeURIComponent(fixtureId) + "/stats", {
+              headers: { "Accept": "application/json", "X-Api-Key": SPORTAPI_API_KEY },
+              signal: AbortSignal.timeout(10000)
+            });
+            if (response.ok) {
+              const payload = await response.json();
+              const normalizeSide = side => {
+                const raw = payload?.data?.[side] || {};
+                const number = value => {
+                  if (value == null || value === "") return null;
+                  const parsed = Number.parseFloat(String(value).replace("%", "").replace(",", "."));
+                  return Number.isFinite(parsed) ? parsed : null;
+                };
+                return {
+                  shots: number(raw.shots),
+                  shotsOnTarget: number(raw.shots_on_target),
+                  shotsOffTarget: number(raw.shots_off_target),
+                  corners: number(raw.corners ?? raw.corner_kicks),
+                  possession: number(raw.possession ?? raw.ball_possession)
+                };
+              };
+              const cached = {
+                at: now,
+                available: payload?.available === true,
+                values: { home: normalizeSide("home"), away: normalizeSide("away") }
+              };
+              sportApiFixtureStatsCache.set(fixtureId, cached);
+              const supplied = applySportApiStats(candidate.match, candidate.fixture, cached);
+              console.log("[SportAPI canary] stats response:", JSON.stringify({
+                fixtureId,
+                home: candidate.match.home,
+                away: candidate.match.away,
+                available: cached.available,
+                suppliedMissingFields: supplied,
+                homeSot: cached.values.home.shotsOnTarget,
+                awaySot: cached.values.away.shotsOnTarget
+              }));
+            } else {
+              sportApiFixtureStatsCache.set(fixtureId, { at: now, available: false, values: null });
+              console.warn("[SportAPI canary] stats endpoint unavailable:", JSON.stringify({ fixtureId, status: response.status }));
+            }
+          } catch (error) {
+            console.warn("[SportAPI canary] stats request failed:", JSON.stringify({ fixtureId, error: error.message || "request failed" }));
+          }
+        }
+      } else if (!SPORTAPI_API_KEY) {
+        // Do not expose the key; this is only a configuration-presence diagnostic.
+        console.log("[SportAPI canary] disabled: SPORTAPI_API_KEY is not configured");
+      }
       console.log("[GoalMatrix ESPN summary audit]", JSON.stringify(espnSummaryDiagnostics));
       // Temporary live-stat audit: log provider and the raw normalized shot components
       // so discrepancies can be traced without guessing or silently altering totals.
