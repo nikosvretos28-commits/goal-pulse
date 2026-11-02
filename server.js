@@ -2134,9 +2134,14 @@ const server = http.createServer(async (req, res) => {
         // live-metrics response. They survive scanner restarts; use RAM only as fallback.
         const persistedSotDelta = window => {
           const rows = window?.teams;
-          if (!Array.isArray(rows) || rows.length < 2) return null;
-          const values = rows.map(team => team.shotsOnTarget);
-          if (values.some(value => value == null || !Number.isFinite(Number(value)))) return null;
+          if (!Array.isArray(rows) || !rows.length) return null;
+          // A known team's SOT delta is sufficient when it alone reaches the
+          // combined threshold. Missing data for the opponent must not erase it.
+          // Unknown team values are never treated as zero or used to qualify.
+          const values = rows
+            .map(team => team.shotsOnTarget)
+            .filter(value => value != null && Number.isFinite(Number(value)));
+          if (!values.length) return null;
           return values.reduce((sum, value) => sum + Math.max(0, Number(value)), 0);
         };
         const persisted5mSot = persistedSotDelta(match.trend?.window5m);
