@@ -64,6 +64,16 @@ provider data -> freshness/validity -> rolling statistics and xG -> protocol che
 
 It should explain every acceptance/rejection and report evidence-based findings. Desired report cadence: every 3 days. This is a future requirement only; do not replace, edit, or disable any of the three existing scheduled tasks.
 
+## Current implementation status (2026-11-02)
+
+- Added a standalone LAB page at `/LAB/index.html` with two separate cards/tabs: **LATE GOALS INTELLIGENCE** and **AI ALERTS — EXPERIMENTAL**.
+- Added pure, isolated rule evaluators in `LAB/protocol-engine.js`; these can evaluate timestamped JSON snapshots without importing or mutating production scanner code.
+- The AI evaluator includes the frozen SOT/xG reference checks, the full-match Over 3.5 historical gate (**strictly above 3.00**, not equal to 3.00), and the exact-line first-half historical filter (both below 65% rejects; otherwise continues, with 80%+ marked strong).
+- Missing historical inputs remain pending/unavailable rather than being treated as zero or passed.
+- The Late Goals evaluator is descriptive only and keeps referee context non-triggering.
+
+**Important limitation:** this is the first functional LAB evaluator interface, not yet a live-running analysis service. The page currently accepts explicit JSON snapshots; no live/historical provider adapter, isolated LAB database, scheduled collector, or automatic shadow history is connected. Do not describe the protocols as live until those components are configured and verified in a separate LAB runtime. Production remains untouched.
+
 ## Initial research priorities (2026-11-02)
 
 1. Audit the configured competition list and identify which competitions actually return fixtures.
