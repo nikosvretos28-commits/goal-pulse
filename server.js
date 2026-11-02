@@ -3585,8 +3585,8 @@ const server = http.createServer(async (req, res) => {
       const sportApiDiagnostics = { configured: Boolean(process.env.SPORTAPI_API_KEY), fixtureListStatus: null, fixtureCount: 0, candidates: 0, attempted: 0, supplied: 0, unavailable: 0, errors: {} };
       const sportApiKey = process.env.SPORTAPI_API_KEY;
       if (sportApiKey && matches.length) {
-        const normalizeSportApiTeam = value => String(value || "").normalize("NFD").replace(/\\p{M}/gu, "").toLowerCase()
-          .replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+        const normalizeSportApiTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+          .replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
         const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
         let fixtureEntry = sportApiFixtureDateCache.get(liveDate);
         if (!fixtureEntry || Date.now() - fixtureEntry.at > 300000) {
@@ -3620,6 +3620,35 @@ const server = http.createServer(async (req, res) => {
             if (!home || !away || fixture.id == null) continue;
             liveFixturesByPair.set(home + "|" + away, { fixture, sameOrientation: true });
             liveFixturesByPair.set(away + "|" + home, { fixture, sameOrientation: false });
+          }
+          const applySportApiValues = (match, values) => {
+            if (!Array.isArray(values) || values.length < 2 || !Array.isArray(match.teams)) return;
+            match.teams.slice(0, 2).forEach((team, index) => {
+              const supplemental = values[index] || {};
+              for (const field of ["shots", "shotsOnTarget", "shotsOffTarget"]) {
+                if (team[field] == null && supplemental[field] != null) team[field] = supplemental[field];
+              }
+            });
+            if (values.some(value => value && ["shots", "shotsOnTarget", "shotsOffTarget"].some(field => value[field] != null))) {
+              match.statsSource = match.statsSource ? match.statsSource + "+SportAPI(cache)" : "SportAPI";
+              match.statsAvailable = match.teams.some(team =>
+                ["shots", "shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "possession", "xG"]
+                  .some(field => team[field] != null)
+              );
+              sportApiDiagnostics.supplied++;
+            }
+          };
+          // Reuse cached values on every poll; the cache is not just a request throttle.
+          for (const match of matches) {
+            const home = normalizeSportApiTeam(match.home || match.teams?.[0]?.team);
+            const away = normalizeSportApiTeam(match.away || match.teams?.[1]?.team);
+            const mapped = liveFixturesByPair.get(home + "|" + away);
+            if (!mapped) continue;
+            const cached = sportApiStatsCache.get(String(mapped.fixture.id));
+            if (cached && Date.now() - cached.at < cached.ttl && cached.data) {
+              const values = mapped.sameOrientation ? cached.data : [cached.data[1], cached.data[0]];
+              applySportApiValues(match, values);
+            }
           }
           const candidates = matches.filter(match => {
             const teams = Array.isArray(match.teams) ? match.teams.slice(0, 2) : [];
