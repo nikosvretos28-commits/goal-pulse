@@ -593,6 +593,7 @@ async function persistRollingTrends(matches, date) {
            event_id, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks
          FROM live_stat_snapshots
          WHERE event_id = ANY($1::text[])
+           AND shots_on_target IS NOT NULL
            AND observed_at <= NOW() - ($2::interval)
            AND observed_at >= NOW() - ($2::interval + $3::interval)
          ORDER BY event_id, team_name, observed_at DESC`,
