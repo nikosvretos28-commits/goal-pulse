@@ -3589,7 +3589,7 @@ const server = http.createServer(async (req, res) => {
           .replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
         const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
         let fixtureEntry = sportApiFixtureDateCache.get(liveDate);
-        if (!fixtureEntry || Date.now() - fixtureEntry.at > 300000) {
+        if (!fixtureEntry || Date.now() - fixtureEntry.at > (fixtureEntry.ttl || 300000)) {
           try {
             const fixtureResponse = await fetch("https://sportapi.ai/api/fixtures/date/" + liveDate, {
               headers: { "Accept": "application/json", "X-Api-Key": sportApiKey },
@@ -3599,13 +3599,17 @@ const server = http.createServer(async (req, res) => {
             if (fixtureResponse.ok) {
               const fixturePayload = await fixtureResponse.json();
               const fixtureRows = Array.isArray(fixturePayload?.data) ? fixturePayload.data : [];
-              fixtureEntry = { at: Date.now(), rows: fixtureRows };
+              fixtureEntry = { at: Date.now(), ttl: 300000, rows: fixtureRows };
               sportApiFixtureDateCache.set(liveDate, fixtureEntry);
             } else {
               sportApiDiagnostics.errors[String(fixtureResponse.status)] = (sportApiDiagnostics.errors[String(fixtureResponse.status)] || 0) + 1;
+              fixtureEntry = { at: Date.now(), ttl: 60000, rows: [] };
+              sportApiFixtureDateCache.set(liveDate, fixtureEntry);
             }
           } catch (error) {
             sportApiDiagnostics.errors.timeout = (sportApiDiagnostics.errors.timeout || 0) + 1;
+            fixtureEntry = { at: Date.now(), ttl: 60000, rows: [] };
+            sportApiFixtureDateCache.set(liveDate, fixtureEntry);
             console.warn("SportAPI fixture list unavailable:", error.message || "request failed");
           }
         }
@@ -3684,6 +3688,7 @@ const server = http.createServer(async (req, res) => {
               if (!statsResponse.ok) {
                 const statusKey = String(statsResponse.status);
                 sportApiDiagnostics.errors[statusKey] = (sportApiDiagnostics.errors[statusKey] || 0) + 1;
+                sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 120000, data: null });
                 continue;
               }
               const statsPayload = await statsResponse.json();
@@ -3733,6 +3738,7 @@ const server = http.createServer(async (req, res) => {
               sportApiDiagnostics.supplied++;
             } catch (error) {
               sportApiDiagnostics.errors.timeout = (sportApiDiagnostics.errors.timeout || 0) + 1;
+              sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 120000, data: null });
               console.warn("SportAPI fixture stats unavailable:", JSON.stringify({ fixtureId, error: error.message || "request failed" }));
             }
           }
