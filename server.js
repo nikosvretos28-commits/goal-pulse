@@ -1703,10 +1703,17 @@ const server = http.createServer(async (req, res) => {
           eventStatus.type?.name, competitionStatus.type?.name,
           eventStatus.displayClock, competitionStatus.displayClock
         ) || "");
-        const scoreboardMinute = firstStatusValue(
+        // Prefer a real numeric minute/clock, not a non-empty status label.
+        // A provider can expose "2nd half" at event level while the competition
+        // status still carries the actual clock needed by the AI first-half gate.
+        const isNumericScoreboardClock = value => {
+          const raw = String(value ?? "").trim();
+          return /^[0-9]{1,3}(?::[0-9]{1,2})?\s*['′’]?$/.test(raw);
+        };
+        const scoreboardMinute = [
           eventStatus.displayClock, competitionStatus.displayClock,
           eventStatus.type?.displayClock, competitionStatus.type?.displayClock
-        ) || "";
+        ].find(isNumericScoreboardClock) || "";
         scoreboardByTeams.set(key, {
           homeScore: home.score != null ? Number(home.score) : null,
           awayScore: away.score != null ? Number(away.score) : null,
