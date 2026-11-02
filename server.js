@@ -2130,12 +2130,27 @@ const server = http.createServer(async (req, res) => {
         const previous = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 4.5 * 60 * 1000 && now - snapshot.at <= 6 * 60 * 1000) || null;
         const previous10 = [...rollingSnapshots].reverse().find(snapshot => now - snapshot.at >= 9.5 * 60 * 1000 && now - snapshot.at <= 11 * 60 * 1000) || null;
         checked++;
-        // Either rolling baseline may qualify independently: do not require a 5-minute
-        // snapshot when the 10-minute SOT baseline is available.
-        if ((!previous || now - previous.at < 35000) && !previous10) continue;
+        // Prefer PostgreSQL-persisted rolling baselines attached to the default
+        // live-metrics response. They survive scanner restarts; use RAM only as fallback.
+        const persistedSotDelta = window => {
+          const rows = window?.teams;
+          if (!Array.isArray(rows) || rows.length < 2) return null;
+          const values = rows.map(team => team.shotsOnTarget);
+          if (values.some(value => value == null || !Number.isFinite(Number(value)))) return null;
+          return values.reduce((sum, value) => sum + Math.max(0, Number(value)), 0);
+        };
+        const persisted5mSot = persistedSotDelta(match.trend?.window5m);
+        const persisted10mSot = persistedSotDelta(match.trend?.window10m);
+        // Either rolling baseline may qualify independently.
+        if (((!previous || now - previous.at < 35000) && !previous10) &&
+            persisted5mSot == null && persisted10mSot == null) continue;
         const delta = key => current[key] == null || previous?.[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
-        const shots = delta("shots"), onTarget = delta("onTarget");
-        const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
+        const memory5mSot = delta("onTarget");
+        const memory10mSot = current.onTarget == null || previous10?.onTarget == null
+          ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
+        const shots = delta("shots");
+        const onTarget = persisted5mSot == null ? memory5mSot : persisted5mSot;
+        const onTarget10m = persisted10mSot == null ? memory10mSot : persisted10mSot;
         // AI trigger: recent SOT threshold OR the agreed two-team xG alternative.
         // Total shots and supporting metrics cannot trigger an alert by themselves.
         // The agreed xG alternative requires BOTH teams to qualify:
