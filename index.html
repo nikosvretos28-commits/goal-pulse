@@ -2488,7 +2488,7 @@ async function loadScores(){
  const results=(scoreboardJson.feeds||[]).map(feed=>{
   // Keep real matches visible even when the provider adds an unlisted competition.
   return (feed.events||[]).map(e=>{
-   const rawCompetition=String(e.leagueName||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+   const rawCompetition=String(e.leagueName||'').toLowerCase();
    const sportScoreCode=feed.code==='sportscore'
     ? (/qianchao|international youth football invitational/.test(rawCompetition)?'sportscore.qianchao-youth':/mongolia premier/.test(rawCompetition)?'sportscore.mongolia-premier':/vietnam.*3rd division|3rd division.*vietnam/.test(rawCompetition)?'sportscore.vietnam-third':null)
     : null;
