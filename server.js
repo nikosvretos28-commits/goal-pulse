@@ -3702,18 +3702,19 @@ const server = http.createServer(async (req, res) => {
                 const number = Number(String(value).replace("%", "").replace(",", "."));
                 return Number.isFinite(number) ? number : null;
               };
-              const apiValues = [
-                {
-                  shots: parseNumber(homeStats.shots),
-                  shotsOnTarget: parseNumber(homeStats.shots_on_target),
-                  shotsOffTarget: parseNumber(homeStats.shots_off_target)
-                },
-                {
-                  shots: parseNumber(awayStats.shots),
-                  shotsOnTarget: parseNumber(awayStats.shots_on_target),
-                  shotsOffTarget: parseNumber(awayStats.shots_off_target)
-                }
-              ];
+              const sportApiHomeValues = {
+                shots: parseNumber(apiHome.shots),
+                shotsOnTarget: parseNumber(apiHome.shots_on_target),
+                shotsOffTarget: parseNumber(apiHome.shots_off_target)
+              };
+              const sportApiAwayValues = {
+                shots: parseNumber(apiAway.shots),
+                shotsOnTarget: parseNumber(apiAway.shots_on_target),
+                shotsOffTarget: parseNumber(apiAway.shots_off_target)
+              };
+              const apiValues = candidate.sameOrientation
+                ? [sportApiHomeValues, sportApiAwayValues]
+                : [sportApiAwayValues, sportApiHomeValues];
               const teams = candidate.match.teams.slice(0, 2);
               teams.forEach((team, index) => {
                 const supplemental = apiValues[index];
@@ -3728,7 +3729,7 @@ const server = http.createServer(async (req, res) => {
                 ["shots", "shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "possession", "xG"]
                   .some(field => team[field] != null)
               );
-              sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 120000, data: apiValues });
+              sportApiStatsCache.set(fixtureId, { at: Date.now(), ttl: 120000, data: [sportApiHomeValues, sportApiAwayValues] });
               sportApiDiagnostics.supplied++;
             } catch (error) {
               sportApiDiagnostics.errors.timeout = (sportApiDiagnostics.errors.timeout || 0) + 1;
