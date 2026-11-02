@@ -2141,9 +2141,8 @@ const server = http.createServer(async (req, res) => {
         };
         const persisted5mSot = persistedSotDelta(match.trend?.window5m);
         const persisted10mSot = persistedSotDelta(match.trend?.window10m);
-        // Either rolling baseline may qualify independently.
-        if (((!previous || now - previous.at < 35000) && !previous10) &&
-            persisted5mSot == null && persisted10mSot == null) continue;
+        // Missing rolling SOT baselines disable only the SOT trigger for this scan.
+        // They must never skip the independent two-team xG alternative below.
         const delta = key => current[key] == null || previous?.[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
         const memory5mSot = delta("onTarget");
         const memory10mSot = current.onTarget == null || previous10?.onTarget == null
