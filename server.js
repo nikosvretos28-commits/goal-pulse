@@ -2134,8 +2134,25 @@ const server = http.createServer(async (req, res) => {
         // snapshot when the 10-minute SOT baseline is available.
         if ((!previous || now - previous.at < 35000) && !previous10) continue;
         const delta = key => current[key] == null || previous?.[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
-        const shots = delta("shots"), onTarget = delta("onTarget");
-        const onTarget10m = current.onTarget == null || previous10?.onTarget == null ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
+        // Prefer the same PostgreSQL-persisted rolling baselines already attached
+        // to the default live-metrics response. This survives scanner restarts and
+        // avoids losing the 5m/10m SOT history when the process memory is reset.
+        // Fall back to the existing in-memory snapshots when DB history is unavailable.
+        const persistedSotDelta = window => {
+          const rows = window?.teams;
+          if (!Array.isArray(rows) || rows.length < 2) return null;
+          const values = rows.map(team => team.shotsOnTarget);
+          if (values.some(value => value == null || !Number.isFinite(Number(value)))) return null;
+          return values.reduce((sum, value) => sum + Math.max(0, Number(value)), 0);
+        };
+        const persisted5mSot = persistedSotDelta(match.trend?.window5m);
+        const persisted10mSot = persistedSotDelta(match.trend?.window10m);
+        const memory5mSot = delta("onTarget");
+        const memory10mSot = current.onTarget == null || previous10?.onTarget == null
+          ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
+        const shots = delta("shots");
+        const onTarget = persisted5mSot == null ? memory5mSot : persisted5mSot;
+        const onTarget10m = persisted10mSot == null ? memory10mSot : persisted10mSot;
         // AI trigger: recent SOT threshold OR the agreed two-team xG alternative.
         // Total shots and supporting metrics cannot trigger an alert by themselves.
         // The agreed xG alternative requires BOTH teams to qualify:
