@@ -86,7 +86,7 @@ Always show N (matches) beside every percentage/average. Mark small samples clea
 ## Card 2 — AI ALERTS (EXPERIMENTAL)
 
 ### Purpose
-Run alternative AI-alert hypotheses side by side against a frozen reference profile. The purpose is to discover whether a changed rule improves reliability; no experimental profile may overwrite or influence production AI Alerts.
+Run alternative AI-alert hypotheses side by side against a frozen reference profile. The purpose is to discover whether a changed rule improves reliability; no experimental profile may overwrite or influence production AI Alerts. This card includes experimental full-match Over filters and first-half Over filters described below.
 
 ### A. Frozen reference profile
 Use the currently agreed production specification only as a labelled benchmark:
@@ -117,7 +117,37 @@ Create versioned, independently configurable profiles to test changes to:
 
 Do not assume a new threshold is approved. Every profile must have a name, version, exact rules, start/end date and an immutable configuration snapshot.
 
-### C. Full live match feature set
+### C. Team and league goal profile — full match
+For each team, use its current league season and show the competition baseline alongside it. Calculate separately:
+- Average goals scored per match (goals for).
+- Average goals conceded per match (goals against).
+- Average total goals in the team's matches (goals for + goals against).
+- Full-match Over 0.5, 1.5, 2.5, 3.5 and higher available lines: counts, percentages and sample size.
+- Clean-sheet percentage and percentage of matches in which the team conceded at least one goal.
+- Home and away splits, plus overall season figures.
+- The league's own goals-for, goals-against, total-goals averages and Over percentages as a comparison baseline.
+
+**Experimental full-match Over 3.5 filter:** before an Over 3.5 candidate can pass the historical team-profile gate, at least one of the two teams must have an average of **3.00 or more total goals per match in its own league-season matches** (goals scored plus goals conceded). If neither team reaches 3.00, reject that Over 3.5 candidate at this gate. This is only a historical eligibility filter; it does not itself create or approve an alert. Also display each team's Over 3.5 percentage and sample size. Do not confuse the 3.00 average-total-goals condition with a 3.5-goal outcome threshold.
+
+### D. First-half team and league goal profile
+For each team, in its current league season, calculate:
+- Average first-half goals scored per match (first-half goals for, +).
+- Average first-half goals conceded per match (first-half goals against, −).
+- Average total first-half goals in the team's matches (first-half goals for + against).
+- First-half Over 0.5, 1.5, 2.5 and 3.5 rates, with counts, percentages and sample size.
+- Home and away splits, plus overall season figures.
+- The same first-half goals-for, goals-against, total-goals averages and Over rates for the league as a whole.
+- Clearly identify whether a statistic is team-specific or league-wide; never substitute one for the other.
+
+**Experimental first-half Over filter:** assess the exact first-half line proposed by the candidate (for example, Over 1.5 HT must be checked against each team's Over 1.5 HT history):
+- If both teams are below 65% for that exact Over line, reject the candidate at this historical filter.
+- If at least one team is at or above 80% for that exact line, allow the candidate to continue through the remaining alert checks, even if the other team is below 65%.
+- Otherwise, if at least one team is at least 65% but neither reaches 80%, allow it to continue through the remaining checks; this is not an automatic approval.
+- Apply the rule independently to each line; do not use an Over 2.5 percentage to qualify an Over 1.5 candidate, for example.
+
+All team and league averages/rates must include the number of matches used. Prefer current-season data; show recent-form data separately rather than silently blending it into season figures. Mark small samples and unavailable fields explicitly.
+
+### E. Full live match feature set
 Capture for each team and match total:
 - Total shots; SOT; shots off target; blocked shots.
 - Shots inside/outside the box; inside-box SOT if available.
@@ -132,14 +162,14 @@ Capture for each team and match total:
 - Match minute, period, score, team identities and event/provider IDs.
 - Data age/freshness and per-field availability.
 
-### D. Pre-match context
+### F. Pre-match context
 - Team season and recent-form scoring/conceding rates.
 - Home/away splits and goal-time distributions.
 - Referee current-season averages: goals, Over 1.5/2.5/3.5, BTTS, cards, reds and penalties, always with sample size.
 - Competition baseline and match-level historical context.
-- Context features are supplementary; evaluate their incremental value and do not let them silently suppress a live SOT-qualified event.
+- Context features are supplementary; evaluate their incremental value and do not let them silently suppress a live SOT-qualified event except where a separately versioned experimental historical-Over filter explicitly defines a rejection rule.
 
-### E. Pipeline diagnostics
+### G. Pipeline diagnostics
 Record counts and examples at each stage:
 - Live matches received.
 - Match identity/team mapping success.
@@ -150,12 +180,12 @@ Record counts and examples at each stage:
 - SOT 5m/10m signal counts; xG signal counts.
 - Each supplementary feature's availability and contribution.
 - Protocol-qualified candidates per profile.
-- Rejections by reason (minute, missing stats, score mismatch, cooldown, duplicate, etc.).
+- Rejections by reason (minute, missing stats, score mismatch, cooldown, duplicate, historical Over filter, etc.).
 - History writes attempted/succeeded/failed.
 - Shadow notification attempts/suppressed/failed; LAB must not send production push notifications.
 - Provider/API errors, latency and retry counts.
 
-### F. Evaluation and settlement
+### H. Evaluation and settlement
 Before evaluating, declare one outcome definition per experiment (for example, goal within the next 10 minutes, or goal before full time); never mix definitions in one percentage.
 - Store each candidate snapshot as-of trigger time.
 - Count every candidate once per profile; deduplicate retries by stable event/profile/snapshot key.
@@ -165,7 +195,7 @@ Before evaluating, declare one outcome definition per experiment (for example, g
 - Compare each experiment with the frozen reference using identical matches and settlement rules.
 - Label insufficient sample sizes; never claim a validated hit rate from a small sample.
 
-### G. Safety and isolation requirements
+### I. Safety and isolation requirements
 - Shadow mode only at first. No public betting picks, no production notifications and no automatic bet placement.
 - LAB data, counters, profiles and history must use separate storage keys/tables/namespaces from production.
 - No writes to production settings, protocols, alerts, history, scanners or user subscriptions.
