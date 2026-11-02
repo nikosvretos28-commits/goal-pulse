@@ -3604,9 +3604,13 @@ const server = http.createServer(async (req, res) => {
               sportApiDateFixturesCache.set(liveDate, sportApiFixtures);
               console.log("[SportAPI canary] fixture list:", JSON.stringify({ date: liveDate, status: response.status, fixtures: rows.length }));
             } else {
+              sportApiFixtures = { at: now, rows: [] };
+              sportApiDateFixturesCache.set(liveDate, sportApiFixtures);
               console.warn("[SportAPI canary] fixture list unavailable:", JSON.stringify({ status: response.status }));
             }
           } catch (error) {
+            sportApiFixtures = { at: now, rows: [] };
+            sportApiDateFixturesCache.set(liveDate, sportApiFixtures);
             console.warn("[SportAPI canary] fixture list request failed:", error.message || "request failed");
           }
         }
