@@ -593,6 +593,7 @@ async function persistRollingTrends(matches, date) {
            event_id, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks
          FROM live_stat_snapshots
          WHERE event_id = ANY($1::text[])
+           AND shots_on_target IS NOT NULL
            AND observed_at <= NOW() - ($2::interval)
            AND observed_at >= NOW() - ($2::interval + $3::interval)
          ORDER BY event_id, team_name, observed_at DESC`,
@@ -1691,14 +1692,35 @@ const server = http.createServer(async (req, res) => {
         const away = competitors.find(team => team.homeAway === "away") || competitors[1];
         if (!home?.team?.displayName || !away?.team?.displayName) continue;
         const key = normalizeLiveTeam(home.team.displayName) + "|" + normalizeLiveTeam(away.team.displayName);
-        const status = event.status || competition?.status || {};
-        const statusText = String(status.type?.detail || status.type?.shortDetail || status.type?.name || status.displayClock || "");
+        // ESPN can expose event-level and competition-level status separately.
+        // The event-level object may be present but omit its clock, while the
+        // competition-level object still carries the numeric displayClock.
+        const eventStatus = event.status || {};
+        const competitionStatus = competition?.status || {};
+        const firstStatusValue = (...values) => values.find(value => value != null && String(value).trim() !== "");
+        const statusText = String(firstStatusValue(
+          eventStatus.type?.detail, competitionStatus.type?.detail,
+          eventStatus.type?.shortDetail, competitionStatus.type?.shortDetail,
+          eventStatus.type?.name, competitionStatus.type?.name,
+          eventStatus.displayClock, competitionStatus.displayClock
+        ) || "");
+        // Prefer a real numeric minute/clock, not a non-empty status label.
+        // A provider can expose "2nd half" at event level while the competition
+        // status still carries the actual clock needed by the AI first-half gate.
+        const isNumericScoreboardClock = value => {
+          const raw = String(value ?? "").trim();
+          return /^[0-9]{1,3}(?::[0-9]{1,2})?\s*['′’]?$/.test(raw);
+        };
+        const scoreboardMinute = [
+          eventStatus.displayClock, competitionStatus.displayClock,
+          eventStatus.type?.displayClock, competitionStatus.type?.displayClock
+        ].find(isNumericScoreboardClock) || "";
         scoreboardByTeams.set(key, {
           homeScore: home.score != null ? Number(home.score) : null,
           awayScore: away.score != null ? Number(away.score) : null,
           statusText,
-          status: String(status.type?.state || status.type?.name || ""),
-          minute: status.displayClock || status.type?.displayClock || "",
+          status: String(firstStatusValue(eventStatus.type?.state, competitionStatus.type?.state, eventStatus.type?.name, competitionStatus.type?.name) || ""),
+          minute: scoreboardMinute,
           leagueCode: String(event.__goalPulseLeagueCode || "")
         });
       }
@@ -2134,9 +2156,14 @@ const server = http.createServer(async (req, res) => {
         // live-metrics response. They survive scanner restarts; use RAM only as fallback.
         const persistedSotDelta = window => {
           const rows = window?.teams;
-          if (!Array.isArray(rows) || rows.length < 2) return null;
-          const values = rows.map(team => team.shotsOnTarget);
-          if (values.some(value => value == null || !Number.isFinite(Number(value)))) return null;
+          if (!Array.isArray(rows) || !rows.length) return null;
+          // A known team's SOT delta can qualify when it alone reaches the
+          // combined threshold. Missing opponent data must not erase it.
+          // Unknown values are ignored, never fabricated as zero.
+          const values = rows
+            .map(team => team.shotsOnTarget)
+            .filter(value => value != null && Number.isFinite(Number(value)));
+          if (!values.length) return null;
           return values.reduce((sum, value) => sum + Math.max(0, Number(value)), 0);
         };
         const persisted5mSot = persistedSotDelta(match.trend?.window5m);
