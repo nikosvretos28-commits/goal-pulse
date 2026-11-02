@@ -1691,14 +1691,28 @@ const server = http.createServer(async (req, res) => {
         const away = competitors.find(team => team.homeAway === "away") || competitors[1];
         if (!home?.team?.displayName || !away?.team?.displayName) continue;
         const key = normalizeLiveTeam(home.team.displayName) + "|" + normalizeLiveTeam(away.team.displayName);
-        const status = event.status || competition?.status || {};
-        const statusText = String(status.type?.detail || status.type?.shortDetail || status.type?.name || status.displayClock || "");
+        // ESPN can expose event-level and competition-level status separately.
+        // The event-level object may be present but omit its clock, while the
+        // competition-level object still carries the numeric displayClock.
+        const eventStatus = event.status || {};
+        const competitionStatus = competition?.status || {};
+        const firstStatusValue = (...values) => values.find(value => value != null && String(value).trim() !== "");
+        const statusText = String(firstStatusValue(
+          eventStatus.type?.detail, competitionStatus.type?.detail,
+          eventStatus.type?.shortDetail, competitionStatus.type?.shortDetail,
+          eventStatus.type?.name, competitionStatus.type?.name,
+          eventStatus.displayClock, competitionStatus.displayClock
+        ) || "");
+        const scoreboardMinute = firstStatusValue(
+          eventStatus.displayClock, competitionStatus.displayClock,
+          eventStatus.type?.displayClock, competitionStatus.type?.displayClock
+        ) || "";
         scoreboardByTeams.set(key, {
           homeScore: home.score != null ? Number(home.score) : null,
           awayScore: away.score != null ? Number(away.score) : null,
           statusText,
-          status: String(status.type?.state || status.type?.name || ""),
-          minute: status.displayClock || status.type?.displayClock || "",
+          status: String(firstStatusValue(eventStatus.type?.state, competitionStatus.type?.state, eventStatus.type?.name, competitionStatus.type?.name) || ""),
+          minute: scoreboardMinute,
           leagueCode: String(event.__goalPulseLeagueCode || "")
         });
       }
