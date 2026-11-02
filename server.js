@@ -997,8 +997,7 @@ async function getVerifiedOverOddsPapi(match, targetLine, period = "first_half")
       marketCount: Array.isArray(markets) ? markets.length : null,
       oddsReturned: Boolean(odds), hasBookmakerOdds: Boolean(odds?.bookmakerOdds),
       hasOdds: fixture.hasOdds ?? odds?.hasOdds ?? null
-    }));
-    return null;
+    }));    return null;
   }
   const isFirstHalf = period !== "second_half";
   const matchingMarkets = markets.filter(m => {
@@ -1997,8 +1996,7 @@ const server = http.createServer(async (req, res) => {
           for (const row of pendingAsian.rows) {
             const bet = row.payload || {};
             if (!bet.home || !bet.away || !Number.isFinite(Number(bet.overLine))) continue;
-            const final = finalByTeams.get(normalizeSettlementTeam(bet.home) + "|" + normalizeSettlementTeam(bet.away));
-            if (!final) continue;
+            const final = finalByTeams.get(normalizeSettlementTeam(bet.home) + "|" + normalizeSettlementTeam(bet.away));            if (!final) continue;
             // Asian alerts are second-half-only. Never grade one against full-time total
             // when its period/start score metadata is missing; leave it pending for review.
             const isSecondHalfAsian = bet.lineType === "asian" && bet.asianPeriod === "second_half" &&
@@ -2134,9 +2132,14 @@ const server = http.createServer(async (req, res) => {
         // live-metrics response. They survive scanner restarts; use RAM only as fallback.
         const persistedSotDelta = window => {
           const rows = window?.teams;
-          if (!Array.isArray(rows) || rows.length < 2) return null;
-          const values = rows.map(team => team.shotsOnTarget);
-          if (values.some(value => value == null || !Number.isFinite(Number(value)))) return null;
+          if (!Array.isArray(rows) || !rows.length) return null;
+          // A known team's SOT delta is sufficient when it alone reaches the
+          // combined threshold. Missing data for the opponent must not erase it.
+          // Unknown team values are never treated as zero or used to qualify.
+          const values = rows
+            .map(team => team.shotsOnTarget)
+            .filter(value => value != null && Number.isFinite(Number(value)));
+          if (!values.length) return null;
           return values.reduce((sum, value) => sum + Math.max(0, Number(value)), 0);
         };
         const persisted5mSot = persistedSotDelta(match.trend?.window5m);
@@ -2997,8 +3000,7 @@ const server = http.createServer(async (req, res) => {
                 mapped: sportScoreEvents.length, added: missingSportScoreEvents.length,
                 errors: sportScoreResponses.filter(x => !x.ok).map(x => ({ status: x.status, httpStatus: x.httpStatus, error: x.error }))
               }));
-            } else {              console.warn("SportScore returned no mappable fixtures:", JSON.stringify(sportScoreResponses.map(x => ({ status: x.status, ok: x.ok, received: x.matches.length, httpStatus: x.httpStatus, error: x.error }))));
-            }          } catch (error) {
+            } else {              console.warn("SportScore returned no mappable fixtures:", JSON.stringify(sportScoreResponses.map(x => ({ status: x.status, ok: x.ok, received: x.matches.length, httpStatus: x.httpStatus, error: x.error }))));            }          } catch (error) {
             console.warn("SportScore scoreboard unavailable; keeping existing feeds:", error.message || "request failed");
           }
 
