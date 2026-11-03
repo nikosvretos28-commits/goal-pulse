@@ -2289,7 +2289,9 @@ const server = http.createServer(async (req, res) => {
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40;
         const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies);
-        if (aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
+        // Keep the first 16 general samples, but never omit an eligible 1′–40′ match.
+        // This makes the scanner diagnostics useful when late matches dominate feed ordering.
+        if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
           away: String(match.away || ""),
           minute: Number.isFinite(aiMinute) ? aiMinute : null,
