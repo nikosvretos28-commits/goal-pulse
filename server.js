@@ -2204,7 +2204,6 @@ const server = http.createServer(async (req, res) => {
         };
         const memory5mSot = memorySotDelta(previous);
         const memory10mSot = memorySotDelta(previous10);
-        const shots = 0; // Total attempts are excluded from all GoalMatrix signal calculations.
         // A persisted baseline can be present but stale or undercounted (including a zero delta).
         // Never let that persisted value mask stronger independently observed in-memory SOT activity.
         // Use the stronger of the two measurements for each window; never add them together.
