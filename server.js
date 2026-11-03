@@ -556,10 +556,10 @@ async function persistRollingTrends(matches, date) {
   try {
     const snapshots = [];
     for (const match of matches) for (const team of match.teams || []) {
-      const hasPersistableStat = ["shots", "shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
+      const hasPersistableStat = ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
         .some(key => team[key] != null && Number.isFinite(Number(team[key])));
       if (team.team && hasPersistableStat) {
-        snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
+        snapshots.push([String(match.eventId), date, String(team.team), null, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
       }
     }
     if (!snapshots.length) return true;
@@ -668,7 +668,7 @@ function addRollingTrends(matches) {
       at: now,
       teams: match.teams.map(team => ({
         team: String(team.team || "").trim().toLowerCase(),
-        shots: team.shots,
+        shots: null,
         shotsOnTarget: team.shotsOnTarget,
         corners: team.corners,
         attacks: team.attacks,
@@ -695,7 +695,7 @@ function addRollingTrends(matches) {
         };
         return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerousAttacks") };
       });
-      const available = deltas.some(item => item.shots != null || item.shotsOnTarget != null || item.corners != null || item.attacks != null || item.dangerousAttacks != null);
+      const available = deltas.some(item => item.shotsOnTarget != null || item.corners != null || item.attacks != null || item.dangerousAttacks != null);
       return { available, sampleMinutes: Math.round((now - baseline.at) / 60000 * 10) / 10, teams: deltas };
     };
     match.trend = {
@@ -2136,7 +2136,7 @@ const server = http.createServer(async (req, res) => {
         const maxTeamSOT = teamSOTValues.length ? Math.max(...teamSOTValues) : null;
         const current = {
           at: now,
-          shots: total("shots"),
+          shots: null,
           onTarget: total("shotsOnTarget"),
           // Preserve each team's SOT independently; a missing value for one side
           // must not erase the other side's valid rolling SOT measurement.
@@ -2204,7 +2204,7 @@ const server = http.createServer(async (req, res) => {
         };
         const memory5mSot = memorySotDelta(previous);
         const memory10mSot = memorySotDelta(previous10);
-        const shots = delta("shots");
+        const shots = 0; // Total attempts are excluded from all GoalMatrix signal calculations.
         // A persisted baseline can be present but stale or undercounted (including a zero delta).
         // Never let that persisted value mask stronger independently observed in-memory SOT activity.
         // Use the stronger of the two measurements for each window; never add them together.
@@ -2228,11 +2228,11 @@ const server = http.createServer(async (req, res) => {
         const xGTotalSupport = atLeastOneTeamXGQualified ? 2.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
         // but shots and at least one shot on target remain mandatory (no corner-only alerts).
-        const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
+        const evidenceKinds = [onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
         // AI goal pressure prioritizes shots, shots on target, dangerous attacks and xG.
         // Corners add limited supporting weight; they can never trigger an alert alone.
         // Clean-sheet history is not supplied consistently by this live feed, so it is not imputed.
-        const totalShots = current.shots == null ? 0 : Number(current.shots);
+        const totalShots = 0; // SOT-only: total shots are not recorded or scored.
         const totalOnTarget = current.onTarget == null ? 0 : Number(current.onTarget);
         const totalAttacks = current.attacks == null ? 0 : Number(current.attacks);
         const totalDangerous = current.dangerous == null ? 0 : Number(current.dangerous);
@@ -2244,11 +2244,11 @@ const server = http.createServer(async (req, res) => {
         const attacksAvailable = current.attacks != null && previous?.attacks != null;
         const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
         const recentGoalEvidence = dangerousAvailable
-          ? shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && dangerous >= 3
-          : attacksAvailable && shots >= 2 && onTarget >= 1 && attacks >= 5 && [shots, onTarget, attacks].filter(value => value > 0).length >= 3;
+          ? onTarget >= 1 && evidenceKinds >= 2 && dangerous >= 3
+          : attacksAvailable && onTarget >= 1 && attacks >= 5;
         const sustainedGoalEvidence = dangerousAvailable
-          ? totalShots >= 20 && totalOnTarget >= 4 && totalDangerous >= 20
-          : attacksAvailable && totalShots >= 20 && totalOnTarget >= 4 && totalAttacks >= 60;
+          ? totalOnTarget >= 4 && totalDangerous >= 20
+          : attacksAvailable && totalOnTarget >= 4 && totalAttacks >= 60;
         // xG strengthens the candidate when available; missing xG never blocks evaluation.
         // Current-match shot quality is a supplemental signal, never a standalone trigger.
         // Use goals/SOT as a conservative live conversion indicator when the feed provides valid values.
@@ -2257,10 +2257,9 @@ const server = http.createServer(async (req, res) => {
         const goalsLiveAvailable = Number.isFinite(homeGoalsLive) && Number.isFinite(awayGoalsLive);
         const teamShotProfiles = teams.map((team, index) => {
           const teamGoals = goalsLiveAvailable ? (index === 0 ? homeGoalsLive : awayGoalsLive) : null;
-          const teamShots = Number(team.shots);
           const teamOnTarget = Number(team.shotsOnTarget);
           return {
-            shots: Number.isFinite(teamShots) ? teamShots : null,
+            shots: null,
             onTarget: Number.isFinite(teamOnTarget) ? teamOnTarget : null,
             goals: teamGoals,
             conversionOnTarget: teamGoals != null && Number.isFinite(teamOnTarget) && teamOnTarget > 0
@@ -2273,8 +2272,8 @@ const server = http.createServer(async (req, res) => {
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
         const shotQualitySupport = (current.shotsOnTargetInsideBox == null ? 0 : Math.min(2, current.shotsOnTargetInsideBox * 0.5)) + (current.bigChances == null ? 0 : Math.min(2, current.bigChances * 0.75));
-        const basePoints = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + shotQualitySupport;
-        const baseSustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport + shotQualitySupport;
+        const basePoints = onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + shotQualitySupport;
+        const baseSustainedPoints = Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport + shotQualitySupport;
         // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
         // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && basePoints + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && baseSustainedPoints + liveConversionSupport >= 8));
@@ -2487,7 +2486,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, onTarget10m, totalOnTarget, totalSotSupport, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, totalSotSupport, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
@@ -3829,12 +3828,12 @@ const server = http.createServer(async (req, res) => {
       const persisted = highActivityOnly ? null : await persistRollingTrends(matches, date);
       if (!highActivityOnly && !persisted) addRollingTrends(matches);
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
-        team.team && ["shots", "shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
+        team.team && ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
       const trendHistory = highActivityOnly ? "isolated high-activity feed; shared trend history untouched" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
-      const diagnosticFields = ["shots","shotsOnTarget","shotsOffTarget","corners","possession","xG"];
+      const diagnosticFields = ["shotsOnTarget","corners","possession","xG"];
       const liveMetricsAudit = {
         scope: highActivityOnly ? "high-activity" : "default",
         totalLiveEvents: liveEvents.length,
