@@ -3447,12 +3447,15 @@ function evaluateHighActivityObservations(ranked){
   const eventId=String(match.id);
   const signalType=rankedItem.signalType||'standard';
   const stats=liveMetricsCache.get(eventId);
-  const clockText=String(match.clock||stats?.live_minute||stats?.liveMinute||stats?.elapsed||stats?.time?.elapsed||stats?.minute||'');
+  const clockCandidates=[match.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute].map(value=>String(value??'').trim()).filter(Boolean);
+  const clockText=clockCandidates.find(value=>/\d{1,3}/.test(value))||clockCandidates[0]||'';
   const clock=clockText.match(/\d{1,3}/);
   const minute=clock?Number(clock[0]):null;
   if(!Number.isFinite(minute))continue;
-  const half=minute<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ';
-  const periodKey=minute<=45?'1H':'2H';
+  const observationPeriodText=[clockText,match.statusText,match.status,match.state,match.period,match.statusPeriod].filter(Boolean).join(' ').toLowerCase();
+  const observationIsSecondHalf=minute>=46||/second half|2nd half|2ο ημίχρονο|\b2h\b|second_half/i.test(observationPeriodText);
+  const half=observationIsSecondHalf?'2ο ΗΜΙΧΡΟΝΟ':'1ο ΗΜΙΧΡΟΝΟ';
+  const periodKey=observationIsSecondHalf?'2H':'1H';
   const score=highActivityScore(match);if(!score)continue;
   const signalStats={
    totalOnTarget:Number.isFinite(Number(rankedItem.totalOnTarget))?Number(rankedItem.totalOnTarget):null,
@@ -3545,9 +3548,9 @@ function renderHighActivityMatches(){
   // Established HI Activity remains 1′–40′; the approved second-half signal is evaluated separately.
   const minuteMatch=String(clockText).match(/(\d{1,3})/);
   const minute=minuteMatch?Number(minuteMatch[1]):null;
-  const periodText=String(clockText)+' '+statusText;
+  const periodText=[clockText,m.statusText,m.status,m.state,m.period,m.statusPeriod].filter(Boolean).join(' ').toLowerCase();
   const isHalfTime=/\b(?:ht|half[ -]*time|halftime|interval)\b/i.test(periodText);
-  const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο/i.test(periodText));
+  const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο|\b2h\b|second_half/i.test(periodText));
   const stoppageMatch=String(clockText).match(/(\d{1,3})\s*\+\s*(\d{1,2})/);
   const effectiveMinute=stoppageMatch?Number(stoppageMatch[1])+Number(stoppageMatch[2]):minute;
   const inFirstHalfWindow=Number.isFinite(minute)&&!isHalfTime&&!isSecondHalf&&minute>=1&&minute<=40;
