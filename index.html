@@ -3731,7 +3731,9 @@ function renderHighActivityMatches(){
  }
  evaluateHighActivityObservations(hiActivityRanked);
  highActivityEligibleIds=new Set(hiActivityRanked.map(x=>String(x.match.id)));
- const topTen=hiActivityRanked;
+ // Keep one visible row per match even when multiple independent signals fire;
+ // the observation history above still records each signal separately.
+ const topTen=[...new Map(hiActivityRanked.map(x=>[String(x.match.id),x])).values()];
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
   ?topTen.map(x=>{const label=x.signalType==='low_sot_10m_general_trial'?'🧪 ΔΟΚΙΜΗ · ΓΕΝΙΚΟ 0–2 SOT / 10′':x.signalType==='low_sot_10m_second_half_trial'?'🧪 ΔΟΚΙΜΗ · 2ο ΗΜΙΧΡΟΝΟ 0–2 SOT / 10′':'HI ACTIVITY · ΚΑΝΟΝΙΚΟ ΠΡΩΤΟΚΟΛΛΟ';return liveMatchLine(x.match,true,x.intensity)+'<div class="subtle" style="padding:2px 10px 6px;font-size:11px">'+label+'</div>'+renderHighActivityTeamMetricsForMatch(x.match)}).join("")
