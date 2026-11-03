@@ -107,15 +107,15 @@ Corner alerts are a separate market from goal alerts. A high-pressure phase can 
 ### 7.2 Required live evidence
 Use the strongest available evidence, in this order:
 1. Timestamped corner events and match clock, to confirm the true event sequence and measure time since the last corner.
-2. Recent attacks into the final third/penalty area, crosses, blocked shots, shots from inside the box, clearances and sustained territorial pressure, if the provider supplies these event types.
+2. Recent attacks into the final third/penalty area, crosses, non-shot event data, SOT from inside the box, clearances and sustained territorial pressure, if the provider supplies these event types.
 3. Rolling 5/10-minute changes in SOT and corners; use the recent corner rate as context, not as a stand-alone trigger.
 4. Scoreline, minute, red cards, home/away status and game state, plus the attacking team's historical corners-for and opponent corners-conceded profile, split by home/away and competition where possible.
 5. League and match-level baselines with sample sizes and missing-data indicators.
 
-Aggregate possession or a provider's “dangerous attacks” count is supporting evidence only: definitions vary by provider and neither measure proves that a corner is imminent. Do not invent crosses, box entries, blocked shots, or historical rates when absent.
+Aggregate possession or a provider's “dangerous attacks” count is supporting evidence only: definitions vary by provider and neither measure proves that a corner is imminent. Do not invent crosses, box entries, non-shot event data, or historical rates when absent.
 
 ### 7.3 Two-stage trigger
-**Stage A — pressure watch:** enter watch state only when the match is live, data is fresh, and at least two independent signals support sustained attacking pressure. Examples include a rise in recent SOT plus an increase in attacks/crosses/blocked shots, or verified box pressure plus a recent corner sequence. A single high full-match total is insufficient.
+**Stage A — pressure watch:** enter watch state only when the match is live, data is fresh, and at least two independent signals support sustained attacking pressure. Examples include a rise in recent SOT plus an increase in attacks/crosses/non-shot event data, or verified box pressure plus a recent corner sequence. A single high full-match total is insufficient.
 
 **Stage B — alert decision:** issue a corner alert only if the target horizon has adequate evidence from a validated model, or from a clearly labelled heuristic while the model is not calibrated. Require:
 - at least two independent live signals, with no contradictory stale/missing critical data;
@@ -145,7 +145,7 @@ Fit separate horizon outputs or a properly calibrated survival model. Compare ag
 
 ### 7.6 User-facing alert copy
 Use concise, evidence-based language, for example:
-- **CORNER PRESSURE — WATCH**: “Pressure increased in the last 5 minutes; shots rose and recent attacking actions are sustained. Corner probability not calibrated.”
+- **CORNER PRESSURE — WATCH**: “Pressure increased in the last 5 minutes; SOT increased and recent attacking actions are sustained. Corner probability not calibrated.”
 - **CORNER ALERT — 10 MIN**: show only after the validated threshold is met; display the estimated probability, model version and supporting evidence.
 - **INSUFFICIENT DATA**: “Live event data is incomplete/stale; no corner alert issued.”
 
