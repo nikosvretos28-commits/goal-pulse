@@ -90,3 +90,18 @@ It should explain every acceptance/rejection and report evidence-based findings.
 - 2026-11-02: Production remains untouched; all protocol experiments begin in LAB.
 - 2026-11-02: Existing three scheduled tasks must remain unchanged.
 - 2026-11-02: A three-day AI Auditor report is a future requirement, not an active scheduled task.
+
+
+## Live games connection — 2026-11-03
+
+- Added `LAB/server.js`, a separate read-only Node service for the LAB.
+- Live scoreboard source: public ESPN soccer scoreboard endpoints, polled on request and cached for 25 seconds.
+- Competition coverage is an explicit allowlist in the LAB adapter. Unsupported competitions may not appear; per-competition failures are surfaced in the response.
+- Match detail requests retrieve only statistics explicitly supplied by ESPN. Missing values remain unavailable; rolling 5/10-minute SOT, Big Chances, shots inside the box and xGOT are not fabricated or inferred.
+- The LAB page now includes a live-games panel and per-match statistics view.
+- The API serves the LAB page itself and exposes `/health`, `/api/live-games`, and `/api/match-stats`.
+- Separate Render service: `goalmatrix-lab-api` (free plan, Frankfurt), branch `lab-live-games-espn-adapter`. This is independent of `goalmatrix-live`.
+- No production credentials, production APIs, production database, or production scanners are used. No writes, pushes, or bets.
+- The free instance may sleep when idle; the first request after inactivity can take longer. ESPN coverage and stat completeness are not guaranteed.
+
+**Status:** the isolated live scoreboard adapter and dashboard are deployed to the LAB API service. This is an initial public-feed integration, not a validated high-accuracy commercial data feed. Before relying on xG or complete statistics, run the documented provider acceptance test and obtain explicit approval for any paid provider.
