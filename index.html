@@ -3458,7 +3458,7 @@ function evaluateHighActivityObservations(ranked){
   };
   // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
-  const signalType=rankedItem.generalSot10mTrial?'SOT10M_0_2_FIRST_HALF':rankedItem.secondHalfSot10mTrial?'SOT10M_0_2_SECOND_HALF':'EXISTING_HI_ACTIVITY';
+  const signalType=rankedItem.generalSot10mTrial?'SOT10M_FIRST_HALF':rankedItem.secondHalfSot10mTrial?'SOT10M_SECOND_HALF':'EXISTING_HI_ACTIVITY';
   const observationId=[eventId,periodKey,minute,score.home+'-'+score.away,signalType,
    signalStats.totalOnTarget??'na',signalStats.recentOnTarget??'na',
    signalStats.recentShotsOnTarget10m??'na',signalStats.shotsOnTargetInsideBox??'na',signalStats.bigChances??'na'].join(':');
@@ -3647,15 +3647,13 @@ function renderHighActivityMatches(){
   // Supplementary shot-quality support only; these statistics never trigger High Activity alone.
   const shotQualitySupport=Math.min(2,insideBoxSotSupport*0.5)+Math.min(2,bigChancesSupport*0.75);
   const pressureScore=delta.shotsOnTarget+shotQualitySupport;
-  // Existing HI Activity triggers remain unchanged and first-half only.
-  // Two independent 7-day trial signals: 2+ SOT in the last 10m, match score 0-2.
-  // The second-half signal is deliberately tracked separately from the first-half signal.
+  // Preserve every existing HI Activity criterion exactly as before.
+  // Add an independent 2+ SOT rolling-10-minute trigger in either half, with no score filter.
+  // First- and second-half trial signals remain separately tracked.
   const strictRecentSotStrong=firstHalfWindow&&hiActivitySot5m!==null&&hiActivitySot5m>=2;
   const strictRecentSot10m=firstHalfWindow&&hiActivitySot10m!==null&&hiActivitySot10m>=4;
   const xGBothTeamsQualified=firstHalfWindow&&xGValues.length>=2&&xGValues.every(value=>value!==null&&Number.isFinite(value)&&value>=2.0);
-  const matchScoreHome=Number(m.homeScore??m.home?.score),matchScoreAway=Number(m.awayScore??m.away?.score);
-  const lowScoreMatch=Number.isFinite(matchScoreHome)&&Number.isFinite(matchScoreAway)&&matchScoreHome>=0&&matchScoreAway>=0&&(matchScoreHome+matchScoreAway)<=2;
-  const trialSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=2&&lowScoreMatch;
+  const trialSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=2;
   const generalSot10mTrial=firstHalfWindow&&trialSot10m;
   const secondHalfSot10mTrial=secondHalfTrialWindow&&trialSot10m;
   const protocolQualified=strictRecentSotStrong||strictRecentSot10m||(cumulativeSotStrong&&firstHalfWindow)||xGBothTeamsQualified||generalSot10mTrial||secondHalfSot10mTrial;
