@@ -2055,6 +2055,7 @@ const server = http.createServer(async (req, res) => {
       }
       let checked = 0, sent = 0, candidates = 0;
       let strongSignals = 0, firstHalfOddsChecks = 0, firstHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
+      const aiSignalDiagnostics = [];
       // Enforce a persistent maximum of four AI alerts per match per half.
       // Seed counts from the alert history so restarts do not reset the limit.
       const alertCountsByMatchHalf = new Map();
@@ -2288,6 +2289,23 @@ const server = http.createServer(async (req, res) => {
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40;
         const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies);
+        if (aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
+          home: String(match.home || ""),
+          away: String(match.away || ""),
+          minute: Number.isFinite(aiMinute) ? aiMinute : null,
+          status: String(match.statusText || match.status || match.status_text || ""),
+          scoreAvailable,
+          statsAvailable: Boolean(match.statsAvailable),
+          sot5m: onTarget,
+          sot10m: onTarget10m,
+          xGHome: teamXGValues[0],
+          xGAway: teamXGValues[1],
+          recentSotQualifies,
+          xGQualifies,
+          eligibleMinute,
+          qualifies: isAiGoal,
+          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40" : !recentSotQualifies && !xGQualifies ? "no_recent_sot_or_xg_signal" : "qualified"
+        });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
         if (isAiGoal) strongSignals++;
@@ -2515,7 +2533,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const liveMatchSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, aiSignalDiagnostics, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
