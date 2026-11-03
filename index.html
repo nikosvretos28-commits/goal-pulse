@@ -3731,7 +3731,7 @@ function renderHighActivityMatches(){
  const topTen=hiActivityRanked;
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
-  ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
+  ?topTen.map(x=>{const label=x.signalType==='low_sot_10m_general_trial'?'🧪 ΔΟΚΙΜΗ · ΓΕΝΙΚΟ 0–2 SOT / 10′':x.signalType==='low_sot_10m_second_half_trial'?'🧪 ΔΟΚΙΜΗ · 2ο ΗΜΙΧΡΟΝΟ 0–2 SOT / 10′':'HI ACTIVITY · ΚΑΝΟΝΙΚΟ ΠΡΩΤΟΚΟΛΛΟ';return liveMatchLine(x.match,true,x.intensity)+'<div class="subtle" style="padding:2px 10px 6px;font-size:11px">'+label+'</div>'+renderHighActivityTeamMetricsForMatch(x.match)}).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν διαθέσιμες επιλογές αυτή τη στιγμή.</div>';
 }
 document.addEventListener('click',async event=>{
