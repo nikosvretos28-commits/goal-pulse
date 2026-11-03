@@ -3551,7 +3551,7 @@ function renderHighActivityMatches(){
    shotsOnTarget:team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots,
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??team.shots_on_target_in_box??team.shots_on_target_inside_penalty_area??team.shots_on_target_in_penalty_area??team.shots_on_target_from_inside_box??team.on_target_inside_box,
    bigChances:team.bigChances??team.big_chances??team.big_chance??team.big_chances_created??team.big_chance_created,
-   shotsOffTarget:team.shotsOffTarget??team.shots_off_target??team.shots_off_goal??team.shotsOffGoal??team.offTargetShots,
+   shotsOffTarget:null,
    xG:team.xG??team.xg??team.expectedGoals,
    attacks:team.attacks??team.totalAttacks??team.total_attacks,
    dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??team.dangerousAttack
@@ -3725,7 +3725,7 @@ document.addEventListener('click',async event=>{
  
  const overLine=asian?2.0:(periodAtSignal==='first_half'?score+0.5:null);
  const overLineAtSignal=Number(match.home.score||0)+Number(match.away.score||0)+0.5;const market=asian?'Ασιατικό Over 2.0 (2ο ημίχρονο)':(periodAtSignal==='first_half'?'1ο ημίχρονο Over '+overLine:'2ο ημίχρονο Over '+overLineAtSignal);
- const record={eventId:match.id,home:match.home.name,away:match.away.name,league:match.league,country:match.country||'Διεθνής',minute:clock,minuteNumber:minute,periodAtSignal,market,overLine:asian?2.0:(periodAtSignal==='first_half'?overLine:overLineAtSignal),lineType:asian?'asian':'standard',...(asian?{asianPeriod:'second_half'}:{}),reason:'Επιλέχθηκε χειροκίνητα ως VIP από το '+(button.closest('#powerGamesRows')?'POWER GAMES':'HI ACTIVITY')+'. Σκορ επιλογής: '+(match.home.score??'–')+'–'+(match.away.score??'–')+'. '+(asian?'Ασιατικό Over 2.0 αποκλειστικά για τα γκολ του 2ου ημιχρόνου· ακριβώς 2 γκολ στο 2ο ημίχρονο σημαίνουν επιστροφή.':(periodAtSignal==='first_half'?'Κανονικό Over: απαιτείται τουλάχιστον ένα ακόμη γκολ μέχρι το ημίχρονο.':'Στόχος: τουλάχιστον ένα ακόμη γκολ στο δεύτερο ημίχρονο.'))+' Η επιλογή VIP δεν εγγυάται αποτέλεσμα.',time:new Date(now).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:score,scoreAtSignal:{home:Number(match.home.score||0),away:Number(match.away.score||0)},startCorners:corners,startShots:shots,startShotsOnTarget:shotsOnTarget,evaluationWindowMinutes:Number(document.getElementById('signalOutcomeWindow')?.value||15),outcome:'εκκρεμεί',level:'VIP',source:button.closest('#powerGamesRows')?'manual-power-games':'manual-high-activity',betOutcome:'pending'};
+ const record={eventId:match.id,home:match.home.name,away:match.away.name,league:match.league,country:match.country||'Διεθνής',minute:clock,minuteNumber:minute,periodAtSignal,market,overLine:asian?2.0:(periodAtSignal==='first_half'?overLine:overLineAtSignal),lineType:asian?'asian':'standard',...(asian?{asianPeriod:'second_half'}:{}),reason:'Επιλέχθηκε χειροκίνητα ως VIP από το '+(button.closest('#powerGamesRows')?'POWER GAMES':'HI ACTIVITY')+'. Σκορ επιλογής: '+(match.home.score??'–')+'–'+(match.away.score??'–')+'. '+(asian?'Ασιατικό Over 2.0 αποκλειστικά για τα γκολ του 2ου ημιχρόνου· ακριβώς 2 γκολ στο 2ο ημίχρονο σημαίνουν επιστροφή.':(periodAtSignal==='first_half'?'Κανονικό Over: απαιτείται τουλάχιστον ένα ακόμη γκολ μέχρι το ημίχρονο.':'Στόχος: τουλάχιστον ένα ακόμη γκολ στο δεύτερο ημίχρονο.'))+' Η επιλογή VIP δεν εγγυάται αποτέλεσμα.',time:new Date(now).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:score,scoreAtSignal:{home:Number(match.home.score||0),away:Number(match.away.score||0)},startCorners:corners,startShotsOnTarget:shotsOnTarget,evaluationWindowMinutes:Number(document.getElementById('signalOutcomeWindow')?.value||15),outcome:'εκκρεμεί',level:'VIP',source:button.closest('#powerGamesRows')?'manual-power-games':'manual-high-activity',betOutcome:'pending'};
  record.alertId=alertHistoryKey(record);signalAlertHistory.unshift(record);signalAlertHistory=signalAlertHistory.slice(0,5000);
  try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
  button.textContent='◆ VIP ALERT καταχωρίστηκε';button.disabled=true;
@@ -3858,11 +3858,11 @@ function captureHighActivitySotSnapshots(){
   };
   const values=live.teams.slice(0,2).map(team=>({
    homeAway:team.homeAway,
-   shots:team.shots??team.totalShots??team.total_shots??team.total_attempts??team.totalAttempts??null,
+   shots:null,
    shotsOnTarget:readSot(team),
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??null,
    bigChances:team.bigChances??team.big_chances??null,
-   shotsOffTarget:team.shotsOffTarget??team.shots_off_target??null,
+   shotsOffTarget:null,
    corners:team.corners??null,
    attacks:team.attacks??team.totalAttacks??team.total_attacks??null,
    dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??null,
