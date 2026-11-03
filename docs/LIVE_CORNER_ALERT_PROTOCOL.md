@@ -28,8 +28,8 @@ Before scoring a match, require:
 - Corner count change must come from a verified event or a reliable cumulative-stat delta.
 
 ### B. Attacking pressure (supporting evidence)
-- Shots and shots on target in last 5/10 minutes.
-- Blocked shots and crosses into the penalty area, if the feed exposes them.
+- Shots on target (SOT) in last 5/10 minutes.
+- Crosses into the penalty area, if the feed exposes them.
 - Sustained possession in the attacking phase / final-third entries, only if provider definitions are known.
 - Repeated attacks ending in a shot or defensive clearance.
 - Dangerous-attacks counts are a weak, provider-dependent signal: use only as corroboration, never as the sole trigger.
@@ -49,12 +49,12 @@ Before scoring a match, require:
 
 Until there is enough timestamped event data and historical backtesting, use a **pressure score**, not a claimed probability. Suggested starting points, subject to tuning:
 - +3: at least 1 confirmed corner in the last 5 minutes.
-- +2: at least 2 shots in the last 5 minutes across either team, or 1 shot on target.
+- +2: at least 1 SOT in the last 5 minutes.
 - +2: repeated verified attacking entries / crosses / blocked shots in the last 5 minutes, if available.
 - +1: sustained attacking pressure across two consecutive observations.
 - +1: team-specific historical corner rate is above competition baseline with adequate sample size.
 - +1: match state plausibly increases urgency, but only as a minor modifier.
-- −3: no shot/entry signal in the last 5 minutes.
+- −3: no SOT/entry signal in the last 5 minutes.
 - Suppress entirely for stale data, missing corner counter, non-live status, half-time, or uncertain event identity.
 
 A candidate alert may be shown at score ≥5 only if at least two independent signal families contribute and the data-quality gates pass. This threshold is a testable starting point, **not** an empirically validated setting. If the current provider lacks event timestamps, do not award the “confirmed corner in last 5 minutes” points based on total-match corners.
@@ -94,7 +94,7 @@ Each card should show:
 
 ## 8. Current implementation boundary
 
-The current Goal Pulse live feed primarily supplies cumulative totals (shots, shots on target, corners) and a coarse dangerous-attacks field for up to 24 live matches, with rolling 5/10-minute deltas observed by the server. It does **not** reliably provide timestamped crosses, blocked shots, final-third entries, or a complete event stream for every match. Therefore:
+The current Goal Pulse live feed primarily supplies cumulative totals (SOT, corners) and a coarse dangerous-attacks field for up to 24 live matches, with rolling 5/10-minute deltas observed by the server. It does **not** reliably provide timestamped crosses, blocked shots, final-third entries, or a complete event stream for every match. Therefore:
 - use cumulative deltas only when a valid baseline exists;
 - do not fabricate event timing from total-match statistics;
 - do not claim calibrated corner probabilities yet;
