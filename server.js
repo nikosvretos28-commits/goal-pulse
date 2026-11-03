@@ -2123,6 +2123,11 @@ const server = http.createServer(async (req, res) => {
         const teamXGValues = teams.map(team =>
           team.xG == null || !Number.isFinite(Number(team.xG)) ? null : Number(team.xG)
         );
+        // Aggregate xG is display/history context only; it is not an alert trigger.
+        // Require both team values so missing xG remains neutral and is never imputed.
+        const totalXG = teamXGValues.length === 2 && teamXGValues.every(value => value != null)
+          ? teamXGValues.reduce((sum, value) => sum + value, 0)
+          : null;
         const validTeamXGValues = teamXGValues.filter(value => value != null);
         const qualifyingTeamXG = validTeamXGValues.length ? Math.max(...validTeamXGValues) : null;
         // xG is a supporting signal when at least one team reaches 2.50.
