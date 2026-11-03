@@ -7,7 +7,7 @@ Status: **engineering specification and implementation target**. A corner alert 
 - **Target event:** a corner awarded in the match.
 - **Forecast horizon:** next 5 minutes of match time; evaluate a separate 10-minute horizon only as a separately labelled model.
 - **Alert wording:** “ΠΙΘΑΝΟ ΚΟΡΝΕΡ — αυξημένη πίεση” plus match minute, evidence, data freshness and confidence class.
-- A corner counts only when the event feed confirms it. Do not count a shot, cross, blocked shot or attack as a corner.
+- A corner counts only when the event feed confirms it. Do not count any shot, cross or attack as a corner; blocked-shot metrics are not collected.
 - Do not issue another same-market alert for the same match during the 8-minute cooldown unless a clearly defined material-change rule is added and backtested.
 
 ## 2. Minimum data-quality gates
