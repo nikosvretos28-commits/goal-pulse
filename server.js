@@ -3732,6 +3732,13 @@ const server = http.createServer(async (req, res) => {
         });
         console.log("[SportAPI canary] fixture matching diagnostic:", JSON.stringify({
           fixtureCount: (sportApiFixtures?.rows || []).length,
+          fixtureSamples: (sportApiFixtures?.rows || []).slice(0, 10).map(fixture => ({
+            id: fixture.id ?? null,
+            home: fixture.home_team || fixture.home || fixture.home_short || null,
+            away: fixture.away_team || fixture.away || fixture.away_short || null,
+            status: fixture.status ?? null,
+            date: fixture.date ?? null
+          })),
           liveMatchCount: matches.length,
           matchedLiveFixtures: matched.length,
           unmatchedLiveSamples: matches.filter(match => !matched.some(item => item.match === match)).slice(0, 6).map(match => ({home: match.home, away: match.away})),
