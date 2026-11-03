@@ -1602,11 +1602,12 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/push/test" && req.method === "POST") {
     if (!pushRequestAllowed(req, res)) return;
     try {
-      // Explicitly labelled connectivity test: never a betting tip and never stored in alert history.
+      // Synthetic AI-alert-shaped push test. Clearly labelled and never stored,
+      // scored, settled, or included in AI/HI/VIP history or scanner results.
       const result = await sendPushToSubscribers({
-        title: "TEST — GoalMatrix",
-        body: "Δοκιμαστική ειδοποίηση. Δεν είναι πρόταση στοιχήματος.",
-        tag: "goal-pulse-push-test",
+        title: "TEST · ΔΟΚΙΜΑΣΤΙΚΟ AI ALERT",
+        body: "ΔΟΚΙΜΑΣΤΙΚΟΣ ΑΓΩΝΑΣ — North City 1–0 South United · 32′ | 3 SOT στα τελευταία 5′ (εικονικά στοιχεία). Δεν είναι πραγματικός αγώνας ή πρόταση στοιχήματος.",
+        tag: "goal-matrix-synthetic-ai-test",
         url: "/"
       });
       return send(res, result.configured === false ? 503 : 200, { ok: result.sent > 0, test: true, ...result });
