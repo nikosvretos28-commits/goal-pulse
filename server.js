@@ -150,7 +150,6 @@ async function runProtocolAnalyst() {
         phase: p.periodAtSignal || "unknown",
         oddsBand: Number.isFinite(odds) ? (odds < 1.2 ? "1.01–1.19" : odds < 1.4 ? "1.20–1.39" : odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
         minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
-        shots: stats.shots !== null && stats.shots !== undefined && Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
         onTarget10m: stats.onTarget10m !== null && stats.onTarget10m !== undefined && Number.isFinite(Number(stats.onTarget10m)) ? Number(stats.onTarget10m) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
@@ -168,7 +167,7 @@ async function runProtocolAnalyst() {
             : (Number(stats.shotsOnTargetInsideBox || 0) >= 2 || Number(stats.bigChances || 0) >= 1 ? "some" : "low")),
         liveConversionBand: stats.liveConversionSupport == null ? "missing"
           : (Number(stats.liveConversionSupport) >= 1.5 ? "high" : Number(stats.liveConversionSupport) > 0 ? "some" : "none"),
-        shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
+        shotBand: "missing",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
         onTarget10mBand: stats.onTarget10m === null || stats.onTarget10m === undefined ? "missing" : Number(stats.onTarget10m) < 3 ? "0–2" : Number(stats.onTarget10m) < 6 ? "3–5" : "6+",
         xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
@@ -315,7 +314,7 @@ async function runProtocolAnalyst() {
       byOdds: segment("oddsBand", "oddsBand"),
       byMinute: segment("minuteBand", "minuteBand"),
       byPeriod: segment("phase", "period"),
-      byShots: segment("shotBand", "shotBand"),
+      byShots: [],
       byOnTarget: segment("onTargetBand", "onTargetBand"),
       byOnTarget10m: segment("onTarget10mBand", "onTarget10mBand"),
       byXG: segment("xGBand", "xGBand"),
@@ -496,7 +495,6 @@ async function ensureAnalyticsDb() {
         match_date TEXT NOT NULL,
         team_name TEXT NOT NULL,
         observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        shots DOUBLE PRECISION,
         shots_on_target DOUBLE PRECISION,
         corners DOUBLE PRECISION,
         attacks DOUBLE PRECISION,
@@ -529,7 +527,7 @@ ensureAnalyticsDb().then(async ready => {
     await client.query("BEGIN");
     const probeEventId = "goal-pulse-db-write-test-" + Date.now();
     const inserted = await client.query(
-      "INSERT INTO live_stat_snapshots (event_id, match_date, team_name, shots) VALUES ($1, $2, $3, $4) RETURNING id, event_id",
+      "INSERT INTO live_stat_snapshots (event_id, match_date, team_name, shots_on_target) VALUES ($1, $2, $3, $4) RETURNING id, event_id",
       [probeEventId, new Date().toISOString().slice(0, 10), "Goal Pulse DB write test", 1]
     );
     const verified = await client.query("SELECT id FROM live_stat_snapshots WHERE id = $1 AND event_id = $2", [inserted.rows[0].id, probeEventId]);
@@ -556,22 +554,22 @@ async function persistRollingTrends(matches, date) {
   try {
     const snapshots = [];
     for (const match of matches) for (const team of match.teams || []) {
-      const hasPersistableStat = ["shots", "shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
+      const hasPersistableStat = ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
         .some(key => team[key] != null && Number.isFinite(Number(team[key])));
       if (team.team && hasPersistableStat) {
-        snapshots.push([String(match.eventId), date, String(team.team), team.shots, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
+        snapshots.push([String(match.eventId), date, String(team.team), team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
       }
     }
     if (!snapshots.length) return true;
     const values = [];
     const tuples = snapshots.map((row, index) => {
-      const n = index * 9;
+      const n = index * 8;
       values.push(...row);
-      return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8}, $${n+9})`;
+      return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8})`;
     });
     const snapshotInsert = await analyticsPool.query(
       `INSERT INTO live_stat_snapshots
-       (event_id, match_date, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks, minute)
+       (event_id, match_date, team_name, observed_at, shots_on_target, corners, attacks, dangerous_attacks, minute)
        VALUES ${tuples.join(", ")}`, values
     );
     const eventIds = [...new Set(matches.map(match => String(match.eventId)).filter(Boolean))];
@@ -590,7 +588,7 @@ async function persistRollingTrends(matches, date) {
     for (const minutes of [5, 10]) {
       const result = await analyticsPool.query(
         `SELECT DISTINCT ON (event_id, team_name)
-           event_id, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks
+           event_id, team_name, observed_at, shots_on_target, corners, attacks, dangerous_attacks
          FROM live_stat_snapshots
          WHERE event_id = ANY($1::text[])
            AND shots_on_target IS NOT NULL
@@ -616,7 +614,6 @@ async function persistRollingTrends(matches, date) {
           };
           return {
             team: team.team,
-            shots: delta("shots"),
             shotsOnTarget: delta("shotsOnTarget", "shots_on_target"),
             corners: delta("corners"),
             attacks: delta("attacks"),
@@ -631,7 +628,7 @@ async function persistRollingTrends(matches, date) {
           ? Math.round((Date.now() - Math.max(...baselineTimes)) / 60000)
           : minutes;
         return {
-          available: teams.some(team => team.shots != null || team.shotsOnTarget != null || team.corners != null || team.attacks != null || team.dangerousAttacks != null),
+          available: teams.some(team => team.shotsOnTarget != null || team.corners != null || team.attacks != null || team.dangerousAttacks != null),
           sampleMinutes,
           teams
         };
@@ -668,7 +665,6 @@ function addRollingTrends(matches) {
       at: now,
       teams: match.teams.map(team => ({
         team: String(team.team || "").trim().toLowerCase(),
-        shots: team.shots,
         shotsOnTarget: team.shotsOnTarget,
         corners: team.corners,
         attacks: team.attacks,
@@ -686,16 +682,16 @@ function addRollingTrends(matches) {
       const deltas = match.teams.map((team, index) => {
         const name = String(team.team || "").trim().toLowerCase();
         const previous = baseline.teams.find(item => item.team && item.team === name) || baseline.teams[index];
-        if (!previous) return { team: team.team, shots: null, shotsOnTarget: null, corners: null, attacks: null, dangerousAttacks: null };
+        if (!previous) return { team: team.team, shotsOnTarget: null, corners: null, attacks: null, dangerousAttacks: null };
         const delta = key => {
           const current = team[key];
           const old = previous[key];
           if (current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
           return Math.max(0, Number(current) - Number(old));
         };
-        return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerousAttacks") };
+        return { team: team.team, shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerousAttacks") };
       });
-      const available = deltas.some(item => item.shots != null || item.shotsOnTarget != null || item.corners != null || item.attacks != null || item.dangerousAttacks != null);
+      const available = deltas.some(item => item.shotsOnTarget != null || item.corners != null || item.attacks != null || item.dangerousAttacks != null);
       return { available, sampleMinutes: Math.round((now - baseline.at) / 60000 * 10) / 10, teams: deltas };
     };
     match.trend = {
@@ -2136,8 +2132,7 @@ const server = http.createServer(async (req, res) => {
         const maxTeamSOT = teamSOTValues.length ? Math.max(...teamSOTValues) : null;
         const current = {
           at: now,
-          shots: total("shots"),
-          onTarget: total("shotsOnTarget"),
+            onTarget: total("shotsOnTarget"),
           // Preserve each team's SOT independently; a missing value for one side
           // must not erase the other side's valid rolling SOT measurement.
           sotByTeam: teams.map(team => ({
@@ -2204,14 +2199,12 @@ const server = http.createServer(async (req, res) => {
         };
         const memory5mSot = memorySotDelta(previous);
         const memory10mSot = memorySotDelta(previous10);
-        const shots = delta("shots");
         // A persisted baseline can be present but stale or undercounted (including a zero delta).
         // Never let that persisted value mask stronger independently observed in-memory SOT activity.
         // Use the stronger of the two measurements for each window; never add them together.
         const onTarget = Math.max(memory5mSot, persisted5mSot ?? 0);
         const onTarget10m = Math.max(memory10mSot, persisted10mSot ?? 0);
         // AI trigger: recent SOT threshold OR the agreed two-team xG alternative.
-        // Total shots and supporting metrics cannot trigger an alert by themselves.
         // The agreed xG alternative requires BOTH teams to qualify:
         // one team at 2.50+ and the other at 2.00+. Missing xG is neutral.
         const xGQualifies = teamXGValues.length >= 2 &&
@@ -2227,40 +2220,35 @@ const server = http.createServer(async (req, res) => {
         // Missing xG or xG below 2.50 is neutral; one team at 2.50+ adds support.
         const xGTotalSupport = atLeastOneTeamXGQualified ? 2.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
-        // but shots and at least one shot on target remain mandatory (no corner-only alerts).
-        const evidenceKinds = [shots, onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
-        // AI goal pressure prioritizes shots, shots on target, dangerous attacks and xG.
+        // SOT and non-shot context remain the only eligible live evidence.
+        const evidenceKinds = [onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
         // Corners add limited supporting weight; they can never trigger an alert alone.
         // Clean-sheet history is not supplied consistently by this live feed, so it is not imputed.
-        const totalShots = current.shots == null ? 0 : Number(current.shots);
         const totalOnTarget = current.onTarget == null ? 0 : Number(current.onTarget);
         const totalAttacks = current.attacks == null ? 0 : Number(current.attacks);
         const totalDangerous = current.dangerous == null ? 0 : Number(current.dangerous);
         const totalCorners = current.corners == null ? 0 : Number(current.corners);
         // Some live providers (including SportScore's current widget feed) do not publish dangerous attacks.
-        // Distinguish an unavailable metric from a real zero; use a stricter shots/SOT/attacks fallback
         // only when dangerous attacks are genuinely absent, without fabricating that statistic.
         const dangerousAvailable = current.dangerous != null && previous?.dangerous != null;
         const attacksAvailable = current.attacks != null && previous?.attacks != null;
         const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
         const recentGoalEvidence = dangerousAvailable
-          ? shots >= 2 && onTarget >= 1 && evidenceKinds >= 3 && dangerous >= 3
-          : attacksAvailable && shots >= 2 && onTarget >= 1 && attacks >= 5 && [shots, onTarget, attacks].filter(value => value > 0).length >= 3;
+          ? onTarget >= 1 && evidenceKinds >= 2 && dangerous >= 3
+          : attacksAvailable && onTarget >= 1 && attacks >= 5;
         const sustainedGoalEvidence = dangerousAvailable
-          ? totalShots >= 20 && totalOnTarget >= 4 && totalDangerous >= 20
-          : attacksAvailable && totalShots >= 20 && totalOnTarget >= 4 && totalAttacks >= 60;
+          ? totalOnTarget >= 4 && totalDangerous >= 20
+          : attacksAvailable && totalOnTarget >= 4 && totalAttacks >= 60;
         // xG strengthens the candidate when available; missing xG never blocks evaluation.
-        // Current-match shot quality is a supplemental signal, never a standalone trigger.
+        // Current-match SOT quality is supplemental, never a standalone trigger.
         // Use goals/SOT as a conservative live conversion indicator when the feed provides valid values.
         const homeGoalsLive = Number(match.homeScore);
         const awayGoalsLive = Number(match.awayScore);
         const goalsLiveAvailable = Number.isFinite(homeGoalsLive) && Number.isFinite(awayGoalsLive);
         const teamShotProfiles = teams.map((team, index) => {
           const teamGoals = goalsLiveAvailable ? (index === 0 ? homeGoalsLive : awayGoalsLive) : null;
-          const teamShots = Number(team.shots);
           const teamOnTarget = Number(team.shotsOnTarget);
           return {
-            shots: Number.isFinite(teamShots) ? teamShots : null,
             onTarget: Number.isFinite(teamOnTarget) ? teamOnTarget : null,
             goals: teamGoals,
             conversionOnTarget: teamGoals != null && Number.isFinite(teamOnTarget) && teamOnTarget > 0
@@ -2269,12 +2257,12 @@ const server = http.createServer(async (req, res) => {
         });
         const liveConversionSupport = teamShotProfiles.reduce((sum, profile) => {
           if (profile.conversionOnTarget == null || profile.onTarget < 2) return sum;
-          // Cap this bonus and require at least two shots on target to reduce tiny-sample noise.
+          // Cap this bonus and require at least two SOT to reduce tiny-sample noise.
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
         const shotQualitySupport = (current.shotsOnTargetInsideBox == null ? 0 : Math.min(2, current.shotsOnTargetInsideBox * 0.5)) + (current.bigChances == null ? 0 : Math.min(2, current.bigChances * 0.75));
-        const basePoints = Math.min(shots, 4) + onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + shotQualitySupport;
-        const baseSustainedPoints = Math.min(totalShots * 0.15, 4) + Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport + shotQualitySupport;
+        const basePoints = onTarget * 2 + Math.min(corners * 0.5, 2) + Math.min(attacks * 0.25, 3) + Math.min(dangerous * 0.75, 5) + xGSupport + xGTotalSupport + shotQualitySupport;
+        const baseSustainedPoints = Math.min(totalOnTarget * 1.5, 9) + Math.min(totalCorners * 0.15, 2) + Math.min(totalDangerous * 0.05, 3) + (dangerousAvailable ? 0 : Math.min(totalAttacks * 0.025, 2)) + xGTotalSupport + shotQualitySupport;
         // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
         // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && basePoints + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && baseSustainedPoints + liveConversionSupport >= 8));
@@ -2294,7 +2282,6 @@ const server = http.createServer(async (req, res) => {
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
-        // 20+ total shots can strengthen sustained-pressure scoring but is not mandatory.
         // Trigger evidence is recent SOT OR the two-team xG alternative above.
         // AI Alerts are restricted to minutes 1-40, as agreed.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
@@ -2404,16 +2391,14 @@ const server = http.createServer(async (req, res) => {
           }
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
-            const shotsSinceLast = current.shots != null && lastAlert.shots != null ? Number(current.shots) - Number(lastAlert.shots) : 0;
             const onTargetSinceLast = current.onTarget != null && lastAlert.onTarget != null ? Number(current.onTarget) - Number(lastAlert.onTarget) : 0;
             const cornersSinceLast = current.corners != null && lastAlert.corners != null ? Number(current.corners) - Number(lastAlert.corners) : 0;
             const xGSinceLast = current.xG != null && lastAlert.xG != null ? Number(current.xG) - Number(lastAlert.xG) : 0;
             const oddsImproved = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) >= Number(lastAlert.price || 0) + 0.05);
-            // Re-alert only when the match adds meaningful shooting/xG evidence.
-            if (shotsSinceLast < 2 && onTargetSinceLast < 1 && cornersSinceLast < 2 && xGSinceLast < 0.2 && !oddsImproved) continue;
+            // Re-alert only when the match adds new SOT/xG evidence.
+            if (onTargetSinceLast < 1 && cornersSinceLast < 2 && xGSinceLast < 0.2 && !oddsImproved) continue;
           }
           const reason = [
-            shots ? shots + " νέες τελικές" : "",
             onTarget ? onTarget + " νέα σουτ στην εστία στο 5λεπτο" : "",
             onTarget10m >= 6 ? onTarget10m + " σουτ στην εστία στα τελευταία 10′" : "",
             corners ? corners + " νέα κόρνερ" : "",
@@ -2446,7 +2431,6 @@ const server = http.createServer(async (req, res) => {
             alertCountsByMatchHalf.set(perHalfCountKey, (alertCountsByMatchHalf.get(perHalfCountKey) || 0) + 1);
             pushScanLastAlert.set(cooldownKey, {
               at: now,
-              shots: current.shots,
               onTarget: current.onTarget,
               corners: current.corners,
               xG: current.xG,
@@ -2487,7 +2471,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { shots, onTarget, onTarget10m, totalOnTarget, totalSotSupport, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, totalSotSupport, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
@@ -2530,7 +2514,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const liveMatchSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shots: team.shots ?? null, shotsOnTarget: team.shotsOnTarget ?? null, shotsOffTarget: team.shotsOffTarget ?? null, xG: team.xG ?? null })) })), statsMissingShots: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shots == null))).length, statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
@@ -3231,7 +3215,7 @@ const server = http.createServer(async (req, res) => {
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
       // Load direct live stats for every live scoreboard, not only SportScore-ID fixtures.
-      // This is a fallback when another provider's summary omits shots/corners.
+      // This is a fallback when another provider's summary omits SOT/corners.
       if (liveEvents.length) {
         try {
           const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
@@ -3367,7 +3351,7 @@ const server = http.createServer(async (req, res) => {
                 sportScoreDetailDiagnostics.ok++;
               }
               const root = detail.match || detail.data || detail.fixture || detail;
-              if (sportScoreDetailDiagnostics.minuteSamples.length < 8) sportScoreDetailDiagnostics.minuteSamples.push({ home: root.home || homeName, away: root.away || awayName, live_minute: root.live_minute ?? null, minute: root.minute ?? null, elapsed: root.elapsed ?? null, status_text: root.status_text ?? null, time: root.time ?? null, trackerKeys: root.tracker && typeof root.tracker === "object" ? Object.keys(root.tracker).slice(0, 10) : [], statsCount: Array.isArray(root.stats) ? root.stats.length : null, statsSample: Array.isArray(root.stats) ? root.stats.slice(0, 4).map(stat => stat && typeof stat === "object" ? Object.fromEntries(Object.entries(stat).slice(0, 8)) : stat) : null });
+              if (sportScoreDetailDiagnostics.minuteSamples.length < 8) sportScoreDetailDiagnostics.minuteSamples.push({ home: root.home || homeName, away: root.away || awayName, live_minute: root.live_minute ?? null, minute: root.minute ?? null, elapsed: root.elapsed ?? null, status_text: root.status_text ?? null, time: root.time ?? null, trackerKeys: root.tracker && typeof root.tracker === "object" ? Object.keys(root.tracker).slice(0, 10) : [], statsCount: Array.isArray(root.stats) ? root.stats.length : null, statsSample: Array.isArray(root.stats) ? root.stats.length : null });
               if (!sportScoreDetailDiagnostics.sample) {
                 const paths = [];
                 const inspect = (node, path = "", depth = 0) => {
@@ -3378,7 +3362,7 @@ const server = http.createServer(async (req, res) => {
                   }
                   for (const [key, value] of Object.entries(node)) {
                     const next = path ? path + "." + key : key;
-                    if (/stat|shot|corner|attack|possession|expected|home|away|slug|match/i.test(key)) {
+                    if (/stat|corner|attack|possession|expected|home|away|slug|match/i.test(key)) {
                       paths.push({ path: next, type: Array.isArray(value) ? "array" : typeof value, sample: value == null || typeof value !== "object" ? value : undefined });
                     }
                     if (value && typeof value === "object") inspect(value, next, depth + 1);
@@ -3399,7 +3383,8 @@ const server = http.createServer(async (req, res) => {
                 const label = String(node.name || node.key || node.title || node.label || node.stat || node.type || node.stat_name || node.statName || node.short_name || node.shortName || node.abbreviation || node.abbr || node.display_name || node.displayName || node.description || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
                 const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
                 const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
-                if (label && home != null && away != null && (typeof home !== "object") && (typeof away !== "object")) statsRows.push({ label, home, away });
+                const relevantLiveMetric = /^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|shots_on_target_inside_box|shots_on_target_in_box|shots_on_target_inside_penalty_area|shots_on_target_in_penalty_area|shots_on_target_from_inside_box|on_target_inside_box|big_chances|big_chance|big_chances_created|big_chance_created|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|attacks|total_attacks|attacks_for|total_attacks_for|dangerous_attacks|dangerous_attacks_for|dangerous_attacks_created|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage|expected_goals|xg|x_goals|x_goal|xgoals|expected_goals_xg|expected_goals_for|expected_goals_total|expected_goals_scored)$/.test(label);
+                if (relevantLiveMetric && home != null && away != null && (typeof home !== "object") && (typeof away !== "object")) statsRows.push({ label, home, away });
                 for (const [key, value] of Object.entries(node)) {
                   if (["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) continue;
                   walk(value, depth + 1);
@@ -3410,10 +3395,7 @@ const server = http.createServer(async (req, res) => {
                 sportScoreDetailDiagnostics.sample.statLabels = statsRows.slice(0, 30).map(row => ({ label: row.label, home: row.home, away: row.away }));
               }
               const readStat = (side, aliases) => {
-                // Prefer the most specific total-stat label before generic aliases.
-                // Searching rows first can accidentally select a generic "shots" row
-                // even when a dedicated "total_shots" row is present.
-                let found = null;
+                                let found = null;
                 for (const alias of aliases) {
                   found = statsRows.find(row => row.label === alias);
                   if (found) break;
@@ -3434,25 +3416,17 @@ const server = http.createServer(async (req, res) => {
                 return Number.isFinite(n) ? n : null;
               };
               const values = [
-                { team: homeName, homeAway: "home", shots: readStat("home", ["total_shots","total_shot","totalshots","shots","shots_total","total_attempts","total_shots_attempted","shots_attempted"]), shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), shotsOffTarget: readStat("home", ["shots_off_target","shots_off_goal","shots_wide","off_target","shots_off_target_total"]), blockedShots: readStat("home", ["blocked_shots","shots_blocked","blocked_attempts"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
-                { team: awayName, homeAway: "away", shots: readStat("away", ["total_shots","total_shot","totalshots","shots","shots_total","total_attempts","total_shots_attempted","shots_attempted"]), shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), shotsOffTarget: readStat("away", ["shots_off_target","shots_off_goal","shots_wide","off_target","shots_off_target_total"]), blockedShots: readStat("away", ["blocked_shots","shots_blocked","blocked_attempts"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
+                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
+                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
-              // SportScore may omit total shots while exposing shot components.
-              // Include blocked attempts when supplied; never infer missing components as zero.
-              for (const value of values) {
-                if (value.shots == null && value.shotsOnTarget != null && value.shotsOffTarget != null) {
-                  value.shots = Number(value.shotsOnTarget) + Number(value.shotsOffTarget)
-                    + (value.blockedShots != null ? Number(value.blockedShots) : 0);
-                }
-              }
-              matches.push({
+                            matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "SportScore",
                 minute: root.live_minute ?? root.liveMinute ?? root.elapsed ?? root.time?.elapsed ?? event.live_minute ?? event.status?.displayClock ?? event.time ?? "",
                 homeScore: event.home_score ?? event.homeScore ?? null,
                 awayScore: event.away_score ?? event.awayScore ?? null,
                 status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
                 homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
-                statsAvailable: values.some(value => ["shots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3492,13 +3466,13 @@ const server = http.createServer(async (req, res) => {
               const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
               const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
               const values = [
-                { team: homeName, homeAway: "home", shots: readStat("home", ["total_shots","shots","total_attempts","total_shots_attempted"]), shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","on_target"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), shotsOffTarget: readStat("home", ["shots_off_target","shots_off_goal","shots_wide","off_target","shots_off_target_total"]), blockedShots: readStat("home", ["blocked_shots","shots_blocked","blocked_attempts"]), corners: readStat("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("home", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) },
-                { team: awayName, homeAway: "away", shots: readStat("away", ["total_shots","shots","total_attempts","total_shots_attempted"]), shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","on_target"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), shotsOffTarget: readStat("away", ["shots_off_target","shots_off_goal","shots_wide","off_target","shots_off_target_total"]), blockedShots: readStat("away", ["blocked_shots","shots_blocked","blocked_attempts"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
+                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","on_target"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("home", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) },
+                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","on_target"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
               ];
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
                 minute: event.status?.displayClock || "",
-                statsAvailable: values.some(value => ["shots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3531,8 +3505,7 @@ const server = http.createServer(async (req, res) => {
             const values = teams.map(team => {
               const stats = team.statistics || [];
               const get = (...names) => {
-                // Prefer the requested alias order so total shots wins over generic shots.
-                let found = null;
+                                let found = null;
                 for (const name of names) {
                   const normalizedName = String(name).toLowerCase().replace(/[^a-z]/g, "");
                   found = stats.find(stat => [stat.name, stat.abbreviation].filter(Boolean).some(value => String(value).toLowerCase().replace(/[^a-z]/g, "") === normalizedName));
@@ -3545,12 +3518,9 @@ const server = http.createServer(async (req, res) => {
               return {
                 team: team.team?.displayName || team.team?.name || "",
                 homeAway: team.homeAway || team.team?.homeAway || "",
-                shots: get("totalshots", "shots", "shotsattempted"),
-                shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
+                    shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
                 shotsOnTargetInsideBox: get("shotsontargetinsidebox", "shotsontargetinbox", "shotsontargetinsidepenaltyarea", "shotsontargetinpenaltyarea", "shotsontargetfrominsidebox", "ontargetinsidebox"),
                 bigChances: get("bigchances", "bigchance", "bigchancescreated", "bigchancecreated"),
-                shotsOffTarget: get("shotsofftarget", "shotsOffGoal", "offtargetshots", "shotswide"),
-                blockedShots: get("blockedshots", "shotsblocked"),
                 corners: get("woncorners", "cornerkicks", "corners"),
                 attacks: get("attacks", "totalattacks", "attacksfor", "totalattacksfor"),
                 dangerousAttacks: get("dangerousattacks", "dangerousattacksfor", "dangerousattackscreated", "dangerousattackswon"),
@@ -3562,18 +3532,18 @@ const server = http.createServer(async (req, res) => {
             const eventHomeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
             const eventAwayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
             const normalizeBoxscoreTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
-            const emptyTeamStats = { shots: null, shotsOnTarget: null, shotsOnTargetInsideBox: null, bigChances: null, shotsOffTarget: null, blockedShots: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null };
+            const emptyTeamStats = { shotsOnTarget: null, shotsOnTargetInsideBox: null, bigChances: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null };
             if (eventHomeName && !values.some(value => value.homeAway === "home" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventHomeName))) values.unshift({ ...emptyTeamStats, team: eventHomeName, homeAway: "home" });
             if (eventAwayName && !values.some(value => value.homeAway === "away" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventAwayName))) values.push({ ...emptyTeamStats, team: eventAwayName, homeAway: "away" });
             // Keep ESPN boxscore teams in home/away order before pairing them with SportScore fallback values.
             const homeTeamIndex = values.findIndex(value => value.homeAway === "home" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventHomeName));
             const awayTeamIndex = values.findIndex(value => value.homeAway === "away" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventAwayName));
             if (homeTeamIndex >= 0 && awayTeamIndex >= 0 && homeTeamIndex > awayTeamIndex) values.reverse();
-            const espnHasShotStats = values.some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "corners"].some(key => v[key] != null));
+            const espnHasShotStats = values.some(v => ["shotsOnTarget", "corners"].some(key => v[key] != null));
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
-            // Try the fallback whenever either team has a missing core shot metric,
-            // not only when ESPN returns absolutely no shot statistics.
-            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shots", "shotsOnTarget", "shotsOffTarget", "corners"].some(key => v[key] == null));
+            // Try the fallback whenever either team has a missing core SOT metric,
+            // not only when ESPN returns no live SOT statistics.
+            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shotsOnTarget", "corners"].some(key => v[key] == null));
             if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
@@ -3613,7 +3583,8 @@ const server = http.createServer(async (req, res) => {
                   const label = String(node.name || node.key || node.title || node.label || node.stat || node.type || node.stat_name || node.statName || node.short_name || node.shortName || node.abbreviation || node.abbr || node.display_name || node.displayName || node.description || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
                   const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
                   const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
-                  if (label && home != null && away != null && typeof home !== "object" && typeof away !== "object") rows.push({label, home, away});
+                  const relevantLiveMetric = /^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage)$/.test(label);
+                  if (relevantLiveMetric && home != null && away != null && typeof home !== "object" && typeof away !== "object") rows.push({label, home, away});
                   for (const [key, value] of Object.entries(node)) {
                     if (!["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) walkDirect(value, depth + 1);
                   }
@@ -3627,28 +3598,26 @@ const server = http.createServer(async (req, res) => {
                   return Number.isFinite(n) ? n : null;
                 };
                 const getDirect = side => ({
-                  shots: readDirect(side, ["total_shots","total_shot","totalshots","shots","shots_total","total_attempts","total_shots_attempted","shots_attempted"]),
-                  shotsOnTarget: readDirect(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
-                  shotsOffTarget: readDirect(side, ["shots_off_target","shots_off_goal","shots_wide","off_target","shots_off_target_total"]),
-                  corners: readDirect(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
+                        shotsOnTarget: readDirect(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
+                    corners: readDirect(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
                   possession: readDirect(side, ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"])
                 });
                 const fallbackValues = [getDirect(homeSide), getDirect(awaySide)];
-                if (fallbackValues.some(v => ["shots","shotsOnTarget","shotsOffTarget","corners","possession"].some(key => v[key] != null))) {
+                if (fallbackValues.some(v => ["shotsOnTarget","corners","possession"].some(key => v[key] != null))) {
                   values.forEach((v, i) => {
                     const fallback = fallbackValues[i];
-                    for (const key of ["shots","shotsOnTarget","shotsOffTarget","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
+                    for (const key of ["shotsOnTarget","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
                   });
-                  console.log("SportScore fallback supplied missing ESPN live stats:", JSON.stringify({eventId:String(event.id),home:homeName,away:awayName,stats:values.map(v=>({team:v.team,shots:v.shots,shotsOnTarget:v.shotsOnTarget,shotsOffTarget:v.shotsOffTarget,corners:v.corners}))}));
+                  console.log("SportScore fallback supplied missing ESPN live stats:", JSON.stringify({eventId:String(event.id),home:homeName,away:awayName,stats:values.map(v=>({team:v.team,shotsOnTarget:v.shotsOnTarget,corners:v.corners}))}));
                 }
               }
             }
             matches.push({
-              eventId: String(event.id), statsSource: values.some(v => ["shots","shotsOnTarget","shotsOffTarget","corners"].some(key => v[key] != null)) ? "ESPN+SportScore" : "ESPN",
+              eventId: String(event.id), statsSource: values.some(v => ["shotsOnTarget","corners"].some(key => v[key] != null)) ? "ESPN+SportScore" : "ESPN",
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
-              statsAvailable: teams.length > 0 && values.some(v => ["shots", "shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "shotsOffTarget", "blockedShots", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
+              statsAvailable: teams.length > 0 && values.some(v => ["shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
               teams: values
             });
           } catch (error) {
@@ -3760,10 +3729,8 @@ const server = http.createServer(async (req, res) => {
                   return Number.isFinite(parsed) ? parsed : null;
                 };
                 return {
-                  shots: number(raw.shots),
-                  shotsOnTarget: number(raw.shots_on_target),
-                  shotsOffTarget: number(raw.shots_off_target),
-                  corners: number(raw.corners ?? raw.corner_kicks),
+                        shotsOnTarget: number(raw.shots_on_target),
+                    corners: number(raw.corners ?? raw.corner_kicks),
                   possession: number(raw.possession ?? raw.ball_possession)
                 };
               };
@@ -3796,27 +3763,6 @@ const server = http.createServer(async (req, res) => {
         console.log("[SportAPI canary] disabled: SPORTAPI_API_KEY is not configured");
       }
       console.log("[GoalMatrix ESPN summary audit]", JSON.stringify(espnSummaryDiagnostics));
-      // Temporary live-stat audit: log provider and the raw normalized shot components
-      // so discrepancies can be traced without guessing or silently altering totals.
-      for (const match of matches) {
-        const normalizedHome = String(match.home || "").toLowerCase();
-        const normalizedAway = String(match.away || "").toLowerCase();
-        if (/tijuana|santos laguna/.test(normalizedHome + " " + normalizedAway)) {
-          console.log("[Goal Pulse shot-stat audit]", JSON.stringify({
-            eventId: match.eventId, home: match.home, away: match.away,
-            provider: match.statsSource || "unknown", minute: match.minute,
-            teams: (match.teams || []).map(team => ({
-              team: team.team, shots: team.shots,
-              shotsOnTarget: team.shotsOnTarget, shotsOffTarget: team.shotsOffTarget,
-              blockedShots: team.blockedShots,
-              componentSum: [team.shotsOnTarget, team.shotsOffTarget, team.blockedShots]
-                .every(value => value != null && Number.isFinite(Number(value)))
-                ? Number(team.shotsOnTarget) + Number(team.shotsOffTarget) + Number(team.blockedShots)
-                : null
-            }))
-          }));
-        }
-      }
       const isSportScoreEvent = value => String(value || "").startsWith("sportscore:") || String(value || "").startsWith("sportscore-widget:");
       if (work.some(item => isSportScoreEvent(item.event.id))) {
         console.log("SportScore live metrics detail diagnostic:", JSON.stringify({
@@ -3829,12 +3775,12 @@ const server = http.createServer(async (req, res) => {
       const persisted = highActivityOnly ? null : await persistRollingTrends(matches, date);
       if (!highActivityOnly && !persisted) addRollingTrends(matches);
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
-        team.team && ["shots", "shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
+        team.team && ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
       const trendHistory = highActivityOnly ? "isolated high-activity feed; shared trend history untouched" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
-      const diagnosticFields = ["shots","shotsOnTarget","shotsOffTarget","corners","possession","xG"];
+      const diagnosticFields = ["shotsOnTarget","corners","possession","xG"];
       const liveMetricsAudit = {
         scope: highActivityOnly ? "high-activity" : "default",
         totalLiveEvents: liveEvents.length,

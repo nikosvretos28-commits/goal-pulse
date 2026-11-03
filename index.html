@@ -2711,7 +2711,7 @@ function setLiveMetricsCache(rows){
   const bothTeamsHaveSot=teams.slice(0,2).every(team=>team.shotsOnTarget!=null&&team.shotsOnTarget!==''&&Number.isFinite(Number(team.shotsOnTarget)));
   return {...row,teams,_hiActivitySotAvailable:bothTeamsHaveSot};
  };
- const metricKeys=['shots','shotsOnTarget','shotsOnTargetInsideBox','shotsOffTarget','blockedShots','corners','attacks','dangerousAttacks','bigChances','possession','xG'];
+ const metricKeys=['shotsOnTarget','shotsOnTargetInsideBox','bigChances','corners','attacks','dangerousAttacks','possession','xG'];
  const statsQuality=row=>Array.isArray(row?.teams)?row.teams.slice(0,2).reduce((total,team)=>total+metricKeys.filter(key=>team?.[key]!=null&&team[key]!==''&&Number.isFinite(Number(team[key]))).length,0):0;
  const hasUsableStats=row=>statsQuality(row)>0;
  const stamp=row=>({...row,_goalMatrixReceivedAt:Number(row?._goalMatrixReceivedAt)||receivedAt});
@@ -2800,7 +2800,7 @@ function restoreLiveMetricsState(){
   if(saved&&Array.isArray(saved.trails)){
    for(const [id,items] of saved.trails){
     if(id==null||!Array.isArray(items))continue;
-    const fresh=items.filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)>=0&&now-Number(item.at)<=LIVE_TRAIL_RETENTION&&Array.isArray(item.values)&&item.values.length>=2&&item.values.every(team=>team&&Object.prototype.hasOwnProperty.call(team,'shots'))).slice(-50);
+    const fresh=items.filter(item=>item&&Number.isFinite(Number(item.at))&&now-Number(item.at)>=0&&now-Number(item.at)<=LIVE_TRAIL_RETENTION&&Array.isArray(item.values)&&item.values.length>=2&&item.values.every(team=>team&&Object.prototype.hasOwnProperty.call(team,'shotsOnTarget'))).slice(-50);
     if(fresh.length)signalTrails.set(String(id),fresh);
    }
   }
@@ -2991,7 +2991,7 @@ function updateIntervalStats(match,trail,current,now){
   if(!base)return 'Δ'+minutes+'′ συλλογή δεδομένων';
   const calc=(key,i)=>{const av=current[i]?.[key],bv=base.values[i]?.[key];if(av===null||av===undefined||bv===null||bv===undefined||av===''||bv==='')return null;const a=Number(av),b=Number(bv);return Number.isFinite(a)&&Number.isFinite(b)?Math.max(0,a-b):null};
   const pair=key=>{const a=calc(key,0),b=calc(key,1);return a===null||b===null?'—':a+'–'+b};
-  return 'Δ'+minutes+'′ Σουτ '+pair('shots')+' · Στην εστία '+pair('shotsOnTarget')+' · Κόρνερ '+pair('corners');
+  return 'Δ'+minutes+'′ Σουτ εντός εστίας '+pair('shotsOnTarget')+' · Κόρνερ '+pair('corners');
  };
  node.textContent=delta(5)+'  |  '+delta(10);
 }
@@ -3048,10 +3048,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const away=teams.find(team=>team?.homeAway==='away')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.away?.name))||teams.find(team=>team!==home)||{};
  const metric=(team,key,eventTeam=null)=>{
   const aliases={
-   shots:['shots','totalShots','total_shots','total_attempts','totalAttempts'],
    shotsOnTarget:['shotsOnTarget','shots_on_target','shots_on_goal','shotsOnGoal','onTargetShots'],
-   shotsOffTarget:['shotsOffTarget','shots_off_target','shots_off_goal','shotsOffGoal','offTargetShots'],
-   blockedShots:['blockedShots','blocked_shots','shotsBlocked','shots_blocked'],
    corners:['corners','cornerKicks','corner_kicks','cornerKick','corner_kick','cornerKicksTotal','corner_kicks_total','totalCornerKicks','total_corner_kicks','cornerKickCount','corner_kick_count','cornerCount','corner_count','cornersTotal','corners_total','totalCornerCount','total_corner_count','cornersWon','corners_won','cornerKicksWon','corner_kicks_won','wonCorners','won_corners','totalCorners','total_corners','corner','totalCornersFor','total_corners_for'],
    possession:['possession','possessionPct','possessionPercentage'],
    xG:['xG','xg','expectedGoals']
@@ -3074,13 +3071,6 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
       return {value:Number(item),estimated:false};
      }
     }
-   }
-  }
-  if(key==='shotsOffTarget'){
-   const total=metric(team,'shots'),on=metric(team,'shotsOnTarget'),blocked=metric(team,'blockedShots');
-   if(total&&on){
-    const value=Math.max(0,total.value-on.value-(blocked?blocked.value:0));
-    return {value,estimated:!blocked};
    }
   }
   return null;
@@ -3109,7 +3099,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  };
  const fmtPair=(key)=>pair(key);
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
- const statsHtml='<div class="live-inline-stats">'+statCell('ΤΕΛ. 5′ · ΕΝΤΟΣ ΕΣΤΙΑΣ',delta(5,'shotsOnTarget'),'interval')+statCell('ΤΕΛ. 10′ · ΕΝΤΟΣ ΕΣΤΙΑΣ',delta(10,'shotsOnTarget'),'interval')+statCell('ΣΟΥΤ',fmtPair('shots'),'shot')+statCell('ΕΝΤΟΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
+ const statsHtml='<div class="live-inline-stats">'+statCell('SOT 5′',delta(5,'shotsOnTarget'),'interval')+statCell('SOT 10′',delta(10,'shotsOnTarget'),'interval')+statCell('ΣΟΥΤ ΕΝΤΟΣ ΕΣΤΙΑΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
  const rawClock=String(m.clock||'').trim();
  const clockCandidates=[stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute,rawClock];
  const numericClock=clockCandidates.map(v=>String(v??'').trim()).find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));
@@ -3459,9 +3449,7 @@ function evaluateHighActivityObservations(ranked){
   const periodKey=minute<=45?'1H':'2H';
   const score=highActivityScore(match);if(!score)continue;
   const signalStats={
-   totalShots:Number.isFinite(Number(rankedItem.totalShots))?Number(rankedItem.totalShots):null,
    totalOnTarget:Number.isFinite(Number(rankedItem.totalOnTarget))?Number(rankedItem.totalOnTarget):null,
-   recentShots:Number.isFinite(Number(rankedItem.recentShots))?Number(rankedItem.recentShots):null,
    recentOnTarget:Number.isFinite(Number(rankedItem.recentOnTarget))?Number(rankedItem.recentOnTarget):null,
    recentShotsOnTarget10m:Number.isFinite(Number(rankedItem.recentShotsOnTarget10m))?Number(rankedItem.recentShotsOnTarget10m):null,
    shotsOnTargetInsideBox:Number.isFinite(Number(rankedItem.shotsOnTargetInsideBox))?Number(rankedItem.shotsOnTargetInsideBox):null,
@@ -3472,7 +3460,7 @@ function evaluateHighActivityObservations(ranked){
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
   const observationId=[eventId,periodKey,minute,score.home+'-'+score.away,
    signalStats.totalOnTarget??'na',signalStats.recentOnTarget??'na',
-   signalStats.recentShotsOnTarget10m??'na',signalStats.shotsOnTargetInsideBox??'na',signalStats.bigChances??'na',signalStats.totalShots??'na',signalStats.recentShots??'na'].join(':');
+   signalStats.recentShotsOnTarget10m??'na',signalStats.shotsOnTargetInsideBox??'na',signalStats.bigChances??'na'].join(':');
   if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
   const observation={observationId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,signalStats,outcome:'pending'};
   highActivityObservations.push(observation);changed.push(observation);
@@ -3557,11 +3545,9 @@ function renderHighActivityMatches(){
   // without this, the visible 6–6 SOT can be ignored by High Activity.
   const normalizeTeam=team=>({
    ...team,
-   shots:team.shots??team.totalShots??team.total_shots??team.total_attempts??team.totalAttempts,
    shotsOnTarget:team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots,
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??team.shots_on_target_in_box??team.shots_on_target_inside_penalty_area??team.shots_on_target_in_penalty_area??team.shots_on_target_from_inside_box??team.on_target_inside_box,
    bigChances:team.bigChances??team.big_chances??team.big_chance??team.big_chances_created??team.big_chance_created,
-   shotsOffTarget:team.shotsOffTarget??team.shots_off_target??team.shots_off_goal??team.shotsOffGoal??team.offTargetShots,
    xG:team.xG??team.xg??team.expectedGoals,
    attacks:team.attacks??team.totalAttacks??team.total_attacks,
    dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??team.dangerousAttack
@@ -3572,11 +3558,9 @@ function renderHighActivityMatches(){
   // usable team SOT values are present, leaving this panel without 5/10m data.
   const trailKey=String(m.id),trail=highActivityTrails.get(trailKey)||[];
   const snapshotValues=teams.slice(0,2).map(team=>({
-   shots:team.shots,
    shotsOnTarget:(()=>{const value=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value)})(),
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox,
    bigChances:team.bigChances,
-   shotsOffTarget:team.shotsOffTarget,
    corners:team.corners,
    attacks:team.attacks,
    dangerousAttacks:team.dangerousAttacks,
@@ -3620,8 +3604,8 @@ function renderHighActivityMatches(){
   };
   const hiActivitySot5m=independentSotWindow(baseline,stats.trend?.window5m,4.5,8);
   const hiActivitySot10m=independentSotWindow(baseline10,stats.trend?.window10m,8,13);
-  const keys=["shots","shotsOnTarget","shotsOffTarget","attacks","dangerousAttacks"];
-  const delta={shots:0,shotsOnTarget:0,shotsOffTarget:0,attacks:0,dangerousAttacks:0};
+  const keys=["shotsOnTarget","attacks","dangerousAttacks"];
+  const delta={shotsOnTarget:0,attacks:0,dangerousAttacks:0};
   let hasRecentData=false;
   if(baseline&&Array.isArray(baseline.values)){
    teams.forEach((team,i)=>{const prev=baseline.values[i]||{};keys.forEach(key=>{
@@ -3660,7 +3644,7 @@ function renderHighActivityMatches(){
   const bigChancesSupport=teams.reduce((sum,team)=>sum+(team.bigChances==null||!Number.isFinite(Number(team.bigChances))?0:Number(team.bigChances)),0);
   // Supplementary shot-quality support only; these statistics never trigger High Activity alone.
   const shotQualitySupport=Math.min(2,insideBoxSotSupport*0.5)+Math.min(2,bigChancesSupport*0.75);
-  const pressureScore=Math.min(delta.shots,4)+delta.shotsOnTarget+Math.min(delta.shotsOffTarget||0,4)*0.35+shotQualitySupport;
+  const pressureScore=delta.shotsOnTarget+shotQualitySupport;
   // HI Activity's four independent triggers: 2+ SOT/5m, 4+ SOT/10m,
   // 8+ cumulative SOT by either team, or xG >=2.00 for both teams.
   const strictRecentSotStrong=hiActivitySot5m!==null&&hiActivitySot5m>=2;
@@ -3689,7 +3673,6 @@ function renderHighActivityMatches(){
    }
   }
   const xGSupport=recentXG==null?0:Math.min(2,recentXG*2);
-  const totalShots=teams.reduce((n,t)=>n+(Number(t.shots)||0),0);
   const totalOnTarget=teams.reduce((n,t)=>n+(Number(t.shotsOnTarget)||0),0);
   // Live conversion efficiency is only a ranking tie-breaker/support signal; it cannot create High Activity by itself.
   const scores=[Number(m.homeScore ?? m.home?.score),Number(m.awayScore ?? m.away?.score)];
@@ -3699,11 +3682,11 @@ function renderHighActivityMatches(){
    return sum+Math.min(1,goals/sot*1.5);
   },0);
   const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
-  const intensity=Math.max(0,Math.min(100,Math.round(delta.shots*8+delta.shotsOnTarget*10+(delta.shotsOffTarget||0)*2+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
-  return (active||hiActivityActive)?{match:m,score,intensity,recentShots:delta.shots,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalShots,totalOnTarget,liveConversionSupport,active,hiActivityActive}:null;
+  const intensity=Math.max(0,Math.min(100,Math.round(delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
+  return (active||hiActivityActive)?{match:m,score,intensity,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalOnTarget,liveConversionSupport,active,hiActivityActive}:null;
  };
  const candidates=allMatches.map(scoreMatch).filter(Boolean)
-  .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget||b.totalShots-a.totalShots);
+  .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget);
  const hiActivityRanked=candidates.filter(x=>x.hiActivityActive);
  // Power Games is a curated shortlist selected only from qualifying Hi Activity matches.
  const ranked=hiActivityRanked.slice(0,Math.ceil(hiActivityRanked.length/2));
@@ -3731,14 +3714,14 @@ document.addEventListener('click',async event=>{
  const now=Date.now();const clock=String(match.clock||'LIVE');const statusText=String(match.statusText||match.status||'');const clockMinuteMatch=clock.match(/(\d{1,3})\s*(?:['′:]|MIN\b)/i)||clock.match(/^\s*(\d{1,3})\s*$/);const minute=clockMinuteMatch?Number(clockMinuteMatch[1]):null;const periodHint=(clock+' '+statusText);const isHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(periodHint);const isSecondHalf=/SECOND[_ -]?HALF|\b2H\b|2ND\s*HALF|SEGUNDO\s*TIEMPO|2(?:ο|ου|º|°)\s*ΗΜΙΧΡΟΝΟ/i.test(periodHint)||(minute!==null&&minute>45);const periodAtSignal=isHalfTime||isSecondHalf?'second_half':'first_half';if(signalAlertHistory.some(a=>a.level==='VIP'&&String(a.eventId)===eventId&&a.periodAtSignal===periodAtSignal&&Number(a.minuteNumber)===minute&&now-Number(a.createdAt)<2*60*1000)){button.textContent='◆ VIP ALERT ήδη καταχωρισμένο για αυτό το λεπτό';button.disabled=true;return;}
  const stats=liveMetricsCache.get(eventId),teams=Array.isArray(stats?.teams)?stats.teams:[];
  const score=Number(match.home.score||0)+Number(match.away.score||0);
- const corners=teams.length>=2&&teams.every(t=>t.corners!=null)?teams.reduce((n,t)=>n+Number(t.corners||0),0):null;const shots=teams.length>=2&&teams.every(t=>t.shots!=null)?teams.reduce((n,t)=>n+Number(t.shots||0),0):null;const shotsOnTarget=teams.length>=2&&teams.every(t=>t.shotsOnTarget!=null)?teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0):null;
+ const corners=teams.length>=2&&teams.every(t=>t.corners!=null)?teams.reduce((n,t)=>n+Number(t.corners||0),0):null;const shotsOnTarget=teams.length>=2&&teams.every(t=>t.shotsOnTarget!=null)?teams.reduce((n,t)=>n+Number(t.shotsOnTarget||0),0):null;
  
  const asian=document.getElementById('goalLineType')?.value==='asian';
  if(asian&&!isHalfTime){const status=document.getElementById('signalStatus');if(status)status.textContent='Το Ασιατικό Over VIP δίνεται μόνο στο τέλος του 1ου ημιχρόνου και αφορά το 2ο ημίχρονο. Περιμένουμε το ημίχρονο.';return;}
  
  const overLine=asian?2.0:(periodAtSignal==='first_half'?score+0.5:null);
  const overLineAtSignal=Number(match.home.score||0)+Number(match.away.score||0)+0.5;const market=asian?'Ασιατικό Over 2.0 (2ο ημίχρονο)':(periodAtSignal==='first_half'?'1ο ημίχρονο Over '+overLine:'2ο ημίχρονο Over '+overLineAtSignal);
- const record={eventId:match.id,home:match.home.name,away:match.away.name,league:match.league,country:match.country||'Διεθνής',minute:clock,minuteNumber:minute,periodAtSignal,market,overLine:asian?2.0:(periodAtSignal==='first_half'?overLine:overLineAtSignal),lineType:asian?'asian':'standard',...(asian?{asianPeriod:'second_half'}:{}),reason:'Επιλέχθηκε χειροκίνητα ως VIP από το '+(button.closest('#powerGamesRows')?'POWER GAMES':'HI ACTIVITY')+'. Σκορ επιλογής: '+(match.home.score??'–')+'–'+(match.away.score??'–')+'. '+(asian?'Ασιατικό Over 2.0 αποκλειστικά για τα γκολ του 2ου ημιχρόνου· ακριβώς 2 γκολ στο 2ο ημίχρονο σημαίνουν επιστροφή.':(periodAtSignal==='first_half'?'Κανονικό Over: απαιτείται τουλάχιστον ένα ακόμη γκολ μέχρι το ημίχρονο.':'Στόχος: τουλάχιστον ένα ακόμη γκολ στο δεύτερο ημίχρονο.'))+' Η επιλογή VIP δεν εγγυάται αποτέλεσμα.',time:new Date(now).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:score,scoreAtSignal:{home:Number(match.home.score||0),away:Number(match.away.score||0)},startCorners:corners,startShots:shots,startShotsOnTarget:shotsOnTarget,evaluationWindowMinutes:Number(document.getElementById('signalOutcomeWindow')?.value||15),outcome:'εκκρεμεί',level:'VIP',source:button.closest('#powerGamesRows')?'manual-power-games':'manual-high-activity',betOutcome:'pending'};
+ const record={eventId:match.id,home:match.home.name,away:match.away.name,league:match.league,country:match.country||'Διεθνής',minute:clock,minuteNumber:minute,periodAtSignal,market,overLine:asian?2.0:(periodAtSignal==='first_half'?overLine:overLineAtSignal),lineType:asian?'asian':'standard',...(asian?{asianPeriod:'second_half'}:{}),reason:'Επιλέχθηκε χειροκίνητα ως VIP από το '+(button.closest('#powerGamesRows')?'POWER GAMES':'HI ACTIVITY')+'. Σκορ επιλογής: '+(match.home.score??'–')+'–'+(match.away.score??'–')+'. '+(asian?'Ασιατικό Over 2.0 αποκλειστικά για τα γκολ του 2ου ημιχρόνου· ακριβώς 2 γκολ στο 2ο ημίχρονο σημαίνουν επιστροφή.':(periodAtSignal==='first_half'?'Κανονικό Over: απαιτείται τουλάχιστον ένα ακόμη γκολ μέχρι το ημίχρονο.':'Στόχος: τουλάχιστον ένα ακόμη γκολ στο δεύτερο ημίχρονο.'))+' Η επιλογή VIP δεν εγγυάται αποτέλεσμα.',time:new Date(now).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:score,scoreAtSignal:{home:Number(match.home.score||0),away:Number(match.away.score||0)},startCorners:corners,startShotsOnTarget:shotsOnTarget,evaluationWindowMinutes:Number(document.getElementById('signalOutcomeWindow')?.value||15),outcome:'εκκρεμεί',level:'VIP',source:button.closest('#powerGamesRows')?'manual-power-games':'manual-high-activity',betOutcome:'pending'};
  record.alertId=alertHistoryKey(record);signalAlertHistory.unshift(record);signalAlertHistory=signalAlertHistory.slice(0,5000);
  try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
  button.textContent='◆ VIP ALERT καταχωρίστηκε';button.disabled=true;
@@ -3871,11 +3854,9 @@ function captureHighActivitySotSnapshots(){
   };
   const values=live.teams.slice(0,2).map(team=>({
    homeAway:team.homeAway,
-   shots:team.shots??team.totalShots??team.total_shots??team.total_attempts??team.totalAttempts??null,
    shotsOnTarget:readSot(team),
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??null,
    bigChances:team.bigChances??team.big_chances??null,
-   shotsOffTarget:team.shotsOffTarget??team.shots_off_target??null,
    corners:team.corners??null,
    attacks:team.attacks??team.totalAttacks??team.total_attacks??null,
    dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??null,
@@ -3996,7 +3977,7 @@ async function runSignalCheck(){
       const live=liveMetricsCache.get(String(a.eventId));
       if(!live?.statsAvailable||!Array.isArray(live.teams)||live.teams.length!==2)return;
       const corners=live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null;
-      const shots=live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null;
+      
       const onTarget=live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null;
       if(String(a.market||'').startsWith('Over ')&&String(a.market).includes('συνολικά κόρνερ')){
         if(corners==null||a.overLine==null)return;
@@ -4005,9 +3986,9 @@ async function runSignalCheck(){
         if(corners==null||a.startCorners==null)return;
         a.outcome=corners>Number(a.startCorners)?'Επιβεβαιώθηκε · κόρνερ':'Δεν επιβεβαιώθηκε · χωρίς νέο κόρνερ';
       }else if(a.market==='ένταση'){
-        const comparable=(a.startShots!=null&&shots!=null)||(a.startShotsOnTarget!=null&&onTarget!=null)||(a.startCorners!=null&&corners!=null);
+        const comparable=(a.startShotsOnTarget!=null&&onTarget!=null)||(a.startCorners!=null&&corners!=null);
         if(!comparable)return;
-        const continued=(a.startShots!=null&&shots!=null&&shots>a.startShots)||(a.startShotsOnTarget!=null&&onTarget!=null&&onTarget>a.startShotsOnTarget)||(a.startCorners!=null&&corners!=null&&corners>a.startCorners);
+        const continued=(a.startShotsOnTarget!=null&&onTarget!=null&&onTarget>a.startShotsOnTarget)||(a.startCorners!=null&&corners!=null&&corners>a.startCorners);
         a.outcome=continued?'Επιβεβαιώθηκε · νέα δραστηριότητα':'Δεν επιβεβαιώθηκε · χωρίς νέα δραστηριότητα';
       }else return;
     }
@@ -4021,12 +4002,11 @@ async function runSignalCheck(){
    const live=liveMetricsCache.get(String(m.id)); // Use the canonical scoreboard-ID mapping, including team-name/reversed-team matches.
    if(!live||!Array.isArray(live.teams)||live.teams.length<2)continue;
    const key=String(m.id??(m.home?.name+'-'+m.away?.name));
-   const values=live.teams.map(t=>({shots:t.shots??t.totalShots??t.total_shots??t.total_attempts??t.totalAttempts,shotsOnTarget:t.shotsOnTarget??t.shots_on_target??t.shots_on_goal??t.shotsOnGoal??t.onTargetShots,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
-   // Keep the display's rolling 5/10-minute trail whenever both teams provide
-   // cumulative shots, even if the provider's aggregate statsAvailable flag is false.
-   const hasComparableShots=values.every(v=>v.shots!==null&&v.shots!==undefined&&v.shots!==''&&Number.isFinite(Number(v.shots)));
+   const values=live.teams.map(t=>({shotsOnTarget:t.shotsOnTarget??t.shots_on_target??t.shots_on_goal??t.shotsOnGoal??t.onTargetShots,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
+   // Keep the rolling 5/10-minute trail only when both teams provide cumulative SOT.
+   const hasComparableSot=values.every(v=>v.shotsOnTarget!==null&&v.shotsOnTarget!==undefined&&v.shotsOnTarget!==''&&Number.isFinite(Number(v.shotsOnTarget)));
    let trail=signalTrails.get(key)||[];
-   if(hasComparableShots){
+   if(hasComparableSot){
     trail.push({values,at:now});
     while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
     signalTrails.set(key,trail);
@@ -4046,20 +4026,18 @@ async function runSignalCheck(){
    const serverTrend=windowMinutes===10?live.trend?.window10m:windowMinutes===5?live.trend?.window5m:null;
    const serverTrend10=live.trend?.window10m;
    if(!baseline&&!serverTrend?.available)continue;
-   let goalPoints=0,pressurePoints=0,reasons=[],totalShotsAdded=0,shotsOnTargetAdded=0,cornersAdded=0,attacksAdded=0,dangerousAttacksAdded=0,xGAdded=0,xGAvailable=false;
+   let goalPoints=0,pressurePoints=0,reasons=[],shotsOnTargetAdded=0,cornersAdded=0,attacksAdded=0,dangerousAttacksAdded=0,xGAdded=0,xGAvailable=false;
    values.forEach((v,i)=>{
     const p=baseline?.values[i]||{};
     const serverDelta=serverTrend?.teams?.find(t=>String(t.team||'').trim().toLowerCase()===String(live.teams[i]?.team||'').trim().toLowerCase())||serverTrend?.teams?.[i]||{};
-    const ds=baseline?(v.shots==null||p.shots==null?0:Math.max(0,v.shots-p.shots)):(serverDelta.shots==null?0:Number(serverDelta.shots));
     const dt=baseline?(v.shotsOnTarget==null||p.shotsOnTarget==null?0:Math.max(0,v.shotsOnTarget-p.shotsOnTarget)):(serverDelta.shotsOnTarget==null?0:Number(serverDelta.shotsOnTarget));
     const dc=baseline?(v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners)):(serverDelta.corners==null?0:Number(serverDelta.corners));
     const da=baseline?(v.attacks==null||p.attacks==null?0:Math.max(0,v.attacks-p.attacks)):(serverDelta.attacks==null?0:Number(serverDelta.attacks));
     const dda=baseline?(v.dangerousAttacks==null||p.dangerousAttacks==null?0:Math.max(0,v.dangerousAttacks-p.dangerousAttacks)):(serverDelta.dangerousAttacks==null?0:Number(serverDelta.dangerousAttacks));
     const dxg=baseline?(v.xG==null||p.xG==null||!Number.isFinite(Number(v.xG))||!Number.isFinite(Number(p.xG))?null:Math.max(0,Number(v.xG)-Number(p.xG))):(v.xG==null||!Number.isFinite(Number(v.xG))?null:0);
     if(dxg!==null){xGAvailable=true;xGAdded+=dxg;}
-    totalShotsAdded+=ds;shotsOnTargetAdded+=dt;cornersAdded+=dc;attacksAdded+=da;dangerousAttacksAdded+=dda;
+    shotsOnTargetAdded+=dt;cornersAdded+=dc;attacksAdded+=da;dangerousAttacksAdded+=dda;
     if(dt>0){goalPoints+=4*dt;pressurePoints+=4*dt;reasons.push(dt+' νέο/α σουτ στην εστία')}
-    if(ds>0){goalPoints+=Math.min(ds,4);pressurePoints+=Math.min(2*ds,6);reasons.push(ds+' νέες τελικές')}
     if(dc>0){pressurePoints+=2*dc;reasons.push(dc+' νέα κόρνερ')}
     if(da>0){pressurePoints+=Math.min(da*0.25,3);reasons.push(da+' νέες επιθέσεις')}
     if(dda>0){pressurePoints+=Math.min(dda*0.75,5);reasons.push(dda+' νέες επικίνδυνες επιθέσεις')}
@@ -4071,8 +4049,7 @@ async function runSignalCheck(){
    const cumulativeMatchShotsOnTarget=values.reduce((sum,v)=>sum+(v.shotsOnTarget==null?0:Math.max(0,Number(v.shotsOnTarget)||0)),0);
    if(cumulativeMatchShotsOnTarget>=20){goalPoints+=1;pressurePoints+=1;reasons.push('20+ συνολικά σουτ στην εστία στον αγώνα ('+cumulativeMatchShotsOnTarget+') — πρόσθετη ένδειξη, όχι υποχρεωτικό κριτήριο');}
    const sensitivity=Number(signalThreshold.value);
-   const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
-   const evidenceKinds=[totalShotsAdded>0||shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
+   const evidenceKinds=[shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
    // Independent 10-minute pressure protocol: count newly recorded shots on target
    // against a real ~10-minute baseline, or use the provider's 10-minute trend.
    let shotsOnTarget10m=0,hasSot10mData=false;
@@ -4082,9 +4059,10 @@ async function runSignalCheck(){
     serverTrend10.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
    }
    const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
+   const goalEvidence=shotsOnTargetAdded>=3||sixSot10m;
    // Recent pressure reinforcement: 3+ new shots on target in the selected window,
    // or 6+ across the last 10 minutes, boosts scoring but never triggers alone.
-   const independentAttackSignal=totalShotsAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
+   const independentAttackSignal=shotsOnTargetAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
    const recentSotReinforcement=(shotsOnTargetAdded>=3||sixSot10m)&&independentAttackSignal;
    if(recentSotReinforcement){
     goalPoints+=sixSot10m?3:2;
@@ -4116,7 +4094,7 @@ async function runSignalCheck(){
     if(candidateValid&&(signalCandidateCounts.get(candidateKey)||0)>=2&&now-last>8*60*1000){
      const reason=[...new Set(reasons)].join(' · ')||'αύξηση live δραστηριότητας';
      const vip=false;
-     const signalClock=String(m.clock||live.minute||'');const minuteMatchAtSignal=signalClock.match(/^\s*(\d{1,3})(?:\s*\+\s*\d{1,2})?\s*['′’]?\s*$/);const signalMinute=minuteMatchAtSignal?Number(minuteMatchAtSignal[1]):NaN;const atHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(signalClock+' '+String(m.statusText||m.status||''));const periodAtSignal=atHalfTime||(Number.isFinite(signalMinute)&&signalMinute>45)||/second half|2nd half|2ο ημίχρονο/i.test(signalClock)?'second_half':'first_half';const asianLineSelected=false; // Asian Over is reserved for manually registered VIP alerts only.const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,country:m.country||'Διεθνής',minute:m.clock||'LIVE',minuteNumber:Number.isFinite(signalMinute)?signalMinute:null,periodAtSignal,reason:market.key==='corner'?'Σύνολο τώρα: '+totalCorners+' κόρνερ · Εκτίμηση λήξης: '+(projectedCorners==null?'—':projectedCorners.toFixed(1))+' · Γραμμή: Over '+overLine+' · Επιβεβαιωτικές ενδείξεις επίθεσης: '+(attacksAdded>0?'επιθέσεις ':'')+(dangerousAttacksAdded>0?'επικίνδυνες επιθέσεις ':'')+(shotsOnTargetAdded>0?'σουτ στην εστία':'')+' · '+[...new Set(reasons)].join(' · '):reason,market:market.key==='goal'?(asianLineSelected?'2ο ημίχρονο · Ασιατικό Over '+(Number(m.home.score||0)+Number(m.away.score||0)+2):(periodAtSignal==='first_half'?'1ο ημίχρονο Over '+(Number(m.home.score||0)+Number(m.away.score||0)+0.5):'2ο ημίχρονο Over '+(Number(m.home.score||0)+Number(m.away.score||0)+0.5))):market.label,overLine:market.key==='corner'?overLine:(market.key==='goal'?(asianLineSelected?Number(m.home.score||0)+Number(m.away.score||0)+2:(Number(m.home.score||0)+Number(m.away.score||0)+0.5)):null),projectedCorners:market.key==='corner'?projectedCorners:null,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),scoreAtSignal:{home:Number(m.home.score||0),away:Number(m.away.score||0)},startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShots:live.teams.every(t=>t.shots!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shots),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
+     const signalClock=String(m.clock||live.minute||'');const minuteMatchAtSignal=signalClock.match(/^\s*(\d{1,3})(?:\s*\+\s*\d{1,2})?\s*['′’]?\s*$/);const signalMinute=minuteMatchAtSignal?Number(minuteMatchAtSignal[1]):NaN;const atHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(signalClock+' '+String(m.statusText||m.status||''));const periodAtSignal=atHalfTime||(Number.isFinite(signalMinute)&&signalMinute>45)||/second half|2nd half|2ο ημίχρονο/i.test(signalClock)?'second_half':'first_half';const asianLineSelected=false; // Asian Over is reserved for manually registered VIP alerts only.const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,country:m.country||'Διεθνής',minute:m.clock||'LIVE',minuteNumber:Number.isFinite(signalMinute)?signalMinute:null,periodAtSignal,reason:market.key==='corner'?'Σύνολο τώρα: '+totalCorners+' κόρνερ · Εκτίμηση λήξης: '+(projectedCorners==null?'—':projectedCorners.toFixed(1))+' · Γραμμή: Over '+overLine+' · Επιβεβαιωτικές ενδείξεις επίθεσης: '+(attacksAdded>0?'επιθέσεις ':'')+(dangerousAttacksAdded>0?'επικίνδυνες επιθέσεις ':'')+(shotsOnTargetAdded>0?'σουτ στην εστία':'')+' · '+[...new Set(reasons)].join(' · '):reason,market:market.key==='goal'?(asianLineSelected?'2ο ημίχρονο · Ασιατικό Over '+(Number(m.home.score||0)+Number(m.away.score||0)+2):(periodAtSignal==='first_half'?'1ο ημίχρονο Over '+(Number(m.home.score||0)+Number(m.away.score||0)+0.5):'2ο ημίχρονο Over '+(Number(m.home.score||0)+Number(m.away.score||0)+0.5))):market.label,overLine:market.key==='corner'?overLine:(market.key==='goal'?(asianLineSelected?Number(m.home.score||0)+Number(m.away.score||0)+2:(Number(m.home.score||0)+Number(m.away.score||0)+0.5)):null),projectedCorners:market.key==='corner'?projectedCorners:null,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),scoreAtSignal:{home:Number(m.home.score||0),away:Number(m.away.score||0)},startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
      const aiRecord={...base,level:'AI'};aiRecord.alertId=alertHistoryKey(aiRecord);signalAlertHistory.unshift(aiRecord);persistAlertRecord(aiRecord);
 
      sendGoalPulsePushAlert('AI',m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,base.eventId||m.id);
@@ -4290,7 +4268,7 @@ async function showDetails(btn){
    const teams=[...rawTeams].sort((x,y)=>rank(x)-rank(y));
    const h=teams[0]||{},a=teams[1]||{};
    const val=(team,key)=>team[key]===undefined||team[key]===null||team[key]===''?'—':String(team[key]);
-   const rows=[['Σουτ','shots'],['Σουτ στην εστία','shotsOnTarget'],['Σουτ εκτός εστίας','shotsOffTarget'],['Μπλοκαρισμένα σουτ','blockedShots'],['Κόρνερ','corners'],['Κατοχή (%)','possession'],['Επικίνδυνες επιθέσεις','dangerousAttacks'],['Expected Goals (xG)','xG']].filter(([label,key])=>h[key]!=null||a[key]!=null).map(([label,key])=>'<div class="stat-row"><span>'+esc(val(h,key))+'</span><strong>'+esc(label)+'</strong><span>'+esc(val(a,key))+'</span></div>').join('');
+   const rows=[['Σουτ εντός εστίας (SOT)','shotsOnTarget'],['Κόρνερ','corners'],['Κατοχή (%)','possession'],['Επικίνδυνες επιθέσεις','dangerousAttacks'],['Expected Goals (xG)','xG']].filter(([label,key])=>h[key]!=null||a[key]!=null).map(([label,key])=>'<div class="stat-row"><span>'+esc(val(h,key))+'</span><strong>'+esc(label)+'</strong><span>'+esc(val(a,key))+'</span></div>').join('');
    const trail=signalTrails.get(String(liveEvent.id))||[];
    const delta=(minutes,key)=>{
     const base=[...trail].reverse().find(item=>Date.now()-item.at>=minutes*60000);
@@ -4307,7 +4285,7 @@ async function showDetails(btn){
     return '—';
    };
    const score='<div class="analysis-grid"><div class="analysis-stat"><small>Σκορ τώρα</small><strong>'+esc(liveEvent.home.score==null?'–':liveEvent.home.score)+'–'+esc(liveEvent.away.score==null?'–':liveEvent.away.score)+'</strong></div><div class="analysis-stat"><small>Λεπτό αγώνα</small><strong>'+esc(live?.minute||liveEvent.clock||'LIVE')+'</strong></div></div>';
-   const deltaRows=['shots','shotsOnTarget','corners'].map((key,i)=>{const label=['Σουτ','Σουτ στην εστία','Κόρνερ'][i];return '<div class="stat-row"><strong>'+label+'</strong><span>'+esc(delta(5,key))+'</span><span>'+esc(delta(10,key))+'</span></div>'}).join('');
+   const deltaRows=['shotsOnTarget','corners'].map((key,i)=>{const label=['Σουτ εντός εστίας (SOT)','Κόρνερ'][i];return '<div class="stat-row"><strong>'+label+'</strong><span>'+esc(delta(5,key))+'</span><span>'+esc(delta(10,key))+'</span></div>'}).join('');
    const trend=live?.trend;
    const trendText=[['Τελευταία 5′',trend?.window5m],['Τελευταία 10′',trend?.window10m]].filter(([,w])=>w?.available).map(([label,w])=>label+(w.sampleMinutes?' (δείγμα '+w.sampleMinutes+'′)':'')).join(' · ');
    content.innerHTML=score+'<h3 class="detail-heading">📊 Live στατιστικά αγώνα</h3><div class="stat-table"><div class="stat-table-head"><span>'+esc(liveEvent.home.name)+'</span><span>Στατιστικό</span><span>'+esc(liveEvent.away.name)+'</span></div>'+(rows||'<p class="analysis-note">Η πηγή δεν επέστρεψε ακόμη αναλυτικά στατιστικά για αυτόν τον αγώνα. Δεν συμπληρώνουμε ελλείψεις με μηδενικά.</p>')+'</div><h3 class="detail-heading">⏱️ Μεταβολές στα τελευταία λεπτά</h3><div class="stat-table"><div class="stat-table-head"><span>Στατιστικό</span><span>Δ 5′</span><span>Δ 10′</span></div>'+deltaRows+'</div><p class="analysis-note">'+(trendText?'Ιστορικό μετρήσεων: '+esc(trendText)+'.':'Οι μεταβολές εμφανίζονται όταν υπάρχει επαρκές ιστορικό μετρήσεων.')+' Οι μεταβολές γράφονται ως γηπεδούχος — φιλοξενούμενος. Το xG εμφανίζεται μόνο αν το παρέχει η πηγή.</p><button class="mini-btn" type="button" id="refreshLiveDetail">↻ Ανανέωση live στατιστικών</button>';
@@ -4389,12 +4367,12 @@ async function showDetails(btn){
   const fmt=v=>v===undefined||v===null||v===''?'—':String(v);
   const allPeriod=(stats?.data?.periods||[]).find(p=>String(p.period||'').toLowerCase()==='all')||stats?.data?.periods?.[0];
   const statItems=(allPeriod?.groups||[]).flatMap(g=>g.items||[]);
-  const wanted=[['total_shots','Σουτ'],['shots_on_target','Σουτ στην εστία'],['corners','Κόρνερ'],['possession','Κατοχή'],['yellow_cards','Κίτρινες κάρτες'],['red_cards','Κόκκινες κάρτες'],['dangerous_attacks','Επικίνδυνες επιθέσεις']];
+  const wanted=[['shots_on_target','Σουτ εντός εστίας (SOT)'],['corners','Κόρνερ'],['possession','Κατοχή'],['yellow_cards','Κίτρινες κάρτες'],['red_cards','Κόκκινες κάρτες'],['dangerous_attacks','Επικίνδυνες επιθέσεις']];
   const extraRows=wanted.map(([key,label])=>{const it=statItems.find(x=>x.key===key);return it?'<div class="stat-row"><span>'+esc(fmt(it.home))+'</span><strong>'+esc(it.title||label)+'</strong><span>'+esc(fmt(it.away))+'</span></div>':''}).filter(Boolean).join('');
   const xgRow=(usableMetric(xgHome)||usableMetric(xgAway))?'<div class="stat-row"><span>'+esc(fmt(xgHome))+'</span><strong>Expected Goals (xG)</strong><span>'+esc(fmt(xgAway))+'</span></div>':'';
   const eventItems=(events?.data?.events||[]).slice().sort((a,b)=>(Number(a.minute)||0)-(Number(b.minute)||0));
   const eventHtml=eventItems.length?'<div class="event-list">'+eventItems.slice(-12).map(ev=>'<div class="event-row"><span class="event-minute">'+esc(fmt(ev.minute))+'\'</span><span class="event-kind">'+esc(String(ev.event_type||'Event').replace(/([A-Z])/g,' $1').trim())+'</span><span class="event-player">'+esc(ev.player?.name||ev.sub_in_player?.name||'')+'</span><strong class="event-score">'+esc(fmt(ev.score_home))+'–'+esc(fmt(ev.score_away))+'</strong></div>').join('')+'</div>':'<p class="analysis-note">Δεν υπάρχει διαθέσιμο ιστορικό συμβάντων.</p>';
-  content.innerHTML='<div class="forebet-analysis-top"><div><span class="forebet-kicker">GOALMATRIX · MATCH ANALYTICS</span><h3>'+esc(home)+' <span>vs</span> '+esc(away)+'</h3><p>Πραγματικά δεδομένα αγώνα · PitchAPI</p></div><div class="forebet-score-pick"><small>ΤΕΛΙΚΟ ΣΚΟΡ</small><strong>'+esc(fmt(target.score_home))+' – '+esc(fmt(target.score_away))+'</strong><span>FULL TIME</span></div></div><section class="forebet-section"><h4>Expected Goals και βασικά στοιχεία</h4><div class="forebet-market-grid"><div><span>xG · '+esc(home)+'</span><strong>'+esc(fmt(xgHome))+'</strong></div><div><span>xG · '+esc(away)+'</span><strong>'+esc(fmt(xgAway))+'</strong></div><div><span>Σουτ συνολικά</span><strong>'+esc(fmt(shotCount||null))+'</strong></div><div><span>xGOT · '+esc(home)+'</span><strong>'+esc(fmt(xgotHome))+'</strong></div><div><span>xGOT · '+esc(away)+'</span><strong>'+esc(fmt(xgotAway))+'</strong></div><div><span>Τελικό σκορ</span><strong>'+esc(fmt(target.score_home))+'–'+esc(fmt(target.score_away))+'</strong></div></div></section>'+(extraRows?'<section class="forebet-section"><h4>Στατιστική σύγκριση ομάδων</h4><div class="stat-table"><div class="stat-table-head"><span>'+esc(home)+'</span><span>Στατιστικό</span><span>'+esc(away)+'</span></div>'+extraRows+xgRow+'</div></section>':'')+'<section class="forebet-section"><h4>Ροή αγώνα</h4>'+eventHtml+'</section><section class="forebet-section"><h4>Pressure Wave · Καμπύλη πίεσης</h4>'+chart+'</section><p class="analysis-note">Τα στοιχεία εμφανίζονται μόνο όταν παρέχονται από την πηγή. Πρόκειται για ανάλυση μετά τη λήξη, όχι για εγγυημένες προβλέψεις.</p>';
+  content.innerHTML='<div class="forebet-analysis-top"><div><span class="forebet-kicker">GOALMATRIX · MATCH ANALYTICS</span><h3>'+esc(home)+' <span>vs</span> '+esc(away)+'</h3><p>Πραγματικά δεδομένα αγώνα · PitchAPI</p></div><div class="forebet-score-pick"><small>ΤΕΛΙΚΟ ΣΚΟΡ</small><strong>'+esc(fmt(target.score_home))+' – '+esc(fmt(target.score_away))+'</strong><span>FULL TIME</span></div></div><section class="forebet-section"><h4>Expected Goals και βασικά στοιχεία</h4><div class="forebet-market-grid"><div><span>xG · '+esc(home)+'</span><strong>'+esc(fmt(xgHome))+'</strong></div><div><span>xG · '+esc(away)+'</span><strong>'+esc(fmt(xgAway))+'</strong></div><div><span>xGOT · '+esc(home)+'</span><strong>'+esc(fmt(xgotHome))+'</strong></div><div><span>xGOT · '+esc(away)+'</span><strong>'+esc(fmt(xgotAway))+'</strong></div><div><span>Τελικό σκορ</span><strong>'+esc(fmt(target.score_home))+'–'+esc(fmt(target.score_away))+'</strong></div></div></section>'+(extraRows?'<section class="forebet-section"><h4>Στατιστική σύγκριση ομάδων</h4><div class="stat-table"><div class="stat-table-head"><span>'+esc(home)+'</span><span>Στατιστικό</span><span>'+esc(away)+'</span></div>'+extraRows+xgRow+'</div></section>':'')+'<section class="forebet-section"><h4>Ροή αγώνα</h4>'+eventHtml+'</section><section class="forebet-section"><h4>Pressure Wave · Καμπύλη πίεσης</h4>'+chart+'</section><p class="analysis-note">Τα στοιχεία εμφανίζονται μόνο όταν παρέχονται από την πηγή. Πρόκειται για ανάλυση μετά τη λήξη, όχι για εγγυημένες προβλέψεις.</p>';
   subtitle.textContent=target.league?.name||'Match analytics';
   await showSeasonResultsDetails(card,home,away,subtitle,content,true);
  }catch(err){content.innerHTML='<section class="forebet-section"><h4>Αναλυτικά στατιστικά παρόχου</h4><p class="analysis-note">Τα λεπτομερή xG και τα συμβάντα δεν είναι διαθέσιμα αυτή τη στιγμή. Φόρτωση της πρόβλεψης και των αποτελεσμάτων σεζόν.</p></section>';await showSeasonResultsDetails(card,home,away,subtitle,content,true)}

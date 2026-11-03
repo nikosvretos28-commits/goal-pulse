@@ -7,7 +7,7 @@ Status: **engineering specification and implementation target**. A corner alert 
 - **Target event:** a corner awarded in the match.
 - **Forecast horizon:** next 5 minutes of match time; evaluate a separate 10-minute horizon only as a separately labelled model.
 - **Alert wording:** “ΠΙΘΑΝΟ ΚΟΡΝΕΡ — αυξημένη πίεση” plus match minute, evidence, data freshness and confidence class.
-- A corner counts only when the event feed confirms it. Do not count a shot, cross, blocked shot or attack as a corner.
+- A corner counts only when the event feed confirms it. Do not count any shot, cross or attack as a corner; blocked-shot metrics are not collected.
 - Do not issue another same-market alert for the same match during the 8-minute cooldown unless a clearly defined material-change rule is added and backtested.
 
 ## 2. Minimum data-quality gates
@@ -28,8 +28,8 @@ Before scoring a match, require:
 - Corner count change must come from a verified event or a reliable cumulative-stat delta.
 
 ### B. Attacking pressure (supporting evidence)
-- Shots and shots on target in last 5/10 minutes.
-- Blocked shots and crosses into the penalty area, if the feed exposes them.
+- Shots on target (SOT) in last 5/10 minutes.
+- Crosses into the penalty area, if the feed exposes them.
 - Sustained possession in the attacking phase / final-third entries, only if provider definitions are known.
 - Repeated attacks ending in a shot or defensive clearance.
 - Dangerous-attacks counts are a weak, provider-dependent signal: use only as corroboration, never as the sole trigger.
@@ -41,7 +41,7 @@ Before scoring a match, require:
 - A team leading comfortably may reduce attacking urgency; do not apply fixed assumptions without validation.
 
 ### D. Negative / suppressing evidence
-- No recent shots or pressure events; stats stale or missing; feed outage; match state uncertain.
+- No recent SOT or pressure events; stats stale or missing; feed outage; match state uncertain.
 - Long stoppage, half-time, match finished, or a red-card / formation change before enough new observations are collected.
 - A high full-match corner total alone is not evidence that another corner is imminent.
 
@@ -49,12 +49,12 @@ Before scoring a match, require:
 
 Until there is enough timestamped event data and historical backtesting, use a **pressure score**, not a claimed probability. Suggested starting points, subject to tuning:
 - +3: at least 1 confirmed corner in the last 5 minutes.
-- +2: at least 2 shots in the last 5 minutes across either team, or 1 shot on target.
-- +2: repeated verified attacking entries / crosses / blocked shots in the last 5 minutes, if available.
+- +2: at least 1 SOT in the last 5 minutes.
+- +2: repeated verified attacking entries / crosses in the last 5 minutes, if available.
 - +1: sustained attacking pressure across two consecutive observations.
 - +1: team-specific historical corner rate is above competition baseline with adequate sample size.
 - +1: match state plausibly increases urgency, but only as a minor modifier.
-- −3: no shot/entry signal in the last 5 minutes.
+- −3: no SOT/entry signal in the last 5 minutes.
 - Suppress entirely for stale data, missing corner counter, non-live status, half-time, or uncertain event identity.
 
 A candidate alert may be shown at score ≥5 only if at least two independent signal families contribute and the data-quality gates pass. This threshold is a testable starting point, **not** an empirically validated setting. If the current provider lacks event timestamps, do not award the “confirmed corner in last 5 minutes” points based on total-match corners.
@@ -62,7 +62,7 @@ A candidate alert may be shown at score ≥5 only if at least two independent si
 ## 5. Separate markets and alert logic
 
 - Corner alerts must use their own feature set, threshold, cooldown, outcome definition and validation report.
-- Goal alerts must not trigger corner alerts automatically; shots/xG can be shared observations but their predictive effect must be separately measured.
+- Goal alerts must not trigger corner alerts automatically; SOT/xG can be shared observations but their predictive effect must be separately measured.
 - Calculate features for each team and for the match, but avoid double-counting both teams' same event.
 - Emit one clear alert with the strongest side/team context; don't flood the UI with duplicate team and match alerts.
 
@@ -94,7 +94,7 @@ Each card should show:
 
 ## 8. Current implementation boundary
 
-The current Goal Pulse live feed primarily supplies cumulative totals (shots, shots on target, corners) and a coarse dangerous-attacks field for up to 24 live matches, with rolling 5/10-minute deltas observed by the server. It does **not** reliably provide timestamped crosses, blocked shots, final-third entries, or a complete event stream for every match. Therefore:
+The current Goal Pulse live feed primarily supplies cumulative totals (SOT, corners) and a coarse dangerous-attacks field for up to 24 live matches, with rolling 5/10-minute deltas observed by the server. It does **not** reliably provide timestamped crosses, blocked-shot data (not collected), final-third entries, or a complete event stream for every match. Therefore:
 - use cumulative deltas only when a valid baseline exists;
 - do not fabricate event timing from total-match statistics;
 - do not claim calibrated corner probabilities yet;
