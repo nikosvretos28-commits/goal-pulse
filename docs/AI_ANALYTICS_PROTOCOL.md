@@ -14,7 +14,7 @@ Status: **design and implementation requirements**. This document defines what t
 ## 2. Metric hierarchy
 
 ### A. Chance creation and quality
-- Goals, total shots, shots on target, shots inside the box, big chances created/missed, key passes, assists and expected assists (xA), where supplied.
+- Goals, shots on target (SOT), shots on target from inside the box, big chances created/missed, key passes, assists and expected assists (xA), where supplied.
 - Expected goals (xG), non-penalty xG (npxG), xG per shot, and set-piece/open-play xG when available.
 - Post-shot xG / xG on target (PSxG/xGOT) to distinguish chance creation from shot placement; never substitute it for pre-shot xG.
 - Chance-creation rates per 90 minutes and per possession/attack where the necessary denominator exists.
@@ -26,7 +26,7 @@ Status: **design and implementation requirements**. This document defines what t
 - Split open play and set pieces when the feed supports the distinction.
 
 ### C. Defensive vulnerability (the inverse view)
-- Shots and shots on target faced per match; goals conceded per shot faced and per shot on target faced.
+- Shots on target faced per match; goals conceded per shot faced and per shot on target faced.
 - xG conceded and big chances conceded, plus opponent chance quality.
 - Goals conceded relative to xG conceded; goalkeeper shot-stopping via PSxG faced only if supplied.
 - Interpret ratios with zero denominators and small samples safely; never divide by zero or imply certainty from a clean sheet in one match.
@@ -38,7 +38,7 @@ Status: **design and implementation requirements**. This document defines what t
 - Tracking-based measures (pressure, player/space positioning, defensive line, speed) require actual tracking data and must remain disabled without it.
 
 ### E. Live match state
-- Current score, minute, red cards, shots/SOT, corners, possession, attacks and recent event sequence when supplied.
+- Current score, minute, red cards, SOT, corners, possession, attacks and recent event sequence when supplied.
 - Change over rolling windows (e.g. last 5/10/15 minutes) rather than only full-match totals.
 - Pressure is a time-series signal, not a synonym for possession or a single dangerous-attack count.
 - Goal and corner alerts must use separate calibrated models; evidence for one market must not automatically trigger another.
@@ -47,8 +47,8 @@ Status: **design and implementation requirements**. This document defines what t
 
 For each team, maintain separate home/away and competition-aware profiles:
 - recent form with recency weighting;
-- chances created, xG, shots/SOT and conversion;
-- chances and xG conceded, shots/SOT faced and defensive vulnerability;
+- chances created, xG, SOT and conversion;
+- chances and xG conceded, SOT faced and defensive vulnerability;
 - opponent strength and red-card/game-state context;
 - sample size, data coverage and uncertainty.
 
@@ -68,14 +68,14 @@ For every candidate alert:
 ## 5. Validation and improvement loop
 
 - Use chronological train/validation/test splits; avoid leakage from future match events.
-- Benchmark against simple baselines (league average, current score/minute, shots/SOT-only).
+- Benchmark against simple baselines (league average, current score/minute, SOT-only).
 - Evaluate Brier score, log loss, calibration, precision/recall, false-positive rate, lead time and coverage, split by league, market and prediction horizon.
 - Keep model/data versions and roll back changes that degrade out-of-sample performance.
 - Do not claim that the AI learns or improves daily until data collection, scheduled evaluation, versioning and deployment are actually running.
 
 ## 6. Current integration gap to close
 
-The existing live endpoint primarily exposes aggregate live shots, shots on target, corners, possession and dangerous attacks for a limited set of matches. The historical team profiles, persistent match/event history, live xG/big-chance/xA data and event-level feeds required for the full protocol are **not yet reliably wired into the current live alert pipeline**. Some xG/xGOT and event analytics are available through a separate provider path for completed matches, subject to provider coverage and configuration.
+The existing live endpoint primarily exposes aggregate live SOT and corners, possession and dangerous attacks for a limited set of matches. The historical team profiles, persistent match/event history, live xG/big-chance/xA data and event-level feeds required for the full protocol are **not yet reliably wired into the current live alert pipeline**. Some xG/xGOT and event analytics are available through a separate provider path for completed matches, subject to provider coverage and configuration.
 
 Implementation priority:
 1. Confirm provider licensing, definitions, live coverage, historical depth, rate limits and costs.
@@ -108,14 +108,14 @@ Corner alerts are a separate market from goal alerts. A high-pressure phase can 
 Use the strongest available evidence, in this order:
 1. Timestamped corner events and match clock, to confirm the true event sequence and measure time since the last corner.
 2. Recent attacks into the final third/penalty area, crosses, blocked shots, shots from inside the box, clearances and sustained territorial pressure, if the provider supplies these event types.
-3. Rolling 5/10-minute changes in shots, shots on target and corners; use the recent corner rate as context, not as a stand-alone trigger.
+3. Rolling 5/10-minute changes in SOT and corners; use the recent corner rate as context, not as a stand-alone trigger.
 4. Scoreline, minute, red cards, home/away status and game state, plus the attacking team's historical corners-for and opponent corners-conceded profile, split by home/away and competition where possible.
 5. League and match-level baselines with sample sizes and missing-data indicators.
 
 Aggregate possession or a provider's “dangerous attacks” count is supporting evidence only: definitions vary by provider and neither measure proves that a corner is imminent. Do not invent crosses, box entries, blocked shots, or historical rates when absent.
 
 ### 7.3 Two-stage trigger
-**Stage A — pressure watch:** enter watch state only when the match is live, data is fresh, and at least two independent signals support sustained attacking pressure. Examples include a rise in recent shots/SOT plus an increase in attacks/crosses/blocked shots, or verified box pressure plus a recent corner sequence. A single high full-match total is insufficient.
+**Stage A — pressure watch:** enter watch state only when the match is live, data is fresh, and at least two independent signals support sustained attacking pressure. Examples include a rise in recent SOT plus an increase in attacks/crosses/blocked shots, or verified box pressure plus a recent corner sequence. A single high full-match total is insufficient.
 
 **Stage B — alert decision:** issue a corner alert only if the target horizon has adequate evidence from a validated model, or from a clearly labelled heuristic while the model is not calibrated. Require:
 - at least two independent live signals, with no contradictory stale/missing critical data;
@@ -124,7 +124,7 @@ Aggregate possession or a provider's “dangerous attacks” count is supporting
 - a clear confidence label and short explanation listing the observed evidence;
 - cooldown and duplicate suppression.
 
-If the provider supplies only aggregate shots, shots on target and corners, use a conservative **“corner pressure” heuristic**, not a claimed probability of the next corner. If recent deltas are unavailable, show “insufficient live data” rather than guessing.
+If the provider supplies only aggregate SOT and corners, use a conservative **“corner pressure” heuristic**, not a claimed probability of the next corner. If recent deltas are unavailable, show “insufficient live data” rather than guessing.
 
 ### 7.4 Model and baseline
 When enough licensed data is available, estimate the probability of one or more corners in each horizon using time-to-event or discrete-time hazard modelling. Inputs may include:
