@@ -15,18 +15,18 @@ Status: **design and implementation requirements**. This document defines what t
 
 ### A. Chance creation and quality
 - Goals, shots on target (SOT), shots on target from inside the box, big chances created/missed, key passes, assists and expected assists (xA), where supplied.
-- Expected goals (xG), non-penalty xG (npxG), xG per shot, and set-piece/open-play xG when available.
+- Expected goals (xG), non-penalty xG (npxG), xG per SOT, and set-piece/open-play xG when available.
 - Post-shot xG / xG on target (PSxG/xGOT) to distinguish chance creation from shot placement; never substitute it for pre-shot xG.
 - Chance-creation rates per 90 minutes and per possession/attack where the necessary denominator exists.
 - Track rolling match windows and season-level rates separately.
 
 ### B. Attacking conversion
-- Goals per shot and goals per shot on target, alongside xG and xG per shot.
+- Goals per shot and goals per SOT on target, alongside xG and xG per shot.
 - Compare actual goals with xG over a meaningful sample; do not label a short finishing streak as stable skill.
 - Split open play and set pieces when the feed supports the distinction.
 
 ### C. Defensive vulnerability (the inverse view)
-- Shots on target faced per match; goals conceded per shot faced and per shot on target faced.
+- Shots on target faced per match; goals conceded per SOT faced and per shot on target faced.
 - xG conceded and big chances conceded, plus opponent chance quality.
 - Goals conceded relative to xG conceded; goalkeeper shot-stopping via PSxG faced only if supplied.
 - Interpret ratios with zero denominators and small samples safely; never divide by zero or imply certainty from a clean sheet in one match.
