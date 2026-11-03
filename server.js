@@ -2138,6 +2138,13 @@ const server = http.createServer(async (req, res) => {
           at: now,
           shots: total("shots"),
           onTarget: total("shotsOnTarget"),
+          // Preserve each team's SOT independently; a missing value for one side
+          // must not erase the other side's valid rolling SOT measurement.
+          sotByTeam: teams.map(team => ({
+            team: String(team.team || "").trim().toLowerCase(),
+            value: team.shotsOnTarget == null || !Number.isFinite(Number(team.shotsOnTarget))
+              ? null : Number(team.shotsOnTarget)
+          })),
           shotsOnTargetInsideBox: total("shotsOnTargetInsideBox"),
           bigChances: total("bigChances"),
           maxTeamSOT,
@@ -2180,9 +2187,23 @@ const server = http.createServer(async (req, res) => {
         // Missing rolling SOT baselines disable only the SOT trigger for this scan.
         // They must never skip the independent two-team xG alternative below.
         const delta = key => current[key] == null || previous?.[key] == null ? 0 : Math.max(0, current[key] - previous[key]);
-        const memory5mSot = delta("onTarget");
-        const memory10mSot = current.onTarget == null || previous10?.onTarget == null
-          ? 0 : Math.max(0, current.onTarget - previous10.onTarget);
+        // Compare SOT per team, not the combined current total. This allows a
+        // valid team's SOT delta to count when the opponent's SOT is unavailable,
+        // while never treating an unknown value as zero.
+        const memorySotDelta = baseline => {
+          if (!Array.isArray(current.sotByTeam) || !Array.isArray(baseline?.sotByTeam)) return 0;
+          const previousByTeam = new Map(baseline.sotByTeam
+            .filter(side => side?.team && side.value != null && Number.isFinite(Number(side.value)))
+            .map(side => [side.team, Number(side.value)]));
+          return current.sotByTeam.reduce((sum, side) => {
+            if (!side?.team || side.value == null || !Number.isFinite(Number(side.value))) return sum;
+            const oldValue = previousByTeam.get(side.team);
+            if (oldValue == null) return sum;
+            return sum + Math.max(0, Number(side.value) - oldValue);
+          }, 0);
+        };
+        const memory5mSot = memorySotDelta(previous);
+        const memory10mSot = memorySotDelta(previous10);
         const shots = delta("shots");
         // A persisted baseline can be present but stale or undercounted (including a zero delta).
         // Never let that persisted value mask stronger independently observed in-memory SOT activity.
