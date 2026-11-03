@@ -150,7 +150,6 @@ async function runProtocolAnalyst() {
         phase: p.periodAtSignal || "unknown",
         oddsBand: Number.isFinite(odds) ? (odds < 1.2 ? "1.01–1.19" : odds < 1.4 ? "1.20–1.39" : odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
         minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
-        shots: null,
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
         onTarget10m: stats.onTarget10m !== null && stats.onTarget10m !== undefined && Number.isFinite(Number(stats.onTarget10m)) ? Number(stats.onTarget10m) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
@@ -496,7 +495,6 @@ async function ensureAnalyticsDb() {
         match_date TEXT NOT NULL,
         team_name TEXT NOT NULL,
         observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        shots DOUBLE PRECISION,
         shots_on_target DOUBLE PRECISION,
         corners DOUBLE PRECISION,
         attacks DOUBLE PRECISION,
@@ -559,19 +557,19 @@ async function persistRollingTrends(matches, date) {
       const hasPersistableStat = ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
         .some(key => team[key] != null && Number.isFinite(Number(team[key])));
       if (team.team && hasPersistableStat) {
-        snapshots.push([String(match.eventId), date, String(team.team), null, team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
+        snapshots.push([String(match.eventId), date, String(team.team), team.shotsOnTarget, team.corners, team.attacks, team.dangerousAttacks, String(match.minute || "")]);
       }
     }
     if (!snapshots.length) return true;
     const values = [];
     const tuples = snapshots.map((row, index) => {
-      const n = index * 9;
+      const n = index * 8;
       values.push(...row);
-      return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8}, $${n+9})`;
+      return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8})`;
     });
     const snapshotInsert = await analyticsPool.query(
       `INSERT INTO live_stat_snapshots
-       (event_id, match_date, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks, minute)
+       (event_id, match_date, team_name, observed_at, shots_on_target, corners, attacks, dangerous_attacks, minute)
        VALUES ${tuples.join(", ")}`, values
     );
     const eventIds = [...new Set(matches.map(match => String(match.eventId)).filter(Boolean))];
@@ -590,7 +588,7 @@ async function persistRollingTrends(matches, date) {
     for (const minutes of [5, 10]) {
       const result = await analyticsPool.query(
         `SELECT DISTINCT ON (event_id, team_name)
-           event_id, team_name, observed_at, shots, shots_on_target, corners, attacks, dangerous_attacks
+           event_id, team_name, observed_at, shots_on_target, corners, attacks, dangerous_attacks
          FROM live_stat_snapshots
          WHERE event_id = ANY($1::text[])
            AND shots_on_target IS NOT NULL
@@ -616,7 +614,6 @@ async function persistRollingTrends(matches, date) {
           };
           return {
             team: team.team,
-            shots: null,
             shotsOnTarget: delta("shotsOnTarget", "shots_on_target"),
             corners: delta("corners"),
             attacks: delta("attacks"),
@@ -668,7 +665,6 @@ function addRollingTrends(matches) {
       at: now,
       teams: match.teams.map(team => ({
         team: String(team.team || "").trim().toLowerCase(),
-        shots: null,
         shotsOnTarget: team.shotsOnTarget,
         corners: team.corners,
         attacks: team.attacks,
@@ -2136,8 +2132,7 @@ const server = http.createServer(async (req, res) => {
         const maxTeamSOT = teamSOTValues.length ? Math.max(...teamSOTValues) : null;
         const current = {
           at: now,
-          shots: null,
-          onTarget: total("shotsOnTarget"),
+            onTarget: total("shotsOnTarget"),
           // Preserve each team's SOT independently; a missing value for one side
           // must not erase the other side's valid rolling SOT measurement.
           sotByTeam: teams.map(team => ({
@@ -2245,7 +2240,7 @@ const server = http.createServer(async (req, res) => {
           ? totalOnTarget >= 4 && totalDangerous >= 20
           : attacksAvailable && totalOnTarget >= 4 && totalAttacks >= 60;
         // xG strengthens the candidate when available; missing xG never blocks evaluation.
-        // Current-match shot quality is a supplemental signal, never a standalone trigger.
+        // Current-match SOT quality is supplemental, never a standalone trigger.
         // Use goals/SOT as a conservative live conversion indicator when the feed provides valid values.
         const homeGoalsLive = Number(match.homeScore);
         const awayGoalsLive = Number(match.awayScore);
@@ -2254,7 +2249,6 @@ const server = http.createServer(async (req, res) => {
           const teamGoals = goalsLiveAvailable ? (index === 0 ? homeGoalsLive : awayGoalsLive) : null;
           const teamOnTarget = Number(team.shotsOnTarget);
           return {
-            shots: null,
             onTarget: Number.isFinite(teamOnTarget) ? teamOnTarget : null,
             goals: teamGoals,
             conversionOnTarget: teamGoals != null && Number.isFinite(teamOnTarget) && teamOnTarget > 0
@@ -2263,7 +2257,7 @@ const server = http.createServer(async (req, res) => {
         });
         const liveConversionSupport = teamShotProfiles.reduce((sum, profile) => {
           if (profile.conversionOnTarget == null || profile.onTarget < 2) return sum;
-          // Cap this bonus and require at least two shots on target to reduce tiny-sample noise.
+          // Cap this bonus and require at least two SOT to reduce tiny-sample noise.
           return sum + Math.min(1, profile.conversionOnTarget * 1.5);
         }, 0);
         const shotQualitySupport = (current.shotsOnTargetInsideBox == null ? 0 : Math.min(2, current.shotsOnTargetInsideBox * 0.5)) + (current.bigChances == null ? 0 : Math.min(2, current.bigChances * 0.75));
@@ -3221,7 +3215,7 @@ const server = http.createServer(async (req, res) => {
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
       // Load direct live stats for every live scoreboard, not only SportScore-ID fixtures.
-      // This is a fallback when another provider's summary omits shots/corners.
+      // This is a fallback when another provider's summary omits SOT/corners.
       if (liveEvents.length) {
         try {
           const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
@@ -3432,7 +3426,7 @@ const server = http.createServer(async (req, res) => {
                 awayScore: event.away_score ?? event.awayScore ?? null,
                 status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
                 homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
-                statsAvailable: values.some(value => ["shots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3478,7 +3472,7 @@ const server = http.createServer(async (req, res) => {
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
                 minute: event.status?.displayClock || "",
-                statsAvailable: values.some(value => ["shots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3524,12 +3518,9 @@ const server = http.createServer(async (req, res) => {
               return {
                 team: team.team?.displayName || team.team?.name || "",
                 homeAway: team.homeAway || team.team?.homeAway || "",
-                shots: null,
-                shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
+                    shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"),
                 shotsOnTargetInsideBox: get("shotsontargetinsidebox", "shotsontargetinbox", "shotsontargetinsidepenaltyarea", "shotsontargetinpenaltyarea", "shotsontargetfrominsidebox", "ontargetinsidebox"),
                 bigChances: get("bigchances", "bigchance", "bigchancescreated", "bigchancecreated"),
-                shotsOffTarget: null,
-                blockedShots: null,
                 corners: get("woncorners", "cornerkicks", "corners"),
                 attacks: get("attacks", "totalattacks", "attacksfor", "totalattacksfor"),
                 dangerousAttacks: get("dangerousattacks", "dangerousattacksfor", "dangerousattackscreated", "dangerousattackswon"),
@@ -3550,8 +3541,8 @@ const server = http.createServer(async (req, res) => {
             if (homeTeamIndex >= 0 && awayTeamIndex >= 0 && homeTeamIndex > awayTeamIndex) values.reverse();
             const espnHasShotStats = values.some(v => ["shotsOnTarget", "corners"].some(key => v[key] != null));
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
-            // Try the fallback whenever either team has a missing core shot metric,
-            // not only when ESPN returns absolutely no shot statistics.
+            // Try the fallback whenever either team has a missing core SOT metric,
+            // not only when ESPN returns no live SOT statistics.
             const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shotsOnTarget", "corners"].some(key => v[key] == null));
             if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
@@ -3607,10 +3598,8 @@ const server = http.createServer(async (req, res) => {
                   return Number.isFinite(n) ? n : null;
                 };
                 const getDirect = side => ({
-                  shots: null,
-                  shotsOnTarget: readDirect(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
-                  shotsOffTarget: null,
-                  corners: readDirect(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
+                        shotsOnTarget: readDirect(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
+                    corners: readDirect(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
                   possession: readDirect(side, ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"])
                 });
                 const fallbackValues = [getDirect(homeSide), getDirect(awaySide)];
@@ -3740,10 +3729,8 @@ const server = http.createServer(async (req, res) => {
                   return Number.isFinite(parsed) ? parsed : null;
                 };
                 return {
-                  shots: null,
-                  shotsOnTarget: number(raw.shots_on_target),
-                  shotsOffTarget: null,
-                  corners: number(raw.corners ?? raw.corner_kicks),
+                        shotsOnTarget: number(raw.shots_on_target),
+                    corners: number(raw.corners ?? raw.corner_kicks),
                   possession: number(raw.possession ?? raw.ball_possession)
                 };
               };
