@@ -150,7 +150,7 @@ async function runProtocolAnalyst() {
         phase: p.periodAtSignal || "unknown",
         oddsBand: Number.isFinite(odds) ? (odds < 1.2 ? "1.01–1.19" : odds < 1.4 ? "1.20–1.39" : odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
         minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
-        shots: stats.shots !== null && stats.shots !== undefined && Number.isFinite(Number(stats.shots)) ? Number(stats.shots) : null,
+        shots: null,
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
         onTarget10m: stats.onTarget10m !== null && stats.onTarget10m !== undefined && Number.isFinite(Number(stats.onTarget10m)) ? Number(stats.onTarget10m) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
@@ -168,7 +168,7 @@ async function runProtocolAnalyst() {
             : (Number(stats.shotsOnTargetInsideBox || 0) >= 2 || Number(stats.bigChances || 0) >= 1 ? "some" : "low")),
         liveConversionBand: stats.liveConversionSupport == null ? "missing"
           : (Number(stats.liveConversionSupport) >= 1.5 ? "high" : Number(stats.liveConversionSupport) > 0 ? "some" : "none"),
-        shotBand: stats.shots === null || stats.shots === undefined ? "missing" : Number(stats.shots) < 2 ? "0–1" : Number(stats.shots) < 4 ? "2–3" : Number(stats.shots) < 6 ? "4–5" : "6+",
+        shotBand: "not_collected",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
         onTarget10mBand: stats.onTarget10m === null || stats.onTarget10m === undefined ? "missing" : Number(stats.onTarget10m) < 3 ? "0–2" : Number(stats.onTarget10m) < 6 ? "3–5" : "6+",
         xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
@@ -315,7 +315,7 @@ async function runProtocolAnalyst() {
       byOdds: segment("oddsBand", "oddsBand"),
       byMinute: segment("minuteBand", "minuteBand"),
       byPeriod: segment("phase", "period"),
-      byShots: segment("shotBand", "shotBand"),
+      byShots: [],
       byOnTarget: segment("onTargetBand", "onTargetBand"),
       byOnTarget10m: segment("onTarget10mBand", "onTarget10mBand"),
       byXG: segment("xGBand", "xGBand"),
@@ -616,7 +616,7 @@ async function persistRollingTrends(matches, date) {
           };
           return {
             team: team.team,
-            shots: delta("shots"),
+            shots: null,
             shotsOnTarget: delta("shotsOnTarget", "shots_on_target"),
             corners: delta("corners"),
             attacks: delta("attacks"),
@@ -693,7 +693,7 @@ function addRollingTrends(matches) {
           if (current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
           return Math.max(0, Number(current) - Number(old));
         };
-        return { team: team.team, shots: delta("shots"), shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerousAttacks") };
+        return { team: team.team, shots: null, shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerousAttacks") };
       });
       const available = deltas.some(item => item.shotsOnTarget != null || item.corners != null || item.attacks != null || item.dangerousAttacks != null);
       return { available, sampleMinutes: Math.round((now - baseline.at) / 60000 * 10) / 10, teams: deltas };
@@ -2529,7 +2529,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const liveMatchSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shots: team.shots ?? null, shotsOnTarget: team.shotsOnTarget ?? null, shotsOffTarget: team.shotsOffTarget ?? null, xG: team.xG ?? null })) })), statsMissingShots: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shots == null))).length, statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })), statsMissingShots: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shots == null))).length, statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
