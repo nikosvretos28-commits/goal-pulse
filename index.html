@@ -3992,9 +3992,9 @@ async function runSignalCheck(){
         if(corners==null||a.startCorners==null)return;
         a.outcome=corners>Number(a.startCorners)?'Επιβεβαιώθηκε · κόρνερ':'Δεν επιβεβαιώθηκε · χωρίς νέο κόρνερ';
       }else if(a.market==='ένταση'){
-        const comparable=(a.startShots!=null&&shots!=null)||(a.startShotsOnTarget!=null&&onTarget!=null)||(a.startCorners!=null&&corners!=null);
+        const comparable=(a.startShotsOnTarget!=null&&onTarget!=null)||(a.startCorners!=null&&corners!=null);
         if(!comparable)return;
-        const continued=(a.startShots!=null&&shots!=null&&shots>a.startShots)||(a.startShotsOnTarget!=null&&onTarget!=null&&onTarget>a.startShotsOnTarget)||(a.startCorners!=null&&corners!=null&&corners>a.startCorners);
+        const continued=(a.startShotsOnTarget!=null&&onTarget!=null&&onTarget>a.startShotsOnTarget)||(a.startCorners!=null&&corners!=null&&corners>a.startCorners);
         a.outcome=continued?'Επιβεβαιώθηκε · νέα δραστηριότητα':'Δεν επιβεβαιώθηκε · χωρίς νέα δραστηριότητα';
       }else return;
     }
@@ -4008,12 +4008,11 @@ async function runSignalCheck(){
    const live=liveMetricsCache.get(String(m.id)); // Use the canonical scoreboard-ID mapping, including team-name/reversed-team matches.
    if(!live||!Array.isArray(live.teams)||live.teams.length<2)continue;
    const key=String(m.id??(m.home?.name+'-'+m.away?.name));
-   const values=live.teams.map(t=>({shots:t.shots??t.totalShots??t.total_shots??t.total_attempts??t.totalAttempts,shotsOnTarget:t.shotsOnTarget??t.shots_on_target??t.shots_on_goal??t.shotsOnGoal??t.onTargetShots,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,shotsOffTarget:t.shotsOffTarget,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
-   // Keep the display's rolling 5/10-minute trail whenever both teams provide
-   // cumulative shots, even if the provider's aggregate statsAvailable flag is false.
-   const hasComparableShots=values.every(v=>v.shots!==null&&v.shots!==undefined&&v.shots!==''&&Number.isFinite(Number(v.shots)));
+   const values=live.teams.map(t=>({shotsOnTarget:t.shotsOnTarget??t.shots_on_target??t.shots_on_goal??t.shotsOnGoal??t.onTargetShots,shotsOnTargetInsideBox:t.shotsOnTargetInsideBox,bigChances:t.bigChances,corners:t.corners,attacks:t.attacks,dangerousAttacks:t.dangerousAttacks,xG:t.xG}));
+   // Keep the rolling 5/10-minute trail only when both teams provide cumulative SOT.
+   const hasComparableSot=values.every(v=>v.shotsOnTarget!==null&&v.shotsOnTarget!==undefined&&v.shotsOnTarget!==''&&Number.isFinite(Number(v.shotsOnTarget)));
    let trail=signalTrails.get(key)||[];
-   if(hasComparableShots){
+   if(hasComparableSot){
     trail.push({values,at:now});
     while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
     signalTrails.set(key,trail);
@@ -4033,20 +4032,18 @@ async function runSignalCheck(){
    const serverTrend=windowMinutes===10?live.trend?.window10m:windowMinutes===5?live.trend?.window5m:null;
    const serverTrend10=live.trend?.window10m;
    if(!baseline&&!serverTrend?.available)continue;
-   let goalPoints=0,pressurePoints=0,reasons=[],totalShotsAdded=0,shotsOnTargetAdded=0,cornersAdded=0,attacksAdded=0,dangerousAttacksAdded=0,xGAdded=0,xGAvailable=false;
+   let goalPoints=0,pressurePoints=0,reasons=[],shotsOnTargetAdded=0,cornersAdded=0,attacksAdded=0,dangerousAttacksAdded=0,xGAdded=0,xGAvailable=false;
    values.forEach((v,i)=>{
     const p=baseline?.values[i]||{};
     const serverDelta=serverTrend?.teams?.find(t=>String(t.team||'').trim().toLowerCase()===String(live.teams[i]?.team||'').trim().toLowerCase())||serverTrend?.teams?.[i]||{};
-    const ds=baseline?(v.shots==null||p.shots==null?0:Math.max(0,v.shots-p.shots)):(serverDelta.shots==null?0:Number(serverDelta.shots));
     const dt=baseline?(v.shotsOnTarget==null||p.shotsOnTarget==null?0:Math.max(0,v.shotsOnTarget-p.shotsOnTarget)):(serverDelta.shotsOnTarget==null?0:Number(serverDelta.shotsOnTarget));
     const dc=baseline?(v.corners==null||p.corners==null?0:Math.max(0,v.corners-p.corners)):(serverDelta.corners==null?0:Number(serverDelta.corners));
     const da=baseline?(v.attacks==null||p.attacks==null?0:Math.max(0,v.attacks-p.attacks)):(serverDelta.attacks==null?0:Number(serverDelta.attacks));
     const dda=baseline?(v.dangerousAttacks==null||p.dangerousAttacks==null?0:Math.max(0,v.dangerousAttacks-p.dangerousAttacks)):(serverDelta.dangerousAttacks==null?0:Number(serverDelta.dangerousAttacks));
     const dxg=baseline?(v.xG==null||p.xG==null||!Number.isFinite(Number(v.xG))||!Number.isFinite(Number(p.xG))?null:Math.max(0,Number(v.xG)-Number(p.xG))):(v.xG==null||!Number.isFinite(Number(v.xG))?null:0);
     if(dxg!==null){xGAvailable=true;xGAdded+=dxg;}
-    totalShotsAdded+=ds;shotsOnTargetAdded+=dt;cornersAdded+=dc;attacksAdded+=da;dangerousAttacksAdded+=dda;
+    shotsOnTargetAdded+=dt;cornersAdded+=dc;attacksAdded+=da;dangerousAttacksAdded+=dda;
     if(dt>0){goalPoints+=4*dt;pressurePoints+=4*dt;reasons.push(dt+' νέο/α σουτ στην εστία')}
-    if(ds>0){goalPoints+=Math.min(ds,4);pressurePoints+=Math.min(2*ds,6);reasons.push(ds+' νέες τελικές')}
     if(dc>0){pressurePoints+=2*dc;reasons.push(dc+' νέα κόρνερ')}
     if(da>0){pressurePoints+=Math.min(da*0.25,3);reasons.push(da+' νέες επιθέσεις')}
     if(dda>0){pressurePoints+=Math.min(dda*0.75,5);reasons.push(dda+' νέες επικίνδυνες επιθέσεις')}
@@ -4058,8 +4055,8 @@ async function runSignalCheck(){
    const cumulativeMatchShotsOnTarget=values.reduce((sum,v)=>sum+(v.shotsOnTarget==null?0:Math.max(0,Number(v.shotsOnTarget)||0)),0);
    if(cumulativeMatchShotsOnTarget>=20){goalPoints+=1;pressurePoints+=1;reasons.push('20+ συνολικά σουτ στην εστία στον αγώνα ('+cumulativeMatchShotsOnTarget+') — πρόσθετη ένδειξη, όχι υποχρεωτικό κριτήριο');}
    const sensitivity=Number(signalThreshold.value);
-   const goalEvidence=shotsOnTargetAdded>=1&&totalShotsAdded>=2;
-   const evidenceKinds=[totalShotsAdded>0||shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
+   const goalEvidence=shotsOnTargetAdded>=3||sixSot10m;
+   const evidenceKinds=[shotsOnTargetAdded>0,attacksAdded>0,dangerousAttacksAdded>0].filter(Boolean).length;
    // Independent 10-minute pressure protocol: count newly recorded shots on target
    // against a real ~10-minute baseline, or use the provider's 10-minute trend.
    let shotsOnTarget10m=0,hasSot10mData=false;
@@ -4071,7 +4068,7 @@ async function runSignalCheck(){
    const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
    // Recent pressure reinforcement: 3+ new shots on target in the selected window,
    // or 6+ across the last 10 minutes, boosts scoring but never triggers alone.
-   const independentAttackSignal=totalShotsAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
+   const independentAttackSignal=shotsOnTargetAdded>0||attacksAdded>0||dangerousAttacksAdded>0;
    const recentSotReinforcement=(shotsOnTargetAdded>=3||sixSot10m)&&independentAttackSignal;
    if(recentSotReinforcement){
     goalPoints+=sixSot10m?3:2;
