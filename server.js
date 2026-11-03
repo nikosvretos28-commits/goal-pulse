@@ -3730,6 +3730,17 @@ const server = http.createServer(async (req, res) => {
           const cached = sportApiFixtureStatsCache.get(String(item.fixture.id));
           return missingSot && (!cached || now - cached.at >= SPORTAPI_STATS_REFRESH_MS);
         });
+        console.log("[SportAPI canary] fixture matching diagnostic:", JSON.stringify({
+          fixtureCount: (sportApiFixtures?.rows || []).length,
+          liveMatchCount: matches.length,
+          matchedLiveFixtures: matched.length,
+          unmatchedLiveSamples: matches.filter(match => !matched.some(item => item.match === match)).slice(0, 6).map(match => ({home: match.home, away: match.away})),
+          matchedSamples: matched.slice(0, 6).map(item => ({home: item.match.home, away: item.match.away, fixtureHome: item.fixture.home_team || item.fixture.home || item.fixture.home_short, fixtureAway: item.fixture.away_team || item.fixture.away || item.fixture.away_short})),
+          cachedFixtureStats: sportApiFixtureStatsCache.size,
+          matchesMissingSot: matched.filter(item => (item.match.teams || []).slice(0, 2).some(team => team.shotsOnTarget == null)).length,
+          statsRequestCandidate: candidate ? {home: candidate.match.home, away: candidate.match.away} : null,
+          statsRequestBudgetAvailable: now - sportApiLastStatsRequestAt >= SPORTAPI_STATS_REQUEST_GAP_MS
+        }));
         if (candidate && now - sportApiLastStatsRequestAt >= SPORTAPI_STATS_REQUEST_GAP_MS) {
           sportApiLastStatsRequestAt = now;
           const fixtureId = String(candidate.fixture.id);
