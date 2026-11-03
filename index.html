@@ -3161,7 +3161,7 @@ function highActivityTeamAnalytics(){
  const normalize=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  for(const item of highActivityObservations){
   const id=String(item?.observationId||'');
-  if(!isHighActivityResearchObservation(item)||!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
+  if(!isHighActivityResearchObservation(item)||!id||item.teamStatsExcluded||(item.signalType&&item.signalType!=='standard')||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
   seen.add(id);
   for(const rawName of [item.home,item.away]){
    const name=String(rawName||'').trim(),key=normalize(name);
@@ -3228,7 +3228,7 @@ function renderHighActivityTeamMetricsForMatch(match){
 function renderHighActivityAnalyst(){
  const root=document.getElementById('highActivityAnalystPanel');if(!root)return;
  const allRecords=highActivityObservations.slice().sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
- const records=allRecords.filter(x=>highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
+ const records=allRecords.filter(x=>(!x.signalType||x.signalType==='standard')&&highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
  const settled=records.filter(x=>x.outcome==='won'||x.outcome==='lost');
  const wins=settled.filter(x=>x.outcome==='won').length,losses=settled.length-wins;
  const rate=settled.length?Math.round(wins/settled.length*100):null;
@@ -3244,7 +3244,7 @@ function renderHighActivityAnalyst(){
   else analysis='Το ποσοστό είναι χαμηλό στο τρέχον δείγμα. Χρειάζεται έλεγχος ανά ημίχρονο, λεπτό και αρχικό σκορ, χωρίς αυτόματη αλλαγή κανόνων.';
  }
  const todayAthens=(()=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Athens',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=k=>parts.find(p=>p.type===k)?.value||'';return get('year')+'-'+get('month')+'-'+get('day')})();
- const dailyRecords=allRecords.filter(x=>{let n=Number(x.createdAt);if(Number.isFinite(n)&&n>0&&n<1e12)n*=1000;if(!Number.isFinite(n)||n<=0)return false;const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Athens',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(n));const get=k=>parts.find(p=>p.type===k)?.value||'';return get('year')+'-'+get('month')+'-'+get('day')===todayAthens;});
+ const dailyRecords=allRecords.filter(x=>(!x.signalType||x.signalType==='standard')&&(()=>{let n=Number(x.createdAt);if(Number.isFinite(n)&&n>0&&n<1e12)n*=1000;if(!Number.isFinite(n)||n<=0)return false;const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Athens',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(n));const get=k=>parts.find(p=>p.type===k)?.value||'';return get('year')+'-'+get('month')+'-'+get('day')===todayAthens;})());
  const dailySettled=dailyRecords.filter(x=>x.outcome==='won'||x.outcome==='lost');
  const dailyWins=dailySettled.filter(x=>x.outcome==='won').length,dailyLosses=dailySettled.length-dailyWins;
  const dailyPending=dailyRecords.filter(x=>x.outcome!=='won'&&x.outcome!=='lost').length;
@@ -3252,8 +3252,13 @@ function renderHighActivityAnalyst(){
 const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const leaderboard=eligibleTeams.length?'<div class="ha-team-table-wrap"><table class="ha-team-table"><thead><tr><th>Ομάδα</th><th>Επιτυχίες</th><th>Ποσοστό</th></tr></thead><tbody>'+eligibleTeams.slice(0,30).map(x=>'<tr><td>'+escHa(x.name)+'</td><td>'+x.wins+'/'+x.settled+'</td><td><strong>'+x.rate+'%</strong></td></tr>').join('')+'</tbody></table></div>':'<p class="subtle">Δεν υπάρχει ακόμη ομάδα με 4 ολοκληρωμένες καταγραφές HI ACTIVITY.</p>';
  const insufficient=insufficientTeams.length?'<details><summary>Ομάδες με ανεπαρκές δείγμα ('+insufficientTeams.length+')</summary><div class="ha-team-insufficient-list">'+insufficientTeams.map(x=>'<span>'+escHa(x.name)+' · Ανεπαρκές δείγμα ('+x.settled+'/4)</span>').join('')+'</div></details>':'';
+ const experimentStats=key=>{const items=allRecords.filter(x=>x.signalType===key);const done=items.filter(x=>x.outcome==='won'||x.outcome==='lost');const wins=done.filter(x=>x.outcome==='won').length;return {total:items.length,pending:items.length-done.length,wins,settled:done.length,rate:done.length?Math.round(wins/done.length*1000)/10:null};};
+ const generalTrialStats=experimentStats('low_sot_10m_general_trial');
+ const secondHalfTrialStats=experimentStats('low_sot_10m_second_half_trial');
+ const trialCard=(label,x)=>'<div><small>'+label+'</small><strong>'+x.total+'</strong><small>'+x.wins+'/'+x.settled+' επιτυχίες · '+(x.rate==null?'—':x.rate+'%')+' · '+x.pending+' εκκρεμή</small></div>';
+ const experimentPanel='<h3>🧪 ΠΕΙΡΑΜΑΤΙΚΑ ΣΗΜΑΤΑ HI ACTIVITY · 7 ΗΜΕΡΕΣ</h3><p class="subtle">Ξεχωριστή αξιολόγηση των δύο νέων σημάτων. Η δοκιμή ξεκινά στην πρώτη ενεργή σάρωση μετά την ανάπτυξη και λήγει αυτόματα σε 7 ημέρες. Απαιτείται έγκυρο δείγμα 9,5–11 λεπτών· ελλιπή δεδομένα δεν μετρούν ως μηδέν.</p><div class="protocol-analyst-summary">'+trialCard('ΓΕΝΙΚΟ · 1′–40′ · 0–2 SOT / 10′',generalTrialStats)+trialCard('2ο ΗΜΙΧΡΟΝΟ · 46′–90′ · 0–2 SOT / 10′',secondHalfTrialStats)+'</div>';
  const historyRows=allRecords;
- root.innerHTML='<h3>📅 ΗΜΕΡΗΣΙΑ ΑΝΑΦΟΡΑ · HI ACTIVITY</h3><p class="subtle">Ανεξάρτητη αναφορά όλων των ενδείξεων HI ACTIVITY της σημερινής ημερομηνίας Ελλάδας, για 1ο και 2ο ημίχρονο.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΟ ΣΗΜΕΡΑ</small><strong>'+dailyRecords.length+'</strong></div><div><small>ΚΕΡΔΙΣΜΕΝΑ / ΧΑΜΕΝΑ</small><strong>'+dailyWins+' / '+dailyLosses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΣΤΑ SETTLED</small><strong>'+(dailyRate==null?'—':dailyRate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΗ</small><strong>'+dailyPending+'</strong></div></div><p class="subtle">Ημερομηνία Ελλάδας: '+todayAthens+' · Επιτυχία HI ACTIVITY = τουλάχιστον 1 νέο γκολ μετά την ένδειξη έως τη λήξη.</p><details open><summary>📋 ΙΣΤΟΡΙΚΟ ΑΓΩΝΩΝ HI ACTIVITY ('+allRecords.length+')</summary>'+(historyRows.length?'<div class="protocol-analyst-grid">'+historyRows.map(x=>{const outcome=x.outcome==='won'?'WON':x.outcome==='lost'?'LOST':'ΕΚΚΡΕΜΕΙ';const issuedMinute=x.minute!=null&&x.minute!==''&&Number.isFinite(Number(x.minute))?Number(x.minute)+'′':(x.minute||'—');const signalScore=x.scoreAtSignal?String(x.scoreAtSignal.home??'—')+'–'+String(x.scoreAtSignal.away??'—'):'—';const currentScore=x.currentScore?String(x.currentScore.home??'—')+'–'+String(x.currentScore.away??'—'):'—';const scoreLabel=x.outcome==='won'||x.outcome==='lost'?'Τελικό σκορ':'Τρέχον σκορ';const stamp=Number(x.createdAt);const issuedAt=Number.isFinite(stamp)?new Date(stamp<1e12?stamp*1000:stamp).toLocaleString('el-GR'):'—';return '<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+outcome+'</span><small>'+escHa(x.half||'')+' · Καταγραφή '+escHa(issuedMinute)+' · Σκορ τότε '+escHa(signalScore)+' · '+scoreLabel+' '+escHa(currentScore)+' · '+escHa(issuedAt)+'</small></div>'}).join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
+ root.innerHTML=experimentPanel+'<h3>📅 ΗΜΕΡΗΣΙΑ ΑΝΑΦΟΡΑ · HI ACTIVITY</h3><p class="subtle">Ανεξάρτητη αναφορά όλων των ενδείξεων HI ACTIVITY της σημερινής ημερομηνίας Ελλάδας, για 1ο και 2ο ημίχρονο.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΟ ΣΗΜΕΡΑ</small><strong>'+dailyRecords.length+'</strong></div><div><small>ΚΕΡΔΙΣΜΕΝΑ / ΧΑΜΕΝΑ</small><strong>'+dailyWins+' / '+dailyLosses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΣΤΑ SETTLED</small><strong>'+(dailyRate==null?'—':dailyRate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΗ</small><strong>'+dailyPending+'</strong></div></div><p class="subtle">Ημερομηνία Ελλάδας: '+todayAthens+' · Επιτυχία HI ACTIVITY = τουλάχιστον 1 νέο γκολ μετά την ένδειξη έως τη λήξη.</p><details open><summary>📋 ΙΣΤΟΡΙΚΟ ΑΓΩΝΩΝ HI ACTIVITY ('+allRecords.length+')</summary>'+(historyRows.length?'<div class="protocol-analyst-grid">'+historyRows.map(x=>{const outcome=x.outcome==='won'?'WON':x.outcome==='lost'?'LOST':'ΕΚΚΡΕΜΕΙ';const issuedMinute=x.minute!=null&&x.minute!==''&&Number.isFinite(Number(x.minute))?Number(x.minute)+'′':(x.minute||'—');const signalScore=x.scoreAtSignal?String(x.scoreAtSignal.home??'—')+'–'+String(x.scoreAtSignal.away??'—'):'—';const currentScore=x.currentScore?String(x.currentScore.home??'—')+'–'+String(x.currentScore.away??'—'):'—';const scoreLabel=x.outcome==='won'||x.outcome==='lost'?'Τελικό σκορ':'Τρέχον σκορ';const stamp=Number(x.createdAt);const issuedAt=Number.isFinite(stamp)?new Date(stamp<1e12?stamp*1000:stamp).toLocaleString('el-GR'):'—';const signalLabel=x.signalType==='low_sot_10m_general_trial'?'ΔΟΚΙΜΗ · ΓΕΝΙΚΟ 0–2 SOT / 10′':x.signalType==='low_sot_10m_second_half_trial'?'ΔΟΚΙΜΗ · 2ο ΗΜΙΧΡΟΝΟ 0–2 SOT / 10′':'ΚΑΝΟΝΙΚΟ HI ACTIVITY';return '<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+outcome+'</span><small>'+escHa(signalLabel)+' · '+escHa(x.half||'')+' · Καταγραφή '+escHa(issuedMinute)+' · Σκορ τότε '+escHa(signalScore)+' · '+scoreLabel+' '+escHa(currentScore)+' · '+escHa(issuedAt)+'</small></div>'}).join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
 }
 const highActivityHistoryPendingWrites=new Map();
 let highActivityHistorySavePromise=null;
@@ -3437,16 +3442,20 @@ function evaluateHighActivityObservations(ranked){
  if(!highActivityHistoryLoaded)void loadHighActivityHistory();
  const now=Date.now(),changed=[];
  const matches=new Map(allMatches.map(m=>[String(m.id),m]));
- const active=new Map((ranked||[]).map(x=>[String(x.match.id),x]));
- for(const [eventId,rankedItem] of active){
+ for(const rankedItem of (ranked||[])){
   const match=rankedItem.match;
+  const eventId=String(match.id);
+  const signalType=rankedItem.signalType||'standard';
   const stats=liveMetricsCache.get(eventId);
-  const clockText=String(match.clock||stats?.live_minute||stats?.liveMinute||stats?.elapsed||stats?.time?.elapsed||stats?.minute||'');
+  const clockCandidates=[match.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute].map(value=>String(value??'').trim()).filter(Boolean);
+  const clockText=clockCandidates.find(value=>/\d{1,3}/.test(value))||clockCandidates[0]||'';
   const clock=clockText.match(/\d{1,3}/);
   const minute=clock?Number(clock[0]):null;
   if(!Number.isFinite(minute))continue;
-  const half=minute<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ';
-  const periodKey=minute<=45?'1H':'2H';
+  const observationPeriodText=[clockText,match.statusText,match.status,match.state,match.period,match.statusPeriod].filter(Boolean).join(' ').toLowerCase();
+  const observationIsSecondHalf=minute>=46||/second half|2nd half|2ο ημίχρονο|\b2h\b|second_half/i.test(observationPeriodText);
+  const half=observationIsSecondHalf?'2ο ΗΜΙΧΡΟΝΟ':'1ο ΗΜΙΧΡΟΝΟ';
+  const periodKey=observationIsSecondHalf?'2H':'1H';
   const score=highActivityScore(match);if(!score)continue;
   const signalStats={
    totalOnTarget:Number.isFinite(Number(rankedItem.totalOnTarget))?Number(rankedItem.totalOnTarget):null,
@@ -3458,11 +3467,11 @@ function evaluateHighActivityObservations(ranked){
   };
   // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
-  const observationId=[eventId,periodKey,minute,score.home+'-'+score.away,
+  const observationId=[eventId,signalType,periodKey,minute,score.home+'-'+score.away,
    signalStats.totalOnTarget??'na',signalStats.recentOnTarget??'na',
    signalStats.recentShotsOnTarget10m??'na',signalStats.shotsOnTargetInsideBox??'na',signalStats.bigChances??'na'].join(':');
   if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
-  const observation={observationId,eventId,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,signalStats,outcome:'pending'};
+  const observation={observationId,eventId,signalType,createdAt:now,home:String(match.home?.name||''),away:String(match.away?.name||''),league:String(match.league?.name||match.competition?.name||''),minute,half,scoreAtSignal:score,currentScore:score,signalStats,outcome:'pending'};
   highActivityObservations.push(observation);changed.push(observation);
  }
  for(const item of highActivityObservations){
@@ -3516,9 +3525,14 @@ function evaluateHighActivityObservations(ranked){
  renderHighActivityAnalyst();
  void reconcileHistoricalHighActivityObservations();
 }
+let hiActivityLowSotTrialStartedAtMemory=0;
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
  const now=Date.now();
+ const trialKey='goalmatrix_hi_activity_low_sot_trial_started_v1';
+ let trialStartedAt=0;
+ try{trialStartedAt=Number(localStorage.getItem(trialKey))||0;if(!trialStartedAt){trialStartedAt=now;localStorage.setItem(trialKey,String(trialStartedAt));}}catch(_){if(!hiActivityLowSotTrialStartedAtMemory)hiActivityLowSotTrialStartedAtMemory=now;trialStartedAt=hiActivityLowSotTrialStartedAtMemory;}
+ const lowSotTrialActive=now>=trialStartedAt&&now-trialStartedAt<7*24*60*60*1000;
  const scoreMatch=m=>{
   const stats=liveMetricsCache.get(String(m.id));
   // Prefer a clock value that actually contains a minute. Some live-score feeds use
@@ -3531,14 +3545,17 @@ function renderHighActivityMatches(){
   // Accept the live-state spellings used by different feeds; the live board may already display the match.
   const liveState=/^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(String(m.state||m.status||"").trim());
   if(!liveState&& !/\b(?:live|playing|in progress)\b/i.test(statusText))return null;
-  // HI Activity is restricted to minutes 1-40 only; exclude second half and halftime.
+  // Established HI Activity remains 1′–40′; the approved second-half signal is evaluated separately.
   const minuteMatch=String(clockText).match(/(\d{1,3})/);
   const minute=minuteMatch?Number(minuteMatch[1]):null;
-  const periodText=String(clockText)+' '+statusText;
+  const periodText=[clockText,m.statusText,m.status,m.state,m.period,m.statusPeriod].filter(Boolean).join(' ').toLowerCase();
   const isHalfTime=/\b(?:ht|half[ -]*time|halftime|interval)\b/i.test(periodText);
-  const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο/i.test(periodText));
-  const inAllowedWindow=Number.isFinite(minute)&&!isHalfTime&&!isSecondHalf&&minute>=1&&minute<=40;
-  if(!inAllowedWindow)return null;
+  const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο|\b2h\b|second_half/i.test(periodText));
+  const stoppageMatch=String(clockText).match(/(\d{1,3})\s*\+\s*(\d{1,2})/);
+  const effectiveMinute=stoppageMatch?Number(stoppageMatch[1])+Number(stoppageMatch[2]):minute;
+  const inFirstHalfWindow=Number.isFinite(minute)&&!isHalfTime&&!isSecondHalf&&minute>=1&&minute<=40;
+  const inSecondHalfTrialWindow=Number.isFinite(effectiveMinute)&&!isHalfTime&&isSecondHalf&&effectiveMinute>=46&&effectiveMinute<=90;
+  if(!inFirstHalfWindow&&!inSecondHalfTrialWindow)return null;
   if(!stats||!Array.isArray(stats.teams)||stats.teams.length<2)return null;
   // Normalize provider stat aliases exactly as the live row renderer does.
   // Some feeds use shots_on_target / shots_on_goal rather than shotsOnTarget;
@@ -3604,6 +3621,9 @@ function renderHighActivityMatches(){
   };
   const hiActivitySot5m=independentSotWindow(baseline,stats.trend?.window5m,4.5,8);
   const hiActivitySot10m=independentSotWindow(baseline10,stats.trend?.window10m,8,13);
+  // Experimental low-SOT signals require a genuine ~10-minute sample (9.5–11m).
+  // When local snapshots and provider trend are both available, the higher count wins
+  // so a disagreement can never create a false 0–2 SOT signal.
   const keys=["shotsOnTarget","attacks","dangerousAttacks"];
   const delta={shotsOnTarget:0,attacks:0,dangerousAttacks:0};
   let hasRecentData=false;
@@ -3650,7 +3670,15 @@ function renderHighActivityMatches(){
   const strictRecentSotStrong=hiActivitySot5m!==null&&hiActivitySot5m>=2;
   const strictRecentSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=4;
   const xGBothTeamsQualified=xGValues.length>=2&&xGValues.every(value=>value!==null&&Number.isFinite(value)&&value>=2.0);
-  const protocolQualified=strictRecentSotStrong||strictRecentSot10m||cumulativeSotStrong||xGBothTeamsQualified;
+  const standardProtocolQualified=inFirstHalfWindow&&(strictRecentSotStrong||strictRecentSot10m||cumulativeSotStrong||xGBothTeamsQualified);
+  const lowSot10mForTrial=lowSotTrialActive?independentSotWindow(baseline10,stats.trend?.window10m,9.5,11):null;
+  const generalLowSotTrial=inFirstHalfWindow&&lowSot10mForTrial!==null&&lowSot10mForTrial>=0&&lowSot10mForTrial<=2;
+  const secondHalfLowSotTrial=inSecondHalfTrialWindow&&lowSot10mForTrial!==null&&lowSot10mForTrial>=0&&lowSot10mForTrial<=2;
+  const signalTypes=[];
+  if(standardProtocolQualified)signalTypes.push('standard');
+  if(generalLowSotTrial)signalTypes.push('low_sot_10m_general_trial');
+  if(secondHalfLowSotTrial)signalTypes.push('low_sot_10m_second_half_trial');
+  const protocolQualified=standardProtocolQualified;
   const recentSotStrong=strictRecentSotStrong;
   const recentSotSupported=strictRecentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
@@ -3662,8 +3690,8 @@ function renderHighActivityMatches(){
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
   const recentSot10mSupported=strictRecentSot10m;
   // Cumulative SOT and xG cannot qualify a match on their own.
-  const active=protocolQualified;
-  const hiActivityActive=protocolQualified;
+  const active=signalTypes.length>0;
+  const hiActivityActive=active;
   // High Activity xG >= 2.00 for BOTH teams qualifies independently; missing xG is neutral.
   let recentXG=null;
   if(baseline&&Array.isArray(baseline.values)){
@@ -3683,13 +3711,14 @@ function renderHighActivityMatches(){
   },0);
   const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
   const intensity=Math.max(0,Math.min(100,Math.round(delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
-  return (active||hiActivityActive)?{match:m,score,intensity,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalOnTarget,liveConversionSupport,active,hiActivityActive}:null;
+  return hiActivityActive?{match:m,score,intensity,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalOnTarget,liveConversionSupport,active,hiActivityActive,standardQualified:standardProtocolQualified,signalTypes}:null;
  };
  const candidates=allMatches.map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget);
- const hiActivityRanked=candidates.filter(x=>x.hiActivityActive);
- // Power Games is a curated shortlist selected only from qualifying Hi Activity matches.
- const ranked=hiActivityRanked.slice(0,Math.ceil(hiActivityRanked.length/2));
+ const standardRanked=candidates.filter(x=>x.standardQualified);
+ const hiActivityRanked=candidates.filter(x=>x.hiActivityActive).flatMap(x=>x.signalTypes.map(signalType=>({...x,signalType})));
+ // Power Games remains limited to the established HI Activity protocol; trial-only signals never enter it.
+ const ranked=standardRanked.slice(0,Math.ceil(standardRanked.length/2));
  // Evaluate and display EVERY qualifying live match, not a five-match shortlist.
  // Recalculate each refresh so matches leave when pressure fades and re-enter when it returns.
  if(powerGamesUnlocked){
@@ -3702,10 +3731,12 @@ function renderHighActivityMatches(){
  }
  evaluateHighActivityObservations(hiActivityRanked);
  highActivityEligibleIds=new Set(hiActivityRanked.map(x=>String(x.match.id)));
- const topTen=hiActivityRanked;
+ // Keep one visible row per match even when multiple independent signals fire;
+ // the observation history above still records each signal separately.
+ const topTen=[...new Map(hiActivityRanked.map(x=>[String(x.match.id),x])).values()];
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
-  ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
+  ?topTen.map(x=>{const label=x.signalType==='low_sot_10m_general_trial'?'🧪 ΔΟΚΙΜΗ · ΓΕΝΙΚΟ 0–2 SOT / 10′':x.signalType==='low_sot_10m_second_half_trial'?'🧪 ΔΟΚΙΜΗ · 2ο ΗΜΙΧΡΟΝΟ 0–2 SOT / 10′':'HI ACTIVITY · ΚΑΝΟΝΙΚΟ ΠΡΩΤΟΚΟΛΛΟ';return liveMatchLine(x.match,true,x.intensity)+'<div class="subtle" style="padding:2px 10px 6px;font-size:11px">'+label+'</div>'+renderHighActivityTeamMetricsForMatch(x.match)}).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν διαθέσιμες επιλογές αυτή τη στιγμή.</div>';
 }
 document.addEventListener('click',async event=>{
