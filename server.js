@@ -2100,7 +2100,16 @@ const server = http.createServer(async (req, res) => {
         return statusText || "LIVE";
       };
       for (const match of (metrics.matches || [])) {
-        if (!match.statsAvailable || !Array.isArray(match.teams) || match.teams.length < 2) continue;
+        if (!Array.isArray(match.teams) || match.teams.length < 2) continue;
+        // A persisted rolling SOT window can remain valid when the provider's
+        // current snapshot has no stats. Do not let statsAvailable=false hide
+        // an otherwise qualifying 5m/10m SOT signal after a transient feed gap.
+        const hasPersistedSotWindow = [match.trend?.window5m, match.trend?.window10m].some(window =>
+          Array.isArray(window?.teams) && window.teams.some(team =>
+            team?.shotsOnTarget != null && Number.isFinite(Number(team.shotsOnTarget))
+          )
+        );
+        if (!match.statsAvailable && !hasPersistedSotWindow) continue;
         const teams = match.teams;
         const total = key => teams.every(team => team[key] != null)
           ? teams.reduce((sum, team) => sum + Number(team[key] || 0), 0) : null;
