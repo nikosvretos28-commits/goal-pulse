@@ -168,7 +168,7 @@ async function runProtocolAnalyst() {
             : (Number(stats.shotsOnTargetInsideBox || 0) >= 2 || Number(stats.bigChances || 0) >= 1 ? "some" : "low")),
         liveConversionBand: stats.liveConversionSupport == null ? "missing"
           : (Number(stats.liveConversionSupport) >= 1.5 ? "high" : Number(stats.liveConversionSupport) > 0 ? "some" : "none"),
-        shotBand: "not_collected",
+        shotBand: "missing",
         onTargetBand: stats.onTarget === null || stats.onTarget === undefined ? "missing" : Number(stats.onTarget) < 1 ? "0" : Number(stats.onTarget) < 2 ? "1" : Number(stats.onTarget) < 3 ? "2" : "3+",
         onTarget10mBand: stats.onTarget10m === null || stats.onTarget10m === undefined ? "missing" : Number(stats.onTarget10m) < 3 ? "0–2" : Number(stats.onTarget10m) < 6 ? "3–5" : "6+",
         xGBand: stats.xGDelta === null || stats.xGDelta === undefined ? "missing" : Number(stats.xGDelta) < 0.1 ? "0–0.09" : Number(stats.xGDelta) < 0.25 ? "0.10–0.24" : Number(stats.xGDelta) < 0.5 ? "0.25–0.49" : "0.50+",
@@ -2211,7 +2211,6 @@ const server = http.createServer(async (req, res) => {
         const onTarget = Math.max(memory5mSot, persisted5mSot ?? 0);
         const onTarget10m = Math.max(memory10mSot, persisted10mSot ?? 0);
         // AI trigger: recent SOT threshold OR the agreed two-team xG alternative.
-        // Total shots and supporting metrics cannot trigger an alert by themselves.
         // The agreed xG alternative requires BOTH teams to qualify:
         // one team at 2.50+ and the other at 2.00+. Missing xG is neutral.
         const xGQualifies = teamXGValues.length >= 2 &&
@@ -2227,9 +2226,8 @@ const server = http.createServer(async (req, res) => {
         // Missing xG or xG below 2.50 is neutral; one team at 2.50+ adds support.
         const xGTotalSupport = atLeastOneTeamXGQualified ? 2.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
-        // but shots and at least one shot on target remain mandatory (no corner-only alerts).
+        // SOT and non-shot context remain the only eligible live evidence.
         const evidenceKinds = [onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
-        // AI goal pressure prioritizes shots, shots on target, dangerous attacks and xG.
         // Corners add limited supporting weight; they can never trigger an alert alone.
         // Clean-sheet history is not supplied consistently by this live feed, so it is not imputed.
         const totalShots = 0; // SOT-only: total shots are not recorded or scored.
@@ -2238,7 +2236,6 @@ const server = http.createServer(async (req, res) => {
         const totalDangerous = current.dangerous == null ? 0 : Number(current.dangerous);
         const totalCorners = current.corners == null ? 0 : Number(current.corners);
         // Some live providers (including SportScore's current widget feed) do not publish dangerous attacks.
-        // Distinguish an unavailable metric from a real zero; use a stricter shots/SOT/attacks fallback
         // only when dangerous attacks are genuinely absent, without fabricating that statistic.
         const dangerousAvailable = current.dangerous != null && previous?.dangerous != null;
         const attacksAvailable = current.attacks != null && previous?.attacks != null;
@@ -2293,7 +2290,6 @@ const server = http.createServer(async (req, res) => {
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
-        // 20+ total shots can strengthen sustained-pressure scoring but is not mandatory.
         // Trigger evidence is recent SOT OR the two-team xG alternative above.
         // AI Alerts are restricted to minutes 1-40, as agreed.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
