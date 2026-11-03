@@ -2440,7 +2440,6 @@ const server = http.createServer(async (req, res) => {
             alertCountsByMatchHalf.set(perHalfCountKey, (alertCountsByMatchHalf.get(perHalfCountKey) || 0) + 1);
             pushScanLastAlert.set(cooldownKey, {
               at: now,
-              shots: current.shots,
               onTarget: current.onTarget,
               corners: current.corners,
               xG: current.xG,
@@ -3787,27 +3786,6 @@ const server = http.createServer(async (req, res) => {
         console.log("[SportAPI canary] disabled: SPORTAPI_API_KEY is not configured");
       }
       console.log("[GoalMatrix ESPN summary audit]", JSON.stringify(espnSummaryDiagnostics));
-      // Temporary live-stat audit: log provider and the raw normalized shot components
-      // so discrepancies can be traced without guessing or silently altering totals.
-      for (const match of matches) {
-        const normalizedHome = String(match.home || "").toLowerCase();
-        const normalizedAway = String(match.away || "").toLowerCase();
-        if (/tijuana|santos laguna/.test(normalizedHome + " " + normalizedAway)) {
-          console.log("[Goal Pulse shot-stat audit]", JSON.stringify({
-            eventId: match.eventId, home: match.home, away: match.away,
-            provider: match.statsSource || "unknown", minute: match.minute,
-            teams: (match.teams || []).map(team => ({
-              team: team.team, shots: team.shots,
-              shotsOnTarget: team.shotsOnTarget, shotsOffTarget: team.shotsOffTarget,
-              blockedShots: team.blockedShots,
-              componentSum: [team.shotsOnTarget, team.shotsOffTarget, team.blockedShots]
-                .every(value => value != null && Number.isFinite(Number(value)))
-                ? Number(team.shotsOnTarget) + Number(team.shotsOffTarget) + Number(team.blockedShots)
-                : null
-            }))
-          }));
-        }
-      }
       const isSportScoreEvent = value => String(value || "").startsWith("sportscore:") || String(value || "").startsWith("sportscore-widget:");
       if (work.some(item => isSportScoreEvent(item.event.id))) {
         console.log("SportScore live metrics detail diagnostic:", JSON.stringify({
