@@ -3545,13 +3545,9 @@ function renderHighActivityMatches(){
   // without this, the visible 6–6 SOT can be ignored by High Activity.
   const normalizeTeam=team=>({
    ...team,
-   shots:null,
-   shotsOffTarget:null,
-   blockedShots:null,
    shotsOnTarget:team.shotsOnTarget??team.shots_on_target??team.shots_on_goal??team.shotsOnGoal??team.onTargetShots,
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??team.shots_on_target_in_box??team.shots_on_target_inside_penalty_area??team.shots_on_target_in_penalty_area??team.shots_on_target_from_inside_box??team.on_target_inside_box,
    bigChances:team.bigChances??team.big_chances??team.big_chance??team.big_chances_created??team.big_chance_created,
-   shotsOffTarget:null,
    xG:team.xG??team.xg??team.expectedGoals,
    attacks:team.attacks??team.totalAttacks??team.total_attacks,
    dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??team.dangerousAttack
@@ -3858,11 +3854,9 @@ function captureHighActivitySotSnapshots(){
   };
   const values=live.teams.slice(0,2).map(team=>({
    homeAway:team.homeAway,
-   shots:null,
    shotsOnTarget:readSot(team),
    shotsOnTargetInsideBox:team.shotsOnTargetInsideBox??team.shots_on_target_inside_box??null,
    bigChances:team.bigChances??team.big_chances??null,
-   shotsOffTarget:null,
    corners:team.corners??null,
    attacks:team.attacks??team.totalAttacks??team.total_attacks??null,
    dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??null,
