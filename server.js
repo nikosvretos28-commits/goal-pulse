@@ -2391,7 +2391,7 @@ const server = http.createServer(async (req, res) => {
           }
           const lastAlert = pushScanLastAlert.get(cooldownKey);
           if (lastAlert && now - Number(lastAlert.at || 0) < 8 * 60 * 1000) {
-            const const onTargetSinceLast = current.onTarget != null && lastAlert.onTarget != null ? Number(current.onTarget) - Number(lastAlert.onTarget) : 0;
+            const onTargetSinceLast = current.onTarget != null && lastAlert.onTarget != null ? Number(current.onTarget) - Number(lastAlert.onTarget) : 0;
             const cornersSinceLast = current.corners != null && lastAlert.corners != null ? Number(current.corners) - Number(lastAlert.corners) : 0;
             const xGSinceLast = current.xG != null && lastAlert.xG != null ? Number(current.xG) - Number(lastAlert.xG) : 0;
             const oddsImproved = Boolean(verifiedOdds && Number.isFinite(Number(verifiedOdds.price)) && Number(verifiedOdds.price) >= Number(lastAlert.price || 0) + 0.05);
