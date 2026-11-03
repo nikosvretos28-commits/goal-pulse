@@ -11,7 +11,16 @@
 <body><main class="wrap">
 <header class="top"><div class="brand">GOAL<span>MATRIX</span></div><div class="lab">ISOLATED LAB · SHADOW MODE</div></header>
 <section class="intro"><h1>Experimental Protocols</h1><div class="muted">Δύο ανεξάρτητα πρωτόκολλα. Κάθε αξιολόγηση κρατά τη δική της λογική και τα δικά της αποτελέσματα.</div><div class="warning"><b>Κατάσταση σύνδεσης:</b> Υπάρχουν απομονωμένοι αξιολογητές κανόνων για δοκιμές JSON. Δεν έχει συνδεθεί ακόμη live ή historical provider feed ούτε ξεχωριστή βάση LAB. Δεν αποστέλλονται ειδοποιήσεις και δεν γίνεται καμία εγγραφή στην παραγωγή.</div></section>
-<div class="tabs" role="tablist"><button class="tab" id="tab-late" role="tab" aria-selected="true" aria-controls="late">LATE GOALS INTELLIGENCE</button><button class="tab" id="tab-ai" role="tab" aria-selected="false" aria-controls="ai">AI ALERTS — EXPERIMENTAL</button></div>
+
+<section class="card" id="live-feed">
+ <h2>LIVE GAMES · LAB DATA FEED</h2>
+ <p class="muted">Ζωντανά παιχνίδια από ανεξάρτητο, read-only ESPN feed. Πάτησε έναν αγώνα για να φορτώσουν τα διαθέσιμα στατιστικά του.</p>
+ <div class="actions"><button class="run" id="load-live">LOAD LIVE GAMES</button><button class="secondary" id="refresh-live">REFRESH</button><span class="status" id="live-status">Δεν έχει γίνει ακόμη σύνδεση.</span></div>
+ <div id="live-meta" class="status"></div><div id="live-list" class="output">Αναμονή φόρτωσης live αγώνων…</div>
+ <div class="field" style="margin-top:12px"><label>SELECTED MATCH · AVAILABLE LIVE STATISTICS</label><div id="live-stats" class="output">Επίλεξε έναν αγώνα.</div></div>
+ <div class="warning">Πειραματική κάλυψη ESPN: οι διοργανώσεις και τα στατιστικά διαφέρουν. Rolling SOT 5′/10′, Big Chances, shots inside box και xGOT δεν υπολογίζονται όταν δεν παρέχονται ρητά. Καμία σύνδεση με production.</div>
+</section>
+\n<div class="tabs" role="tablist"><button class="tab" id="tab-late" role="tab" aria-selected="true" aria-controls="late">LATE GOALS INTELLIGENCE</button><button class="tab" id="tab-ai" role="tab" aria-selected="false" aria-controls="ai">AI ALERTS — EXPERIMENTAL</button></div>
 <section class="card" id="late" role="tabpanel" aria-labelledby="tab-late"><h2>LATE GOALS INTELLIGENCE</h2><p class="muted">Περιγραφική ανάλυση late-goal τάσεων, live κατάστασης και referee context. Δεν παράγει alert ή πρόταση στοιχηματισμού.</p><div class="status">Είσοδος: timestamped snapshot JSON · Άγνωστα πεδία παραμένουν μη διαθέσιμα.</div><div class="field"><label for="late-input">SNAPSHOT JSON</label><textarea id="late-input" spellcheck="false" placeholder='{"match":{"minute":78,"period":"2H","score":{"home":1,"away":1},"timeSinceLastGoalMinutes":22},"season":{"home":{"scoredAfter75Rate":42,"concededAfter75Rate":38},"away":{"scoredAfter75Rate":35,"concededAfter75Rate":44}},"live":{"sot":{"home":4,"away":3},"xg":{"home":1.4,"away":1.1}},"referee":{"name":"Not confirmed"}}'></textarea></div><div class="actions"><button class="run" id="run-late">RUN LATE-GOALS ANALYSIS</button><button class="secondary" id="clear-late">CLEAR</button></div><div class="field"><label>RESULT</label><div class="output" id="late-output">Δεν έχει εκτελεστεί αξιολόγηση.</div></div></section>
 <section class="card hidden" id="ai" role="tabpanel" aria-labelledby="tab-ai"><h2>AI ALERTS — EXPERIMENTAL</h2><p class="muted">Frozen reference baseline και ανεξάρτητα ιστορικά φίλτρα Over 3.5 / πρώτου ημιχρόνου. Shadow evaluation μόνο.</p><div class="status">Over 3.5: τουλάχιστον μία ομάδα με μέσο όρο συνολικών γκολ αυστηρά &gt;3.00. Ακριβώς 3.00 δεν αρκεί.</div><div class="grid"><div class="field"><label for="ai-input">MATCH + LIVE + SEASON SNAPSHOT JSON</label><textarea id="ai-input" spellcheck="false" placeholder='{"match":{"minute":28,"period":"1H"},"live":{"sot5":{"home":2,"away":1},"sot10":{"home":3,"away":3},"xg":{"home":1.1,"away":0.8}},"market":{"line":"over3.5","firstHalfLine":"over1.5"},"season":{"home":{"totalGoalsAverage":3.2,"firstHalfOvers":{"1.5":{"hits":8,"played":10}}},"away":{"totalGoalsAverage":2.9,"firstHalfOvers":{"1.5":{"hits":6,"played":10}}}}'></textarea></div><div class="field"><label>RESULT</label><div class="output" id="ai-output">Δεν έχει εκτελεστεί αξιολόγηση.</div></div></div><div class="actions"><button class="run" id="run-ai">RUN EXPERIMENTAL AI</button><button class="secondary" id="clear-ai">CLEAR</button></div></section>
 <p class="foot">LAB only · No production writes · No push notifications · No betting execution</p>
@@ -19,6 +28,29 @@
 <script type="module">
 import { evaluateExperimentalAI, evaluateLateGoals } from './protocol-engine.js';
 const $=id=>document.getElementById(id);
+const LIVE_API = 'https://goalmatrix-lab-api.onrender.com';
+let liveMatches=[];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function loadLive(){
+ $('live-status').textContent='Σύνδεση με live feed…';$('live-list').textContent='Φόρτωση…';
+ try{
+  const r=await fetch(LIVE_API+'/api/live-games',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);
+  const data=await r.json();liveMatches=data.games||[];
+  $('live-status').textContent='Σύνδεση ενεργή · '+data.provider;
+  $('live-meta').textContent='Έλεγχος '+data.leaguesChecked+' διοργανώσεων · Live τώρα: '+data.liveCount+' · Σύνολο σημερινών αγώνων: '+data.totalReturned+' · '+new Date(data.retrievedAt).toLocaleTimeString('el-GR');
+  $('live-list').innerHTML=liveMatches.length?liveMatches.map((m,i)=>'<button class="secondary" data-match="'+i+'" style="display:block;width:100%;text-align:left;margin:5px 0;border-radius:10px"><b>'+(m.live?'🔴 LIVE':'⚽')+' '+esc(m.league)+'</b><br>'+esc(m.home)+' <b>'+esc(m.homeScore??'–')+' - '+esc(m.awayScore??'–')+'</b> '+esc(m.away)+'<br><small>'+esc(m.clock||m.statusText||m.start||'')+'</small></button>').join(''):'Δεν βρέθηκαν αγώνες στο σημερινό feed.';
+  $('live-list').querySelectorAll('[data-match]').forEach(b=>b.addEventListener('click',()=>loadStats(liveMatches[Number(b.dataset.match)])));
+  if(data.leaguesFailed?.length)$('live-meta').textContent+=' · Μη διαθέσιμες διοργανώσεις: '+data.leaguesFailed.map(x=>x.league).join(', ');
+ }catch(e){$('live-status').textContent='Το live feed δεν είναι ακόμη διαθέσιμο';$('live-list').textContent='Αποτυχία σύνδεσης: '+e.message+' · Έλεγξε ξανά σε λίγο.';}
+}
+async function loadStats(m){
+ $('live-stats').textContent='Φόρτωση στατιστικών για '+m.home+' – '+m.away+'…';
+ try{
+  const q=new URLSearchParams({league:m.leagueCode,event:m.id});const r=await fetch(LIVE_API+'/api/match-stats?'+q);if(!r.ok)throw new Error('HTTP '+r.status);
+  const d=await r.json();$('live-stats').textContent=JSON.stringify({match:m,provider:d.provider,retrievedAt:d.retrievedAt,statisticsAvailable:d.statisticsAvailable,teams:d.teams,missingFields:d.missingFields,note:d.note},null,2);
+ }catch(e){$('live-stats').textContent='Δεν ήταν δυνατή η φόρτωση στατιστικών: '+e.message;}
+}
+$('load-live').addEventListener('click',loadLive);$('refresh-live').addEventListener('click',loadLive);
 function showResult(id,fn,inputId){try{const data=JSON.parse($(inputId).value);$(id).textContent=JSON.stringify(fn(data),null,2)}catch(e){$(id).textContent='Invalid JSON: '+e.message}}
 $('run-late').addEventListener('click',()=>showResult('late-output',evaluateLateGoals,'late-input'));
 $('run-ai').addEventListener('click',()=>showResult('ai-output',evaluateExperimentalAI,'ai-input'));
