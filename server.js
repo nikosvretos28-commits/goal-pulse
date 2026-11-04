@@ -922,7 +922,9 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
       }
       if (!response.ok) throw new Error("ESPN season-year HTTP " + response.status + " (" + year + ")");
       const body = await response.json();
-      return Array.isArray(body.events) ? body.events : [];
+      const rows = Array.isArray(body.events) ? body.events : [];
+      if (rows.length >= 500) throw new Error("ESPN season-year response reached the 500-event safety cap");
+      return rows;
     }));
     const allEvents = yearResults.flat();
     const expectedSeasonSlug = String(options.seasonSlug || "");
