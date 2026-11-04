@@ -18,7 +18,7 @@ The endpoint is an undocumented public feed, not a guaranteed commercial API. Co
 
 ## AI Alerts live-trigger additions and reinforcement contract
 
-The additional cumulative live triggers are: (1) at least 10 shots on target by one team, or (2) at least 15 total shots across both teams. They apply through minute 75 inclusive within the existing eligible AI match windows. The 15-shot condition uses total shots, not shots on target.
+The additional cumulative live triggers are: (1) at least 10 shots on target by one team, or (2) at least 15 combined shots on target across both teams. Both thresholds count shots on target only and apply through minute 75 inclusive within the existing eligible AI match windows.
 Pre-Match season history is supplementary evidence for AI Alerts only. It is consulted only after a live-pressure candidate already exists and only adds a non-negative support score when the relevant season Over profile is strong. It cannot create an alert independently, change the mandatory live trigger, veto a market, block or suppress a fixture, or reject an alert. Missing profiles contribute zero support and do not change existing live-only evaluation.
 
 High Activity, VIP Alerts, settlement, alert-history records, live windows, SOT/xG thresholds and dispatch guards are not modified by the Pre-Match adapter. The existing AI live qualification expressions remain the qualification basis; historical context only reinforces scoring after live evidence is present.
