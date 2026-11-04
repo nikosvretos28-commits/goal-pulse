@@ -3829,7 +3829,7 @@ const server = http.createServer(async (req, res) => {
             if (response.status === 403 || response.status === 429 || response.status >= 500) {
               response = await fetchProviderShared("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
                 headers: { "Accept": "application/json" },
-                signal: AbortSignal.timeout(8000)
+                coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
               });
             }
             if (!response.ok) {
