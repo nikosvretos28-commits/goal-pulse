@@ -2564,9 +2564,9 @@ const server = http.createServer(async (req, res) => {
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
         const cumulativeSotWindow = Number.isFinite(aiMinute) && aiMinute <= 75 && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 75));
-        const combined15ShotsQualifies = cumulativeSotWindow && current.totalShots != null && Number(current.totalShots) >= 15;
+        const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
         const oneTeam10SotQualifies = cumulativeSotWindow && maxTeamSOT != null && Number(maxTeamSOT) >= 10;
-        const cumulativeSotQualifies = combined15ShotsQualifies || oneTeam10SotQualifies;
+        const cumulativeSotQualifies = combined15SotQualifies || oneTeam10SotQualifies;
         const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies);
         // Keep the first 16 general samples, but never omit an eligible 1′–40′ or 46′–88′ match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
