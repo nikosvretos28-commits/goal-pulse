@@ -1,7 +1,7 @@
 # GoalMatrix Pre-Match Intelligence
 
 ## Season scope
-- Build profiles from all completed fixtures returned for the current season of each team's own league competition.
+- Build profiles from all completed fixtures returned for the current season of each team's own league competition. Cup, continental, friendly and national-team competitions are excluded.
 - European split-year competitions use the current season window (1 August through 31 July); calendar-year competitions use 1 January through 31 December.
 - The source request is league-scoped. Cup, continental and friendly fixtures are not deliberately mixed into the league scoreboard request.
 - Deduplicate fixtures by stable ESPN event ID.
@@ -16,7 +16,9 @@ Use ESPN's public, unauthenticated soccer scoreboard endpoint; no paid provider,
 
 The endpoint is an undocumented public feed, not a guaranteed commercial API. Coverage therefore remains provider-dependent and must be reported honestly.
 
-## AI Alerts reinforcement contract
+## AI Alerts live-trigger additions and reinforcement contract
+
+The additional cumulative live triggers are: (1) at least 10 shots on target by one team, or (2) at least 15 total shots across both teams. They apply through minute 75 inclusive within the existing eligible AI match windows. The 15-shot condition uses total shots, not shots on target.
 Pre-Match season history is supplementary evidence for AI Alerts only. It is consulted only after a live-pressure candidate already exists and only adds a non-negative support score when the relevant season Over profile is strong. It cannot create an alert independently, change the mandatory live trigger, veto a market, block or suppress a fixture, or reject an alert. Missing profiles contribute zero support and do not change existing live-only evaluation.
 
 High Activity, VIP Alerts, settlement, alert-history records, live windows, SOT/xG thresholds and dispatch guards are not modified by the Pre-Match adapter. The existing AI live qualification expressions remain the qualification basis; historical context only reinforces scoring after live evidence is present.
