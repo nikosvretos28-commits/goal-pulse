@@ -2118,7 +2118,7 @@ const server = http.createServer(async (req, res) => {
         const firstHalfStatusForEligibility = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusForEligibility);
         const validFirstHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45;
         if ((validFirstHalfMinute || (firstHalfStatusForEligibility && !Number.isFinite(minuteForEligibility))) && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility.replace(/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/g, "")) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
-        // xG trigger: one team must have xG >= 2.50 and the other >= 2.00.
+        // xG alternative: one team must have xG >= 3.00 and the other >= 2.00.
         // Missing/invalid xG stays neutral and never blocks an otherwise valid SOT alert.
         const teamXGValues = teams.map(team =>
           team.xG == null || !Number.isFinite(Number(team.xG)) ? null : Number(team.xG)
@@ -2130,9 +2130,11 @@ const server = http.createServer(async (req, res) => {
           : null;
         const validTeamXGValues = teamXGValues.filter(value => value != null);
         const qualifyingTeamXG = validTeamXGValues.length ? Math.max(...validTeamXGValues) : null;
-        // xG is a supporting signal when at least one team reaches 2.50.
+        // xG is a supporting signal when one team reaches 3.00 and the other reaches 2.00.
         // Missing xG remains neutral and never blocks an otherwise valid SOT alert.
-        const atLeastOneTeamXGQualified = teamXGValues.some(value => value != null && value >= 2.5);
+        const atLeastOneTeamXGQualified = teamXGValues.length >= 2 &&
+          ((teamXGValues[0] != null && teamXGValues[0] >= 3.0 && teamXGValues[1] != null && teamXGValues[1] >= 2.0) ||
+           (teamXGValues[1] != null && teamXGValues[1] >= 3.0 && teamXGValues[0] != null && teamXGValues[0] >= 2.0));
         const teamSOTValues = teams
           .map(team => team.shotsOnTarget == null ? null : Number(team.shotsOnTarget))
           .filter(value => value != null && Number.isFinite(value));
@@ -2211,12 +2213,11 @@ const server = http.createServer(async (req, res) => {
         // Use the stronger of the two measurements for each window; never add them together.
         const onTarget = Math.max(memory5mSot, persisted5mSot ?? 0);
         const onTarget10m = Math.max(memory10mSot, persisted10mSot ?? 0);
-        // AI trigger: recent SOT threshold OR the agreed two-team xG alternative.
-        // The agreed xG alternative requires BOTH teams to qualify:
-        // one team at 2.50+ and the other at 2.00+. Missing xG is neutral.
+        // AI trigger: recent SOT threshold OR the two-team xG alternative:
+        // one team with xG >= 3.00 and the other with xG >= 2.00. Missing xG is neutral.
         const xGQualifies = teamXGValues.length >= 2 &&
-          ((teamXGValues[0] != null && teamXGValues[0] >= 2.5 && teamXGValues[1] != null && teamXGValues[1] >= 2.0) ||
-           (teamXGValues[1] != null && teamXGValues[1] >= 2.5 && teamXGValues[0] != null && teamXGValues[0] >= 2.0));
+          ((teamXGValues[0] != null && teamXGValues[0] >= 3.0 && teamXGValues[1] != null && teamXGValues[1] >= 2.0) ||
+           (teamXGValues[1] != null && teamXGValues[1] >= 3.0 && teamXGValues[0] != null && teamXGValues[0] >= 2.0));
         const recentSotQualifies = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
@@ -2289,12 +2290,12 @@ const server = http.createServer(async (req, res) => {
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
-        // Trigger evidence is recent SOT OR the two-team xG alternative above.
-        // AI Alerts are restricted to minutes 1-40, as agreed.
+        // Trigger evidence is recent SOT OR one team with xG >= 3.00 and the other >= 2.00.
+        // AI Alerts are restricted to minutes 1-40 and 46-88, as agreed.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
-        const eligibleMinute = Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 40;
+        const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
         const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies);
-        // Keep the first 16 general samples, but never omit an eligible 1′–40′ match.
+        // Keep the first 16 general samples, but never omit an eligible 1′–40′ or 46′–88′ match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
@@ -2311,7 +2312,7 @@ const server = http.createServer(async (req, res) => {
           xGQualifies,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40" : !recentSotQualifies && !xGQualifies ? "no_recent_sot_or_xg_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40_or_46_88" : !recentSotQualifies && !xGQualifies ? "no_recent_sot_or_xg_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -2326,7 +2327,7 @@ const server = http.createServer(async (req, res) => {
           // send an alert after the agreed window.
           const dispatchMinute = parseLiveMinute(getMatchMinute(match));
           const dispatchMinuteAllowed = Number.isFinite(dispatchMinute) &&
-            dispatchMinute >= 1 && dispatchMinute <= 40;
+            ((dispatchMinute >= 1 && dispatchMinute <= 40) || (dispatchMinute >= 46 && dispatchMinute <= 88));
           if (level === "AI" && !dispatchMinuteAllowed) {
             console.warn("[AI push blocked: minute outside protocol window]", JSON.stringify({
               eventId: String(match.eventId),
