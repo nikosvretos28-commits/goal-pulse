@@ -848,6 +848,13 @@ const preMatchSeasonProfileCache = new Map();
 const preMatchSeasonCollectionAt = new Map();
 let preMatchSeasonDbInit = null;
 const PRE_MATCH_PROFILE_TTL_MS = 12 * 60 * 60 * 1000;
+function isPreMatchLeagueCode(code) {
+  const value = String(code || "");
+  if (!SCOREBOARD_LEAGUES.includes(value)) return false;
+  if (/^(uefa|fifa|conmebol|concacaf|caf|afc)\./i.test(value)) return false;
+  if (/(?:^|\.)(?:cup|copa|fa|league_cup|super_cup|tennents|cis)$/i.test(value)) return false;
+  return true;
+}
 function preMatchNormalizeTeam(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -894,7 +901,7 @@ function preMatchScoreValue(value) {
 }
 async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
   const code = String(leagueCode || "");
-  if (!SCOREBOARD_LEAGUES.includes(code)) return { ok: false, reason: "unsupported-league" };
+  if (!isPreMatchLeagueCode(code)) return { ok: false, reason: "unsupported-league" };
   const bounds = preMatchSeasonBounds(code);
   const cacheKey = code + "|" + bounds.seasonKey;
   const now = Date.now();
@@ -1059,7 +1066,7 @@ async function getPreMatchSeasonSupport(leagueCode, homeName, awayName, targetLi
 }
 async function schedulePreMatchSeasonCollection(events) {
   if (!Array.isArray(events) || !events.length) return;
-  const leagues = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(code => SCOREBOARD_LEAGUES.includes(code)))];
+  const leagues = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(code => isPreMatchLeagueCode(code)))];
   for (const code of leagues) {
     const bounds = preMatchSeasonBounds(code);
     const key = code + "|" + bounds.seasonKey;
