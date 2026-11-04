@@ -2289,10 +2289,10 @@ const server = http.createServer(async (req, res) => {
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
         // Trigger evidence is recent SOT OR one team with xG >= 3.00 and the other >= 2.00.
-        // Existing AI window remains 1-40 and 46-88. Cumulative SOT triggers apply only before 70.
+        // Existing AI window remains 1-40 and 46-88. Cumulative SOT triggers apply through minute 75 inclusive.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
-        const cumulativeSotWindow = Number.isFinite(aiMinute) && aiMinute < 70 && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 69));
+        const cumulativeSotWindow = Number.isFinite(aiMinute) && aiMinute <= 75 && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 75));
         const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
         const oneTeam10SotQualifies = cumulativeSotWindow && maxTeamSOT != null && Number(maxTeamSOT) >= 10;
         const cumulativeSotQualifies = combined15SotQualifies || oneTeam10SotQualifies;
