@@ -841,6 +841,233 @@ async function getHistoricalOverSupport(leagueCode, homeName, awayName, targetLi
   }
 }
 
+
+// PRE-MATCH: free ESPN season-wide league history. This is isolated from live
+// alert history and is strictly additive; missing data never changes live eligibility.
+const preMatchSeasonProfileCache = new Map();
+const preMatchSeasonCollectionAt = new Map();
+let preMatchSeasonDbInit = null;
+const PRE_MATCH_PROFILE_TTL_MS = 12 * 60 * 60 * 1000;
+function preMatchNormalizeTeam(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+async function ensurePreMatchSeasonDb() {
+  if (!analyticsPool) return false;
+  if (!preMatchSeasonDbInit) preMatchSeasonDbInit = analyticsPool.query(\`
+    CREATE TABLE IF NOT EXISTS pre_match_season_profiles (
+      league_code TEXT NOT NULL,
+      season_key TEXT NOT NULL,
+      team_key TEXT NOT NULL,
+      team_name TEXT NOT NULL,
+      profile JSONB NOT NULL,
+      source TEXT NOT NULL DEFAULT 'ESPN public scoreboard',
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (league_code, season_key, team_key)
+    );
+    CREATE INDEX IF NOT EXISTS pre_match_season_profiles_fetched_idx
+      ON pre_match_season_profiles(fetched_at DESC);
+  \`).then(() => true).catch(error => {
+    preMatchSeasonDbInit = null;
+    console.warn("[Pre-Match] persistent profile store unavailable:", error.message);
+    return false;
+  });
+  return preMatchSeasonDbInit;
+}
+function preMatchSeasonBounds(leagueCode, now = new Date()) {
+  const year = now.getUTCFullYear();
+  const calendarSeason = ["bra.1","arg.1","usa.1","mex.1","aus.1","bra.2","arg.2","arg.3"].includes(leagueCode);
+  if (calendarSeason) return {
+    seasonKey: String(year), start: String(year) + "0101", end: String(year) + "1231"
+  };
+  const startYear = now.getUTCMonth() >= 6 ? year : year - 1;
+  return {
+    seasonKey: String(startYear) + "/" + String(startYear + 1),
+    start: String(startYear) + "0801",
+    end: String(startYear + 1) + "0731"
+  };
+}
+function preMatchScoreValue(value) {
+  if (value && typeof value === "object") value = value.value ?? value.displayValue;
+  const n = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
+  const code = String(leagueCode || "");
+  if (!SCOREBOARD_LEAGUES.includes(code)) return { ok: false, reason: "unsupported-league" };
+  const bounds = preMatchSeasonBounds(code);
+  const cacheKey = code + "|" + bounds.seasonKey;
+  const now = Date.now();
+  const last = preMatchSeasonCollectionAt.get(cacheKey) || 0;
+  if (!options.force && now - last < PRE_MATCH_PROFILE_TTL_MS) return { ok: true, cached: true };
+  preMatchSeasonCollectionAt.set(cacheKey, now);
+  try {
+    const url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + encodeURIComponent(code) +
+      "/scoreboard?dates=" + bounds.start + "-" + bounds.end;
+    let response = await fetch(url, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(20000) });
+    if (response.status === 403 || response.status === 429 || response.status >= 500) {
+      response = await fetch(url.replace("site.api.espn.com", "site.web.api.espn.com"),
+        { headers: ESPN_HEADERS, signal: AbortSignal.timeout(20000) });
+    }
+    if (!response.ok) throw new Error("ESPN season scoreboard HTTP " + response.status);
+    const body = await response.json();
+    const events = Array.isArray(body.events) ? body.events : [];
+    const completed = new Map();
+    for (const event of events) {
+      const competition = Array.isArray(event.competitions) ? event.competitions[0] : null;
+      const status = competition?.status?.type || event.status?.type || {};
+      if (status.completed !== true && String(status.state || "").toLowerCase() !== "post") continue;
+      const competitors = Array.isArray(competition?.competitors) ? competition.competitors : [];
+      const home = competitors.find(side => String(side.homeAway || "").toLowerCase() === "home") || competitors[0];
+      const away = competitors.find(side => side !== home) || competitors[1];
+      if (!home?.team?.id || !away?.team?.id) continue;
+      const homeGoals = preMatchScoreValue(home.score);
+      const awayGoals = preMatchScoreValue(away.score);
+      if (homeGoals == null || awayGoals == null) continue;
+      const id = String(event.id || competition.id || "");
+      if (!id || completed.has(id)) continue;
+      completed.set(id, {
+        id, date: String(event.date || ""), homeId: String(home.team.id), awayId: String(away.team.id),
+        home: String(home.team.displayName || home.team.name || ""),
+        away: String(away.team.displayName || away.team.name || ""),
+        homeGoals, awayGoals
+      });
+    }
+    const aggregates = new Map();
+    const ensure = (id, name) => {
+      const key = preMatchNormalizeTeam(name);
+      if (!key) return null;
+      if (!aggregates.has(key)) aggregates.set(key, {
+        teamId: String(id), teamName: String(name), matches: 0, goalsFor: 0, goalsAgainst: 0,
+        cleanSheets: 0, failedToScore: 0, homeMatches: 0, awayMatches: 0,
+        over: { "1.5": 0, "2.5": 0, "3.5": 0, "4.5": 0 }
+      });
+      return aggregates.get(key);
+    };
+    for (const match of completed.values()) {
+      const total = match.homeGoals + match.awayGoals;
+      const h = ensure(match.homeId, match.home), a = ensure(match.awayId, match.away);
+      if (!h || !a) continue;
+      h.matches++; h.homeMatches++; h.goalsFor += match.homeGoals; h.goalsAgainst += match.awayGoals;
+      a.matches++; a.awayMatches++; a.goalsFor += match.awayGoals; a.goalsAgainst += match.homeGoals;
+      if (match.awayGoals === 0) h.cleanSheets++;
+      if (match.homeGoals === 0) a.cleanSheets++;
+      if (match.homeGoals === 0) h.failedToScore++;
+      if (match.awayGoals === 0) a.failedToScore++;
+      for (const line of ["1.5","2.5","3.5","4.5"]) {
+        if (total > Number(line)) { h.over[line]++; a.over[line]++; }
+      }
+    }
+    const profiles = [];
+    for (const [teamKey, value] of aggregates) {
+      if (!value.matches) continue;
+      const profile = {
+        ...value,
+        goalsForAvg: Number((value.goalsFor / value.matches).toFixed(3)),
+        goalsAgainstAvg: Number((value.goalsAgainst / value.matches).toFixed(3)),
+        cleanSheetRate: Number((value.cleanSheets / value.matches).toFixed(4)),
+        failedToScoreRate: Number((value.failedToScore / value.matches).toFixed(4)),
+        overRates: Object.fromEntries(Object.entries(value.over).map(([line, count]) =>
+          [line, Number((count / value.matches).toFixed(4))])),
+        coverage: "provider-season-range",
+        season: bounds.seasonKey,
+        leagueCode: code,
+        source: "ESPN public scoreboard",
+        fixtureCount: completed.size,
+        fetchedAt: new Date().toISOString()
+      };
+      const entry = { at: now, profile };
+      preMatchSeasonProfileCache.set(code + "|" + bounds.seasonKey + "|" + teamKey, entry);
+      profiles.push({ teamKey, teamName: value.teamName, profile });
+    }
+    const dbReady = await ensurePreMatchSeasonDb();
+    if (dbReady && profiles.length) {
+      const client = await analyticsPool.connect();
+      try {
+        await client.query("BEGIN");
+        for (const item of profiles) {
+          await client.query(
+            \`INSERT INTO pre_match_season_profiles (league_code,season_key,team_key,team_name,profile,source,fetched_at)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6,NOW())
+             ON CONFLICT (league_code,season_key,team_key) DO UPDATE SET
+             team_name=EXCLUDED.team_name, profile=EXCLUDED.profile, source=EXCLUDED.source, fetched_at=NOW()\`,
+            [code, bounds.seasonKey, item.teamKey, item.teamName, JSON.stringify(item.profile), "ESPN public scoreboard"]
+          );
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw error;
+      } finally { client.release(); }
+    }
+    return {
+      ok: true, leagueCode: code, season: bounds.seasonKey, source: "ESPN public scoreboard",
+      fixtures: completed.size, teams: profiles.length, persisted: dbReady,
+      coverage: events.length ? "provider-season-range" : "unknown",
+      fetchedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    preMatchSeasonCollectionAt.delete(cacheKey);
+    console.warn("[Pre-Match] season collection unavailable for", code, error.message);
+    return { ok: false, reason: "provider-unavailable" };
+  }
+}
+async function getPreMatchSeasonProfile(leagueCode, teamName) {
+  const code = String(leagueCode || "");
+  const bounds = preMatchSeasonBounds(code);
+  const teamKey = preMatchNormalizeTeam(teamName);
+  if (!code || !teamKey) return null;
+  const key = code + "|" + bounds.seasonKey + "|" + teamKey;
+  const cached = preMatchSeasonProfileCache.get(key);
+  if (cached?.profile) return cached.profile;
+  if (await ensurePreMatchSeasonDb()) {
+    try {
+      const result = await analyticsPool.query(
+        "SELECT profile FROM pre_match_season_profiles WHERE league_code=$1 AND season_key=$2 AND team_key=$3",
+        [code, bounds.seasonKey, teamKey]
+      );
+      if (result.rows?.[0]?.profile) {
+        const profile = result.rows[0].profile;
+        preMatchSeasonProfileCache.set(key, { at: Date.now(), profile });
+        return profile;
+      }
+    } catch (error) {
+      console.warn("[Pre-Match] profile read unavailable:", error.message);
+    }
+  }
+  return null;
+}
+async function getPreMatchSeasonSupport(leagueCode, homeName, awayName, targetLine) {
+  const line = Number(targetLine);
+  const neutral = { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, season: null };
+  if (!Number.isFinite(line)) return neutral;
+  const [home, away] = await Promise.all([
+    getPreMatchSeasonProfile(leagueCode, homeName), getPreMatchSeasonProfile(leagueCode, awayName)
+  ]);
+  const rateFor = profile => profile?.overRates?.[String(line)] ?? null;
+  const hr = rateFor(home), ar = rateFor(away);
+  const usable = [hr, ar].filter(value => Number.isFinite(Number(value)));
+  if (!usable.length) return neutral;
+  // Positive reinforcement only: no negative score, no veto, no independent qualification.
+  const support = (hr != null && hr >= 0.65 ? 0.5 : 0) + (ar != null && ar >= 0.65 ? 0.5 : 0);
+  return {
+    support, homeRate: hr, awayRate: ar,
+    homeSample: Number(home?.matches || 0), awaySample: Number(away?.matches || 0),
+    season: home?.season || away?.season || null
+  };
+}
+async function schedulePreMatchSeasonCollection(events) {
+  if (!Array.isArray(events) || !events.length) return;
+  const leagues = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(code => SCOREBOARD_LEAGUES.includes(code)))];
+  for (const code of leagues) {
+    const bounds = preMatchSeasonBounds(code);
+    const key = code + "|" + bounds.seasonKey;
+    if (Date.now() - (preMatchSeasonCollectionAt.get(key) || 0) < PRE_MATCH_PROFILE_TTL_MS) continue;
+    // Do not hold up the live scanner; the season cache is supplementary only.
+    collectPreMatchLeagueSeason(code).catch(() => {});
+  }
+}
+
 async function pitchGet(apiPath) {
   const key = process.env.PITCH_API_KEY;
   if (!key) {
@@ -1675,6 +1902,9 @@ const server = http.createServer(async (req, res) => {
           console.warn("[settlement] Prior-date scoreboard unavailable for", pastDate, pastScoreboardError.message);
         }
       }
+      // Automatically collect full-season league profiles for today's scheduled competitions.
+      // This runs in the background and never delays or gates the live scanner.
+      schedulePreMatchSeasonCollection(scoreboardEvents);
       // Join scoreboard score/status fields to the separate live-stat feed by normalized team names.
       // The stats endpoint does not include scores, and displayClock often looks like "45:00";
       // without this join the AI scanner silently sees no eligible first-half matches.
@@ -2284,7 +2514,10 @@ const server = http.createServer(async (req, res) => {
           ? await getHistoricalOverSupport(match.leagueCode, match.home, match.away, supportingOverLine)
           : { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: supportingOverLine };
         // Historical and conversion signals remain supporting context only.
-        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + liveConversionSupport;
+        const preMatchSeason = livePressureCandidate && supportingOverLine != null
+          ? await getPreMatchSeasonSupport(match.leagueCode, match.home, match.away, supportingOverLine)
+          : { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, season: null };
+        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
