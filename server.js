@@ -3873,7 +3873,7 @@ const server = http.createServer(async (req, res) => {
                 if (fallbackValues.some(v => ["shotsOnTarget","corners","possession"].some(key => v[key] != null))) {
                   values.forEach((v, i) => {
                     const fallback = fallbackValues[i];
-                    for (const key of ["shotsOnTarget","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
+                    for (const key of ["totalShots","shotsOnTarget","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
                   });
                   console.log("SportScore fallback supplied missing ESPN live stats:", JSON.stringify({eventId:String(event.id),home:homeName,away:awayName,stats:values.map(v=>({team:v.team,shotsOnTarget:v.shotsOnTarget,corners:v.corners}))}));
                 }
