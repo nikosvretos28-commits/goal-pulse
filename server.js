@@ -36,7 +36,12 @@ async function fetchProviderShared(url, options = {}) {
     providerFetchInflight.set(key, sharedRequest);
   }
   const response = await sharedRequest;
-  return response.clone();
+  return {
+    ok: response.ok,
+    status: response.status,
+    json: async () => JSON.parse(response.body),
+    text: async () => response.body
+  };
 }
 
 // Normalize common football API response envelopes. Several providers wrap the
