@@ -23,15 +23,19 @@ const SPORTAPI_STATS_REQUEST_GAP_MS = 5 * 60 * 1000;
 
 // Coalesce identical concurrent provider GETs from default and Hi Activity
 // metrics requests. Shares only in-flight responses; no data cache or delay.
+// Include timeoutMs in the key so a shorter caller timeout cannot cancel a
+// longer caller's otherwise-identical provider request.
 const providerFetchInflight = new Map();
 async function fetchProviderShared(url, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
   if (method !== "GET") return fetch(url, options);
-  const key = method + ":" + url;
+  const { coalesceTimeoutMs, ...fetchOptions } = options;
+  const timeoutKey = coalesceTimeoutMs == null ? "default" : String(coalesceTimeoutMs);
+  const key = method + ":" + url + ":timeout=" + timeoutKey;
   let sharedRequest = providerFetchInflight.get(key);
   if (!sharedRequest) {
     sharedRequest = (async () => {
-      const response = await fetch(url, options);
+      const response = await fetch(url, fetchOptions);
       return { ok: response.ok, status: response.status, body: await response.text() };
     })().finally(() => {
       if (providerFetchInflight.get(key) === sharedRequest) providerFetchInflight.delete(key);
@@ -3550,7 +3554,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
           const liveResponse = await fetchProviderShared("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
-            headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000)
+            headers: { "Accept": "application/json" }, coalesceTimeoutMs: 9000, signal: AbortSignal.timeout(9000)
           });
           if (liveResponse.ok) {
             const livePayload = await liveResponse.json();
@@ -3581,7 +3585,7 @@ const server = http.createServer(async (req, res) => {
           if (!payload) {
             const response = await fetchProviderShared("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
               headers: { "Accept": "application/json" },
-              signal: AbortSignal.timeout(8000)
+              coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
             });
             if (response.ok) payload = await response.json();
           }
@@ -3656,7 +3660,7 @@ const server = http.createServer(async (req, res) => {
                 for (let attempt = 0; attempt < 3; attempt++) {
                   detailResponse = await fetchProviderShared(detailUrl, {
                     headers: { "Accept": "application/json" },
-                    signal: AbortSignal.timeout(10000)
+                    coalesceTimeoutMs: 10000, signal: AbortSignal.timeout(10000)
                   });
                   if (detailResponse.status !== 503 || attempt === 2) break;
                   await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
@@ -3667,7 +3671,7 @@ const server = http.createServer(async (req, res) => {
                     const reverseSlug = parts[1] + "-vs-" + parts[0];
                     const retryResponse = await fetchProviderShared("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(reverseSlug) + "&src=goal-pulse", {
                       headers: { "Accept": "application/json" },
-                      signal: AbortSignal.timeout(8000)
+                      coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
                     });
                     if (retryResponse.ok) { slug = reverseSlug; detailResponse = retryResponse; }
                     else {
@@ -3816,7 +3820,7 @@ const server = http.createServer(async (req, res) => {
             espnSummaryDiagnostics.attempted++;
             let response = await fetchProviderShared("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
               headers: { "Accept": "application/json" },
-              signal: AbortSignal.timeout(8000)
+              coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
             });
             // Match the proven scoreboard fallback: ESPN can deny the site.api hostname
             // from this hosting region while its equivalent site.web.api endpoint works.
@@ -3894,7 +3898,7 @@ const server = http.createServer(async (req, res) => {
                 if (fallbackSlug) {
                   try {
                     const detailResponse = await fetchProviderShared("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(fallbackSlug) + "&src=goal-pulse", {
-                      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
+                      headers: { "Accept": "application/json" }, coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
                     });
                     if (detailResponse.ok) {
                       const detailPayload = await detailResponse.json();
