@@ -3693,7 +3693,7 @@ const server = http.createServer(async (req, res) => {
                 awayScore: event.away_score ?? event.awayScore ?? null,
                 status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
                 homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
-                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["totalShots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3739,7 +3739,7 @@ const server = http.createServer(async (req, res) => {
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
                 minute: event.status?.displayClock || "",
-                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["totalShots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3884,7 +3884,7 @@ const server = http.createServer(async (req, res) => {
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
-              statsAvailable: teams.length > 0 && values.some(v => ["shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
+              statsAvailable: teams.length > 0 && values.some(v => ["totalShots", "shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
               teams: values
             });
           } catch (error) {
