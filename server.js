@@ -30,7 +30,10 @@ async function fetchProviderShared(url, options = {}) {
   const key = method + ":" + url;
   let sharedRequest = providerFetchInflight.get(key);
   if (!sharedRequest) {
-    sharedRequest = fetch(url, options).finally(() => {
+    sharedRequest = (async () => {
+      const response = await fetch(url, options);
+      return { ok: response.ok, status: response.status, body: await response.text() };
+    })().finally(() => {
       if (providerFetchInflight.get(key) === sharedRequest) providerFetchInflight.delete(key);
     });
     providerFetchInflight.set(key, sharedRequest);
