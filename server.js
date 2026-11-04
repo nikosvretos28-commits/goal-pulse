@@ -894,18 +894,6 @@ function preMatchSeasonBounds(leagueCode, now = new Date()) {
     end: String(startYear + 1) + "0731"
   };
 }
-function preMatchDateChunks(start, end, chunkDays = 28) {
-  const parse = value => new Date(Date.UTC(Number(value.slice(0,4)), Number(value.slice(4,6))-1, Number(value.slice(6,8))));
-  const format = date => date.getUTCFullYear().toString().padStart(4,"0") +
-    String(date.getUTCMonth()+1).padStart(2,"0") + String(date.getUTCDate()).padStart(2,"0");
-  const first = parse(start), last = parse(end), chunks = [];
-  for (let cursor = first; cursor <= last;) {
-    const chunkEnd = new Date(Math.min(last.getTime(), cursor.getTime() + (chunkDays-1)*86400000));
-    chunks.push({ start: format(cursor), end: format(chunkEnd) });
-    cursor = new Date(chunkEnd.getTime() + 86400000);
-  }
-  return chunks;
-}
 function preMatchScoreValue(value) {
   if (value && typeof value === "object") value = value.value ?? value.displayValue;
   const n = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
@@ -921,26 +909,32 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
   if (!options.force && now - last < PRE_MATCH_PROFILE_TTL_MS) return { ok: true, cached: true };
   preMatchSeasonCollectionAt.set(cacheKey, now);
   try {
-    const chunks = preMatchDateChunks(bounds.start, bounds.end, 28);
-    const events = [];
-    // ESPN's public scoreboard accepts bounded date ranges; fetch the season in
-    // small chunks so a full 12-month query is never silently truncated.
-    for (let offset = 0; offset < chunks.length; offset += 3) {
-      const batch = chunks.slice(offset, offset + 3);
-      const results = await Promise.all(batch.map(async chunk => {
-        const url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + encodeURIComponent(code) +
-          "/scoreboard?dates=" + chunk.start + "-" + chunk.end;
-        let response = await fetch(url, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(20000) });
-        if (response.status === 403 || response.status === 429 || response.status >= 500) {
-          response = await fetch(url.replace("site.api.espn.com", "site.web.api.espn.com"),
-            { headers: ESPN_HEADERS, signal: AbortSignal.timeout(20000) });
-        }
-        if (!response.ok) throw new Error("ESPN season chunk HTTP " + response.status + " (" + chunk.start + ")");
-        const body = await response.json();
-        return Array.isArray(body.events) ? body.events : [];
-      }));
-      events.push(...results.flat());
-    }
+    const startYear = Number(bounds.start.slice(0,4));
+    const endYear = Number(bounds.end.slice(0,4));
+    const requestedYears = [...new Set([startYear, endYear])];
+    const yearResults = await Promise.all(requestedYears.map(async year => {
+      const url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + encodeURIComponent(code) +
+        "/scoreboard?dates=" + year + "&limit=500";
+      let response = await fetch(url, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
+      if (response.status === 403 || response.status === 429 || response.status >= 500) {
+        response = await fetch(url.replace("site.api.espn.com", "site.web.api.espn.com"),
+          { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
+      }
+      if (!response.ok) throw new Error("ESPN season-year HTTP " + response.status + " (" + year + ")");
+      const body = await response.json();
+      return Array.isArray(body.events) ? body.events : [];
+    }));
+    const allEvents = yearResults.flat();
+    const expectedSeasonSlug = String(options.seasonSlug || "");
+    const expectedSeasonYear = Number(options.seasonYear || startYear);
+    // ESPN's date-only range can include adjacent seasons and defaults to a
+    // 100-event page. Explicit year + limit=500 and the event season slug avoid
+    // silently mixing seasons or using only the most recent matches.
+    const events = allEvents.filter(event => {
+      const actualSlug = String(event.season?.slug || "");
+      if (expectedSeasonSlug) return actualSlug === expectedSeasonSlug;
+      return Number(event.season?.year) === expectedSeasonYear;
+    });
     const completed = new Map();
     for (const event of events) {
       const competition = Array.isArray(event.competitions) ? event.competitions[0] : null;
@@ -1000,6 +994,7 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
           [line, Number((count / value.matches).toFixed(4))])),
         coverage: "provider-season-range",
         season: bounds.seasonKey,
+        seasonSlug: expectedSeasonSlug || null,
         leagueCode: code,
         source: "ESPN public scoreboard",
         fixtureCount: completed.size,
@@ -1032,7 +1027,7 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
     return {
       ok: true, leagueCode: code, season: bounds.seasonKey, source: "ESPN public scoreboard",
       fixtures: completed.size, teams: profiles.length, persisted: dbReady,
-      coverage: events.length ? "provider-season-range" : "unknown",
+      coverage: events.length ? (expectedSeasonSlug ? "season-slug-filtered" : "season-year-filtered") : "unknown",
       fetchedAt: new Date().toISOString()
     };
   } catch (error) {
@@ -1089,14 +1084,22 @@ async function getPreMatchSeasonSupport(leagueCode, homeName, awayName, targetLi
 async function schedulePreMatchSeasonCollection(events) {
   if (!Array.isArray(events) || !events.length) return;
   const leagues = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(code => isPreMatchLeagueCode(code)))];
-  const due = leagues.filter(code => {
+  const due = leagues.map(code => {
+    const leagueEvents = events.filter(event => String(event.__goalPulseLeagueCode || "") === code);
+    const seasonEvent = leagueEvents.find(event => event.season?.slug || event.season?.year) || leagueEvents[0];
     const bounds = preMatchSeasonBounds(code);
-    return Date.now() - (preMatchSeasonCollectionAt.get(code + "|" + bounds.seasonKey) || 0) >= PRE_MATCH_PROFILE_TTL_MS;
-  });
-  // Keep provider load bounded: two league jobs at a time, three date chunks per job.
+    return {
+      code, seasonSlug: String(seasonEvent?.season?.slug || ""),
+      seasonYear: Number(seasonEvent?.season?.year || bounds.start.slice(0,4)),
+      key: code + "|" + bounds.seasonKey
+    };
+  }).filter(item => Date.now() - (preMatchSeasonCollectionAt.get(item.key) || 0) >= PRE_MATCH_PROFILE_TTL_MS);
+  // Keep provider load bounded: two league jobs at a time, at most two yearly requests per job.
   // The caller intentionally does not await this background preparation.
   for (let offset = 0; offset < due.length; offset += 2) {
-    await Promise.all(due.slice(offset, offset + 2).map(code => collectPreMatchLeagueSeason(code).catch(() => null)));
+    await Promise.all(due.slice(offset, offset + 2).map(item =>
+      collectPreMatchLeagueSeason(item.code, { seasonSlug: item.seasonSlug, seasonYear: item.seasonYear }).catch(() => null)
+    ));
   }
 }
 
