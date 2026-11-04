@@ -1204,6 +1204,153 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:var(--gre
   .brand-tagline{letter-spacing:1.2px}
 }
 
+
+/* GoalMatrix test-push controls: calmer premium presentation and clearer type.
+   Native Android/browser notification cards remain OS-rendered; these styles
+   apply only to the in-page notification controls and test area. */
+.notification-optin-global{
+  gap:14px;
+  padding:18px;
+  border:1px solid rgba(67,224,162,.22);
+  border-radius:16px;
+  background:linear-gradient(145deg,#0d2030 0%,#0b1b29 100%);
+  box-shadow:0 10px 28px rgba(0,0,0,.18);
+}
+.notification-optin-global>strong{
+  font-size:16px;
+  line-height:1.4;
+  letter-spacing:.01em;
+  color:#f4f8fb;
+}
+.notification-optin-global .notification-optin-row{
+  gap:10px;
+}
+.notification-optin-global .notification-optin-row button{
+  min-height:42px;
+  padding:10px 14px;
+  border:1px solid #31566a;
+  border-radius:10px;
+  background:#132d40;
+  color:#edf5f8;
+  font-size:13px;
+  line-height:1.35;
+  font-weight:750;
+  box-shadow:none;
+}
+.notification-optin-global .notification-optin-row button:hover{
+  border-color:#4c8b83;
+  background:#18394a;
+  filter:none;
+}
+.notification-optin-global .notification-optin-row button:focus-visible,
+.pulse-alerts #testNotifications:focus-visible,
+.pulse-alerts #enableNotifications:focus-visible,
+.pulse-alerts #runSignalCheck:focus-visible{
+  outline:3px solid #55c7e8;
+  outline-offset:3px;
+}
+.notification-optin-global .notification-optin-row .subtle{
+  color:#c0d0da;
+  font-size:13px;
+  line-height:1.5;
+}
+.pulse-alerts{
+  padding:18px;
+  border:1px solid rgba(132,174,195,.2);
+  border-radius:16px;
+  background:linear-gradient(145deg,#102638 0%,#0b1c2b 100%);
+}
+.pulse-alerts h3{
+  color:#f3f7fa;
+  font-size:18px;
+  line-height:1.35;
+}
+.pulse-alerts .pulse-alerts-head p{
+  color:#c1d0da;
+  font-size:13px;
+  line-height:1.55;
+}
+.pulse-alerts .pulse-alert-grid label{
+  color:#e0eaf0;
+  font-size:13px;
+  line-height:1.45;
+}
+.pulse-alerts .pulse-alert-grid output{
+  color:#7ce8bd;
+  font-size:13px;
+}
+.pulse-alerts .pulse-alert-grid input,
+.pulse-alerts .pulse-alert-grid select{
+  min-height:42px;
+  padding:9px 11px;
+  border-color:#34566a;
+  border-radius:9px;
+  color:#f2f7fa;
+  background:#0b1d2c;
+  font-size:13px;
+  line-height:1.4;
+}
+.pulse-alerts>.subtle,
+.pulse-alerts #signalStatus{
+  color:#c0d0da;
+  font-size:13px;
+  line-height:1.55;
+}
+.pulse-alerts #runSignalCheck,
+.pulse-alerts #enableNotifications,
+.pulse-alerts #testNotifications{
+  min-height:42px;
+  padding:10px 14px;
+  border:1px solid #34596b;
+  border-radius:10px;
+  background:#142f42;
+  color:#edf5f8;
+  font-size:13px;
+  line-height:1.35;
+  font-weight:750;
+  box-shadow:none;
+}
+.pulse-alerts #testNotifications{
+  border-color:rgba(67,224,162,.42);
+  background:#12372f;
+  color:#c8f8e4;
+}
+.pulse-alerts #runSignalCheck:hover,
+.pulse-alerts #enableNotifications:hover,
+.pulse-alerts #testNotifications:hover{
+  filter:none;
+  border-color:#69bda2;
+  background:#1a3c4d;
+}
+.pulse-alerts #testNotifications:hover{
+  background:#17483a;
+}
+.pulse-alerts .signal-summary .count{
+  color:#d9e8ef;
+  background:#173448;
+  border:1px solid rgba(132,174,195,.18);
+  font-size:12px;
+  line-height:1.45;
+}
+@media(max-width:600px){
+  .notification-optin-global{padding:15px;gap:12px}
+  .notification-optin-global .notification-optin-row button{
+    flex:1 1 44%;
+    min-height:44px;
+    font-size:13px;
+  }
+  .notification-optin-global .notification-optin-row .subtle{
+    flex:1 1 100%;
+    font-size:13px;
+  }
+  .pulse-alerts{padding:15px}
+  .pulse-alerts .pulse-alert-grid{grid-template-columns:1fr;gap:12px}
+  .pulse-alerts .pulse-alert-grid label{font-size:13px}
+  .pulse-alerts #runSignalCheck,
+  .pulse-alerts #enableNotifications,
+  .pulse-alerts #testNotifications{flex:1 1 100%;min-height:44px}
+}
+
 </style>
 
 <style id="goalmatrix-premium-finish">
