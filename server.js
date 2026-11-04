@@ -1089,12 +1089,14 @@ async function getPreMatchSeasonSupport(leagueCode, homeName, awayName, targetLi
 async function schedulePreMatchSeasonCollection(events) {
   if (!Array.isArray(events) || !events.length) return;
   const leagues = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(code => isPreMatchLeagueCode(code)))];
-  for (const code of leagues) {
+  const due = leagues.filter(code => {
     const bounds = preMatchSeasonBounds(code);
-    const key = code + "|" + bounds.seasonKey;
-    if (Date.now() - (preMatchSeasonCollectionAt.get(key) || 0) < PRE_MATCH_PROFILE_TTL_MS) continue;
-    // Do not hold up the live scanner; the season cache is supplementary only.
-    collectPreMatchLeagueSeason(code).catch(() => {});
+    return Date.now() - (preMatchSeasonCollectionAt.get(code + "|" + bounds.seasonKey) || 0) >= PRE_MATCH_PROFILE_TTL_MS;
+  });
+  // Keep provider load bounded: two league jobs at a time, three date chunks per job.
+  // The caller intentionally does not await this background preparation.
+  for (let offset = 0; offset < due.length; offset += 2) {
+    await Promise.all(due.slice(offset, offset + 2).map(code => collectPreMatchLeagueSeason(code).catch(() => null)));
   }
 }
 
