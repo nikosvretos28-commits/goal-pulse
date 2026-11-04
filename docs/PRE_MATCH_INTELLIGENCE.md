@@ -1,26 +1,19 @@
 # GoalMatrix Pre-Match Intelligence
 
-Status: specification only; historical collection and live integration are not implemented by this document.
+## Mandatory season scope
+A team profile must use every completed match available in the current season of that team's own league competition only. Do not use the latest 10 matches, do not mix domestic cups, continental competitions, friendlies, or other leagues, and do not assume one global season boundary. Resolve calendar-year and split-year seasons from the competition's own season metadata where available. Deduplicate by stable fixture ID.
 
-## Purpose
-Collect historical team context ahead of scheduled fixtures and make it available to both AI Alerts and High Activity when a match becomes live.
+If the source returns only part of the season, report the actual sample and mark coverage PARTIAL or UNKNOWN; never claim full-season coverage without evidence. Missing statistics remain unknown, not zero. If only one team has usable history, use that profile and mark the other unavailable.
 
-## Daily preparation
-- Read the day's fixture schedule.
-- Resolve stable competition, fixture, and team identifiers.
-- Collect completed-match history for each team where available.
-- Store normalized profiles separately from live alert history.
-- Preserve source, source timestamp, retrieval timestamp, sample size, and confidence.
-- Deduplicate fixtures and cache results with explicit freshness rules.
+## Full-season metrics
+For all completed league fixtures in the current season calculate matches included, goals for/against, averages, goal difference, Over/Under rates for 1.5/2.5/3.5/4.5, clean sheets, failed-to-score, and home/away splits where sample sizes support them. Add scoring/conceding time bands only when reliable event-minute data exists. Include competition/season/team identifiers, source, retrieval time, sample size, and coverage.
 
-## Team profile
-Where sufficient data exists, calculate goals for/against, clean sheets, scoring/conceding time bands, and Over/Under frequencies for 2.5, 3.5, 4.5 and other supported lines. Keep home/away splits only where sample size supports them. Missing values are unknown, never zero.
+## Trigger contract
+Pre-Match is an additional independent historical-context trigger for AI Alerts and High Activity, not just a display panel. A strong season trend can qualify only when relevant live statistics confirm the live context; it may also strengthen confidence. A robust historical contradiction may veto only its specific market, never the entire fixture. Market vetoes remain shadow-only until validated.
 
-## Live integration contract
-Both AI Alerts and High Activity may consume read-only pre-match context through separate adapters. Historical evidence may strengthen a live market assessment or reduce confidence / veto a specific market when a sufficiently large and reliable sample strongly contradicts it. It must not suppress an entire fixture. Existing live triggers, SOT windows, xG conditions, settlement, and history behavior must remain unchanged.
+Use separate read-only adapters for AI Alerts and High Activity. Do not change existing live trigger expressions, thresholds, time windows, dispatch guards, settlement, or history behavior. Missing, stale, invalid, or insufficient history means NO HISTORICAL DATA and the existing live-only evaluation continues unchanged.
 
-## Missing history
-Record `NO HISTORICAL DATA`. Do not fabricate metrics and do not reject the fixture. Continue with the existing live evaluator only. If only one team has usable history, use that profile and mark the other unavailable.
+## Data and rollout safety
+Use already configured free data sources; no paid provider or new cost without explicit approval. Cache by competition and season, deduplicate requests, and persist profiles separately from live alert history only where a supported database is configured. Report unavailable persistence honestly. Test league-only filtering, full-season coverage, calendar/split-year boundaries, partial source data, one-sided history, missing data, and duplicate fixtures. Keep market vetoes in shadow/backtest mode until calibrated.
 
-## Safety and rollout
-Fail open to today's live-only behavior on missing, stale, invalid, or unavailable context. Do not activate market vetoes until sample-size and confidence thresholds are calibrated with backtests and shadow observations. No paid provider may be enabled without explicit budget approval. Validate provider coverage and licensing before production collection.
+The existing live protocols are protected. Pre-Match is added alongside them and must not replace or rewrite them.
