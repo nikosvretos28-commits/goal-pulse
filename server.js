@@ -791,7 +791,7 @@ async function getDirtySheetSupport(leagueCode, homeName, awayName) {
     const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const rates = name => {
       const target = norm(name);
-      const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 15);
+      const matches = cached.completed.filter(m => m.home === target || m.away === target).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10);
       if (matches.length < 5) return { rate: null, sample: matches.length };
       const conceded = matches.filter(m => m.home === target ? m.as > 0 : m.hs > 0).length;
       return { rate: conceded / matches.length, sample: matches.length };
@@ -2283,18 +2283,20 @@ const server = http.createServer(async (req, res) => {
         const historicalOver = livePressureCandidate && supportingOverLine != null
           ? await getHistoricalOverSupport(match.leagueCode, match.home, match.away, supportingOverLine)
           : { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: supportingOverLine };
-        // 20+ combined SOT (both teams together) is a positive supporting signal,
-        // not a mandatory condition and never a standalone alert trigger.
-        const totalSotSupport = totalOnTarget >= 20 ? 1.5 : 0;
-        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + liveConversionSupport + totalSotSupport;
+        // Historical and conversion signals remain supporting context only.
+        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
         // Trigger evidence is recent SOT OR one team with xG >= 3.00 and the other >= 2.00.
-        // AI Alerts are restricted to minutes 1-40 and 46-88, as agreed.
+        // Existing AI window remains 1-40 and 46-88. Cumulative SOT triggers apply only before 70.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
-        const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies);
+        const cumulativeSotWindow = Number.isFinite(aiMinute) && aiMinute < 70 && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 69));
+        const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
+        const oneTeam10SotQualifies = cumulativeSotWindow && maxTeamSOT != null && Number(maxTeamSOT) >= 10;
+        const cumulativeSotQualifies = combined15SotQualifies || oneTeam10SotQualifies;
+        const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies);
         // Keep the first 16 general samples, but never omit an eligible 1′–40′ or 46′–88′ match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
@@ -2310,6 +2312,9 @@ const server = http.createServer(async (req, res) => {
           xGAway: teamXGValues[1],
           recentSotQualifies,
           xGQualifies,
+          combined15SotQualifies,
+          oneTeam10SotQualifies,
+          cumulativeSotQualifies,
           eligibleMinute,
           qualifies: isAiGoal,
           rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40_or_46_88" : !recentSotQualifies && !xGQualifies ? "no_recent_sot_or_xg_signal" : "qualified"
