@@ -1007,7 +1007,8 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
       fetchedAt: new Date().toISOString()
     };
   } catch (error) {
-    preMatchSeasonCollectionAt.delete(cacheKey);
+    // Back off on provider failures; do not retry the same league every scanner minute.
+    preMatchSeasonCollectionAt.set(cacheKey, Date.now() - PRE_MATCH_PROFILE_TTL_MS + 30 * 60 * 1000);
     console.warn("[Pre-Match] season collection unavailable for", code, error.message);
     return { ok: false, reason: "provider-unavailable" };
   }
@@ -1019,7 +1020,7 @@ async function getPreMatchSeasonProfile(leagueCode, teamName) {
   if (!code || !teamKey) return null;
   const key = code + "|" + bounds.seasonKey + "|" + teamKey;
   const cached = preMatchSeasonProfileCache.get(key);
-  if (cached?.profile) return cached.profile;
+  if (cached?.profile && Date.now() - Number(cached.at || 0) < PRE_MATCH_PROFILE_TTL_MS) return cached.profile;
   if (await ensurePreMatchSeasonDb()) {
     try {
       const result = await analyticsPool.query(
