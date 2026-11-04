@@ -854,7 +854,7 @@ function preMatchNormalizeTeam(value) {
 }
 async function ensurePreMatchSeasonDb() {
   if (!analyticsPool) return false;
-  if (!preMatchSeasonDbInit) preMatchSeasonDbInit = analyticsPool.query(\`
+  if (!preMatchSeasonDbInit) preMatchSeasonDbInit = analyticsPool.query(`
     CREATE TABLE IF NOT EXISTS pre_match_season_profiles (
       league_code TEXT NOT NULL,
       season_key TEXT NOT NULL,
@@ -867,7 +867,7 @@ async function ensurePreMatchSeasonDb() {
     );
     CREATE INDEX IF NOT EXISTS pre_match_season_profiles_fetched_idx
       ON pre_match_season_profiles(fetched_at DESC);
-  \`).then(() => true).catch(error => {
+  `).then(() => true).catch(error => {
     preMatchSeasonDbInit = null;
     console.warn("[Pre-Match] persistent profile store unavailable:", error.message);
     return false;
@@ -987,10 +987,10 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
         await client.query("BEGIN");
         for (const item of profiles) {
           await client.query(
-            \`INSERT INTO pre_match_season_profiles (league_code,season_key,team_key,team_name,profile,source,fetched_at)
+            `INSERT INTO pre_match_season_profiles (league_code,season_key,team_key,team_name,profile,source,fetched_at)
              VALUES ($1,$2,$3,$4,$5::jsonb,$6,NOW())
              ON CONFLICT (league_code,season_key,team_key) DO UPDATE SET
-             team_name=EXCLUDED.team_name, profile=EXCLUDED.profile, source=EXCLUDED.source, fetched_at=NOW()\`,
+             team_name=EXCLUDED.team_name, profile=EXCLUDED.profile, source=EXCLUDED.source, fetched_at=NOW()`,
             [code, bounds.seasonKey, item.teamKey, item.teamName, JSON.stringify(item.profile), "ESPN public scoreboard"]
           );
         }
