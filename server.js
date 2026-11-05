@@ -1415,7 +1415,8 @@ const ALLOWED_ORIGINS = new Set([
   "https://goalmatrix-live.onrender.com",
   "https://goal-pulse.vibenest.net",
   "https://goal-pulse-live-2026-2.onrender.com",
-  "https://nikosvretos28-commits.github.io"
+  "https://nikosvretos28-commits.github.io",
+  "https://goalmatrix-production.up.railway.app"
 ]);
 
 function isAllowedOrigin(value) {
