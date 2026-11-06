@@ -57,6 +57,23 @@ const powerGamesAuthAttempts = new Map();
 const pushScanSnapshots = new Map();
 const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
+// Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
+const volatileAlertHistory = new Map();
+const volatileHighActivityHistory = new Map();
+const VOLATILE_HISTORY_LIMIT = 5000;
+function saveVolatileRecord(store, key, payload, settledFields = []) {
+  const id = String(key || "");
+  if (!id || !payload || typeof payload !== "object") return;
+  const previous = store.get(id);
+  const next = { ...payload };
+  if (previous) for (const field of settledFields) if (previous[field] != null && (next[field] == null || next[field] === "pending" || next[field] === "εκκρεμεί")) next[field] = previous[field];
+  store.set(id, next);
+  if (store.size > VOLATILE_HISTORY_LIMIT) {
+    const oldest = [...store.entries()].sort((a,b) => Number(a[1].createdAt || 0) - Number(b[1].createdAt || 0));
+    for (let i=0; i<oldest.length-VOLATILE_HISTORY_LIMIT; i++) store.delete(oldest[i][0]);
+  }
+}
+function volatileHistoryRows(store) { return [...store.values()].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)); }
 let pushDbInit = null;
 let alertHistoryDbInit = null;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -1488,7 +1505,24 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/alerts/history/verify" && req.method === "GET") {
     // Read-only audit: allow direct navigation when both Origin and Referer are absent.\n    // If either header is present, it must still match the allowlist.\n    if ((req.headers.origin || req.headers.referer) && !isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    if (!await ensureAlertHistoryDb()) {
+      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
+      const period = String(url.searchParams.get("period") || "all").toLowerCase();
+      const now = Date.now();
+      const dateKey = value => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+      const today = dateKey(now), yesterday = dateKey(now - 86400000);
+      const rows = volatileHistoryRows(volatileAlertHistory).filter(item => {
+        const at = Number(item.createdAt || 0);
+        if (!at) return false;
+        if (period === "today") return dateKey(at) === today;
+        if (period === "yesterday") return dateKey(at) === yesterday;
+        if (period === "7d") return at >= now - 7 * 86400000;
+        if (period === "30d") return at >= now - 30 * 86400000;
+        return true;
+      });
+      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit) });
+    }
     try {
       // Read-only integrity audit: it never edits or settles alerts.
       const result = await analyticsPool.query(
@@ -1638,7 +1672,11 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/high-activity/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureHighActivityHistoryDb()) return send(res, 503, { error: "High Activity history database unavailable" });
+    if (!await ensureHighActivityHistoryDb()) {
+      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
+      return send(res, 200, { ok: true, persistent: false, volatile: true, observations: volatileHistoryRows(volatileHighActivityHistory).slice(offset, offset + limit) });
+    }
     try {
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
       const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
