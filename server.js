@@ -174,11 +174,11 @@ async function runProtocolAnalyst() {
         createdAt: row.created_at
       };
     });
-    // Analyze the two live protocol windows independently: first half 1–40 and second half 46–80.
+    // Analyze the approved AI windows independently: first half 1–40 and second half 46–88.
     // Never mix halftime, stoppage/out-of-window alerts, or unknown periods into either sample.
     const records = allRecords.filter(row =>
       (row.phase === "first_half" && Number.isFinite(row.minute) && row.minute >= 1 && row.minute <= 40) ||
-      (row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 80)
+      (row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 88)
     );
     const summarize = rows => {
       const wins = rows.filter(row => row.won).length;
@@ -2410,7 +2410,6 @@ const server = http.createServer(async (req, res) => {
         const current = {
           at: now,
             onTarget: total("shotsOnTarget"),
-            totalShots: total("totalShots"),
           // Preserve each team's SOT independently; a missing value for one side
           // must not erase the other side's valid rolling SOT measurement.
           sotByTeam: teams.map(team => ({
@@ -2559,15 +2558,15 @@ const server = http.createServer(async (req, res) => {
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
-        // For Over-goal markets, the mandatory trigger is 3+ SOT in ~5m OR 6+ SOT in ~10m.
-        // Trigger evidence is recent SOT OR one team with xG >= 3.00 and the other >= 2.00.
-        // Existing AI window remains 1-40 and 46-88. Cumulative SOT triggers apply through minute 75 inclusive.
+        // Approved AI protocol: 1–40' and 46–88'; 3+ SOT/5m OR 6+ SOT/10m,
+        // OR one team's xG >= 3.00 and the other's >= 2.00.
+        // Additional cumulative trigger: 15+ combined match SOT before minute 70.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
-        const cumulativeSotWindow = Number.isFinite(aiMinute) && aiMinute <= 75 && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 75));
+        const cumulativeSotWindow = Number.isFinite(aiMinute) && aiMinute < 70 &&
+          ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute < 70));
         const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
-        const oneTeam10SotQualifies = cumulativeSotWindow && maxTeamSOT != null && Number(maxTeamSOT) >= 10;
-        const cumulativeSotQualifies = combined15SotQualifies || oneTeam10SotQualifies;
+        const cumulativeSotQualifies = combined15SotQualifies;
         const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies);
         // Keep the first 16 general samples, but never omit an eligible 1′–40′ or 46′–88′ match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
@@ -2585,11 +2584,10 @@ const server = http.createServer(async (req, res) => {
           recentSotQualifies,
           xGQualifies,
           combined15SotQualifies,
-          oneTeam10SotQualifies,
           cumulativeSotQualifies,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40_or_46_88" : !recentSotQualifies && !xGQualifies ? "no_recent_sot_or_xg_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40_or_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies ? "no_approved_sot_xg_or_15_total_sot_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -3730,7 +3728,7 @@ const server = http.createServer(async (req, res) => {
                 awayScore: event.away_score ?? event.awayScore ?? null,
                 status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
                 homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
-                statsAvailable: values.some(value => ["totalShots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3776,7 +3774,7 @@ const server = http.createServer(async (req, res) => {
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
                 minute: event.status?.displayClock || "",
-                statsAvailable: values.some(value => ["totalShots","shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -3921,7 +3919,7 @@ const server = http.createServer(async (req, res) => {
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
-              statsAvailable: teams.length > 0 && values.some(v => ["totalShots", "shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
+              statsAvailable: teams.length > 0 && values.some(v => ["shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
               teams: values
             });
           } catch (error) {
