@@ -57,6 +57,23 @@ const powerGamesAuthAttempts = new Map();
 const pushScanSnapshots = new Map();
 const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
+// Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
+const volatileAlertHistory = new Map();
+const volatileHighActivityHistory = new Map();
+const VOLATILE_HISTORY_LIMIT = 5000;
+function saveVolatileRecord(store, key, payload, settledFields = []) {
+  const id = String(key || "");
+  if (!id || !payload || typeof payload !== "object") return;
+  const previous = store.get(id);
+  const next = { ...payload };
+  if (previous) for (const field of settledFields) if (previous[field] != null && (next[field] == null || next[field] === "pending" || next[field] === "εκκρεμεί")) next[field] = previous[field];
+  store.set(id, next);
+  if (store.size > VOLATILE_HISTORY_LIMIT) {
+    const oldest = [...store.entries()].sort((a,b) => Number(a[1].createdAt || 0) - Number(b[1].createdAt || 0));
+    for (let i=0; i<oldest.length-VOLATILE_HISTORY_LIMIT; i++) store.delete(oldest[i][0]);
+  }
+}
+function volatileHistoryRows(store) { return [...store.values()].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)); }
 let pushDbInit = null;
 let alertHistoryDbInit = null;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -1638,7 +1655,11 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/high-activity/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureHighActivityHistoryDb()) return send(res, 503, { error: "High Activity history database unavailable" });
+    if (!await ensureHighActivityHistoryDb()) {
+      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
+      return send(res, 200, { ok: true, persistent: false, volatile: true, observations: volatileHistoryRows(volatileHighActivityHistory).slice(offset, offset + limit) });
+    }
     try {
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
       const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
@@ -1651,7 +1672,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/high-activity/history" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureHighActivityHistoryDb()) return send(res, 503, { error: "High Activity history database unavailable" });
+    const highActivityDbReady = await ensureHighActivityHistoryDb();
     try {
       const body = await readJsonBody(req, 4 * 1024 * 1024);
       const incoming = Array.isArray(body.observations) ? body.observations.slice(0, 5000) : body.observation ? [body.observation] : [];
@@ -1662,6 +1683,10 @@ const server = http.createServer(async (req, res) => {
         payload: x
       }));
       if (!records.length) return send(res, 400, { error: "No valid High Activity observations supplied" });
+      if (!highActivityDbReady) {
+        for (const record of records) saveVolatileRecord(volatileHighActivityHistory, record.observation_id, record.payload, ["outcome", "settledAt", "settlementReason"]);
+        return send(res, 200, { ok: true, saved: records.length, persistent: false, volatile: true });
+      }
       await highActivityHistoryPool.query(
         `INSERT INTO high_activity_history(observation_id,event_id,created_at,payload,updated_at)
          SELECT x.observation_id,x.event_id,to_timestamp(x.created_at/1000.0),x.payload,NOW()
@@ -1743,7 +1768,24 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    if (!await ensureAlertHistoryDb()) {
+      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
+      const period = String(url.searchParams.get("period") || "all").toLowerCase();
+      const now = Date.now();
+      const dateKey = value => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+      const today = dateKey(now), yesterday = dateKey(now - 86400000);
+      const rows = volatileHistoryRows(volatileAlertHistory).filter(item => {
+        const at = Number(item.createdAt || 0);
+        if (!at) return false;
+        if (period === "today") return dateKey(at) === today;
+        if (period === "yesterday") return dateKey(at) === yesterday;
+        if (period === "7d") return at >= now - 7 * 86400000;
+        if (period === "30d") return at >= now - 30 * 86400000;
+        return true;
+      });
+      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit) });
+    }
     try {
       // Return the requested history window using Greece-local calendar boundaries.
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
@@ -1773,7 +1815,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/alerts/history" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    const alertHistoryDbReady = await ensureAlertHistoryDb();
     try {
       const body = await readJsonBody(req, 4 * 1024 * 1024);
       const incoming = Array.isArray(body.alerts) ? body.alerts.slice(0, 5000) : body.alert ? [body.alert] : [];
@@ -1784,6 +1826,10 @@ const server = http.createServer(async (req, res) => {
         return { alert_id: alertId, event_id: String(a.eventId), level, created_at: Number(a.createdAt), payload: { ...a, alertId, level } };
       });
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
+      if (!alertHistoryDbReady) {
+        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
+        return send(res, 200, { ok: true, persistent: false, volatile: true, saved: records.length });
+      }
       await analyticsPool.query(
         `INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) SELECT x.alert_id,x.event_id,x.level,to_timestamp(x.created_at/1000.0),x.payload,NOW() FROM jsonb_to_recordset($1::jsonb) AS x(alert_id text,event_id text,level text,created_at numeric,payload jsonb) ON CONFLICT(alert_id) DO UPDATE SET payload=CASE
           WHEN alert_history.payload->>'periodAtSignal'='second_half'
@@ -2727,6 +2773,18 @@ const server = http.createServer(async (req, res) => {
             : " (χωρίς επιβεβαιωμένη απόδοση)";
           const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
+          const volatileAlertId = "push:" + id + ":" + level + ":" + now;
+          saveVolatileRecord(volatileAlertHistory, volatileAlertId, {
+            alertId: volatileAlertId, source: "server-push", eventId: id, level, createdAt: now,
+            home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
+            league: match.league || match.competition || "", minute: formatPushMinute(match),
+            market: "Over " + overLine, odds: hasVerifiedOdds ? verifiedOdds.price : null,
+            bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
+            periodAtSignal: oddsPeriod, reason, outcome: "εκκρεμεί", betOutcome: "pending",
+            evaluationRule: "end_of_relevant_half",
+            ...(currentHomeScore != null && currentAwayScore != null ? { startScore: Number(currentHomeScore) + Number(currentAwayScore), startHomeScore: Number(currentHomeScore), startAwayScore: Number(currentAwayScore) } : {}),
+            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
+          }, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
           // Persist every protocol-qualified AI alert independently of push delivery.
           // Push subscriptions are optional; an empty subscriber list must not hide alerts in-app.
           {
