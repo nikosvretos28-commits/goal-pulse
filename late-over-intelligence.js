@@ -24,7 +24,7 @@ function evaluateLateOverHistory({ line: rawLine, homeProfile, awayProfile }) {
   const eligible = home.qualifies || away.qualifies;
   let reason = "historical-gate-passed";
   if (!eligible) {
-    if (home.sample < MIN_TEAM_SAMPLE && away.sample < MIN_TEAM_SAMPLE) reason = "insufficient-sample";
+    if ([home, away].some(team => team.rate != null && team.rate >= MIN_TEAM_RATE && team.sample < MIN_TEAM_SAMPLE)) reason = "insufficient-sample";
     else if (home.rate == null || away.rate == null) reason = "missing-exact-line-rate";
     else if (home.leagueRate == null || away.leagueRate == null) reason = "missing-league-baseline";
     else if (home.rate < MIN_TEAM_RATE && away.rate < MIN_TEAM_RATE) reason = "both-teams-below-65-percent";
