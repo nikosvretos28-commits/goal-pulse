@@ -916,26 +916,13 @@ function preMatchScoreValue(value) {
   const n = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) ? n : null;
 }
-function preMatchSeasonMonthRanges(startValue, endValue) {
-  const parse = value => {
-    const raw = String(value || "");
-    return new Date(Date.UTC(Number(raw.slice(0, 4)), Number(raw.slice(4, 6)) - 1, Number(raw.slice(6, 8))));
-  };
-  const start = parse(startValue);
-  const end = parse(endValue);
+function preMatchSeasonMonthKeys(startValue, endValue) {
+  const start = new Date(Date.UTC(Number(String(startValue).slice(0,4)), Number(String(startValue).slice(4,6))-1, 1));
+  const end = new Date(Date.UTC(Number(String(endValue).slice(0,4)), Number(String(endValue).slice(4,6))-1, 1));
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) return [];
-  const format = date => String(date.getUTCFullYear()) +
-    String(date.getUTCMonth() + 1).padStart(2, "0") +
-    String(date.getUTCDate()).padStart(2, "0");
-  const ranges = [];
-  let cursor = start;
-  while (cursor <= end) {
-    const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
-    const rangeEnd = monthEnd < end ? monthEnd : end;
-    ranges.push(format(cursor) + "-" + format(rangeEnd));
-    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
-  }
-  return ranges;
+  const months = [];
+  for (let d = start; d <= end; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 1))) months.push(String(d.getUTCFullYear()) + String(d.getUTCMonth()+1).padStart(2, "0"));
+  return months;
 }
 
 async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
@@ -949,25 +936,24 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
   preMatchSeasonCollectionAt.set(cacheKey, now);
   try {
     const startYear = Number(bounds.start.slice(0,4));
-    const monthRanges = preMatchSeasonMonthRanges(bounds.start, bounds.end);
-    if (!monthRanges.length) throw new Error("Invalid ESPN season date range");
+    const monthRanges = preMatchSeasonMonthKeys(bounds.start, bounds.end);
+    if (!monthRanges.length) throw new Error("Invalid ESPN season month range");
     const allEvents = [];
-    // Query one month at a time in small batches. Calendar-year requests can
-    // exceed ESPN's 500-event cap even when the target league-season is valid.
-    // Monthly windows avoid truncation while keeping provider concurrency bounded.
+    // ESPN now accepts YYYYMM month selectors; date-range selectors return HTTP 400.
+    // Keep month requests batched to avoid calendar-year response truncation.
     for (let offset = 0; offset < monthRanges.length; offset += 3) {
-      const monthResults = await Promise.all(monthRanges.slice(offset, offset + 3).map(async range => {
+      const monthResults = await Promise.all(monthRanges.slice(offset, offset + 3).map(async month => {
         const url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + encodeURIComponent(code) +
-          "/scoreboard?dates=" + range + "&limit=500";
+          "/scoreboard?dates=" + month + "&limit=500";
         let response = await fetch(url, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
         if (response.status === 403 || response.status === 429 || response.status >= 500) {
           response = await fetch(url.replace("site.api.espn.com", "site.web.api.espn.com"),
             { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
         }
-        if (!response.ok) throw new Error("ESPN season-month HTTP " + response.status + " (" + range + ")");
+        if (!response.ok) throw new Error("ESPN season-month HTTP " + response.status + " (" + month + ")");
         const body = await response.json();
         const rows = Array.isArray(body.events) ? body.events : [];
-        if (rows.length >= 500) throw new Error("ESPN season-month response reached the 500-event safety cap (" + range + ")");
+        if (rows.length >= 500) throw new Error("ESPN season-month response reached the 500-event safety cap (" + month + ")");
         return rows;
       }));
       allEvents.push(...monthResults.flat());
