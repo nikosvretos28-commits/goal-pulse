@@ -1505,24 +1505,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/alerts/history/verify" && req.method === "GET") {
     // Read-only audit: allow direct navigation when both Origin and Referer are absent.\n    // If either header is present, it must still match the allowlist.\n    if ((req.headers.origin || req.headers.referer) && !isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureAlertHistoryDb()) {
-      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
-      const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
-      const period = String(url.searchParams.get("period") || "all").toLowerCase();
-      const now = Date.now();
-      const dateKey = value => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
-      const today = dateKey(now), yesterday = dateKey(now - 86400000);
-      const rows = volatileHistoryRows(volatileAlertHistory).filter(item => {
-        const at = Number(item.createdAt || 0);
-        if (!at) return false;
-        if (period === "today") return dateKey(at) === today;
-        if (period === "yesterday") return dateKey(at) === yesterday;
-        if (period === "7d") return at >= now - 7 * 86400000;
-        if (period === "30d") return at >= now - 30 * 86400000;
-        return true;
-      });
-      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit) });
-    }
+    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       // Read-only integrity audit: it never edits or settles alerts.
       const result = await analyticsPool.query(
@@ -1785,7 +1768,24 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    const alertHistoryDbReady = await ensureAlertHistoryDb();
+    if (!await ensureAlertHistoryDb()) {
+      const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+      const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
+      const period = String(url.searchParams.get("period") || "all").toLowerCase();
+      const now = Date.now();
+      const dateKey = value => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+      const today = dateKey(now), yesterday = dateKey(now - 86400000);
+      const rows = volatileHistoryRows(volatileAlertHistory).filter(item => {
+        const at = Number(item.createdAt || 0);
+        if (!at) return false;
+        if (period === "today") return dateKey(at) === today;
+        if (period === "yesterday") return dateKey(at) === yesterday;
+        if (period === "7d") return at >= now - 7 * 86400000;
+        if (period === "30d") return at >= now - 30 * 86400000;
+        return true;
+      });
+      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit) });
+    }
     try {
       // Return the requested history window using Greece-local calendar boundaries.
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
@@ -1815,7 +1815,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/alerts/history" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    const alertHistoryDbReady = await ensureAlertHistoryDb();
     try {
       const body = await readJsonBody(req, 4 * 1024 * 1024);
       const incoming = Array.isArray(body.alerts) ? body.alerts.slice(0, 5000) : body.alert ? [body.alert] : [];
