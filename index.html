@@ -3889,10 +3889,14 @@ const historicalAlertScoreboardCache=new Map();
 async function reconcileHistoricalAlertSettlements(){
  if(historicalAlertSettlementPromise)return historicalAlertSettlementPromise;
  historicalAlertSettlementPromise=(async()=>{
-  const pending=signalAlertHistory.filter(a=>a&&a.eventId&&Number.isFinite(Number(a.createdAt))&&(
-   !['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase())||
-   !a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase())
-  ));
+  const pending=signalAlertHistory.filter(a=>{
+   if(!a||!a.eventId||!Number.isFinite(Number(a.createdAt)))return false;
+   const market=String(a.market||'').trim();
+   const expectedScope=/^1ο ημίχρονο/i.test(market)?'first_half':/^2ο ημίχρονο/i.test(market)?'second_half':'';
+   const scopeMismatch=!!expectedScope&&String(a.betScoreScope||'')!==expectedScope;
+   return scopeMismatch||!['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase())||
+    !a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase());
+  });
   if(!pending.length)return;
   const dates=new Set(pending.map(a=>goalMatrixHistoryDateKey(a.createdAt)).filter(Boolean));
   const eventsById=new Map(),now=Date.now();
@@ -3959,12 +3963,15 @@ async function reconcileHistoricalAlertSettlements(){
     else if(isSecondHalf){if(halfTotal==null)continue;scopedTotal=total-halfTotal;scoreScope='second_half';}
     if(!isAsian&&Math.abs(line-Math.round(line))<1e-8)continue;
     won=scopedTotal>line;push=isAsian&&Math.abs(scopedTotal-line)<1e-8;graded=true;
-    if(!['won','lost','void','push'].includes(String(alert.betOutcome||'').toLowerCase())||!alert.betFinalScore){
+    if(!['won','lost','void','push'].includes(String(alert.betOutcome||'').toLowerCase())||!alert.betFinalScore||isFirstHalf&&alert.betScoreScope!=='first_half'||isSecondHalf&&alert.betScoreScope!=='second_half'){
      alert.betOutcome=won?'won':push?'push':'lost';
-     alert.betSettlementLabel=won?'Κερδισμένο · σκορ '+scopedTotal+' · Over '+line:push?'Επιστροφή · ασιατική γραμμή '+line:'Χαμένο · σκορ '+scopedTotal+' · Over '+line;
+     const periodLabel=isFirstHalf?'1ου ημιχρόνου':isSecondHalf?'2ου ημιχρόνου':'αγώνα';
+     const scopedScore=isFirstHalf?String(h1)+'-'+String(a1):isSecondHalf?String(hs-h1)+'-'+String(as-a1):String(hs)+'-'+String(as);
+     alert.betSettlementLabel=won?'Κερδισμένο · '+periodLabel+' '+scopedTotal+' γκολ · Over '+line:push?'Επιστροφή · ασιατική γραμμή '+line:'Χαμένο · '+periodLabel+' '+scopedTotal+' γκολ · Over '+line;
+     alert.outcome=won?'ΚΕΡΔΙΣΜΕΝΟ · σκορ '+periodLabel+' '+scopedScore+' · Over '+line+' επιτεύχθηκε':push?'ΕΠΙΣΤΡΟΦΗ · ασιατική γραμμή '+line:'ΧΑΜΕΝΟ · σκορ '+periodLabel+' '+scopedScore+' · Over '+line+' δεν επιτεύχθηκε';
      alert.betFinalScore=String(hs)+'-'+String(as);alert.betMatchFinalScore=alert.betFinalScore;alert.betScoreScope=scoreScope;
      alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
-     alert.betSettlementRule='historical_final_score_vs_market_line';changed.add(alert);
+     alert.betSettlementRule='historical_period_final_score_vs_market_line';changed.add(alert);
     }
    }else if(market==='πιθανό γκολ'&&!alert.manualOutcome&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
     const signalTotal=Number(alert.startScore??(Number(alert.scoreAtSignal?.home)+Number(alert.scoreAtSignal?.away)));
