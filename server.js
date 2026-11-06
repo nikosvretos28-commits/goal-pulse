@@ -2773,6 +2773,18 @@ const server = http.createServer(async (req, res) => {
             : " (χωρίς επιβεβαιωμένη απόδοση)";
           const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
+          const volatileAlertId = "push:" + id + ":" + level + ":" + now;
+          saveVolatileRecord(volatileAlertHistory, volatileAlertId, {
+            alertId: volatileAlertId, source: "server-push", eventId: id, level, createdAt: now,
+            home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
+            league: match.league || match.competition || "", minute: formatPushMinute(match),
+            market: "Over " + overLine, odds: hasVerifiedOdds ? verifiedOdds.price : null,
+            bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
+            periodAtSignal: oddsPeriod, reason, outcome: "εκκρεμεί", betOutcome: "pending",
+            evaluationRule: "end_of_relevant_half",
+            ...(currentHomeScore != null && currentAwayScore != null ? { startScore: Number(currentHomeScore) + Number(currentAwayScore), startHomeScore: Number(currentHomeScore), startAwayScore: Number(currentAwayScore) } : {}),
+            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
+          }, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
           // Persist every protocol-qualified AI alert independently of push delivery.
           // Push subscriptions are optional; an empty subscriber list must not hide alerts in-app.
           {
