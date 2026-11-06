@@ -9,6 +9,7 @@ try { ({ Pool } = require("pg")); } catch {}
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
+const PRE_MATCH_OVER_LINES = Object.freeze(["0.5","1.5","2.5","3.5","4.5","5.5","6.5"]);
 
 // SportAPI is a strictly supplemental, budget-capped canary for cumulative live stats.
 // Free-plan guardrail: one fixture-list request per 10 minutes and at most one
@@ -989,13 +990,14 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
       });
     }
     const aggregates = new Map();
+    const leagueOverCounts = Object.fromEntries(PRE_MATCH_OVER_LINES.map(line => [line, 0]));
     const ensure = (id, name) => {
       const key = preMatchNormalizeTeam(name);
       if (!key) return null;
       if (!aggregates.has(key)) aggregates.set(key, {
         teamId: String(id), teamName: String(name), matches: 0, goalsFor: 0, goalsAgainst: 0,
         cleanSheets: 0, failedToScore: 0, homeMatches: 0, awayMatches: 0,
-        over: { "1.5": 0, "2.5": 0, "3.5": 0, "4.5": 0 }
+        over: Object.fromEntries(PRE_MATCH_OVER_LINES.map(line => [line, 0]))
       });
       return aggregates.get(key);
     };
@@ -1009,10 +1011,13 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
       if (match.homeGoals === 0) a.cleanSheets++;
       if (match.homeGoals === 0) h.failedToScore++;
       if (match.awayGoals === 0) a.failedToScore++;
-      for (const line of ["1.5","2.5","3.5","4.5"]) {
-        if (total > Number(line)) { h.over[line]++; a.over[line]++; }
+      for (const line of PRE_MATCH_OVER_LINES) {
+        if (total > Number(line)) { h.over[line]++; a.over[line]++; leagueOverCounts[line]++; }
       }
     }
+    const leagueOverRates = Object.fromEntries(PRE_MATCH_OVER_LINES.map(line =>
+      [line, completed.size ? Number((leagueOverCounts[line] / completed.size).toFixed(4)) : null]
+    ));
     const profiles = [];
     for (const [teamKey, value] of aggregates) {
       if (!value.matches) continue;
@@ -1024,6 +1029,7 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
         failedToScoreRate: Number((value.failedToScore / value.matches).toFixed(4)),
         overRates: Object.fromEntries(Object.entries(value.over).map(([line, count]) =>
           [line, Number((count / value.matches).toFixed(4))])),
+        leagueOverRates,
         coverage: "provider-season-range",
         season: bounds.seasonKey,
         seasonSlug: expectedSeasonSlug || null,
