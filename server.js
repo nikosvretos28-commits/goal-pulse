@@ -1689,7 +1689,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/high-activity/history" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureHighActivityHistoryDb()) return send(res, 503, { error: "High Activity history database unavailable" });
+    const highActivityDbReady = await ensureHighActivityHistoryDb();
     try {
       const body = await readJsonBody(req, 4 * 1024 * 1024);
       const incoming = Array.isArray(body.observations) ? body.observations.slice(0, 5000) : body.observation ? [body.observation] : [];
@@ -1700,6 +1700,10 @@ const server = http.createServer(async (req, res) => {
         payload: x
       }));
       if (!records.length) return send(res, 400, { error: "No valid High Activity observations supplied" });
+      if (!highActivityDbReady) {
+        for (const record of records) saveVolatileRecord(volatileHighActivityHistory, record.observation_id, record.payload, ["outcome", "settledAt", "settlementReason"]);
+        return send(res, 200, { ok: true, saved: records.length, persistent: false, volatile: true });
+      }
       await highActivityHistoryPool.query(
         `INSERT INTO high_activity_history(observation_id,event_id,created_at,payload,updated_at)
          SELECT x.observation_id,x.event_id,to_timestamp(x.created_at/1000.0),x.payload,NOW()
@@ -1781,7 +1785,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    const alertHistoryDbReady = await ensureAlertHistoryDb();
     try {
       // Return the requested history window using Greece-local calendar boundaries.
       const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
@@ -1822,6 +1826,10 @@ const server = http.createServer(async (req, res) => {
         return { alert_id: alertId, event_id: String(a.eventId), level, created_at: Number(a.createdAt), payload: { ...a, alertId, level } };
       });
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
+      if (!alertHistoryDbReady) {
+        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
+        return send(res, 200, { ok: true, persistent: false, volatile: true, saved: records.length });
+      }
       await analyticsPool.query(
         `INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) SELECT x.alert_id,x.event_id,x.level,to_timestamp(x.created_at/1000.0),x.payload,NOW() FROM jsonb_to_recordset($1::jsonb) AS x(alert_id text,event_id text,level text,created_at numeric,payload jsonb) ON CONFLICT(alert_id) DO UPDATE SET payload=CASE
           WHEN alert_history.payload->>'periodAtSignal'='second_half'
