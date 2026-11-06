@@ -3815,7 +3815,7 @@ function renderHighActivityMatches(){
    stats.trend.window10m.teams.forEach(team=>{if(team.shotsOnTarget!=null&&Number.isFinite(Number(team.shotsOnTarget))){shotsOnTarget10m+=Math.max(0,Number(team.shotsOnTarget));hasSot10mData=true;}});
   }
   const sixSot10m=hasSot10mData&&shotsOnTarget10m>=6;
-  const recentSot10mSupported=generalSot10mTrial||secondHalfSot10mTrial;
+  const recentSot10mSupported=strictRecentSot10m;
   // Combined cumulative SOT by minute 35 and the existing xG rule qualify independently.
   const active=protocolQualified;
   const hiActivityActive=protocolQualified;
