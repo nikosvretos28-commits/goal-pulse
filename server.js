@@ -916,6 +916,28 @@ function preMatchScoreValue(value) {
   const n = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) ? n : null;
 }
+function preMatchSeasonMonthRanges(startValue, endValue) {
+  const parse = value => {
+    const raw = String(value || "");
+    return new Date(Date.UTC(Number(raw.slice(0, 4)), Number(raw.slice(4, 6)) - 1, Number(raw.slice(6, 8))));
+  };
+  const start = parse(startValue);
+  const end = parse(endValue);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) return [];
+  const format = date => String(date.getUTCFullYear()) +
+    String(date.getUTCMonth() + 1).padStart(2, "0") +
+    String(date.getUTCDate()).padStart(2, "0");
+  const ranges = [];
+  let cursor = start;
+  while (cursor <= end) {
+    const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+    const rangeEnd = monthEnd < end ? monthEnd : end;
+    ranges.push(format(cursor) + "-" + format(rangeEnd));
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+  }
+  return ranges;
+}
+
 async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
   const code = String(leagueCode || "");
   if (!isPreMatchLeagueCode(code)) return { ok: false, reason: "unsupported-league" };
@@ -927,28 +949,33 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
   preMatchSeasonCollectionAt.set(cacheKey, now);
   try {
     const startYear = Number(bounds.start.slice(0,4));
-    const endYear = Number(bounds.end.slice(0,4));
-    const requestedYears = [...new Set([startYear, endYear])];
-    const yearResults = await Promise.all(requestedYears.map(async year => {
-      const url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + encodeURIComponent(code) +
-        "/scoreboard?dates=" + year + "&limit=500";
-      let response = await fetch(url, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
-      if (response.status === 403 || response.status === 429 || response.status >= 500) {
-        response = await fetch(url.replace("site.api.espn.com", "site.web.api.espn.com"),
-          { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
-      }
-      if (!response.ok) throw new Error("ESPN season-year HTTP " + response.status + " (" + year + ")");
-      const body = await response.json();
-      const rows = Array.isArray(body.events) ? body.events : [];
-      if (rows.length >= 500) throw new Error("ESPN season-year response reached the 500-event safety cap");
-      return rows;
-    }));
-    const allEvents = yearResults.flat();
+    const monthRanges = preMatchSeasonMonthRanges(bounds.start, bounds.end);
+    if (!monthRanges.length) throw new Error("Invalid ESPN season date range");
+    const allEvents = [];
+    // Query one month at a time in small batches. Calendar-year requests can
+    // exceed ESPN's 500-event cap even when the target league-season is valid.
+    // Monthly windows avoid truncation while keeping provider concurrency bounded.
+    for (let offset = 0; offset < monthRanges.length; offset += 3) {
+      const monthResults = await Promise.all(monthRanges.slice(offset, offset + 3).map(async range => {
+        const url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + encodeURIComponent(code) +
+          "/scoreboard?dates=" + range + "&limit=500";
+        let response = await fetch(url, { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
+        if (response.status === 403 || response.status === 429 || response.status >= 500) {
+          response = await fetch(url.replace("site.api.espn.com", "site.web.api.espn.com"),
+            { headers: ESPN_HEADERS, signal: AbortSignal.timeout(25000) });
+        }
+        if (!response.ok) throw new Error("ESPN season-month HTTP " + response.status + " (" + range + ")");
+        const body = await response.json();
+        const rows = Array.isArray(body.events) ? body.events : [];
+        if (rows.length >= 500) throw new Error("ESPN season-month response reached the 500-event safety cap (" + range + ")");
+        return rows;
+      }));
+      allEvents.push(...monthResults.flat());
+    }
     const expectedSeasonSlug = String(options.seasonSlug || "");
     const expectedSeasonYear = Number(options.seasonYear || startYear);
-    // ESPN's date-only range can include adjacent seasons and defaults to a
-    // 100-event page. Explicit year + limit=500 and the event season slug avoid
-    // silently mixing seasons or using only the most recent matches.
+    // The month windows cover the exact season dates. Filter again by ESPN's
+    // season slug/year so adjacent competitions or season spillover stay excluded.
     const events = allEvents.filter(event => {
       const actualSlug = String(event.season?.slug || "");
       if (expectedSeasonSlug) return actualSlug === expectedSeasonSlug;
