@@ -1572,7 +1572,7 @@ const server = http.createServer(async (req, res) => {
           } else if (scoreScopeVerified && scoreMatch && overMatch && ['won','lost','push'].includes(outcome) && p.lineType !== 'asian') {
             const totalGoals = Number(scoreMatch[1]) + Number(scoreMatch[2]);
             const line = Number(overMatch[1]);
-            const expected = totalGoals > line ? 'won' : 'lost';
+            const expected = totalGoals === line && Number.isInteger(line) ? 'push' : totalGoals > line ? 'won' : 'lost';
             if (expected !== outcome) addIssue(row, 'market_score_outcome_conflict', 'Recorded outcome conflicts with the saved period score and Over line (expected ' + expected + ', stored ' + outcome + ').');
           }
         }
@@ -2831,7 +2831,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, totalSotSupport, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
