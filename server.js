@@ -2409,11 +2409,11 @@ const server = http.createServer(async (req, res) => {
                   const matchAway = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
                   return {
                     id: result.settlementFixtureId, date: result.settlementFixtureDate,
-                    league: result.settlementLeague, home: matchHome, away: matchAway, result
+                    league: result.settlementLeague, home: matchHome, away: matchAway, result, raw: match
                   };
                 }).filter(Boolean);
                 const uniqueCandidates = [...new Map(candidates.map(candidate => [
-                  candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.result),
+                  candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.raw),
                   candidate
                 ])).values()];
                 const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
