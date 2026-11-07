@@ -75,7 +75,7 @@ Official source: https://render.com/docs/free
 
 Prefer Neon Postgres as the first technical candidate because it is the least disruptive fit for the repository's existing PostgreSQL implementation. Keep Cloudflare D1 as a fallback if Neon signup/payment requirements or its free limits do not meet the owner's constraints.
 
-This is a recommendation, not a claim that Neon has already been created or connected. No provider should be provisioned until the owner confirms that the signup flow requires no payment card and accepts the current free quotas.
+The owner has since created the Neon Free project `goalmatrix-storage` in AWS Europe Central 1 (Frankfurt). It is not connected to the application, and no credentials have been added to the repository or a hosting environment. The free quotas and current account limits should be rechecked in Neon before any future connection or workload is enabled.
 
 ## 4. Safe implementation sequence
 
@@ -105,6 +105,6 @@ This proposal does not change:
 - AI Alerts, VIP Alerts, HI Activity, Power Games, thresholds, SOT rules, xG rules, minute windows, odds/market filters, scanners, or alert delivery;
 - frontend, branding, logos, photos, or user-facing copy;
 - Render, Railway, or any live environment variables;
-- deployment, billing, paid services, or provider provisioning.
+- deployment, billing, paid services, or further provider provisioning.
 
-The current draft PR is documentation plus a safe diagnostic script only. It does not connect Neon, initialize the database, or change the live service. The checker recognizes the six tables already created by the application's existing initialization functions (`alert_history`, `high_activity_history`, `protocol_analyst_reports`, `live_stat_snapshots`, `push_subscriptions`, and `pre_match_season_profiles`).
+The current draft PR is documentation plus a safe diagnostic script only. It does not connect Neon, initialize the database, or change the live service. The checker recognizes six tables expected from the application's existing initialization functions (`alert_history`, `high_activity_history`, `protocol_analyst_reports`, `live_stat_snapshots`, `push_subscriptions`, and `pre_match_season_profiles`); some are created only when their related feature or route is first used.
