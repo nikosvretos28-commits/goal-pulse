@@ -1825,7 +1825,7 @@ const server = http.createServer(async (req, res) => {
             const league = String(candidate.league?.name || candidate.league_name || candidate.competition?.name || candidate.competition_name || candidate.tournament?.name || "");
             const fixtureDate = String(candidate.date || candidate.match_date || candidate.fixture_date || date).slice(0, 10);
             const id = String(candidate.id || candidate.fixture_id || candidate.event_id || "");
-            const candidateKey = id ? "id:" + id : [fixtureDate, normalize(home), normalize(away), normalize(league)].join("|");
+            const candidateKey = id ? "id:" + id : JSON.stringify(candidate);
             candidateByKey.set(candidateKey, { id, date: fixtureDate, home, away, league, raw: candidate });
           }
         }
@@ -2413,7 +2413,7 @@ const server = http.createServer(async (req, res) => {
                   };
                 }).filter(Boolean);
                 const uniqueCandidates = [...new Map(candidates.map(candidate => [
-                  candidate.id ? "id:" + candidate.id : [candidate.date, normalizeTeam(candidate.home), normalizeTeam(candidate.away), normalizeTeam(candidate.league)].join("|"),
+                  candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.result),
                   candidate
                 ])).values()];
                 const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
