@@ -3724,8 +3724,12 @@ function evaluateHighActivityObservations(ranked){
    bigChances:numericOrNull(rankedItem.bigChances),
    intensity:numericOrNull(rankedItem.intensity),
    manAdvantagePressure:Boolean(rankedItem.manAdvantagePressure),
-   dangerousAttacks5:Array.isArray(rankedItem.dangerousAttacks5)?rankedItem.dangerousAttacks5[0]??null:null,
-   dangerousAttacks10:Array.isArray(rankedItem.dangerousAttacks10)?rankedItem.dangerousAttacks10[0]??null:null
+   manAdvantageTeam:rankedItem.manAdvantageTeam||null,
+   redCardTeam:rankedItem.redCardTeam||null,
+   manAdvantageSot5:numericOrNull(rankedItem.manAdvantageSot5),
+   manAdvantageSot10:numericOrNull(rankedItem.manAdvantageSot10),
+   manAdvantageDanger5:numericOrNull(rankedItem.manAdvantageDanger5),
+   manAdvantageDanger10:numericOrNull(rankedItem.manAdvantageDanger10)
   };
   // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
@@ -3895,7 +3899,8 @@ function renderHighActivityMatches(){
   const lastSnapshot=trail[trail.length-1];
   if(snapshotValues.length===2&&snapshotValues.every(team=>team.shotsOnTarget!==null)&&(!lastSnapshot||now-Number(lastSnapshot.at)>=25000)){
    if(lastSnapshot&&Array.isArray(lastSnapshot.values)){
-    snapshotValues.forEach((side,index)=>{const previous=lastSnapshot.values[index];if(now-Number(lastSnapshot.at)<=90*1000&&side.redCards!=null&&previous?.redCards!=null&&side.redCards>previous.redCards)highActivityRedCardSince.set(trailKey,{side:index,at:now});});
+    snapshotValues.forEach((side,index)=>{const previous=lastSnapshot.values[index];if(now-Number(lastSnapshot.at)<=90*1000&&side.redCards!=null&&previous?.redCards!=null&&side.redCards>previous.redCards)const advantagedIndex=1-index;
+      highActivityRedCardSince.set(trailKey,{side:index,at:now,sotAtCard:snapshotValues[advantagedIndex]?.shotsOnTarget??null,dangerousAtCard:snapshotValues[advantagedIndex]?.dangerousAttacks??null,advantagedTeam:String(teams[advantagedIndex]?.team||'').trim().toLowerCase()});});
    }
    trail.push({values:snapshotValues,at:now});
    while(trail.length&&now-Number(trail[0].at)>LIVE_TRAIL_RETENTION)trail.shift();
@@ -3982,12 +3987,15 @@ function renderHighActivityMatches(){
   const redCardInfo=highActivityRedCardSince.get(trailKey);
   const redCardRecent=redCardSideIndex>=0&&redCardInfo&&redCardInfo.side===redCardSideIndex&&now-redCardInfo.at>=0&&now-redCardInfo.at<=15*60*1000;
   const advantagedSideIndex=redCardSideIndex>=0?1-redCardSideIndex:-1;
-  const manAdvantagePressure=Boolean(redCardRecent&&advantagedSideIndex>=0&&
+  const redCardAge=redCardInfo?now-redCardInfo.at:Infinity;
+  const manAdvantageSot5=redCardAge<5*60*1000?(redCardInfo?.sotAtCard==null||readSotValue(teams[advantagedSideIndex])==null?null:Math.max(0,readSotValue(teams[advantagedSideIndex])-redCardInfo.sotAtCard)):sotPressure5?.[advantagedSideIndex]??null;
+  const manAdvantageSot10=redCardAge<10*60*1000?(redCardInfo?.sotAtCard==null||readSotValue(teams[advantagedSideIndex])==null?null:Math.max(0,readSotValue(teams[advantagedSideIndex])-redCardInfo.sotAtCard)):sotPressure10?.[advantagedSideIndex]??null;
+  const manAdvantageDanger5=redCardAge<5*60*1000?(redCardInfo?.dangerousAtCard==null||readDangerousValue(teams[advantagedSideIndex])==null?null:Math.max(0,readDangerousValue(teams[advantagedSideIndex])-redCardInfo.dangerousAtCard)):dangerousAttacks5?.[advantagedSideIndex]??null;
+  const manAdvantageDanger10=redCardAge<10*60*1000?(redCardInfo?.dangerousAtCard==null||readDangerousValue(teams[advantagedSideIndex])==null?null:Math.max(0,readDangerousValue(teams[advantagedSideIndex])-redCardInfo.dangerousAtCard)):dangerousAttacks10?.[advantagedSideIndex]??null;
+  const manAdvantagePressure=Boolean(redCardRecent&&advantagedSideIndex>=0&&redCardInfo?.advantagedTeam===String(teams[advantagedSideIndex]?.team||'').trim().toLowerCase()&&
    readSotValue(teams[advantagedSideIndex])!==null&&readSotValue(teams[advantagedSideIndex])>=4&&
-   Array.isArray(sotPressure5)&&sotPressure5[advantagedSideIndex]!=null&&sotPressure5[advantagedSideIndex]>=1&&
-   Array.isArray(sotPressure10)&&sotPressure10[advantagedSideIndex]!=null&&sotPressure10[advantagedSideIndex]>=2&&
-   Array.isArray(dangerousAttacks5)&&dangerousAttacks5[advantagedSideIndex]!=null&&dangerousAttacks5[advantagedSideIndex]>=3&&
-   Array.isArray(dangerousAttacks10)&&dangerousAttacks10[advantagedSideIndex]!=null&&dangerousAttacks10[advantagedSideIndex]>=10);
+   manAdvantageSot5!=null&&manAdvantageSot5>=1&&manAdvantageSot10!=null&&manAdvantageSot10>=2&&
+   manAdvantageDanger5!=null&&manAdvantageDanger5>=3&&manAdvantageDanger10!=null&&manAdvantageDanger10>=10);
   const keys=["shotsOnTarget","attacks","dangerousAttacks"];
   const delta={shotsOnTarget:0,attacks:0,dangerousAttacks:0};
   let hasRecentData=false;
@@ -4070,7 +4078,7 @@ function renderHighActivityMatches(){
   },0);
   const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
   const intensity=Math.max(0,Math.min(100,Math.round(delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
-  return (active||hiActivityActive)?{match:m,score,intensity,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalOnTarget,liveConversionSupport,active,hiActivityActive,generalSot10mTrial,secondHalfSot10mTrial,dualTeamSotPressure,dualTeamSot5,dualTeamSot10,manAdvantagePressure,sotPressure5,sotPressure10,dangerousAttacks5,dangerousAttacks10}:null;
+  return (active||hiActivityActive)?{match:m,score,intensity,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalOnTarget,liveConversionSupport,active,hiActivityActive,generalSot10mTrial,secondHalfSot10mTrial,dualTeamSotPressure,dualTeamSot5,dualTeamSot10,manAdvantagePressure,sotPressure5,sotPressure10,dangerousAttacks5,dangerousAttacks10,manAdvantageSot5,manAdvantageSot10,manAdvantageDanger5,manAdvantageDanger10,manAdvantageTeam:manAdvantagePressure?String(teams[advantagedSideIndex]?.team||''):null,redCardTeam:redCardSideIndex>=0?String(teams[redCardSideIndex]?.team||''):null}:null;
  };
  const candidates=allMatches.map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget);
