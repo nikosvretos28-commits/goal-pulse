@@ -2649,7 +2649,13 @@ const server = http.createServer(async (req, res) => {
           for (const side of current.redCardsByTeam) {
             const priorSide = priorScan.redCardsByTeam.find(item => item.team === side.team);
             if (now - priorScan.at <= 2 * 60 * 1000 && side.value != null && priorSide?.value != null && side.value > priorSide.value) {
-              pushScanRedCardSince.set(id, { team: side.team, at: now });
+              const sideIndex = current.redCardsByTeam.indexOf(side), advantageIndex = 1 - sideIndex;
+              pushScanRedCardSince.set(id, {
+                team: side.team, at: now,
+                advantagedTeam: current.sotByTeam[advantageIndex]?.team || null,
+                sotAtCard: current.sotByTeam[advantageIndex]?.value ?? null,
+                dangerousAtCard: current.dangerousByTeam[advantageIndex]?.value ?? null
+              });
             }
           }
         }
@@ -2755,12 +2761,26 @@ const server = http.createServer(async (req, res) => {
           redCardInfo.team === current.redCardsByTeam[redCardSideIndex].team &&
           now - redCardInfo.at >= 0 && now - redCardInfo.at <= 15 * 60 * 1000;
         const advantagedSideIndex = redCardSideIndex >= 0 ? 1 - redCardSideIndex : -1;
+        const redCardAge = redCardInfo ? now - redCardInfo.at : Infinity;
+        const manAdvantageSot5 = redCardAge < 5 * 60 * 1000
+          ? (redCardInfo?.sotAtCard == null || current.sotByTeam[advantagedSideIndex]?.value == null ? null : Math.max(0, current.sotByTeam[advantagedSideIndex].value - redCardInfo.sotAtCard))
+          : sotPressure5?.[advantagedSideIndex] ?? null;
+        const manAdvantageSot10 = redCardAge < 10 * 60 * 1000
+          ? (redCardInfo?.sotAtCard == null || current.sotByTeam[advantagedSideIndex]?.value == null ? null : Math.max(0, current.sotByTeam[advantagedSideIndex].value - redCardInfo.sotAtCard))
+          : sotPressure10?.[advantagedSideIndex] ?? null;
+        const manAdvantageDanger5 = redCardAge < 5 * 60 * 1000
+          ? (redCardInfo?.dangerousAtCard == null || current.dangerousByTeam[advantagedSideIndex]?.value == null ? null : Math.max(0, current.dangerousByTeam[advantagedSideIndex].value - redCardInfo.dangerousAtCard))
+          : dangerousAttacks5?.[advantagedSideIndex] ?? null;
+        const manAdvantageDanger10 = redCardAge < 10 * 60 * 1000
+          ? (redCardInfo?.dangerousAtCard == null || current.dangerousByTeam[advantagedSideIndex]?.value == null ? null : Math.max(0, current.dangerousByTeam[advantagedSideIndex].value - redCardInfo.dangerousAtCard))
+          : dangerousAttacks10?.[advantagedSideIndex] ?? null;
         const manAdvantagePressure = Boolean(redCardRecent && advantagedSideIndex >= 0 &&
+          redCardInfo?.advantagedTeam === current.sotByTeam[advantagedSideIndex]?.team &&
           current.sotByTeam[advantagedSideIndex]?.value != null && current.sotByTeam[advantagedSideIndex].value >= 4 &&
-          sotPressure5?.[advantagedSideIndex] != null && sotPressure5[advantagedSideIndex] >= 1 &&
-          sotPressure10?.[advantagedSideIndex] != null && sotPressure10[advantagedSideIndex] >= 2 &&
-          dangerousAttacks5?.[advantagedSideIndex] != null && dangerousAttacks5[advantagedSideIndex] >= 3 &&
-          dangerousAttacks10?.[advantagedSideIndex] != null && dangerousAttacks10[advantagedSideIndex] >= 10);
+          manAdvantageSot5 != null && manAdvantageSot5 >= 1 &&
+          manAdvantageSot10 != null && manAdvantageSot10 >= 2 &&
+          manAdvantageDanger5 != null && manAdvantageDanger5 >= 3 &&
+          manAdvantageDanger10 != null && manAdvantageDanger10 >= 10);
         // AI trigger: recent SOT threshold OR the two-team xG alternative:
         // one team with xG >= 3.00 and the other with xG >= 2.00. Missing xG is neutral.
         const xGQualifies = teamXGValues.length >= 2 &&
@@ -3025,7 +3045,7 @@ const server = http.createServer(async (req, res) => {
             periodAtSignal: oddsPeriod, reason, outcome: "εκκρεμεί", betOutcome: "pending",
             evaluationRule: "end_of_relevant_half",
             ...(currentHomeScore != null && currentAwayScore != null ? { startScore: Number(currentHomeScore) + Number(currentAwayScore), startHomeScore: Number(currentHomeScore), startAwayScore: Number(currentAwayScore) } : {}),
-            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, dualTeamSotPressure, manAdvantagePressure, redCardTeam: redCardInfo?.team || null, sotPressure5, sotPressure10, dangerousAttacks5, dangerousAttacks10, dualTeamSot5, dualTeamSot10, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
+            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, dualTeamSotPressure, manAdvantagePressure, redCardTeam: redCardInfo?.team || null, advantagedTeam: redCardInfo?.advantagedTeam || null, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, sotPressure5, sotPressure10, dangerousAttacks5, dangerousAttacks10, dualTeamSot5, dualTeamSot10, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
           }, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
           // Persist every protocol-qualified AI alert independently of push delivery.
           // Push subscriptions are optional; an empty subscriber list must not hide alerts in-app.
