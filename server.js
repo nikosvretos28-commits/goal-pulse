@@ -182,7 +182,7 @@ async function runProtocolAnalyst() {
         bigChances: stats.bigChances !== null && stats.bigChances !== undefined && Number.isFinite(Number(stats.bigChances)) ? Number(stats.bigChances) : null,
         liveConversionSupport: stats.liveConversionSupport !== null && stats.liveConversionSupport !== undefined && Number.isFinite(Number(stats.liveConversionSupport)) ? Number(stats.liveConversionSupport) : null,
         totalSotSupport: stats.totalSotSupport !== null && stats.totalSotSupport !== undefined && Number.isFinite(Number(stats.totalSotSupport)) ? Number(stats.totalSotSupport) : null,
-        historicalOverSupport: stats.historicalOverSupport !== null && stats.historicalOverSupport !== undefined && Number.isFinite(Number(stats.historicalOverSupport)) ? Number(stats.historicalOverSupport) : null,
+        historicalOverSupport: stats.historicalOverSupport !== null && stats.historicalOverSupport !== undefined && String(stats.historicalOverSupport).trim() !== "" && Number.isFinite(Number(stats.historicalOverSupport)) ? Number(stats.historicalOverSupport) : null,
         shotQualityBand: stats.shotsOnTargetInsideBox == null && stats.bigChances == null ? "missing"
           : (Number(stats.shotsOnTargetInsideBox || 0) >= 4 || Number(stats.bigChances || 0) >= 3 ? "strong"
             : (Number(stats.shotsOnTargetInsideBox || 0) >= 2 || Number(stats.bigChances || 0) >= 1 ? "some" : "low")),
