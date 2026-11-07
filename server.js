@@ -2686,6 +2686,22 @@ const server = http.createServer(async (req, res) => {
         // Use the stronger of the two measurements for each window; never add them together.
         const onTarget = Math.max(memory5mSot, persisted5mSot ?? 0);
         const onTarget10m = Math.max(memory10mSot, persisted10mSot ?? 0);
+        // Additive dual-team SOT pressure trigger. Unknown team/window values fail closed.
+        const perTeamSotDelta = baseline => {
+          if (!Array.isArray(current.sotByTeam) || !Array.isArray(baseline?.sotByTeam)) return [];
+          const prior = new Map(baseline.sotByTeam.filter(x => x?.team && x.value != null && Number.isFinite(Number(x.value))).map(x => [x.team, Number(x.value)]));
+          return current.sotByTeam.map(x => {
+            const old = prior.get(x.team);
+            return x?.team && x.value != null && old != null && Number.isFinite(Number(x.value))
+              ? Math.max(0, Number(x.value) - old) : null;
+          });
+        };
+        const dualTeamSot5 = perTeamSotDelta(previous);
+        const dualTeamSot10 = perTeamSotDelta(previous10);
+        const dualTeamSotPressure = current.sotByTeam.length >= 2 &&
+          current.sotByTeam.slice(0, 2).every(x => x.value != null && Number.isFinite(Number(x.value)) && Number(x.value) >= 4) &&
+          dualTeamSot5.length >= 2 && dualTeamSot5.slice(0, 2).every(x => x != null && x >= 1) &&
+          dualTeamSot10.length >= 2 && dualTeamSot10.slice(0, 2).every(x => x != null && x >= 2);
         // AI trigger: recent SOT threshold OR the two-team xG alternative:
         // one team with xG >= 3.00 and the other with xG >= 2.00. Missing xG is neutral.
         const xGQualifies = teamXGValues.length >= 2 &&
@@ -2772,7 +2788,7 @@ const server = http.createServer(async (req, res) => {
           ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute < 70));
         const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
         const cumulativeSotQualifies = combined15SotQualifies;
-        const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies);
+        const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure);
         // Keep the first 16 general samples, but never omit an eligible 1′–40′ or 46′–88′ match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
@@ -2790,9 +2806,12 @@ const server = http.createServer(async (req, res) => {
           xGQualifies,
           combined15SotQualifies,
           cumulativeSotQualifies,
+          dualTeamSotPressure,
+          dualTeamSot5,
+          dualTeamSot10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40_or_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies ? "no_approved_sot_xg_or_15_total_sot_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40_or_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !dualTeamSotPressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -2915,6 +2934,7 @@ const server = http.createServer(async (req, res) => {
             current.shotsOnTargetInsideBox != null ? current.shotsOnTargetInsideBox + " σουτ εντός εστίας από την περιοχή" : "",
             current.bigChances != null ? current.bigChances + " μεγάλες ευκαιρίες" : "",
             totalOnTarget >= 20 ? "20+ συνολικά SOT" : "",
+            dualTeamSotPressure ? "DUAL TEAM SOT PRESSURE (2+/10′, 1+/5′, 4+ συνολικά ανά ομάδα)" : "",
             dirtySheetSupport > 0 ? "Dirty Sheet +" + dirtySheetSupport.toFixed(1) : "",
             historicalOver.support > 0 ? "Ιστορικό Over " + supportingOverLine + " +" + Number(historicalOver.support).toFixed(1) : "",
             liveConversionSupport > 0 ? "Αποτελεσματικότητα SOT +" + liveConversionSupport.toFixed(1) : ""
@@ -2942,7 +2962,7 @@ const server = http.createServer(async (req, res) => {
             periodAtSignal: oddsPeriod, reason, outcome: "εκκρεμεί", betOutcome: "pending",
             evaluationRule: "end_of_relevant_half",
             ...(currentHomeScore != null && currentAwayScore != null ? { startScore: Number(currentHomeScore) + Number(currentAwayScore), startHomeScore: Number(currentHomeScore), startAwayScore: Number(currentAwayScore) } : {}),
-            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
+            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, dualTeamSotPressure, dualTeamSot5, dualTeamSot10, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
           }, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
           // Persist every protocol-qualified AI alert independently of push delivery.
           // Push subscriptions are optional; an empty subscriber list must not hide alerts in-app.
@@ -2990,7 +3010,7 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, dualTeamSotPressure, dualTeamSot5, dualTeamSot10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
