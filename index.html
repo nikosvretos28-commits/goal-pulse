@@ -3669,7 +3669,7 @@ function evaluateHighActivityObservations(ranked){
   const minute=parseGoalMatrixLiveMinute(clockValues);
   if(!Number.isFinite(minute))continue;
   const periodText=clockValues.map(value=>String(value??'')).join(' ')+' '+String(match.statusText||match.status||match.state||'');
-  const isSecondHalf=/\b(?:2h|second half|2nd half|2ο ημίχρονο|second_half)\b/i.test(periodText)||minute>=46;
+  const isSecondHalf=/\b(?:2h|second[\s_-]*half|2nd half|2ο ημίχρονο)\b/i.test(periodText)||minute>=46;
   const half=isSecondHalf?'2ο ΗΜΙΧΡΟΝΟ':'1ο ΗΜΙΧΡΟΝΟ';
   const periodKey=isSecondHalf?'2H':'1H';
   const score=highActivityScore(match);if(!score)continue;
@@ -3806,7 +3806,7 @@ function renderHighActivityMatches(){
   // Preserve existing first-half HI Activity; add a separate normal-time second-half trial window.
   const periodText=String(clockText)+' '+statusText;
   const isHalfTime=/\b(?:ht|half[ -]*time|halftime|interval)\b/i.test(periodText);
-  const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο/i.test(periodText));
+  const isSecondHalf=!isHalfTime&&(minute>=46||/second[\s_-]*half|2nd half|2ο ημίχρονο/i.test(periodText));
   const firstHalfWindow=Number.isFinite(minute)&&!isHalfTime&&!isSecondHalf&&minute>=1&&minute<=40;
   const secondHalfTrialWindow=Number.isFinite(minute)&&!isHalfTime&&isSecondHalf&&minute>=46&&minute<=90;
   if(!firstHalfWindow&&!secondHalfTrialWindow)return null;
