@@ -3665,9 +3665,7 @@ function evaluateHighActivityObservations(ranked){
  for(const [eventId,rankedItem] of active){
   const match=rankedItem.match;
   const stats=liveMetricsCache.get(eventId);
-  const clockText=String(match.clock||stats?.live_minute||stats?.liveMinute||stats?.elapsed||stats?.time?.elapsed||stats?.minute||'');
-  const clock=clockText.match(/\d{1,3}/);
-  const minute=clock?Number(clock[0]):null;
+  const minute=parseGoalMatrixLiveMinute([match.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute]);
   if(!Number.isFinite(minute))continue;
   const half=minute<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ';
   const periodKey=minute<=45?'1H':'2H';
@@ -3768,6 +3766,23 @@ function playHighActivityEntrySound(){
   });
  }catch(error){console.warn('[HI ACTIVITY sound] Playback failed:',error?.message||error);}
 }
+function parseGoalMatrixLiveMinute(values){
+ const candidates=(Array.isArray(values)?values:[values]).map(value=>String(value??'').trim()).filter(Boolean);
+ for(const text of candidates){
+  if(/^(?:1h|2h|ht|ft|live)$/i.test(text))continue;
+  let match=text.match(/(?:^|\b)(?:1h|2h|first half|second half)\s*[:,-]?\s*(\d{1,3})(?:\s*\+\s*\d{1,2})?/i);
+  if(match)return Number(match[1]);
+  match=text.match(/(?:^|\b)(\d{1,3})\s*\+\s*\d{1,2}(?:\s*['′’]|\s*(?:min|minute)s?)?/i);
+  if(match)return Number(match[1]);
+  match=text.match(/^\s*(\d{1,3})(?:\s*['′’]|\s*(?:min|minute)s?)?\s*$/i);
+  if(match)return Number(match[1]);
+  match=text.match(/^\s*(\d{1,3}):\d{2}\s*$/);
+  if(match)return Number(match[1]);
+  match=text.match(/(?:^|\s)(\d{1,3})\s*(?:['′’]|(?:min|minute)s?)\b/i);
+  if(match)return Number(match[1]);
+ }
+ return null;
+}
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
  const now=Date.now();
@@ -3777,7 +3792,8 @@ function renderHighActivityMatches(){
   // the literal "LIVE" in m.clock, which must not hide the minute supplied by live metrics.
   const clockCandidates=[m.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute]
    .map(value=>String(value??"").trim().toLowerCase()).filter(Boolean);
-  const clockText=clockCandidates.find(value=>/\d{1,3}/.test(value))||clockCandidates[0]||"";
+  const minute=parseGoalMatrixLiveMinute(clockCandidates);
+  const clockText=clockCandidates.find(value=>parseGoalMatrixLiveMinute([value])!==null)||clockCandidates[0]||"";
   const statusText=String(m.statusText||m.status||m.state||"").toLowerCase();
   if(/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
   // Accept the live-state spellings used by different feeds; the live board may already display the match.
