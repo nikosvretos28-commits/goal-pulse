@@ -3784,8 +3784,6 @@ function renderHighActivityMatches(){
   const liveState=/^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(String(m.state||m.status||"").trim());
   if(!liveState&& !/\b(?:live|playing|in progress)\b/i.test(statusText))return null;
   // Preserve existing first-half HI Activity; add a separate normal-time second-half trial window.
-  const minuteMatch=String(clockText).match(/(\d{1,3})/);
-  const minute=minuteMatch?Number(minuteMatch[1]):null;
   const periodText=String(clockText)+' '+statusText;
   const isHalfTime=/\b(?:ht|half[ -]*time|halftime|interval)\b/i.test(periodText);
   const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο/i.test(periodText));
