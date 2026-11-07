@@ -1551,7 +1551,7 @@ const server = http.createServer(async (req, res) => {
       const pending = rows.filter(row => !['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()));
       const signalMinute = payload => {
         const raw = payload.minuteNumber !== null && payload.minuteNumber !== undefined && String(payload.minuteNumber).trim() !== ""
-          ? payload.minuteNumber : String(payload.minute || "").match(/\\d{1,3}/)?.[0];
+          ? payload.minuteNumber : String(payload.minute || "").match(/\d{1,3}/)?.[0];
         const value = Number(raw);
         return Number.isFinite(value) ? value : null;
       };
