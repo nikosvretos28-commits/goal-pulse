@@ -4233,7 +4233,8 @@ async function runSignalCheck(){
     const match=allMatches.find(m=>String(m.id)===String(a.eventId));
     if(!match)return;
     const clock=String(match.clock||'').toUpperCase();
-    const explicitHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/.test(clock);
+    const periodStatus=[match.clock,match.statusText,match.status,match.state].filter(Boolean).join(' ').toUpperCase();
+    const explicitHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/.test(periodStatus);
     const minuteMatch=String(a.minuteNumber??a.minute??'').match(/(\d{1,3})/);
     const signalMinute=Number(a.minuteNumber??(minuteMatch?minuteMatch[1]:NaN));
     const period=String(a.periodAtSignal||((/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(clock))||(Number.isFinite(signalMinute)&&signalMinute>45)?'second_half':'first_half'));
