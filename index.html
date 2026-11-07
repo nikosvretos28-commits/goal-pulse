@@ -3539,7 +3539,7 @@ async function reconcileHistoricalHighActivityObservations(){
      const response=await fetch(ANALYTICS_API+'/api/scoreboard?date='+date+'&_='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(20000)});
      if(!response.ok)continue;
      const data=await response.json();
-     cached={at:Date.now(),events:(data.feeds||[]).flatMap(feed=>(feed.events||[]).map(event=>({...event,__goalPulseLeagueCode:feed.code||''})))};
+     cached={at:Date.now(),events:(data.feeds||[]).flatMap(feed=>(feed.events||[]).map(event=>({...event,__goalPulseLeagueCode:feed.code||'',__goalPulseLookupDate:date})))};
      highActivityScoreboardCache.set(date,cached);
     }catch(error){console.warn('[HI ACTIVITY settlement] Historical scoreboard unavailable:',date,error.message);continue;}
    }
@@ -3548,40 +3548,61 @@ async function reconcileHistoricalHighActivityObservations(){
   const changed=[],settledAt=Date.now();
   const providerResults=new Map();
   try{
-   const response=await fetch(ANALYTICS_API+'/api/high-activity/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({observations:pending.map(item=>({observationId:item.observationId,eventId:item.eventId,createdAt:item.createdAt,home:item.home,away:item.away}))}),signal:AbortSignal.timeout(30000)});
+   const response=await fetch(ANALYTICS_API+'/api/high-activity/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({observations:pending.map(item=>({observationId:item.observationId,eventId:item.eventId,createdAt:item.createdAt,home:item.home,away:item.away,league:item.league||item.competition||''}))}),signal:AbortSignal.timeout(30000)});
    if(response.ok){
     const data=await response.json();
     for(const result of (data.resolved||[]))providerResults.set(String(result.observationId),result);
    }
   }catch(error){console.warn('[HI ACTIVITY settlement] Secondary historical provider unavailable:',error.message);}
   for(const item of pending){
+   const normalizeTeamName=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+   const sameObservationFixture=candidate=>{
+    const teams=candidate?.competitions?.[0]?.competitors||[];
+    const h=teams.find(team=>team.homeAway==='home')||teams[0],a=teams.find(team=>team.homeAway==='away')||teams[1];
+    const ch=normalizeTeamName(h?.team?.displayName||h?.team?.name||h?.displayName||h?.name);
+    const ca=normalizeTeamName(a?.team?.displayName||a?.team?.name||a?.displayName||a?.name);
+    if(ch!==normalizeTeamName(item.home)||ca!==normalizeTeamName(item.away))return false;
+    const league=normalizeTeamName(candidate?.competitions?.[0]?.name||'');
+    const wantedLeague=normalizeTeamName(item.league||item.competition||'');
+    return !wantedLeague||league===wantedLeague;
+   };
    let event=eventsById.get(String(item.eventId));
+   if(event&&!sameObservationFixture(event))event=null;
    if(!event){
     const result=providerResults.get(String(item.observationId));
-    if(result){
+    const resultLeague=normalizeTeamName(result?.league||'');
+    const wantedLeague=normalizeTeamName(item.league||item.competition||'');
+    const resultDate=String(result?.fixtureDate||'').slice(0,10);
+    const wantedDate=goalMatrixHistoryDateKey(item.createdAt);
+    const dateMatches=!resultDate||resultDate===wantedDate;
+    const identityMatches=result&&normalizeTeamName(result.home)===normalizeTeamName(item.home)&&
+     normalizeTeamName(result.away)===normalizeTeamName(item.away)&&
+     (!wantedLeague||resultLeague===wantedLeague)&&dateMatches;
+    if(identityMatches){
      const homeTeam={homeAway:'home',score:String(result.homeScore),team:{displayName:item.home}};
      const awayTeam={homeAway:'away',score:String(result.awayScore),team:{displayName:item.away}};
      if(result.homeHtScore!=null&&result.awayHtScore!=null){
       homeTeam.linescores=[{period:1,value:result.homeHtScore}];
       awayTeam.linescores=[{period:1,value:result.awayHtScore}];
      }
-     event={id:String(item.eventId),competitions:[{competitors:[homeTeam,awayTeam]}],status:{type:{state:'post',name:'Final'}}};
+     event={id:String(item.eventId),competitions:[{name:result.league||item.league||'',competitors:[homeTeam,awayTeam]}],
+      status:{type:{state:'post',name:'Final'}},__goalMatrixSettlementProvider:'SportScore',
+      __goalMatrixFixtureId:result.fixtureId||'',__goalMatrixFixtureDate:result.fixtureDate||wantedDate};
     }
    }
-   const normalizeTeamName=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
    if(!event){
-    const wantedHome=normalizeTeamName(item.home),wantedAway=normalizeTeamName(item.away);
-    if(wantedHome&&wantedAway){
-     const candidates=[];
-     for(const cached of highActivityScoreboardCache.values())for(const candidate of (cached.events||[])){
-      const teams=candidate.competitions?.[0]?.competitors||[];
-      const h=teams.find(team=>team.homeAway==='home')||teams[0],a=teams.find(team=>team.homeAway==='away')||teams[1];
-      const ch=normalizeTeamName(h?.team?.displayName||h?.team?.name||h?.displayName||h?.name);
-      const ca=normalizeTeamName(a?.team?.displayName||a?.team?.name||a?.displayName||a?.name);
-      if((ch===wantedHome&&ca===wantedAway)||(ch===wantedAway&&ca===wantedHome))candidates.push(candidate);
-     }
-     if(candidates.length===1)event=candidates[0];
+    const itemDate=goalMatrixHistoryDateKey(item.createdAt),allowedDates=new Set([itemDate]);
+    const dateObj=new Date(Number(item.createdAt));if(Number.isFinite(dateObj.getTime())){
+     for(const offset of [-1,1]){const adjacent=new Date(dateObj);adjacent.setDate(adjacent.getDate()+offset);allowedDates.add(goalMatrixHistoryDateKey(adjacent.getTime()));}
     }
+    const candidates=new Map();
+    for(const cached of highActivityScoreboardCache.values())for(const candidate of (cached.events||[])){
+     const lookupDate=String(candidate.__goalPulseLookupDate||'');
+     if(!allowedDates.has(lookupDate))continue;
+     if(!sameObservationFixture(candidate))continue;
+     candidates.set(String(candidate.id||lookupDate+':'+item.home+':'+item.away),candidate);
+    }
+    if(candidates.size===1)event=[...candidates.values()][0];
    }
    if(!event)continue;
    const competition=event.competitions?.[0],competitors=competition?.competitors||[];
@@ -3627,11 +3648,13 @@ async function reconcileHistoricalHighActivityObservations(){
      return Number.isFinite(value)?value:null;
     };
     let firstHalfHome=lineValue(home),firstHalfAway=lineValue(away);
-    if((firstHalfHome==null||firstHalfAway==null)&&/half[ -]?time|halftime|interval|ημιχρονο|half ended/i.test(label)){
-     firstHalfHome=homeScore;firstHalfAway=awayScore;
-    }
     if(firstHalfHome==null||firstHalfAway==null)continue;
     const firstHalfTotal=firstHalfHome+firstHalfAway;
+    item.settlementScore={home:firstHalfHome,away:firstHalfAway,total:firstHalfTotal,scope:'first_half'};
+    item.settlementProvider=event.__goalMatrixSettlementProvider||'ESPN';
+    item.settlementFixtureId=event.__goalMatrixFixtureId||String(event.id||item.eventId);
+    item.settlementFixtureDate=event.__goalMatrixFixtureDate||event.__goalPulseLookupDate||goalMatrixHistoryDateKey(item.createdAt);
+    item.settlementLeague=competition?.name||event.__goalPulseLeagueCode||item.league||null;
     item.currentScore={home:homeScore,away:awayScore,total:score.total};
     if(firstHalfTotal>signalTotal){
      item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before the end of the first half';
@@ -3644,6 +3667,11 @@ async function reconcileHistoricalHighActivityObservations(){
    // Never mark a live observation WON just because a goal has arrived; extra-time
    // and penalty results are excluded because they are not normal-time settlement.
    if(!finished||excluded||extraTimeOrPens||signalTotal==null)continue;
+   item.settlementScore={home:homeScore,away:awayScore,total:score.total,scope:'full_time'};
+   item.settlementProvider=event.__goalMatrixSettlementProvider||'ESPN';
+   item.settlementFixtureId=event.__goalMatrixFixtureId||String(event.id||item.eventId);
+   item.settlementFixtureDate=event.__goalMatrixFixtureDate||event.__goalPulseLookupDate||goalMatrixHistoryDateKey(item.createdAt);
+   item.settlementLeague=competition?.name||event.__goalPulseLeagueCode||item.league||null;
    if(score.total>signalTotal){
     item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before confirmed full time';changed.push(item);continue;
    }
@@ -3715,6 +3743,10 @@ function evaluateHighActivityObservations(ranked){
    if(isFirstHalf){
     // Settle first-half observations ONLY at confirmed half-time.
     if(halfTime){
+     item.settlementScore={home:score.home,away:score.away,total:score.total,scope:'first_half'};
+     item.settlementProvider='ESPN live scoreboard';
+     item.settlementFixtureId=String(item.eventId);
+     item.settlementLeague=String(match?.league?.name||match?.competition?.name||item.league||'');
      item.outcome=score.total>signalTotal?'won':'lost';
      item.settledAt=now;
      item.settlementReason=score.total>signalTotal
@@ -3728,6 +3760,10 @@ function evaluateHighActivityObservations(ranked){
     // are not valid substitutes for a confirmed 90-minute full-time result.
     const normalTimeFinished=match&&finished&&(state!=='after_extra_time'&&state!=='after_penalties'&&state!=='aet'&&state!=='pen')&&!/after extra time|after penalties|\baet\b|\bpen(?:alties)?\b/i.test(status);
     if(normalTimeFinished){
+     item.settlementScore={home:score.home,away:score.away,total:score.total,scope:'full_time'};
+     item.settlementProvider='ESPN live scoreboard';
+     item.settlementFixtureId=String(item.eventId);
+     item.settlementLeague=String(match?.league?.name||match?.competition?.name||item.league||'');
      item.outcome=score.total>signalTotal?'won':'lost';
      item.settledAt=now;
      item.settlementReason=score.total>signalTotal
@@ -5396,92 +5432,4 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
   #signalResults .signal-row label { display: flex; flex: 1 1 100%; align-items: center; gap: 7px; min-width: 0; }
   #signalResults .signal-row input[data-odds-input] { flex: 1 1 70px; width: auto !important; min-width: 0 !important; max-width: 110px; box-sizing: border-box; }
 }
-</style>
-
-
-<style id="gm-ai-alert-card-mobile-fix">
-/* Scoped presentation fix: keep alert metadata ordered and cards inside mobile viewport. */
-#topAiAlerts,#topVipAlerts,.top-ai-alert-list,.top-ai-alert-card{min-width:0;max-width:100%;box-sizing:border-box}
-.top-ai-alert-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr))}
-.top-ai-alert-card{overflow-wrap:anywhere;word-break:normal}
-.top-ai-alert-card .alert-card-kicker{min-width:0;flex-wrap:wrap;align-items:flex-start}
-.top-ai-alert-card .alert-card-kicker>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
-.top-ai-alert-card .alert-card-league,.top-ai-alert-card .alert-card-market,.top-ai-alert-card .alert-card-reason{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:normal}
-@media(max-width:600px){
- #topAiAlerts,#topVipAlerts{width:100%;margin-inline:0;padding:10px}
- .top-ai-alert-list{grid-template-columns:minmax(0,1fr);width:100%;gap:8px}
- .top-ai-alert-card{width:100%;padding:11px}
- .top-ai-alert-card .alert-card-kicker{gap:5px 8px}
- .top-ai-alert-card .alert-card-match{line-height:1.3}
-}
-
-/* GoalMatrix Live badge alignment fix — stable right anchoring */
-header{position:relative}
-header .header-actions{position:absolute;top:0;right:0;margin:0!important;flex-shrink:0;justify-content:flex-end;transform:none;z-index:2}
-@media(max-width:600px){
- header{padding-right:0}
- header .brand{max-width:calc(100% - 145px)}
- header .header-actions{top:0;right:0;transform:none}
-}
-</style>
-</body></html>
-
-<style id="gm-premium-alert-card-finish">
-/* Presentation-only finish for alert cards; no alert content, rules, or behavior changes. */
-.top-ai-alert-card{
-  border:1px solid rgba(85,199,232,.18);
-  border-radius:15px;
-  background:linear-gradient(145deg,rgba(17,43,61,.94),rgba(8,25,39,.96));
-}
-.top-ai-alert-card .alert-card-kicker{
-  color:#b9d3df;
-  font-size:10px;
-  font-weight:850;
-  letter-spacing:.055em;
-}
-.top-ai-alert-card .alert-card-market{
-  display:inline-flex;
-  align-items:center;
-  width:fit-content;
-  max-width:100%;
-  padding:5px 9px;
-  border:1px solid rgba(67,224,162,.22);
-  border-radius:8px;
-  background:linear-gradient(100deg,rgba(67,224,162,.09),rgba(85,199,232,.06));
-  color:#dfffee;
-  font-weight:850;
-}
-.top-ai-alert-card .alert-card-reason{
-  padding:9px 10px;
-  border-left:2px solid rgba(85,199,232,.38);
-  border-radius:0 8px 8px 0;
-  background:rgba(4,17,28,.34);
-  color:#b9ceda;
-  line-height:1.55;
-}
-@media(max-width:600px){
-  .top-ai-alert-card .alert-card-market{padding:5px 8px}
-  .top-ai-alert-card .alert-card-reason{padding:8px}
-}
-</style>
-
-
-<style id="gm-uniform-compact-section-bars">
-/* GoalMatrix: unify all nine section controls as compact bars, including Matrix Analytics. */
-#gpSectionButtons{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-auto-flow:row!important;gap:7px!important}
-#gpSectionButtons>.gp-section-button{grid-column:auto!important;grid-row:auto!important;display:flex!important;align-items:center!important;justify-content:space-between!important;min-width:0!important;min-height:38px!important;height:auto!important;padding:7px 9px!important;gap:5px!important;border-radius:10px!important;font-size:10px!important;line-height:1.25!important;letter-spacing:.15px!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 3px 10px rgba(0,0,0,.12)!important}
-#gpSectionButtons>.gp-section-button .gp-button-count{flex:0 0 auto!important;min-width:18px!important;min-height:17px!important;padding:2px 5px!important;border-radius:7px!important;font-size:9px!important;line-height:1.1!important}
-#gpSectionButtons>.gp-section-button:nth-child(1){grid-column:1!important;grid-row:1!important}
-#gpSectionButtons>.gp-section-button:nth-child(2){grid-column:1!important;grid-row:2!important}
-#gpSectionButtons>.gp-section-button:nth-child(3){grid-column:1!important;grid-row:3!important}
-#gpSectionButtons>.gp-section-button:nth-child(4){grid-column:1!important;grid-row:4!important}
-#gpSectionButtons>.gp-section-button:nth-child(5){grid-column:2!important;grid-row:1!important}
-#gpSectionButtons>.gp-section-button:nth-child(6){grid-column:2!important;grid-row:2!important}
-#gpSectionButtons>.gp-section-button:nth-child(7){grid-column:2!important;grid-row:3!important}
-#gpSectionButtons>.gp-section-button:nth-child(8){grid-column:2!important;grid-row:4!important}
-#gpSectionButtons>.gp-section-button:nth-child(9){grid-column:2!important;grid-row:5!important}
-#gpSectionButtons>.gp-matrix-analytics-button{min-height:38px!important;height:auto!important;padding:7px 9px!important;font-size:10px!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 3px 10px rgba(0,0,0,.12)!important}
-@media(max-width:700px){#gpSectionButtons{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important}#gpSectionButtons>.gp-section-button{min-height:38px!important;padding:7px 8px!important;font-size:10px!important}#gpSectionButtons>.gp-section-button:last-child{grid-column:2!important}}
-.live-match-line .live-row .teamname::after{content:attr(data-sot);display:inline-block;margin-left:5px;padding:1px 4px;border:1px solid #28634f;border-radius:4px;background:#0d2b25;color:#8ff0bd;font-size:.78em;font-weight:900;line-height:1.25;white-space:nowrap;vertical-align:middle}
-@media(max-width:560px){.live-match-line .live-row .teamname::after{margin-left:3px;padding:1px 3px;font-size:7px}}
 </style>
