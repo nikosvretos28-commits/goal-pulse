@@ -2304,8 +2304,11 @@ const server = http.createServer(async (req, res) => {
             const competitors = competition?.competitors || [];
             const home = competitors.find(team => team.homeAway === "home") || competitors[0];
             const away = competitors.find(team => team.homeAway === "away") || competitors[1];
-            const state = String(event.status?.type?.state || "").toLowerCase();
-            const statusLabel = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
+            const state = String(event.status?.type?.state || competition?.status?.type?.state || "").toLowerCase();
+            const statusLabel = [
+              event.status?.type?.name, event.status?.type?.detail, event.status?.type?.shortDetail,
+              competition?.status?.type?.name, competition?.status?.type?.detail, competition?.status?.type?.shortDetail
+            ].filter(Boolean).join(" ").toLowerCase();
             if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusLabel))) continue;
             const homeFirstPeriod = Number(home.linescores?.[0]?.value ?? home.linescores?.[0]?.displayValue);
             const awayFirstPeriod = Number(away.linescores?.[0]?.value ?? away.linescores?.[0]?.displayValue);
