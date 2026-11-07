@@ -66,6 +66,12 @@ test('fixture fallback requires exact date, orientation, league and a unique mat
   }), null);
 });
 
+test('normalizes common club prefixes', () => {
+  assert.equal(findUniqueCompletedFixture([{id:'x',date:'2026-11-07',home:'Alpha FC',away:'Beta SC',league:'League'}], {
+    home:'Alpha',away:'Beta',league:'League',date:'2026-11-07'
+  }).id, 'x');
+});
+
 test('fixture ID match is still checked against the team identity', () => {
   const candidates = [{ id: '123', date: '2026-11-07', home: 'Alpha', away: 'Beta', league: 'League' }];
   assert.equal(findUniqueCompletedFixture(candidates, {
