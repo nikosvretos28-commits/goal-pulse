@@ -864,6 +864,8 @@ async function getHistoricalOverSupport(leagueCode, homeName, awayName, targetLi
 // alert history and is strictly additive; missing data never changes live eligibility.
 const preMatchSeasonProfileCache = new Map();
 const preMatchSeasonCollectionAt = new Map();
+const preMatchScanState = { status: "idle", startedAt: null, completedAt: null, results: [], error: null };
+
 let preMatchSeasonDbInit = null;
 const PRE_MATCH_PROFILE_TTL_MS = 12 * 60 * 60 * 1000;
 function isPreMatchLeagueCode(code) {
@@ -1120,7 +1122,7 @@ async function getPreMatchSeasonSupport(leagueCode, homeName, awayName, targetLi
   };
 }
 async function schedulePreMatchSeasonCollection(events) {
-  if (!Array.isArray(events) || !events.length) return;
+  if (!Array.isArray(events) || !events.length) return { attempted: 0, results: [] };
   const leagues = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(code => isPreMatchLeagueCode(code)))];
   const due = leagues.map(code => {
     const leagueEvents = events.filter(event => String(event.__goalPulseLeagueCode || "") === code);
@@ -1134,11 +1136,17 @@ async function schedulePreMatchSeasonCollection(events) {
   }).filter(item => Date.now() - (preMatchSeasonCollectionAt.get(item.key) || 0) >= PRE_MATCH_PROFILE_TTL_MS);
   // Keep provider load bounded: two league jobs at a time, at most two yearly requests per job.
   // The caller intentionally does not await this background preparation.
+  const results = [];
   for (let offset = 0; offset < due.length; offset += 2) {
-    await Promise.all(due.slice(offset, offset + 2).map(item =>
-      collectPreMatchLeagueSeason(item.code, { seasonSlug: item.seasonSlug, seasonYear: item.seasonYear }).catch(() => null)
+    const batch = await Promise.all(due.slice(offset, offset + 2).map(item =>
+      collectPreMatchLeagueSeason(item.code, { seasonSlug: item.seasonSlug, seasonYear: item.seasonYear }).catch(error => {
+        console.warn("[Pre-Match] collection task failed for", item.code, error.message);
+        return { ok: false, leagueCode: item.code, reason: "collection-failed" };
+      })
     ));
+    results.push(...batch);
   }
+  return { attempted: due.length, results };
 }
 
 async function pitchGet(apiPath) {
@@ -1899,6 +1907,107 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/pre-match/scan" && req.method === "GET") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    try {
+      let leagues = [];
+      let persistent = false;
+      if (await ensurePreMatchSeasonDb()) {
+        const result = await analyticsPool.query(
+          `SELECT league_code, season_key, COUNT(*)::int AS teams,
+                  MAX(fetched_at) AS updated_at,
+                  MAX(COALESCE((profile->>'fixtureCount')::int, 0)) AS fixtures
+             FROM pre_match_season_profiles
+            WHERE fetched_at > NOW() - INTERVAL '30 days'
+            GROUP BY league_code, season_key
+            ORDER BY MAX(fetched_at) DESC
+            LIMIT 40`
+        );
+        leagues = result.rows.map(row => ({
+          leagueCode: row.league_code, season: row.season_key,
+          teams: Number(row.teams || 0), fixtures: Number(row.fixtures || 0),
+          updatedAt: row.updated_at
+        }));
+        persistent = true;
+      } else {
+        const grouped = new Map();
+        for (const [key, entry] of preMatchSeasonProfileCache) {
+          if (!entry?.profile) continue;
+          const [leagueCode, season] = key.split("|");
+          const groupKey = leagueCode + "|" + season;
+          const item = grouped.get(groupKey) || { leagueCode, season, teams: 0, fixtures: 0, updatedAt: entry.profile.fetchedAt || null };
+          item.teams++;
+          item.fixtures = Math.max(item.fixtures, Number(entry.profile.fixtureCount || 0));
+          grouped.set(groupKey, item);
+        }
+        leagues = [...grouped.values()];
+      }
+      return send(res, 200, {
+        ok: true, persistent, run: preMatchScanState,
+        summary: {
+          competitions: leagues.length,
+          teams: leagues.reduce((sum, item) => sum + item.teams, 0),
+          fixtures: leagues.reduce((sum, item) => sum + item.fixtures, 0),
+          leagues
+        }
+      });
+    } catch (error) {
+      console.error("[Pre-Match] status read failed:", error.message);
+      return send(res, 503, { ok: false, error: "Could not read Pre-Match scan status" });
+    }
+  }
+  if (url.pathname === "/api/pre-match/scan" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (preMatchScanState.status === "running") return send(res, 202, { ok: true, run: preMatchScanState });
+    try {
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const base = "http://127.0.0.1:" + PORT;
+      const response = await fetch(base + "/api/scoreboard?date=" + date, { signal: AbortSignal.timeout(25000) });
+      if (!response.ok) throw new Error("Scoreboard unavailable: " + response.status);
+      const scoreboard = await response.json();
+      const events = (scoreboard.feeds || []).flatMap(feed =>
+        (feed.events || []).map(event => ({ ...event, __goalPulseLeagueCode: feed.code || "" }))
+      );
+      const supported = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(isPreMatchLeagueCode))];
+      preMatchScanState.status = "running";
+      preMatchScanState.startedAt = new Date().toISOString();
+      preMatchScanState.completedAt = null;
+      preMatchScanState.results = [];
+      preMatchScanState.error = null;
+      if (!supported.length) {
+        preMatchScanState.status = "complete";
+        preMatchScanState.completedAt = new Date().toISOString();
+        preMatchScanState.error = "No supported league fixtures were found in today's scoreboard.";
+        return send(res, 200, { ok: true, run: preMatchScanState, supportedLeagues: 0 });
+      }
+      schedulePreMatchSeasonCollection(events).then(result => {
+        preMatchScanState.status = "complete";
+        preMatchScanState.completedAt = new Date().toISOString();
+        preMatchScanState.results = result.results || [];
+        preMatchScanState.error = result.attempted === 0
+          ? "All available league profiles were refreshed within the last 12 hours."
+          : null;
+        console.log("[Pre-Match] manual scan completed:", JSON.stringify({
+          supportedLeagues: supported.length, attempted: result.attempted,
+          successful: preMatchScanState.results.filter(item => item.ok).length,
+          failed: preMatchScanState.results.filter(item => !item.ok).length
+        }));
+      }).catch(error => {
+        preMatchScanState.status = "error";
+        preMatchScanState.completedAt = new Date().toISOString();
+        preMatchScanState.error = String(error.message || error).slice(0, 240);
+        console.error("[Pre-Match] manual scan failed:", preMatchScanState.error);
+      });
+      return send(res, 202, { ok: true, run: preMatchScanState, supportedLeagues: supported.length });
+    } catch (error) {
+      preMatchScanState.status = "error";
+      preMatchScanState.completedAt = new Date().toISOString();
+      preMatchScanState.error = String(error.message || error).slice(0, 240);
+      console.error("[Pre-Match] manual scan could not start:", preMatchScanState.error);
+      return send(res, 503, { ok: false, run: preMatchScanState });
+    }
+  }
+
   if (url.pathname === "/api/push/vapid-public-key" && req.method === "GET") {
     return send(res, VAPID_PUBLIC_KEY ? 200 : 503, VAPID_PUBLIC_KEY ? { publicKey: VAPID_PUBLIC_KEY } : { error: "Push is not configured" });
   }
@@ -2007,7 +2116,9 @@ const server = http.createServer(async (req, res) => {
       }
       // Automatically collect full-season league profiles for today's scheduled competitions.
       // This runs in the background and never delays or gates the live scanner.
-      schedulePreMatchSeasonCollection(scoreboardEvents);
+      schedulePreMatchSeasonCollection(scoreboardEvents).catch(error => {
+        console.warn("[Pre-Match] automatic preparation failed:", error.message);
+      });
       // Join scoreboard score/status fields to the separate live-stat feed by normalized team names.
       // The stats endpoint does not include scores, and displayClock often looks like "45:00";
       // without this join the AI scanner silently sees no eligible first-half matches.
