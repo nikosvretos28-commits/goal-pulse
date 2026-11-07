@@ -22,6 +22,36 @@ const SPORTAPI_FIXTURE_CACHE_MS = 10 * 60 * 1000;
 const SPORTAPI_STATS_REFRESH_MS = 5 * 60 * 1000;
 const SPORTAPI_STATS_REQUEST_GAP_MS = 5 * 60 * 1000;
 
+// Coalesce identical concurrent provider GETs from default and Hi Activity
+// metrics requests. Shares only in-flight responses; no data cache or delay.
+// Include timeoutMs in the key so a shorter caller timeout cannot cancel a
+// longer caller's otherwise-identical provider request.
+const providerFetchInflight = new Map();
+async function fetchProviderShared(url, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  if (method !== "GET") return fetch(url, options);
+  const { coalesceTimeoutMs, ...fetchOptions } = options;
+  const timeoutKey = coalesceTimeoutMs == null ? "default" : String(coalesceTimeoutMs);
+  const key = method + ":" + url + ":timeout=" + timeoutKey;
+  let sharedRequest = providerFetchInflight.get(key);
+  if (!sharedRequest) {
+    sharedRequest = (async () => {
+      const response = await fetch(url, fetchOptions);
+      return { ok: response.ok, status: response.status, body: await response.text() };
+    })().finally(() => {
+      if (providerFetchInflight.get(key) === sharedRequest) providerFetchInflight.delete(key);
+    });
+    providerFetchInflight.set(key, sharedRequest);
+  }
+  const response = await sharedRequest;
+  return {
+    ok: response.ok,
+    status: response.status,
+    json: async () => JSON.parse(response.body),
+    text: async () => response.body
+  };
+}
+
 // Normalize common football API response envelopes. Several providers wrap the
 // fixture array in data.matches/data.fixtures rather than returning data as an array.
 function extractFixtureArray(body) {
@@ -3593,16 +3623,18 @@ const server = http.createServer(async (req, res) => {
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
+      let sportScoreLiveFixturesPayload = null;
       // Load direct live stats for every live scoreboard, not only SportScore-ID fixtures.
       // This is a fallback when another provider's summary omits SOT/corners.
       if (liveEvents.length) {
         try {
           const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
-          const liveResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
-            headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000)
+          const liveResponse = await fetchProviderShared("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
+            headers: { "Accept": "application/json" }, coalesceTimeoutMs: 9000, signal: AbortSignal.timeout(9000)
           });
           if (liveResponse.ok) {
             const livePayload = await liveResponse.json();
+            sportScoreLiveFixturesPayload = livePayload;
             const liveFixtures = extractFixtureArray(livePayload);
             const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             for (const fixture of liveFixtures) {
@@ -3623,12 +3655,17 @@ const server = http.createServer(async (req, res) => {
       if (liveEvents.length && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
         try {
           const liveDateForSlugMap = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
-          const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
-            headers: { "Accept": "application/json" },
-            signal: AbortSignal.timeout(8000)
-          });
-          if (response.ok) {
-            const payload = await response.json();
+          // Reuse the fixture payload already fetched above; only retry the provider
+          // if that first request failed. This removes a duplicate full fixture download.
+          let payload = sportScoreLiveFixturesPayload;
+          if (!payload) {
+            const response = await fetchProviderShared("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
+              headers: { "Accept": "application/json" },
+              coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
+            });
+            if (response.ok) payload = await response.json();
+          }
+          if (payload) {
             const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             const map = new Map();
             const liveSlugFixtures = extractFixtureArray(payload);
@@ -3697,9 +3734,9 @@ const server = http.createServer(async (req, res) => {
                 // SportScore intermittently returns 503 under burst traffic. Retry transient failures
                 // with short backoff, while keeping the overall request concurrency conservative.
                 for (let attempt = 0; attempt < 3; attempt++) {
-                  detailResponse = await fetch(detailUrl, {
+                  detailResponse = await fetchProviderShared(detailUrl, {
                     headers: { "Accept": "application/json" },
-                    signal: AbortSignal.timeout(10000)
+                    coalesceTimeoutMs: 10000, signal: AbortSignal.timeout(10000)
                   });
                   if (detailResponse.status !== 503 || attempt === 2) break;
                   await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
@@ -3708,9 +3745,9 @@ const server = http.createServer(async (req, res) => {
                   const parts = slug.split("-vs-");
                   if (parts.length === 2) {
                     const reverseSlug = parts[1] + "-vs-" + parts[0];
-                    const retryResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(reverseSlug) + "&src=goal-pulse", {
+                    const retryResponse = await fetchProviderShared("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(reverseSlug) + "&src=goal-pulse", {
                       headers: { "Accept": "application/json" },
-                      signal: AbortSignal.timeout(8000)
+                      coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
                     });
                     if (retryResponse.ok) { slug = reverseSlug; detailResponse = retryResponse; }
                     else {
@@ -3857,18 +3894,18 @@ const server = http.createServer(async (req, res) => {
               continue;
             }
             espnSummaryDiagnostics.attempted++;
-            let response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
+            let response = await fetchProviderShared("https://site.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
               headers: { "Accept": "application/json" },
-              signal: AbortSignal.timeout(8000)
+              coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
             });
             // Match the proven scoreboard fallback: ESPN can deny the site.api hostname
             // from this hosting region while its equivalent site.web.api endpoint works.
             // Retry only explicit HTTP denial/throttling/server errors; do not alter
             // provider selection, match parsing, or any alert/protocol behavior.
             if (response.status === 403 || response.status === 429 || response.status >= 500) {
-              response = await fetch("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
+              response = await fetchProviderShared("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + item.leagueCode + "/summary?event=" + encodeURIComponent(event.id), {
                 headers: { "Accept": "application/json" },
-                signal: AbortSignal.timeout(8000)
+                coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
               });
             }
             if (!response.ok) {
@@ -3936,8 +3973,8 @@ const server = http.createServer(async (req, res) => {
                   || sportScoreWidgetSlugCache.map.get(normFallbackTeam(awayName) + "|" + normFallbackTeam(homeName));
                 if (fallbackSlug) {
                   try {
-                    const detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(fallbackSlug) + "&src=goal-pulse", {
-                      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
+                    const detailResponse = await fetchProviderShared("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(fallbackSlug) + "&src=goal-pulse", {
+                      headers: { "Accept": "application/json" }, coalesceTimeoutMs: 8000, signal: AbortSignal.timeout(8000)
                     });
                     if (detailResponse.ok) {
                       const detailPayload = await detailResponse.json();
