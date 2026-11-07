@@ -170,7 +170,7 @@ async function runProtocolAnalyst() {
         won, minute: Number.isFinite(minute) ? minute : null,
         phase: p.periodAtSignal || "unknown",
         oddsBand: Number.isFinite(odds) ? (odds < 1.2 ? "1.01–1.19" : odds < 1.4 ? "1.20–1.39" : odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
-        minuteBand: Number.isFinite(minute) ? (minute < 30 ? "0–29′" : minute < 46 ? "30–45′" : minute < 60 ? "46–59′" : minute < 75 ? "60–74′" : "75′+") : "unknown",
+        minuteBand: !Number.isFinite(minute) ? "unknown" : (p.periodAtSignal === "first_half" ? (minute < 30 ? "1′–29′" : "30′–40′") : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–88′")),
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
         onTarget10m: stats.onTarget10m !== null && stats.onTarget10m !== undefined && Number.isFinite(Number(stats.onTarget10m)) ? Number(stats.onTarget10m) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
@@ -209,10 +209,10 @@ async function runProtocolAnalyst() {
     // Diagnose the requested late-alert windows independently of the live protocol's 88′ cutoff.
     const bySignalWindow = [
       { window: "1ο ημίχρονο 35′–40′", ...summarize(allRecords.filter(row => row.phase === "first_half" && row.minute >= 35 && row.minute <= 40)) },
-      { window: "2ο ημίχρονο 76′–90′", ...summarize(allRecords.filter(row => row.phase === "second_half" && row.minute >= 76 && row.minute <= 90)) }
+      { window: "2ο ημίχρονο 76′–88′", ...summarize(allRecords.filter(row => row.phase === "second_half" && row.minute >= 76 && row.minute <= 88)) }
     ];
     const segment = (field, label, sourceRows = records) => {
-      const values = [...new Set(sourceRows.map(row => row[field]))].sort();
+      const values = [...new Set(sourceRows.map(row => row[field]).filter(value => value !== null && value !== undefined && value !== ""))].sort();
       return values.map(value => ({ [label]: value, ...summarize(sourceRows.filter(row => row[field] === value)) }))
         .filter(row => row.settled >= 5)
         .sort((a,b) => b.settled - a.settled);
@@ -350,6 +350,7 @@ async function runProtocolAnalyst() {
       byLiveConversion: segment("liveConversionBand", "liveConversionBand"),
       byTotalSotSupport: segment("totalSotSupport", "totalSotSupport"),
       byHistoricalOverSupport: segment("historicalOverSupport", "historicalOverSupport"),
+      missingData: { historicalOverSupport: records.filter(row => row.historicalOverSupport === null || row.historicalOverSupport === undefined).length },
       recommendations
     };
     await analyticsPool.query("INSERT INTO protocol_analyst_reports(generated_at,report) VALUES($1,$2::jsonb)", [report.generatedAt, JSON.stringify(report)]);
@@ -1573,7 +1574,7 @@ const server = http.createServer(async (req, res) => {
       };
       const bySignalWindow = [
         summarizeSignalWindow("first_half", 35, 40, "1ο ημίχρονο 35′–40′"),
-        summarizeSignalWindow("second_half", 76, 90, "2ο ημίχρονο 76′–90′")
+        summarizeSignalWindow("second_half", 76, 88, "2ο ημίχρονο 76′–88′")
       ];
       const byOutcome = {};
       const byPeriod = {};
@@ -1590,7 +1591,9 @@ const server = http.createServer(async (req, res) => {
         if (outcome === 'void') byPeriod[period].voids++;
       }
       const issues = [];
+      let issueCountTotal = 0;
       const addIssue = (row, code, detail) => {
+        issueCountTotal++;
         if (issues.length < 100) issues.push({
           alertId: row.id, eventId: row.eventId,
           teams: [row.payload.homeTeam || row.payload.home || null, row.payload.awayTeam || row.payload.away || null],
@@ -1690,7 +1693,7 @@ const server = http.createServer(async (req, res) => {
         wins, losses: winRate.length - wins,
         successRate: winRate.length ? Math.round(wins / winRate.length * 1000) / 10 : null,
         byOutcome, byPeriod, bySignalWindow,
-        integrity: { issueCount: issues.length, issueLimit: 100, issues },
+        integrity: { issueCount: issueCountTotal, issueLimit: 100, issues },
         note: "Read-only audit. Pending age helps identify stale alerts but does not prove match completion; stored outcomes are not independently checked against provider final scores."
       });
     } catch (error) {
