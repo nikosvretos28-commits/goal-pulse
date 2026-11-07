@@ -3673,13 +3673,14 @@ function evaluateHighActivityObservations(ranked){
   const half=isSecondHalf?'2ο ΗΜΙΧΡΟΝΟ':'1ο ΗΜΙΧΡΟΝΟ';
   const periodKey=isSecondHalf?'2H':'1H';
   const score=highActivityScore(match);if(!score)continue;
+  const numericOrNull=value=>value==null||value===''||!Number.isFinite(Number(value))?null:Number(value);
   const signalStats={
-   totalOnTarget:Number.isFinite(Number(rankedItem.totalOnTarget))?Number(rankedItem.totalOnTarget):null,
-   recentOnTarget:Number.isFinite(Number(rankedItem.recentOnTarget))?Number(rankedItem.recentOnTarget):null,
-   recentShotsOnTarget10m:Number.isFinite(Number(rankedItem.recentShotsOnTarget10m))?Number(rankedItem.recentShotsOnTarget10m):null,
-   shotsOnTargetInsideBox:Number.isFinite(Number(rankedItem.shotsOnTargetInsideBox))?Number(rankedItem.shotsOnTargetInsideBox):null,
-   bigChances:Number.isFinite(Number(rankedItem.bigChances))?Number(rankedItem.bigChances):null,
-   intensity:Number.isFinite(Number(rankedItem.intensity))?Number(rankedItem.intensity):null
+   totalOnTarget:numericOrNull(rankedItem.totalOnTarget),
+   recentOnTarget:numericOrNull(rankedItem.recentOnTarget),
+   recentShotsOnTarget10m:numericOrNull(rankedItem.recentShotsOnTarget10m),
+   shotsOnTargetInsideBox:numericOrNull(rankedItem.shotsOnTargetInsideBox),
+   bigChances:numericOrNull(rankedItem.bigChances),
+   intensity:numericOrNull(rankedItem.intensity)
   };
   // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
