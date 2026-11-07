@@ -3245,7 +3245,8 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  }).join(' ');
  const waveSvg='<svg class="activity-ecg" viewBox="0 0 140 38" preserveAspectRatio="none" aria-hidden="true"><polyline class="ecg-trace" points="'+wavePoints+'"/></svg>';
  const waveHtml='<span class="activity-wave" style="--wave-color:'+waveColor+';--wave-level:'+waveLevel+'%" role="img" aria-label="Ένταση επιθετικής δραστηριότητας '+waveLevel+' στα 100" title="Δείκτης επιθετικής δραστηριότητας: '+waveLevel+'/100">'+waveSvg+'<span class="ecg-glow"></span></span>';
-  const alertHtml=recentAlert?'<div class="activity-alert-row"><span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>'+(highActivity?waveHtml:'')+'</div>':(highActivity?'<div class="activity-alert-row"><span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>'+waveHtml+'</div>':"");
+  const manAdvantageBadgeHtml=m.goalMatrixTrigger==="MAN_ADVANTAGE_PRESSURE"?'<span class="activity-secondary-badge" title="Κόκκινη κάρτα και επιβεβαιωμένη πίεση με SOT και επικίνδυνες επιθέσεις">🟥 MAN ADVANTAGE PRESSURE</span>':"";
+ const alertHtml=(recentAlert?'<div class="activity-alert-row"><span class="goal-now-alert" title="Έντονη επιθετική δραστηριότητα">⚡ ΠΙΘΑΝΟ ΓΚΟΛ</span>'+(highActivity?waveHtml:'')+'</div>':(highActivity?'<div class="activity-alert-row"><span class="goal-now-alert" title="Αυξημένη δραστηριότητα βάσει διαθέσιμων live στατιστικών">⚡ HIGH ACTIVITY</span>'+waveHtml+'</div>':""))+manAdvantageBadgeHtml;
  const secondaryActivityHtml=(!highActivity&&highActivityEligibleIds.has(String(m.id))?'<span class="activity-secondary-badge" title="Πληροί τα κριτήρια High Activity, αλλά βρίσκεται εκτός της κορυφαίας δεκάδας">⚡ HI ACTIVITY</span>':"");
  const matchCard=[...document.querySelectorAll('.match[data-event-id]')].find(el=>el.dataset.eventId===String(m.id));
  const cardLeague=matchCard?.closest('.gp-live-league')?.querySelector('.gp-live-league-name')?.textContent?.trim()||[...(matchCard?.querySelector('.match-meta')?.textContent||'').split('·')].map(x=>x.trim()).filter(x=>x&&!/^(?:διοργάνωση|competition|league|live|international)$/i.test(x)&&!/^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$/.test(x)&&!/^(?:1st|2nd) half$/i.test(x)).slice(-1)[0]||matchCard?.querySelector('.match-meta span')?.textContent?.trim()||'';
@@ -3871,7 +3872,8 @@ function renderHighActivityMatches(){
    bigChances:team.bigChances??team.big_chances??team.big_chance??team.big_chances_created??team.big_chance_created,
    xG:team.xG??team.xg??team.expectedGoals,
    attacks:team.attacks??team.totalAttacks??team.total_attacks,
-   dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??team.dangerousAttack
+   dangerousAttacks:team.dangerousAttacks??team.dangerous_attacks??team.dangerousAttack,
+   redCards:team.redCards??team.red_cards??team.redcards??team.red_card
   });
   const teams=stats.teams.map(normalizeTeam);
   // HI ACTIVITY must maintain its own rolling SOT snapshots. The general AI
@@ -3885,6 +3887,7 @@ function renderHighActivityMatches(){
    corners:team.corners,
    attacks:team.attacks,
    dangerousAttacks:team.dangerousAttacks,
+   redCards:team.redCards,
    xG:team.xG
   }));
   const lastSnapshot=trail[trail.length-1];
@@ -3945,6 +3948,34 @@ function renderHighActivityMatches(){
   };
   const dualTeamSot5=perTeamSotWindow(baseline,stats.trend?.window5m,4.5,8);
   const dualTeamSot10=perTeamSotWindow(baseline10,stats.trend?.window10m,8,13);
+  const readTeamMetric=(team,key)=>{const value=team?.[key];return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value)};
+  const perTeamMetricWindow=(savedBaseline,trend,key,minAge,maxAge)=>{
+   let values=null;
+   if(savedBaseline&&Array.isArray(savedBaseline.values)&&savedBaseline.values.length>=2&&teams.length>=2){
+    const current=teams.slice(0,2).map(team=>readTeamMetric(team,key)),previous=savedBaseline.values.slice(0,2).map(team=>readTeamMetric(team,key));
+    if(current.every(value=>value!==null)&&previous.every(value=>value!==null))values=current.map((value,i)=>Math.max(0,value-previous[i]));
+   }
+   const age=Number(trend?.sampleMinutes);
+   if(trend?.available&&Array.isArray(trend.teams)&&trend.teams.length>=2&&Number.isFinite(age)&&age>=minAge&&age<=maxAge){
+    const trendValues=trend.teams.slice(0,2).map(team=>readTeamMetric(team,key));
+    if(trendValues.every(value=>value!==null)){
+     const normalized=trendValues.map(value=>Math.max(0,value));
+     if(!values||normalized.some((value,i)=>value>values[i]))values=normalized;
+    }
+   }
+   return values;
+  };
+  const dangerousAttacks5=perTeamMetricWindow(baseline,stats.trend?.window5m,"dangerousAttacks",4.5,8);
+  const dangerousAttacks10=perTeamMetricWindow(baseline10,stats.trend?.window10m,"dangerousAttacks",8,13);
+  const redCardCounts=teams.slice(0,2).map(team=>readTeamMetric(team,"redCards"));
+  const manAdvantageTeamIndex=redCardCounts.length===2&&redCardCounts.every(value=>value!==null)
+   ?(redCardCounts[0]<redCardCounts[1]?0:redCardCounts[1]<redCardCounts[0]?1:-1):-1;
+  const manAdvantagePressure=manAdvantageTeamIndex>=0&&
+   readSotValue(teams[manAdvantageTeamIndex])!==null&&readSotValue(teams[manAdvantageTeamIndex])>=4&&
+   Array.isArray(dualTeamSot5)&&dualTeamSot5[manAdvantageTeamIndex]!=null&&dualTeamSot5[manAdvantageTeamIndex]>=1&&
+   Array.isArray(dualTeamSot10)&&dualTeamSot10[manAdvantageTeamIndex]!=null&&dualTeamSot10[manAdvantageTeamIndex]>=2&&
+   Array.isArray(dangerousAttacks5)&&dangerousAttacks5[manAdvantageTeamIndex]!=null&&dangerousAttacks5[manAdvantageTeamIndex]>=3&&
+   Array.isArray(dangerousAttacks10)&&dangerousAttacks10[manAdvantageTeamIndex]!=null&&dangerousAttacks10[manAdvantageTeamIndex]>=10;
   const dualTeamSotPressure=teams.slice(0,2).length===2&&
    teams.slice(0,2).every(team=>readSotValue(team)!==null&&readSotValue(team)>=4)&&
    Array.isArray(dualTeamSot5)&&dualTeamSot5.length===2&&dualTeamSot5.every(value=>value!==null&&value>=1)&&
@@ -3998,7 +4029,7 @@ function renderHighActivityMatches(){
   const trialSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=6;
   const generalSot10mTrial=firstHalfWindow&&trialSot10m;
   const secondHalfSot10mTrial=secondHalfTrialWindow&&trialSot10m;
-  const protocolQualified=strictRecentSotStrong||strictRecentSot10m||(cumulativeSotStrong&&firstHalfWindow)||xGBothTeamsQualified||generalSot10mTrial||secondHalfSot10mTrial||dualTeamSotPressure;
+  const protocolQualified=strictRecentSotStrong||strictRecentSot10m||(cumulativeSotStrong&&firstHalfWindow)||xGBothTeamsQualified||generalSot10mTrial||secondHalfSot10mTrial||dualTeamSotPressure||manAdvantagePressure;
   const recentSotStrong=strictRecentSotStrong;
   const recentSotSupported=strictRecentSotStrong;
   let shotsOnTarget10m=0,hasSot10mData=false;
@@ -4031,7 +4062,7 @@ function renderHighActivityMatches(){
   },0);
   const score=pressureScore+xGSupport+liveConversionSupport+(recentSot10mSupported?3:0);
   const intensity=Math.max(0,Math.min(100,Math.round(delta.shotsOnTarget*10+delta.attacks*.3+delta.dangerousAttacks*.8+(recentXG==null?0:Math.min(20,recentXG*20))+liveConversionSupport*3+(recentSot10mSupported?10:0))));
-  return (active||hiActivityActive)?{match:m,score,intensity,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalOnTarget,liveConversionSupport,active,hiActivityActive,generalSot10mTrial,secondHalfSot10mTrial,dualTeamSotPressure,dualTeamSot5,dualTeamSot10}:null;
+  return (active||hiActivityActive)?{match:manAdvantagePressure?{...m,goalMatrixTrigger:"MAN_ADVANTAGE_PRESSURE"}:m,score,intensity,manAdvantagePressure,dangerousAttacks5,dangerousAttacks10,redCardCounts,recentOnTarget:delta.shotsOnTarget,recentShotsOnTarget10m:shotsOnTarget10m,shotsOnTargetInsideBox:insideBoxSotSupport,bigChances:bigChancesSupport,recentAttacks:delta.attacks,recentDangerousAttacks:delta.dangerousAttacks,recentXG,totalOnTarget,liveConversionSupport,active,hiActivityActive,generalSot10mTrial,secondHalfSot10mTrial,dualTeamSotPressure,dualTeamSot5,dualTeamSot10}:null;
  };
  const candidates=allMatches.map(scoreMatch).filter(Boolean)
   .sort((a,b)=>b.score-a.score||b.totalOnTarget-a.totalOnTarget);
