@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
-// Safe PostgreSQL persistence check for GoalMatrix.
-// Requires DATABASE_URL. Writes only sentinel rows inside a transaction and
-// rolls the transaction back before exiting. It never reads alert payloads.
+// Read-only schema discovery plus rollback-only synthetic write checks.
+// Requires DATABASE_URL. Never changes alert rules or keeps test rows.
 
 const { Pool } = require("pg");
 const crypto = require("node:crypto");
@@ -16,7 +15,7 @@ if (!connectionString) {
 
 const pool = new Pool({
   connectionString,
-  ssl: /localhost|127\.0\.0\.1/.test(connectionString)
+  ssl: /localhost|127\\.0\\.1/.test(connectionString)
     ? false
     : { rejectUnauthorized: false },
   max: 1,
@@ -24,29 +23,35 @@ const pool = new Pool({
   idleTimeoutMillis: 1000
 });
 
+const expectedTables = [
+  "alert_history",
+  "high_activity_history",
+  "protocol_analyst_reports",
+  "live_stat_snapshots",
+  "push_subscriptions",
+  "pre_match_season_profiles"
+];
+
 async function main() {
-  const client = await pool.connect();
   const report = {
     connected: false,
     schema: {},
+    missingTables: [],
     rowCounts: {},
     transactionalWriteChecks: {},
-    rollbackCompleted: false
+    rollbackCompleted: false,
+    schemaReady: false,
+    passed: false,
+    status: "not_connected"
   };
 
+  let client;
   try {
+    client = await pool.connect();
     await client.query("SELECT 1");
     report.connected = true;
 
-    const tables = [
-      "alert_history",
-      "high_activity_history",
-      "protocol_analyst_reports",
-      "live_stat_snapshots",
-      "push_subscriptions"
-    ];
-
-    for (const table of tables) {
+    for (const table of expectedTables) {
       const result = await client.query(
         "SELECT to_regclass($1) AS table_name",
         ["public." + table]
@@ -54,22 +59,26 @@ async function main() {
       report.schema[table] = Boolean(result.rows[0].table_name);
     }
 
+    report.missingTables = Object.entries(report.schema)
+      .filter(([, exists]) => !exists)
+      .map(([name]) => name);
+    report.schemaReady = report.missingTables.length === 0;
+
     for (const table of ["alert_history", "high_activity_history"]) {
       if (report.schema[table]) {
         const result = await client.query(
-          "SELECT COUNT(*)::bigint AS count FROM " + table
+          "SELECT COUNT(*)::bigint AS count FROM public." + table
         );
         report.rowCounts[table] = String(result.rows[0].count);
       }
     }
 
-    const missing = Object.entries(report.schema)
-      .filter(([, exists]) => !exists)
-      .map(([name]) => name);
-    if (missing.length) {
-      report.error = "Missing expected tables: " + missing.join(", ");
+    // A new Neon database is expected to be empty before the app starts.
+    // In that state, connection succeeds and the app's existing ensure*Db()
+    // functions create the schema on first startup. Do not create app tables here.
+    if (!report.schema.alert_history || !report.schema.high_activity_history) {
+      report.status = "connected_schema_pending";
       console.log(JSON.stringify(report, null, 2));
-      process.exitCode = 1;
       return;
     }
 
@@ -78,27 +87,25 @@ async function main() {
     try {
       const alertId = "storage-check-" + suffix;
       await client.query(
-        "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',NOW(),$3::jsonb,NOW())",
+        "INSERT INTO public.alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',NOW(),$3::jsonb,NOW())",
         [alertId, alertId, JSON.stringify({ source: "storage-check", testOnly: true })]
       );
       const alertRead = await client.query(
-        "SELECT 1 FROM alert_history WHERE alert_id=$1",
+        "SELECT 1 FROM public.alert_history WHERE alert_id=$1",
         [alertId]
       );
-      report.transactionalWriteChecks.alert_history =
-        alertRead.rowCount === 1;
+      report.transactionalWriteChecks.alert_history = alertRead.rowCount === 1;
 
       const observationId = "storage-check-" + suffix;
       await client.query(
-        "INSERT INTO high_activity_history(observation_id,event_id,created_at,payload,updated_at) VALUES($1,$2,NOW(),$3::jsonb,NOW())",
+        "INSERT INTO public.high_activity_history(observation_id,event_id,created_at,payload,updated_at) VALUES($1,$2,NOW(),$3::jsonb,NOW())",
         [observationId, observationId, JSON.stringify({ source: "storage-check", testOnly: true })]
       );
       const hiRead = await client.query(
-        "SELECT 1 FROM high_activity_history WHERE observation_id=$1",
+        "SELECT 1 FROM public.high_activity_history WHERE observation_id=$1",
         [observationId]
       );
-      report.transactionalWriteChecks.high_activity_history =
-        hiRead.rowCount === 1;
+      report.transactionalWriteChecks.high_activity_history = hiRead.rowCount === 1;
 
       await client.query("ROLLBACK");
       report.rollbackCompleted = true;
@@ -107,17 +114,16 @@ async function main() {
       throw error;
     }
 
-    const passed =
+    report.passed =
       report.connected &&
-      Object.values(report.schema).every(Boolean) &&
+      report.schemaReady &&
       Object.values(report.transactionalWriteChecks).every(Boolean) &&
       report.rollbackCompleted;
-
-    report.passed = passed;
+    report.status = report.passed ? "ready" : "check_failed";
     console.log(JSON.stringify(report, null, 2));
-    if (!passed) process.exitCode = 1;
+    if (!report.passed) process.exitCode = 1;
   } finally {
-    client.release();
+    if (client) client.release();
     await pool.end();
   }
 }
