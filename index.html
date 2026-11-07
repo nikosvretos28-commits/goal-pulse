@@ -3654,7 +3654,7 @@ async function reconcileHistoricalHighActivityObservations(){
     item.settlementScore={home:firstHalfHome,away:firstHalfAway,total:firstHalfTotal,scope:'first_half'};
     item.settlementProvider=event.__goalMatrixSettlementProvider||'ESPN';
     item.settlementFixtureId=event.__goalMatrixFixtureId||String(event.id||item.eventId);
-    item.settlementFixtureDate=event.__goalMatrixFixtureDate||event.__goalPulseLookupDate||goalMatrixHistoryDateKey(item.createdAt);
+    item.settlementFixtureDate=event.__goalMatrixFixtureDate||String(event.date||event.__goalPulseLookupDate||goalMatrixHistoryDateKey(item.createdAt)).slice(0,10);
     item.settlementLeague=competition?.name||event.__goalPulseLeagueCode||item.league||null;
     item.currentScore={home:homeScore,away:awayScore,total:score.total};
     if(firstHalfTotal>signalTotal){
@@ -3671,7 +3671,7 @@ async function reconcileHistoricalHighActivityObservations(){
    item.settlementScore={home:homeScore,away:awayScore,total:score.total,scope:'full_time'};
    item.settlementProvider=event.__goalMatrixSettlementProvider||'ESPN';
    item.settlementFixtureId=event.__goalMatrixFixtureId||String(event.id||item.eventId);
-   item.settlementFixtureDate=event.__goalMatrixFixtureDate||event.__goalPulseLookupDate||goalMatrixHistoryDateKey(item.createdAt);
+   item.settlementFixtureDate=event.__goalMatrixFixtureDate||String(event.date||event.__goalPulseLookupDate||goalMatrixHistoryDateKey(item.createdAt)).slice(0,10);
    item.settlementLeague=competition?.name||event.__goalPulseLeagueCode||item.league||null;
    if(score.total>signalTotal){
     item.outcome='won';item.settledAt=settledAt;item.settlementReason='At least one additional goal after the High Activity signal before confirmed full time';changed.push(item);continue;
