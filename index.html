@@ -3913,12 +3913,12 @@ function renderHighActivityMatches(){
   // Supplementary shot-quality support only; these statistics never trigger High Activity alone.
   const shotQualitySupport=Math.min(2,insideBoxSotSupport*0.5)+Math.min(2,bigChancesSupport*0.75);
   const pressureScore=delta.shotsOnTarget+shotQualitySupport;
-  // HI Activity SOT triggers: 3+ in the last 5 minutes, 6+ in the last 10 minutes,
-  // and 8+ combined match SOT by minute 35. Existing time windows and xG rule remain.
+  // HI Activity keeps the 3+ last-5m and cumulative/xG signals, and uses the
+  // requested minimum of 2+ SOT in any valid last-10m window in either half.
   const strictRecentSotStrong=firstHalfWindow&&hiActivitySot5m!==null&&hiActivitySot5m>=3;
-  const strictRecentSot10m=firstHalfWindow&&hiActivitySot10m!==null&&hiActivitySot10m>=6;
+  const strictRecentSot10m=firstHalfWindow&&hiActivitySot10m!==null&&hiActivitySot10m>=2;
   const xGBothTeamsQualified=firstHalfWindow&&xGValues.length>=2&&xGValues.every(value=>value!==null&&Number.isFinite(value)&&value>=2.0);
-  const trialSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=6;
+  const trialSot10m=hiActivitySot10m!==null&&hiActivitySot10m>=2;
   const generalSot10mTrial=firstHalfWindow&&trialSot10m;
   const secondHalfSot10mTrial=secondHalfTrialWindow&&trialSot10m;
   const protocolQualified=strictRecentSotStrong||strictRecentSot10m||(cumulativeSotStrong&&firstHalfWindow)||xGBothTeamsQualified||generalSot10mTrial||secondHalfSot10mTrial;
