@@ -162,7 +162,8 @@ async function runProtocolAnalyst() {
       const won = p.betOutcome === "won";
       const minuteCandidate = p.minuteNumber !== null && p.minuteNumber !== undefined && String(p.minuteNumber).trim() !== ""
         ? p.minuteNumber : String(p.minute || "").match(/\d{1,3}/)?.[0];
-      const minute = Number(minuteCandidate);
+      const parsedMinute = Number(minuteCandidate);
+      const minute = Number.isFinite(parsedMinute) ? parsedMinute : Number(String(minuteCandidate ?? "").match(/\d{1,3}/)?.[0]);
       const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : NaN;
       const stats = p.statsAtSignal || {};
       return {
@@ -328,7 +329,7 @@ async function runProtocolAnalyst() {
       dataQuality: {
         recordsAnalyzed: records.length,
         allSettledAlertsIn180Days: allRecords.length,
-        researchScope: "first_half_1_to_40_and_second_half_46_to_80_analyzed_separately",
+        researchScope: "first_half_1_to_40_and_second_half_46_to_88_analyzed_separately",
         alertsExcludedOutsideResearchScope: allRecords.length - records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
         alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
@@ -1553,7 +1554,9 @@ const server = http.createServer(async (req, res) => {
         const raw = payload.minuteNumber !== null && payload.minuteNumber !== undefined && String(payload.minuteNumber).trim() !== ""
           ? payload.minuteNumber : String(payload.minute || "").match(/\d{1,3}/)?.[0];
         const value = Number(raw);
-        return Number.isFinite(value) ? value : null;
+        if (Number.isFinite(value)) return value;
+        const fallback = Number(String(raw ?? "").match(/\d{1,3}/)?.[0]);
+        return Number.isFinite(fallback) ? fallback : null;
       };
       const summarizeSignalWindow = (period, minMinute, maxMinute, label) => {
         const sample = rows.filter(row => row.payload.periodAtSignal === period && signalMinute(row.payload) !== null
