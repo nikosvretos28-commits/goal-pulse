@@ -50,7 +50,7 @@ function gradeOverMarket(totalGoals, line) {
 }
 
 function normalizeFixtureName(value) {
-  return String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\\s+|club deportivo\\s+|deportivo\\s+)/, '').trim();
 }
 
 function findUniqueCompletedFixture(candidates, alert = {}) {
