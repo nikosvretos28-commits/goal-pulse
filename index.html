@@ -3899,8 +3899,13 @@ function renderHighActivityMatches(){
   const lastSnapshot=trail[trail.length-1];
   if(snapshotValues.length===2&&snapshotValues.every(team=>team.shotsOnTarget!==null)&&(!lastSnapshot||now-Number(lastSnapshot.at)>=25000)){
    if(lastSnapshot&&Array.isArray(lastSnapshot.values)){
-    snapshotValues.forEach((side,index)=>{const previous=lastSnapshot.values[index];if(now-Number(lastSnapshot.at)<=90*1000&&side.redCards!=null&&previous?.redCards!=null&&side.redCards>previous.redCards)const advantagedIndex=1-index;
-      highActivityRedCardSince.set(trailKey,{side:index,at:now,sotAtCard:snapshotValues[advantagedIndex]?.shotsOnTarget??null,dangerousAtCard:snapshotValues[advantagedIndex]?.dangerousAttacks??null,advantagedTeam:String(teams[advantagedIndex]?.team||'').trim().toLowerCase()});});
+    snapshotValues.forEach((side,index)=>{
+     const previous=lastSnapshot.values[index];
+     if(now-Number(lastSnapshot.at)<=90*1000&&side.redCards!=null&&previous?.redCards!=null&&side.redCards>previous.redCards){
+      const advantagedIndex=1-index;
+      highActivityRedCardSince.set(trailKey,{side:index,at:now,sotAtCard:snapshotValues[advantagedIndex]?.shotsOnTarget??null,dangerousAtCard:snapshotValues[advantagedIndex]?.dangerousAttacks??null,advantagedTeam:String(teams[advantagedIndex]?.team||'').trim().toLowerCase()});
+     }
+    });
    }
    trail.push({values:snapshotValues,at:now});
    while(trail.length&&now-Number(trail[0].at)>LIVE_TRAIL_RETENTION)trail.shift();
