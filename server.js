@@ -2403,7 +2403,6 @@ const server = http.createServer(async (req, res) => {
                 if (exactMatch) { completed = exactMatch.result; break; }
               }
             }
-            const liveStatusIsFinished = /finished|full.?time|ended|final|\bft\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
             if (secondHalf && completed) live = completed;
             else if (firstHalf && completed && completed.homeHtScore != null && completed.awayHtScore != null) live = completed;
             if (/κόρνερ|corner/i.test(String(alert.market || ""))) continue;
