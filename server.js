@@ -1985,7 +1985,7 @@ const server = http.createServer(async (req, res) => {
         preMatchScanState.completedAt = new Date().toISOString();
         preMatchScanState.results = result.results || [];
         preMatchScanState.error = result.attempted === 0
-          ? "All available league profiles were refreshed within the last 12 hours."
+          ? "No league collection was due for a new attempt; a recent refresh or retry cooldown may apply."
           : null;
         console.log("[Pre-Match] manual scan completed:", JSON.stringify({
           supportedLeagues: supported.length, attempted: result.attempted,
