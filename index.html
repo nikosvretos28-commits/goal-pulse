@@ -2214,7 +2214,77 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
  <div id="matrixAnalyticsContent" aria-live="polite"><p>Φόρτωση στατιστικών…</p></div>
  <p class="top-ai-alert-privacy">Μετρούν μόνο μοναδικές, ολοκληρωμένες περιπτώσεις. Το ποσοστό είναι ιστορική συχνότητα και δεν εγγυάται μελλοντικό αποτέλεσμα.</p>
 </section>
-<section class="top-ai-alerts gp-prematch-panel" id="preMatchPanel" hidden><div class="top-ai-alerts-head"><h2>PRE-MATCH INTELLIGENCE</h2><button type="button" class="gm-panel-close" id="preMatchClose">✕ ΚΛΕΙΣΙΜΟ</button></div><div class="gp-prematch-content"><h3>Ημερήσια προετοιμασία</h3><p>Ανάγνωση ημερήσιου προγράμματος και συλλογή ιστορικών δεδομένων ομάδων πριν από την έναρξη.</p><h3>Ιστορικό ομάδων</h3><ul><li>Μέσος όρος γκολ υπέρ και κατά, clean sheets.</li><li>Χρονικά διαστήματα σκοραρίσματος και παραχώρησης γκολ.</li><li>Ιστορικές συχνότητες Over/Under 2.5, 3.5, 4.5 και άλλων διαθέσιμων γραμμών.</li></ul><h3>AI Alerts</h3><p>Το ιστορικό ολόκληρης της τρέχουσας σεζόν λειτουργεί αποκλειστικά ενισχυτικά, μόνο όταν υπάρχει ήδη live ένδειξη. Μπορεί να προσθέτει θετική υποστήριξη, αλλά δεν δημιουργεί μόνο του alert, δεν μπλοκάρει και δεν απορρίπτει ποτέ αγώνα ή σήμα.</p><h3>NO HISTORICAL DATA</h3><p>Δεν επινοούνται στοιχεία και δεν απορρίπτεται ο αγώνας. Η αξιολόγηση συνεχίζει αποκλειστικά με τα live στατιστικά. Αν υπάρχει ιστορικό μόνο για μία ομάδα, χρησιμοποιείται μόνο αυτό.</p><h3>Ασφάλεια</h3><p>Τα υπάρχοντα live triggers, SOT, xG, settlement και ιστορικά μένουν αμετάβλητα. Ελλιπή, παλιά ή μη διαθέσιμα δεδομένα οδηγούν σε fail-open προς την τρέχουσα live αξιολόγηση.</p><p class="top-ai-alert-privacy">Η συλλογή γίνεται αυτόματα από το δωρεάν δημόσιο feed της ESPN. Αν λείπουν ιστορικά δεδομένα, η αξιολόγηση συνεχίζει κανονικά με τα live στοιχεία.</p></div></section><style>.gp-prematch-button{min-height:34px;padding:7px 13px;font-size:11px;letter-spacing:.08em}.gp-prematch-panel{padding:14px;margin:12px 0}.gp-prematch-content{line-height:1.55}.gp-prematch-content h3{margin:15px 0 5px;color:#8ce5c0;font-size:14px}.gp-prematch-content p,.gp-prematch-content li{font-size:13px;color:var(--muted,#b7c7d3)}</style><script>(()=>{const b=document.getElementById("preMatchToggle"),p=document.getElementById("preMatchPanel"),c=document.getElementById("preMatchClose");if(!b||!p)return;b.addEventListener("click",()=>{p.hidden=!p.hidden;b.setAttribute("aria-expanded",String(!p.hidden));if(!p.hidden)p.scrollIntoView({behavior:"smooth",block:"start"});});c?.addEventListener("click",()=>{p.hidden=true;b.setAttribute("aria-expanded","false");});})();</script>
+<section class="top-ai-alerts gp-prematch-panel" id="preMatchPanel" hidden>
+<div class="top-ai-alerts-head"><h2>PRE-MATCH INTELLIGENCE</h2><button type="button" class="gm-panel-close" id="preMatchClose">✕ ΚΛΕΙΣΙΜΟ</button></div>
+<div class="gp-prematch-content">
+<h3>Ημερήσια προετοιμασία</h3>
+<p>Εκτέλεση σάρωσης για τις διοργανώσεις του σημερινού προγράμματος και συλλογή ιστορικών δεδομένων από το δωρεάν δημόσιο feed της ESPN.</p>
+<button type="button" id="preMatchScanRun" class="gp-prematch-run">ΕΚΤΕΛΕΣΗ PRE-MATCH SCAN</button>
+<p id="preMatchScanStatus" class="gp-prematch-status" role="status" aria-live="polite">Έλεγχος διαθέσιμων ιστορικών δεδομένων…</p>
+<h3>Τι συλλέγεται</h3>
+<ul><li>Μέσος όρος γκολ υπέρ και κατά, clean sheets και failed to score.</li><li>Ιστορικές συχνότητες Over/Under ανά ακριβή γραμμή, από 0.5 έως 6.5.</li><li>Πλήθος ολοκληρωμένων αγώνων και κάλυψη ανά ομάδα και διοργάνωση.</li></ul>
+<h3>Χρήση στα live σήματα</h3>
+<p>Το ιστορικό λειτουργεί μόνο ενισχυτικά όταν υπάρχει ήδη ανεξάρτητη live ένδειξη. Δεν δημιουργεί μόνο του AI Alert, δεν μπλοκάρει αγώνα και δεν αλλάζει τα SOT, xG ή τα υπόλοιπα πρωτόκολλα.</p>
+<h3>Αξιοπιστία δεδομένων</h3>
+<p>Αν δεν υπάρχουν αρκετά ολοκληρωμένα ματς ή ο πάροχος δεν επιστρέψει έγκυρα δεδομένα, αυτό εμφανίζεται ως μη διαθέσιμο ιστορικό. Δεν επινοούνται ποσοστά ούτε μετατρέπεται η έλλειψη δεδομένων σε μηδενική επίδοση.</p>
+<p id="preMatchScanDetails" class="top-ai-alert-privacy">Τα αποθηκευμένα προφίλ διατηρούνται στη βάση δεδομένων όταν αυτή είναι διαθέσιμη.</p>
+</div></section>
+<style>
+.gp-prematch-button{min-height:34px;padding:7px 13px;font-size:11px;letter-spacing:.08em}
+.gp-prematch-panel{padding:14px;margin:12px 0}
+.gp-prematch-content{line-height:1.55}
+.gp-prematch-content h3{margin:15px 0 5px;color:#8ce5c0;font-size:14px}
+.gp-prematch-content p,.gp-prematch-content li{font-size:13px;color:var(--muted,#b7c7d3)}
+.gp-prematch-run{display:inline-flex;align-items:center;justify-content:center;margin:8px 0;padding:10px 15px;border:1px solid rgba(95,220,166,.42);border-radius:9px;background:rgba(31,133,101,.16);color:#a7f0ce;font-weight:800;font-size:12px;letter-spacing:.05em;cursor:pointer}
+.gp-prematch-run:disabled{opacity:.55;cursor:wait}
+.gp-prematch-status{min-height:22px;margin:7px 0;font-weight:700}
+</style>
+<script>(()=> {
+  const b=document.getElementById("preMatchToggle"),p=document.getElementById("preMatchPanel"),c=document.getElementById("preMatchClose");
+  const run=document.getElementById("preMatchScanRun"),status=document.getElementById("preMatchScanStatus"),details=document.getElementById("preMatchScanDetails");
+  if(!b||!p)return;
+  b.addEventListener("click",()=>{p.hidden=!p.hidden;b.setAttribute("aria-expanded",String(!p.hidden));if(!p.hidden){p.scrollIntoView({behavior:"smooth",block:"start"});refresh();}});
+  c?.addEventListener("click",()=>{p.hidden=true;b.setAttribute("aria-expanded","false");});
+  const showSummary=data=>{
+    const summary=data?.summary||{};
+    const count=Number(summary.teams||0),competitions=Number(summary.competitions||0),fixtures=Number(summary.fixtures||0);
+    details.textContent=count
+      ? "Αποθηκευμένα ιστορικά προφίλ: "+count+" ομάδες σε "+competitions+" διοργανώσεις · έως "+fixtures+" ολοκληρωμένοι αγώνες ανά διοργάνωση. Αποθήκευση: "+(data.persistent?"μόνιμη βάση δεδομένων":"προσωρινή μνήμη").
+      : "Δεν υπάρχουν ακόμη αποθηκευμένα ιστορικά προφίλ για τις τελευταίες 30 ημέρες.";
+    const runState=data?.run||{};
+    if(runState.status==="running"){status.textContent="Η σάρωση εκτελείται στο παρασκήνιο…";run.disabled=true;}
+    else {
+      run.disabled=false;
+      if(runState.status==="complete"){
+        const results=Array.isArray(runState.results)?runState.results:[];
+        const ok=results.filter(x=>x.ok),failed=results.filter(x=>!x.ok);
+        status.textContent=results.length
+          ? "Ολοκληρώθηκε: "+ok.length+" διοργανώσεις επιτυχώς · "+failed.length+" με πρόβλημα."
+          : (runState.error||"Δεν απαιτήθηκε νέα λήψη· τα πρόσφατα προφίλ παραμένουν διαθέσιμα.");
+      } else if(runState.status==="error") status.textContent="Η σάρωση δεν ολοκληρώθηκε: "+(runState.error||"άγνωστο σφάλμα");
+      else status.textContent=count?"Υπάρχουν αποθηκευμένα ιστορικά δεδομένα. Πάτησε για νέα σάρωση.":"Δεν έχει επιβεβαιωθεί ακόμη ολοκληρωμένη σάρωση.";
+    }
+  };
+  async function refresh(){
+    try{const r=await fetch("/api/pre-match/scan",{cache:"no-store"});const data=await r.json();if(r.ok)showSummary(data);else status.textContent="Δεν ήταν δυνατή η ανάγνωση της κατάστασης της σάρωσης.";}
+    catch(e){status.textContent="Δεν υπάρχει σύνδεση με την υπηρεσία Pre-Match.";}
+  }
+  async function poll(){
+    await refresh();
+    if(run.disabled)setTimeout(poll,5000);
+  }
+  run?.addEventListener("click",async()=>{
+    run.disabled=true;status.textContent="Εκκίνηση σάρωσης…";
+    try{
+      const r=await fetch("/api/pre-match/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+      const data=await r.json();
+      if(!r.ok)throw new Error(data?.run?.error||data?.error||"Η σάρωση δεν ξεκίνησε");
+      if(data.run?.status==="complete"){showSummary(data);return;}
+      status.textContent="Η σάρωση ξεκίνησε. Συλλέγονται τα ιστορικά δεδομένα…";
+      setTimeout(poll,2500);
+    }catch(e){run.disabled=false;status.textContent="Σφάλμα: "+String(e.message||e);}
+  });
+})();</script>
 <div class="notification-optin notification-optin-global" aria-label="Ρυθμίσεις ειδοποιήσεων">
  <strong>🔔 Ειδοποιήσεις GoalMatrix</strong>
  <div class="notification-optin-row"><button type="button" id="enablePushNotifications" class="login">🔔 Ενεργοποίηση AI</button><button type="button" id="disablePushNotifications" class="login">🔕 Απενεργοποίηση AI</button><span id="pushNotificationStatus" class="subtle">AI ειδοποιήσεις</span></div>
