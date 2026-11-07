@@ -15,7 +15,7 @@ if (!connectionString) {
 
 const pool = new Pool({
   connectionString,
-  ssl: /localhost|127\\.0\\.1/.test(connectionString)
+  ssl: /localhost|127\.0\.0\.1/.test(connectionString)
     ? false
     : { rejectUnauthorized: false },
   max: 1,
