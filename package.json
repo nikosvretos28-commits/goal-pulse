@@ -5,7 +5,8 @@
   "description": "Goal Pulse live-score API with secure PitchAPI proxy and Web Push alerts",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test late-over-intelligence.test.js"
+    "test": "node --test late-over-intelligence.test.js",
+    "check:storage": "node scripts/check-persistent-storage.cjs"
   },
   "engines": {
     "node": ">=24.18.0 <25"
