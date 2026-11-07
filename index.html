@@ -3891,6 +3891,7 @@ async function reconcileHistoricalAlertSettlements(){
  historicalAlertSettlementPromise=(async()=>{
   const pending=signalAlertHistory.filter(a=>{
    if(!a||!a.eventId||!Number.isFinite(Number(a.createdAt)))return false;
+   if(a.manualBetOutcome||a.betSettlementRule==='manual_history_entry')return false;
    const market=String(a.market||'').trim();
    const expectedScope=/^1ο ημίχρονο/i.test(market)?'first_half':/^2ο ημίχρονο/i.test(market)?'second_half':'';
    const scopeMismatch=!!expectedScope&&String(a.betScoreScope||'')!==expectedScope;
