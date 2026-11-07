@@ -160,7 +160,9 @@ async function runProtocolAnalyst() {
     const allRecords = result.rows.map(row => {
       const p = row.payload || {};
       const won = p.betOutcome === "won";
-      const minute = Number(p.minuteNumber ?? String(p.minute || "").match(/\d{1,3}/)?.[0]);
+      const minuteCandidate = p.minuteNumber !== null && p.minuteNumber !== undefined && String(p.minuteNumber).trim() !== ""
+        ? p.minuteNumber : String(p.minute || "").match(/\d{1,3}/)?.[0];
+      const minute = Number(minuteCandidate);
       const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : NaN;
       const stats = p.statsAtSignal || {};
       return {
@@ -203,6 +205,11 @@ async function runProtocolAnalyst() {
       return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
     };
     const overall = summarize(records);
+    // Diagnose the requested late-alert windows independently of the live protocol's 88′ cutoff.
+    const bySignalWindow = [
+      { window: "1ο ημίχρονο 35′–40′", ...summarize(allRecords.filter(row => row.phase === "first_half" && row.minute >= 35 && row.minute <= 40)) },
+      { window: "2ο ημίχρονο 76′–90′", ...summarize(allRecords.filter(row => row.phase === "second_half" && row.minute >= 76 && row.minute <= 90)) }
+    ];
     const segment = (field, label, sourceRows = records) => {
       const values = [...new Set(sourceRows.map(row => row[field]))].sort();
       return values.map(value => ({ [label]: value, ...summarize(sourceRows.filter(row => row[field] === value)) }))
@@ -331,6 +338,7 @@ async function runProtocolAnalyst() {
       },
       byOdds: segment("oddsBand", "oddsBand"),
       byMinute: segment("minuteBand", "minuteBand"),
+      bySignalWindow,
       byPeriod: segment("phase", "period"),
       byShots: [],
       byOnTarget: segment("onTargetBand", "onTargetBand"),
@@ -1541,6 +1549,29 @@ const server = http.createServer(async (req, res) => {
       const rows = result.rows.map(row => ({ id: row.alert_id, eventId: row.event_id, createdAt: row.created_at, payload: row.payload || {} }));
       const terminal = rows.filter(row => ['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()));
       const pending = rows.filter(row => !['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()));
+      const signalMinute = payload => {
+        const raw = payload.minuteNumber !== null && payload.minuteNumber !== undefined && String(payload.minuteNumber).trim() !== ""
+          ? payload.minuteNumber : String(payload.minute || "").match(/\\d{1,3}/)?.[0];
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : null;
+      };
+      const summarizeSignalWindow = (period, minMinute, maxMinute, label) => {
+        const sample = rows.filter(row => row.payload.periodAtSignal === period && signalMinute(row.payload) !== null
+          && signalMinute(row.payload) >= minMinute && signalMinute(row.payload) <= maxMinute);
+        const outcomes = sample.map(row => String(row.payload.betOutcome || "pending").toLowerCase());
+        const wins = outcomes.filter(value => value === "won").length;
+        const losses = outcomes.filter(value => value === "lost").length;
+        const pushes = outcomes.filter(value => value === "push").length;
+        const voids = outcomes.filter(value => value === "void").length;
+        const settled = wins + losses;
+        return { window: label, total: sample.length, settled, wins, losses,
+          pending: sample.length - settled - pushes - voids, pushes, voids,
+          successRate: settled ? Math.round(wins / settled * 1000) / 10 : null };
+      };
+      const bySignalWindow = [
+        summarizeSignalWindow("first_half", 35, 40, "1ο ημίχρονο 35′–40′"),
+        summarizeSignalWindow("second_half", 76, 90, "2ο ημίχρονο 76′–90′")
+      ];
       const byOutcome = {};
       const byPeriod = {};
       for (const row of terminal) {
@@ -1655,7 +1686,7 @@ const server = http.createServer(async (req, res) => {
         settledWinLossSample: winRate.length,
         wins, losses: winRate.length - wins,
         successRate: winRate.length ? Math.round(wins / winRate.length * 1000) / 10 : null,
-        byOutcome, byPeriod,
+        byOutcome, byPeriod, bySignalWindow,
         integrity: { issueCount: issues.length, issueLimit: 100, issues },
         note: "Read-only audit. Pending age helps identify stale alerts but does not prove match completion; stored outcomes are not independently checked against provider final scores."
       });
