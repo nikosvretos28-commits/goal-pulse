@@ -1754,7 +1754,7 @@ const server = http.createServer(async (req, res) => {
       }));
       if (!records.length) return send(res, 400, { error: "No valid High Activity observations supplied" });
       if (!highActivityDbReady) {
-        for (const record of records) saveVolatileRecord(volatileHighActivityHistory, record.observation_id, record.payload, ["outcome", "settledAt", "settlementReason"]);
+        for (const record of records) saveVolatileRecord(volatileHighActivityHistory, record.observation_id, record.payload, ["outcome", "settledAt", "settlementReason", "settlementScore", "settlementProvider", "settlementFixtureId", "settlementFixtureDate", "settlementLeague"]);
         return send(res, 200, { ok: true, saved: records.length, persistent: false, volatile: true });
       }
       await highActivityHistoryPool.query(
@@ -1767,7 +1767,12 @@ const server = http.createServer(async (req, res) => {
            THEN EXCLUDED.payload || jsonb_build_object(
              'outcome', high_activity_history.payload->'outcome',
              'settledAt', high_activity_history.payload->'settledAt',
-             'settlementReason', high_activity_history.payload->'settlementReason'
+             'settlementReason', high_activity_history.payload->'settlementReason',
+             'settlementScore', high_activity_history.payload->'settlementScore',
+             'settlementProvider', high_activity_history.payload->'settlementProvider',
+             'settlementFixtureId', high_activity_history.payload->'settlementFixtureId',
+             'settlementFixtureDate', high_activity_history.payload->'settlementFixtureDate',
+             'settlementLeague', high_activity_history.payload->'settlementLeague'
            )
            ELSE EXCLUDED.payload
          END,updated_at=NOW()`,
