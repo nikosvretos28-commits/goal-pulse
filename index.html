@@ -2249,7 +2249,7 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
     const summary=data?.summary||{};
     const count=Number(summary.teams||0),competitions=Number(summary.competitions||0),fixtures=Number(summary.fixtures||0);
     details.textContent=count
-      ? "Αποθηκευμένα ιστορικά προφίλ: "+count+" ομάδες σε "+competitions+" διοργανώσεις · έως "+fixtures+" ολοκληρωμένοι αγώνες ανά διοργάνωση. Αποθήκευση: "+(data.persistent?"μόνιμη βάση δεδομένων":"προσωρινή μνήμη").
+      ? "Αποθηκευμένα ιστορικά προφίλ: "+count+" ομάδες σε "+competitions+" διοργανώσεις · έως "+fixtures+" ολοκληρωμένοι αγώνες ανά διοργάνωση. Αποθήκευση: "+(data.persistent?"μόνιμη βάση δεδομένων":"προσωρινή μνήμη")
       : "Δεν υπάρχουν ακόμη αποθηκευμένα ιστορικά προφίλ για τις τελευταίες 30 ημέρες.";
     const runState=data?.run||{};
     if(runState.status==="running"){status.textContent="Η σάρωση εκτελείται στο παρασκήνιο…";run.disabled=true;}
