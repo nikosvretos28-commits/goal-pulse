@@ -2422,14 +2422,9 @@ const server = http.createServer(async (req, res) => {
             const liveStatusIsFinished = /finished|full.?time|ended|final|\bft\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
             if (secondHalf && completed) {
               live = completed;
-            } else if (firstHalf && completed && completed.homeHtScore != null && completed.awayHtScore != null &&
-                       (!live || liveStatusIsFinished)) {
-              // Prefer the completed scoreboard's first-period score over stale live placeholders.
+            } else if (firstHalf && completed && completed.homeHtScore != null && completed.awayHtScore != null) {
+              // A matched completed fixture is definitive; prefer its actual first-period score.
               live = completed;
-            } else if (firstHalf && live && completed && live.homeHtScore == null && live.awayHtScore == null &&
-                       completed.homeHtScore != null && completed.awayHtScore != null) {
-              // Reference only until the feed confirms that the first half has ended.
-              live = { ...live, homeHtScore: completed.homeHtScore, awayHtScore: completed.awayHtScore };
             }
             if (/κόρνερ|corner/i.test(String(alert.market || ""))) continue;
             if (!live) continue;
