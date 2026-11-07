@@ -4062,6 +4062,7 @@ async function reconcileHistoricalAlertSettlements(){
    const h1=firstHalfGoals(home),a1=firstHalfGoals(away);
    const halfTotal=h1!=null&&a1!=null?h1+a1:null;
    const market=String(alert.market||'').trim();
+   const signalPeriod=String(alert.periodAtSignal||'').toLowerCase();
    const isAsian=String(alert.lineType||'')==='asian'||/asian|ασιατικ[όο]/i.test(market);
    const isFirstHalf=/^1ο ημίχρονο/i.test(market)||signalPeriod==='first_half';
    const isSecondHalf=/^2ο ημίχρονο/i.test(market)||isAsian&&alert.asianPeriod==='second_half';
