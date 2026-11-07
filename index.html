@@ -3665,20 +3665,22 @@ function evaluateHighActivityObservations(ranked){
  for(const [eventId,rankedItem] of active){
   const match=rankedItem.match;
   const stats=liveMetricsCache.get(eventId);
-  const clockText=String(match.clock||stats?.live_minute||stats?.liveMinute||stats?.elapsed||stats?.time?.elapsed||stats?.minute||'');
-  const clock=clockText.match(/\d{1,3}/);
-  const minute=clock?Number(clock[0]):null;
+  const clockValues=[match.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute];
+  const minute=parseGoalMatrixLiveMinute(clockValues);
   if(!Number.isFinite(minute))continue;
-  const half=minute<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ';
-  const periodKey=minute<=45?'1H':'2H';
+  const periodText=clockValues.map(value=>String(value??'')).join(' ')+' '+String(match.statusText||match.status||match.state||'');
+  const isSecondHalf=/\b(?:2h|second[\s_-]*half|2nd half|2ο ημίχρονο)\b/i.test(periodText)||minute>=46;
+  const half=isSecondHalf?'2ο ΗΜΙΧΡΟΝΟ':'1ο ΗΜΙΧΡΟΝΟ';
+  const periodKey=isSecondHalf?'2H':'1H';
   const score=highActivityScore(match);if(!score)continue;
+  const numericOrNull=value=>value==null||value===''||!Number.isFinite(Number(value))?null:Number(value);
   const signalStats={
-   totalOnTarget:Number.isFinite(Number(rankedItem.totalOnTarget))?Number(rankedItem.totalOnTarget):null,
-   recentOnTarget:Number.isFinite(Number(rankedItem.recentOnTarget))?Number(rankedItem.recentOnTarget):null,
-   recentShotsOnTarget10m:Number.isFinite(Number(rankedItem.recentShotsOnTarget10m))?Number(rankedItem.recentShotsOnTarget10m):null,
-   shotsOnTargetInsideBox:Number.isFinite(Number(rankedItem.shotsOnTargetInsideBox))?Number(rankedItem.shotsOnTargetInsideBox):null,
-   bigChances:Number.isFinite(Number(rankedItem.bigChances))?Number(rankedItem.bigChances):null,
-   intensity:Number.isFinite(Number(rankedItem.intensity))?Number(rankedItem.intensity):null
+   totalOnTarget:numericOrNull(rankedItem.totalOnTarget),
+   recentOnTarget:numericOrNull(rankedItem.recentOnTarget),
+   recentShotsOnTarget10m:numericOrNull(rankedItem.recentShotsOnTarget10m),
+   shotsOnTargetInsideBox:numericOrNull(rankedItem.shotsOnTargetInsideBox),
+   bigChances:numericOrNull(rankedItem.bigChances),
+   intensity:numericOrNull(rankedItem.intensity)
   };
   // One observation per distinct match/half/minute/score/stat snapshot. Repeated refreshes
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
@@ -3768,6 +3770,23 @@ function playHighActivityEntrySound(){
   });
  }catch(error){console.warn('[HI ACTIVITY sound] Playback failed:',error?.message||error);}
 }
+function parseGoalMatrixLiveMinute(values){
+ const candidates=(Array.isArray(values)?values:[values]).map(value=>String(value??'').trim()).filter(Boolean);
+ for(const text of candidates){
+  if(/^(?:1h|2h|ht|ft|live)$/i.test(text))continue;
+  let match=text.match(/(?:^|\b)(?:1h|2h|first half|second half)\s*[:,-]?\s*(\d{1,3})(?:\s*\+\s*\d{1,2})?/i);
+  if(match)return Number(match[1]);
+  match=text.match(/(?:^|\b)(\d{1,3})\s*\+\s*\d{1,2}(?:\s*['′’]|\s*(?:min|minute)s?)?/i);
+  if(match)return Number(match[1]);
+  match=text.match(/^\s*(\d{1,3})(?:\s*['′’]|\s*(?:min|minute)s?)?\s*$/i);
+  if(match)return Number(match[1]);
+  match=text.match(/^\s*(\d{1,3}):\d{2}\s*$/);
+  if(match)return Number(match[1]);
+  match=text.match(/(?:^|\s)(\d{1,3})\s*(?:['′’]|(?:min|minute)s?)\b/i);
+  if(match)return Number(match[1]);
+ }
+ return null;
+}
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
  const now=Date.now();
@@ -3777,18 +3796,17 @@ function renderHighActivityMatches(){
   // the literal "LIVE" in m.clock, which must not hide the minute supplied by live metrics.
   const clockCandidates=[m.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute]
    .map(value=>String(value??"").trim().toLowerCase()).filter(Boolean);
-  const clockText=clockCandidates.find(value=>/\d{1,3}/.test(value))||clockCandidates[0]||"";
+  const minute=parseGoalMatrixLiveMinute(clockCandidates);
+  const clockText=clockCandidates.find(value=>parseGoalMatrixLiveMinute([value])!==null)||clockCandidates[0]||"";
   const statusText=String(m.statusText||m.status||m.state||"").toLowerCase();
   if(/\b(?:ht|half[\s-]*time|halftime|interval)\b/i.test(clockText+" "+statusText))return null;
   // Accept the live-state spellings used by different feeds; the live board may already display the match.
   const liveState=/^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/i.test(String(m.state||m.status||"").trim());
   if(!liveState&& !/\b(?:live|playing|in progress)\b/i.test(statusText))return null;
   // Preserve existing first-half HI Activity; add a separate normal-time second-half trial window.
-  const minuteMatch=String(clockText).match(/(\d{1,3})/);
-  const minute=minuteMatch?Number(minuteMatch[1]):null;
   const periodText=String(clockText)+' '+statusText;
   const isHalfTime=/\b(?:ht|half[ -]*time|halftime|interval)\b/i.test(periodText);
-  const isSecondHalf=!isHalfTime&&(minute>=46||/second half|2nd half|2ο ημίχρονο/i.test(periodText));
+  const isSecondHalf=!isHalfTime&&(minute>=46||/second[\s_-]*half|2nd half|2ο ημίχρονο/i.test(periodText));
   const firstHalfWindow=Number.isFinite(minute)&&!isHalfTime&&!isSecondHalf&&minute>=1&&minute<=40;
   const secondHalfTrialWindow=Number.isFinite(minute)&&!isHalfTime&&isSecondHalf&&minute>=46&&minute<=90;
   if(!firstHalfWindow&&!secondHalfTrialWindow)return null;
@@ -3899,8 +3917,7 @@ function renderHighActivityMatches(){
   // Supplementary shot-quality support only; these statistics never trigger High Activity alone.
   const shotQualitySupport=Math.min(2,insideBoxSotSupport*0.5)+Math.min(2,bigChancesSupport*0.75);
   const pressureScore=delta.shotsOnTarget+shotQualitySupport;
-  // HI Activity SOT triggers: 3+ in the last 5 minutes, 6+ in the last 10 minutes,
-  // and 8+ combined match SOT by minute 35. Existing time windows and xG rule remain.
+  // Preserve the existing HI Activity thresholds; this PR only fixes data parsing and integrity.
   const strictRecentSotStrong=firstHalfWindow&&hiActivitySot5m!==null&&hiActivitySot5m>=3;
   const strictRecentSot10m=firstHalfWindow&&hiActivitySot10m!==null&&hiActivitySot10m>=6;
   const xGBothTeamsQualified=firstHalfWindow&&xGValues.length>=2&&xGValues.every(value=>value!==null&&Number.isFinite(value)&&value>=2.0);
@@ -4190,6 +4207,7 @@ async function runSignalCheck(){
   // was already marked "confirmed" when the target goal arrived during the match.
   signalAlertHistory.forEach(a=>{
     if(!a||a.level==='VIP'||a.manualOutcome||a.manualBetOutcome||a.betSettlementRule==='manual_history_entry'||['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))return;
+     if(alertMarketPeriod(a)==='first_half')return;
     const marketText=String(a.market||'').trim();
     if(!/^Over\s*\d+(?:[.,]\d+)?$/i.test(marketText)||String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText))return;
     const normTeam=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
@@ -4214,7 +4232,8 @@ async function runSignalCheck(){
     const match=allMatches.find(m=>String(m.id)===String(a.eventId));
     if(!match)return;
     const clock=String(match.clock||'').toUpperCase();
-    const explicitHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/.test(clock);
+    const periodStatus=[match.clock,match.statusText,match.status,match.state].filter(Boolean).join(' ').toUpperCase();
+    const explicitHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/.test(periodStatus);
     const minuteMatch=String(a.minuteNumber??a.minute??'').match(/(\d{1,3})/);
     const signalMinute=Number(a.minuteNumber??(minuteMatch?minuteMatch[1]:NaN));
     const period=String(a.periodAtSignal||((/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(clock))||(Number.isFinite(signalMinute)&&signalMinute>45)?'second_half':'first_half'));
@@ -4223,7 +4242,7 @@ async function runSignalCheck(){
     const isAsianBet=String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText);
     // New Asian alerts are evaluated only on second-half goals, after full time.
     const isFullMatchOver=/^Over\s*\d+(?:[.,]\d+)?$/i.test(marketText.trim())&&!isAsianBet;
-    const periodFinished=isAsianBet||isFullMatchOver?match.state==='post':(firstHalf?explicitHalfTime:match.state==='post');
+    const periodFinished=firstHalf?explicitHalfTime:match.state==='post';
     if(!periodFinished)return;
     if(a.market==='πιθανό γκολ'||isFullMatchOver||marketText.startsWith('1ο ημίχρονο Over ')||marketText.startsWith('1ο ημίχρονο · Ασιατικό Over ')||marketText.startsWith('2ο ημίχρονο Over ')||/ασιατικ[όο].*over|over.*ασιατικ[όο]/i.test(marketText)){
       const finalScore=Number(match.home.score||0)+Number(match.away.score||0);
