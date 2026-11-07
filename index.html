@@ -3380,12 +3380,23 @@ function highActivityInPeriod(timestamp,period){
 function isHighActivityResearchObservation(item){
  return Boolean(item?.observationId)&&Number.isFinite(Number(item?.createdAt));
 }
+function isVerifiedHighActivitySettlement(item){
+ const score=item?.settlementScore,scope=String(score?.scope||'');
+ if(!score||!['first_half','full_time'].includes(scope)||!item.settlementProvider||!item.settlementFixtureId)return false;
+ if(score.home==null||score.away==null||!Number.isFinite(Number(score.home))||!Number.isFinite(Number(score.away)))return false;
+ return Number(score.total)===Number(score.home)+Number(score.away);
+}
+function isVerifiedAlertSettlement(alert){
+ const scope=String(alert?.betScoreScope||''),score=String(alert?.betFinalScore||'');
+ if(!['first_half','full_time'].includes(scope)||!/^\d+\s*-\s*\d+$/.test(score)||!alert.betSettlementProvider||!alert.betSettlementFixtureId)return false;
+ return scope!=='first_half'||(Boolean(alert.betHalfTimeScore)&&String(alert.betHalfTimeScore)===score);
+}
 function highActivityTeamAnalytics(){
  const byTeam=new Map(),seen=new Set();
  const normalize=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('el').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  for(const item of highActivityObservations){
   const id=String(item?.observationId||'');
-  if(!isHighActivityResearchObservation(item)||!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase()))continue;
+  if(!isHighActivityResearchObservation(item)||!id||item.teamStatsExcluded||seen.has(id)||!['won','lost'].includes(String(item.outcome||'').toLowerCase())||!isVerifiedHighActivitySettlement(item))continue;
   seen.add(id);
   for(const rawName of [item.home,item.away]){
    const name=String(rawName||'').trim(),key=normalize(name);
@@ -3410,7 +3421,7 @@ function matrixAnalyticsNormalizeTeam(value){
 function matrixAnalyticsRowsForAlerts(level){
  const byTeam=new Map(),seen=new Set();
  for(const alert of (Array.isArray(signalAlertHistory)?signalAlertHistory:[])){
-  if(!alert||!Number.isFinite(Number(alert.createdAt)))continue;
+  if(!alert||!Number.isFinite(Number(alert.createdAt))||!isVerifiedAlertSettlement(alert))continue;
   const isVip=String(alert.level||'AI').toUpperCase()==='VIP';
   if((level==='VIP')!==isVip)continue;
   const outcome=String(alert.betOutcome||'').toLowerCase();
@@ -3433,7 +3444,7 @@ function matrixAnalyticsTeamSection(title,rows,description){
  const qualified=rows.filter(row=>row.settled>=4),small=rows.filter(row=>row.settled<4);
  const table=qualified.length?'<div class="ha-team-table-wrap"><table class="ha-team-table"><thead><tr><th>Ομάδα</th><th>Επιτυχίες</th><th>Ποσοστό</th><th>Δείγμα</th></tr></thead><tbody>'+qualified.slice(0,50).map(row=>'<tr><td>'+esc(row.name)+'</td><td>'+row.wins+'/'+row.settled+'</td><td><strong>'+row.rate+'%</strong></td><td>'+row.settled+'</td></tr>').join('')+'</tbody></table></div>':'<p class="subtle">Δεν υπάρχουν ακόμη ομάδες με τουλάχιστον 4 ολοκληρωμένες περιπτώσεις.</p>';
  const insufficient=small.length?'<details><summary>Ανεπαρκές δείγμα ('+small.length+' ομάδες)</summary><div class="ha-team-insufficient-list">'+small.map(row=>'<span>'+esc(row.name)+' · '+row.wins+'/'+row.settled+' · Ανεπαρκές δείγμα</span>').join('')+'</div></details>':'';
- return '<section class="ha-team-analytics gm-matrix-category"><h3>'+title+'</h3><p class="subtle">'+description+' · Μετράμε όλες τις μοναδικές ολοκληρωμένες εγγραφές. Εκκρεμείς, void και push εξαιρούνται. Ελάχιστο δείγμα: 4.</p>'+table+insufficient+'</section>';
+ return '<section class="ha-team-analytics gm-matrix-category"><h3>'+title+'</h3><p class="subtle">'+description+' · Μετράμε μόνο εγγραφές με επαληθεύσιμο σκορ διακανονισμού, πηγή και ταυτοποιημένο αγώνα. Παλαιές μη επαληθευμένες εγγραφές, εκκρεμείς, void και push εξαιρούνται. Ελάχιστο δείγμα: 4.</p>'+table+insufficient+'</section>';
 }
 function renderMatrixAnalytics(){
  const root=document.getElementById('matrixAnalyticsContent');if(!root)return;
@@ -3453,7 +3464,8 @@ function renderHighActivityAnalyst(){
  const root=document.getElementById('highActivityAnalystPanel');if(!root)return;
  const allRecords=highActivityObservations.slice().sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
  const records=allRecords.filter(x=>highActivityInPeriod(x.createdAt,highActivityHistoryPeriod));
- const settled=records.filter(x=>x.outcome==='won'||x.outcome==='lost');
+ const settled=records.filter(x=>(x.outcome==='won'||x.outcome==='lost')&&isVerifiedHighActivitySettlement(x));
+ const legacySettled=records.filter(x=>(x.outcome==='won'||x.outcome==='lost')&&!isVerifiedHighActivitySettlement(x));
  const wins=settled.filter(x=>x.outcome==='won').length,losses=settled.length-wins;
  const rate=settled.length?Math.round(wins/settled.length*100):null;
  const pending=records.filter(x=>x.outcome==='pending').length;
@@ -3469,15 +3481,16 @@ function renderHighActivityAnalyst(){
  }
  const todayAthens=(()=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Athens',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=k=>parts.find(p=>p.type===k)?.value||'';return get('year')+'-'+get('month')+'-'+get('day')})();
  const dailyRecords=allRecords.filter(x=>{let n=Number(x.createdAt);if(Number.isFinite(n)&&n>0&&n<1e12)n*=1000;if(!Number.isFinite(n)||n<=0)return false;const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Athens',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(n));const get=k=>parts.find(p=>p.type===k)?.value||'';return get('year')+'-'+get('month')+'-'+get('day')===todayAthens;});
- const dailySettled=dailyRecords.filter(x=>x.outcome==='won'||x.outcome==='lost');
+ const dailySettled=dailyRecords.filter(x=>(x.outcome==='won'||x.outcome==='lost')&&isVerifiedHighActivitySettlement(x));
+ const dailyUnverified=dailyRecords.filter(x=>(x.outcome==='won'||x.outcome==='lost')&&!isVerifiedHighActivitySettlement(x)).length;
  const dailyWins=dailySettled.filter(x=>x.outcome==='won').length,dailyLosses=dailySettled.length-dailyWins;
- const dailyPending=dailyRecords.filter(x=>x.outcome!=='won'&&x.outcome!=='lost').length;
+ const dailyPending=dailyRecords.filter(x=>x.outcome==='pending').length;
  const dailyRate=dailySettled.length?Math.round(dailyWins/dailySettled.length*1000)/10:null;
 const escHa=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const leaderboard=eligibleTeams.length?'<div class="ha-team-table-wrap"><table class="ha-team-table"><thead><tr><th>Ομάδα</th><th>Επιτυχίες</th><th>Ποσοστό</th></tr></thead><tbody>'+eligibleTeams.slice(0,30).map(x=>'<tr><td>'+escHa(x.name)+'</td><td>'+x.wins+'/'+x.settled+'</td><td><strong>'+x.rate+'%</strong></td></tr>').join('')+'</tbody></table></div>':'<p class="subtle">Δεν υπάρχει ακόμη ομάδα με 4 ολοκληρωμένες καταγραφές HI ACTIVITY.</p>';
  const insufficient=insufficientTeams.length?'<details><summary>Ομάδες με ανεπαρκές δείγμα ('+insufficientTeams.length+')</summary><div class="ha-team-insufficient-list">'+insufficientTeams.map(x=>'<span>'+escHa(x.name)+' · Ανεπαρκές δείγμα ('+x.settled+'/4)</span>').join('')+'</div></details>':'';
  const historyRows=allRecords;
- root.innerHTML='<h3>📅 ΗΜΕΡΗΣΙΑ ΑΝΑΦΟΡΑ · HI ACTIVITY</h3><p class="subtle">Ανεξάρτητη αναφορά όλων των ενδείξεων HI ACTIVITY της σημερινής ημερομηνίας Ελλάδας, για 1ο και 2ο ημίχρονο.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΟ ΣΗΜΕΡΑ</small><strong>'+dailyRecords.length+'</strong></div><div><small>ΚΕΡΔΙΣΜΕΝΑ / ΧΑΜΕΝΑ</small><strong>'+dailyWins+' / '+dailyLosses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΣΤΑ SETTLED</small><strong>'+(dailyRate==null?'—':dailyRate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΗ</small><strong>'+dailyPending+'</strong></div></div><p class="subtle">Ημερομηνία Ελλάδας: '+todayAthens+' · Επιτυχία HI ACTIVITY = τουλάχιστον 1 νέο γκολ μετά την ένδειξη έως τη λήξη.</p><details open><summary>📋 ΙΣΤΟΡΙΚΟ ΑΓΩΝΩΝ HI ACTIVITY ('+allRecords.length+')</summary>'+(historyRows.length?'<div class="protocol-analyst-grid">'+historyRows.map(x=>{const outcome=x.outcome==='won'?'WON':x.outcome==='lost'?'LOST':'ΕΚΚΡΕΜΕΙ';const issuedMinute=x.minute!=null&&x.minute!==''&&Number.isFinite(Number(x.minute))?Number(x.minute)+'′':(x.minute||'—');const signalScore=x.scoreAtSignal?String(x.scoreAtSignal.home??'—')+'–'+String(x.scoreAtSignal.away??'—'):'—';const currentScore=x.currentScore?String(x.currentScore.home??'—')+'–'+String(x.currentScore.away??'—'):'—';const scoreLabel=x.outcome==='won'||x.outcome==='lost'?'Τελικό σκορ':'Τρέχον σκορ';const stamp=Number(x.createdAt);const issuedAt=Number.isFinite(stamp)?new Date(stamp<1e12?stamp*1000:stamp).toLocaleString('el-GR'):'—';return '<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+outcome+'</span><small>'+escHa(x.half||'')+' · Καταγραφή '+escHa(issuedMinute)+' · Σκορ τότε '+escHa(signalScore)+' · '+scoreLabel+' '+escHa(currentScore)+' · '+escHa(issuedAt)+'</small></div>'}).join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
+ root.innerHTML='<h3>📅 ΗΜΕΡΗΣΙΑ ΑΝΑΦΟΡΑ · HI ACTIVITY</h3><p class="subtle">Ανεξάρτητη αναφορά όλων των ενδείξεων HI ACTIVITY της σημερινής ημερομηνίας Ελλάδας, για 1ο και 2ο ημίχρονο.</p><div class="protocol-analyst-summary"><div><small>ΣΥΝΟΛΟ ΣΗΜΕΡΑ</small><strong>'+dailyRecords.length+'</strong></div><div><small>ΚΕΡΔΙΣΜΕΝΑ / ΧΑΜΕΝΑ</small><strong>'+dailyWins+' / '+dailyLosses+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΣΤΑ SETTLED</small><strong>'+(dailyRate==null?'—':dailyRate+'%')+'</strong></div><div><small>ΕΚΚΡΕΜΗ</small><strong>'+dailyPending+'</strong></div><div><small>ΠΑΛΙΑ ΜΗ ΕΠΑΛΗΘΕΥΜΕΝΑ</small><strong>'+dailyUnverified+'</strong></div></div><p class="subtle">Ημερομηνία Ελλάδας: '+todayAthens+' · Το ποσοστό υπολογίζεται μόνο σε εγγραφές με αποθηκευμένο σκορ διακανονισμού, πηγή και ταυτοποιημένο αγώνα. Οι παλιές εγγραφές χωρίς αυτά εξαιρούνται μέχρι επαλήθευση.</p><details open><summary>📋 ΙΣΤΟΡΙΚΟ ΑΓΩΝΩΝ HI ACTIVITY ('+allRecords.length+')</summary>'+(historyRows.length?'<div class="protocol-analyst-grid">'+historyRows.map(x=>{const verified=isVerifiedHighActivitySettlement(x);const outcome=x.outcome==='won'?(verified?'WON':'WON · ΠΑΛΑΙΟ / ΜΗ ΕΠΑΛΗΘΕΥΜΕΝΟ'):x.outcome==='lost'?(verified?'LOST':'LOST · ΠΑΛΑΙΟ / ΜΗ ΕΠΑΛΗΘΕΥΜΕΝΟ'):'ΕΚΚΡΕΜΕΙ';const issuedMinute=x.minute!=null&&x.minute!==''&&Number.isFinite(Number(x.minute))?Number(x.minute)+'′':(x.minute||'—');const signalScore=x.scoreAtSignal?String(x.scoreAtSignal.home??'—')+'–'+String(x.scoreAtSignal.away??'—'):'—';const displayScore=x.settlementScore?String(x.settlementScore.home??'—')+'–'+String(x.settlementScore.away??'—'):(x.currentScore?String(x.currentScore.home??'—')+'–'+String(x.currentScore.away??'—'):'—');const scoreLabel=x.outcome==='won'||x.outcome==='lost'?(verified?'Σκορ διακανονισμού':'Αποθηκευμένο σκορ · μη επαληθευμένο'):'Τρέχον σκορ';const stamp=Number(x.createdAt);const issuedAt=Number.isFinite(stamp)?new Date(stamp<1e12?stamp*1000:stamp).toLocaleString('el-GR'):'—';return '<div class="protocol-analyst-stat"><strong>'+escHa(x.home)+' – '+escHa(x.away)+'</strong><span>'+outcome+'</span><small>'+escHa(x.half||'')+' · Καταγραφή '+escHa(issuedMinute)+' · Σκορ τότε '+escHa(signalScore)+' · '+scoreLabel+' '+escHa(displayScore)+' · '+escHa(issuedAt)+'</small></div>'}).join('')+'</div>':'<p>Δεν υπάρχουν ακόμη καταγραφές.</p>')+'</details>';
 }
 const highActivityHistoryPendingWrites=new Map();
 let highActivityHistorySavePromise=null;
