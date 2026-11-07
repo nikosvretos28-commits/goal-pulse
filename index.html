@@ -4075,7 +4075,7 @@ async function runSignalCheck(){
   // Settle regular full-match AI Over bets automatically at full time, even if the alert itself
   // was already marked "confirmed" when the target goal arrived during the match.
   signalAlertHistory.forEach(a=>{
-    if(!a||a.level==='VIP'||a.manualOutcome||['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))return;
+    if(!a||a.level==='VIP'||a.manualOutcome||a.manualBetOutcome||a.betSettlementRule==='manual_history_entry'||['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase()))return;
     const marketText=String(a.market||'').trim();
     if(!/^Over\s*\d+(?:[.,]\d+)?$/i.test(marketText)||String(a.lineType||'')==='asian'||/ασιατικ[όο]/i.test(marketText))return;
     const normTeam=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
@@ -4095,7 +4095,7 @@ async function runSignalCheck(){
     void persistAlertRecord(a);outcomesChanged=true;
   });
   signalAlertHistory.forEach(a=>{
-    if(a.outcome!=='εκκρεμεί'||a.manualOutcome||!a.createdAt)return;
+    if(a.outcome!=='εκκρεμεί'||a.manualOutcome||a.manualBetOutcome||a.betSettlementRule==='manual_history_entry'||!a.createdAt)return;
     if(a.source==='server-push'&&a.market==='πιθανό γκολ')return;
     const match=allMatches.find(m=>String(m.id)===String(a.eventId));
     if(!match)return;
@@ -4330,7 +4330,7 @@ signalResults.addEventListener('click',async event=>{
   const raw=String(input?.value||'').trim().replace(',','.');
   if(input)input.setCustomValidity('');if(raw!==''&&(!Number.isFinite(Number(raw))||Number(raw)<=1)){if(input)input.setCustomValidity('Η απόδοση πρέπει να είναι αριθμός μεγαλύτερος από 1');input?.reportValidity();return}
   item.oddsAtSignal=raw===''?null:Number(raw);
- }else{item.betOutcome=b.dataset.betAction;item.betSettledAt=Date.now();item.betSettlementRule='manual_history_entry';item.betSettlementLabel=b.dataset.betAction==='won'?'Χειροκίνητα καταχωρισμένο κερδισμένο':b.dataset.betAction==='lost'?'Χειροκίνητα καταχωρισμένο χαμένο':'Χειροκίνητα καταχωρισμένο άκυρο';}
+ }else{item.betOutcome=b.dataset.betAction;item.manualBetOutcome=true;item.betSettledAt=Date.now();item.betSettlementRule='manual_history_entry';item.betSettlementLabel=b.dataset.betAction==='won'?'Χειροκίνητα καταχωρισμένο κερδισμένο':b.dataset.betAction==='lost'?'Χειροκίνητα καταχωρισμένο χαμένο':'Χειροκίνητα καταχωρισμένο άκυρο';}
  item.betUpdatedAt=Date.now();item.recordUpdatedAt=item.betUpdatedAt;await persistAlertRecord(item);try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}showSignalHistory();
 });
 
