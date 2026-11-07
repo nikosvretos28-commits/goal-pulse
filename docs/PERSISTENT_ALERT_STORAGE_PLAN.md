@@ -83,7 +83,7 @@ This is a recommendation, not a claim that Neon has already been created or conn
 2. Add its connection string only as a secret environment variable in a separately approved test environment. Never commit credentials.
 3. Run a schema-only initialization and test insert/read/update/delete on synthetic test rows.
 4. Verify idempotent upserts and preservation of terminal outcomes (`won`, `lost`, `void`, `push`) when later updates contain pending/null values.
-5. Add a storage health check that clearly distinguishes persistent storage from volatile fallback. Never report a volatile save as a durable save.
+5. Add a storage health check that clearly distinguishes persistent storage from volatile fallback. Never report a volatile save as a durable save. The repository checker first tests connectivity and discovers the expected tables. On a brand-new empty database it reports `connected_schema_pending` without creating tables; the application's existing `ensure*Db()` startup paths remain responsible for schema initialization. Once the core alert and HI tables exist, it runs synthetic insert/read checks inside a transaction and rolls them back. It never retains test rows.
 6. Test restart recovery, duplicate alert IDs, pagination, retention, and database-unavailable behavior.
 7. Validate alert-history and HI Activity history independently. Do not alter alert generation or settlement logic in this storage-only phase.
 8. Only after separate approval, open a code PR for the persistence adapter and test suite. Keep the current protocols and live service unchanged until the owner explicitly approves merge/deploy.
@@ -107,4 +107,4 @@ This proposal does not change:
 - Render, Railway, or any live environment variables;
 - deployment, billing, paid services, or provider provisioning.
 
-The only scope of a future implementation PR is durable storage, integrity/health visibility, and independent read-only evaluation.
+The current draft PR is documentation plus a safe diagnostic script only. It does not connect Neon, initialize the database, or change the live service. The checker recognizes the six tables already created by the application's existing initialization functions (`alert_history`, `high_activity_history`, `protocol_analyst_reports`, `live_stat_snapshots`, `push_subscriptions`, and `pre_match_season_profiles`).
