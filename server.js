@@ -3,6 +3,7 @@ const webpush = require("web-push");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
+const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, findUniqueCompletedFixture } = require("./settlement");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -1615,14 +1616,19 @@ const server = http.createServer(async (req, res) => {
           if (p.periodAtSignal === 'second_half' && p.evaluationRule === 'end_of_first_half_score') addIssue(row, 'period_rule_conflict', 'Second-half alert is marked as settled using first-half score.');
           // Internal consistency check: compare stored settlement against its recorded score and Over line.
           // This does not independently verify the score with a provider; it catches contradictory stored outcomes.
-          const scoreMatch = String(p.betFinalScore || '').match(/^\\s*(\\d+)\\s*[-:]\\s*(\\d+)\\s*$/);
-          const overMatch = String(p.market || '').match(/\\bover\\s*(\\d+(?:\\.\\d+)?)/i);
+          const scoreMatch = String(p.betFinalScore || '').match(/^\s*(\d+)\s*[-:]\s*(\d+)\s*$/);
+          const overMatch = String(p.market || '').match(/\bover\s*(\d+(?:\.\d+)?)/i);
           const firstHalfSettlement = p.evaluationRule === 'end_of_first_half_score' || p.periodAtSignal === 'first_half';
-          const scoreScopeVerified = firstHalfSettlement
-            ? p.betScoreScope === 'first_half'
-            : (!p.betScoreScope || p.betScoreScope === 'full_time');
-          if (firstHalfSettlement && ['won','lost','push','void'].includes(outcome) && !scoreScopeVerified) {
-            addIssue(row, 'settlement_score_scope_unverified', 'Historical first-half result does not identify whether betFinalScore is the half-time score; its market outcome cannot be independently checked from this saved score alone.');
+          const expectedScoreScope = firstHalfSettlement ? 'first_half' : 'full_time';
+          const scoreScopeVerified = p.betScoreScope === expectedScoreScope;
+          if (!scoreScopeVerified) {
+            addIssue(row, 'settlement_score_scope_unverified', 'Saved score scope is missing or does not match the alert period; the outcome cannot be safely verified from this record.');
+          }
+          if (!p.betSettlementProvider || !p.betSettlementFixtureId) {
+            addIssue(row, 'settlement_source_unverified', 'Legacy settlement does not identify the score provider and fixture used.');
+          }
+          if (firstHalfSettlement && !p.betHalfTimeScore) {
+            addIssue(row, 'first_half_score_unverified', 'First-half settlement does not retain the exact half-time score separately.');
           }
           if (p.lineType === 'asian' && p.asianPeriod === 'second_half' && ['won','lost','push'].includes(outcome)) {
             const secondHalfGoals = Number(p.betSecondHalfGoals);
@@ -1779,7 +1785,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readJsonBody(req, 512 * 1024);
       const incoming = Array.isArray(body.observations) ? body.observations.slice(0, 100) : [];
-      const normalize = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const normalize = normalizeFixtureName;
       const slug = value => normalize(value).replace(/\s+/g, "-");
       const parseScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
       const resolved = [];
@@ -1788,7 +1794,7 @@ const server = http.createServer(async (req, res) => {
         let createdAt = Number(item.createdAt);
         if (createdAt > 0 && createdAt < 1e12) createdAt *= 1000;
         const date = new Date(createdAt).toISOString().slice(0, 10);
-        let match = null;
+        const candidateByKey = new Map();
         for (const teamName of [item.home, item.away]) {
           const key = date + "|" + slug(teamName);
           let cached = historicalTeamResultCache.get(key);
@@ -1808,20 +1814,33 @@ const server = http.createServer(async (req, res) => {
               historicalTeamResultCache.set(key, cached);
             }
           }
-          match = cached.matches.find(candidate => {
-            const home = candidate.home || candidate.home_name || candidate.home_team?.name || candidate.homeTeam?.name || "";
-            const away = candidate.away || candidate.away_name || candidate.away_team?.name || candidate.awayTeam?.name || "";
-            return normalize(home) === normalize(item.home) && normalize(away) === normalize(item.away);
-          }) || match;
-          if (match) break;
+          for (const candidate of cached.matches) {
+            const home = String(candidate.home || candidate.home_name || candidate.home_team?.name || candidate.homeTeam?.name || "").trim();
+            const away = String(candidate.away || candidate.away_name || candidate.away_team?.name || candidate.awayTeam?.name || "").trim();
+            const league = String(candidate.league?.name || candidate.league_name || candidate.competition?.name || candidate.competition_name || candidate.tournament?.name || "");
+            const fixtureDate = String(candidate.date || candidate.match_date || candidate.fixture_date || date).slice(0, 10);
+            const id = String(candidate.id || candidate.fixture_id || candidate.event_id || "");
+            const candidateKey = id ? "id:" + id : [fixtureDate, normalize(home), normalize(away), normalize(league)].join("|");
+            candidateByKey.set(candidateKey, { id, date: fixtureDate, home, away, league, raw: candidate });
+          }
         }
+        const fixture = findUniqueCompletedFixture([...candidateByKey.values()], {
+          eventId: item.providerFixtureId || "",
+          home: item.home, away: item.away, league: item.league || item.competition || "", date
+        });
+        const match = fixture?.raw;
         if (!match) continue;
         const homeScore = parseScore(match.home_score ?? match.homeScore ?? match.scores?.home ?? match.score?.home);
         const awayScore = parseScore(match.away_score ?? match.awayScore ?? match.scores?.away ?? match.score?.away);
         if (homeScore == null || awayScore == null) continue;
         const homeHtScore = parseScore(match.home_ht_score ?? match.homeHtScore ?? match.half_time_score?.home);
         const awayHtScore = parseScore(match.away_ht_score ?? match.awayHtScore ?? match.half_time_score?.away);
-        resolved.push({ observationId: String(item.observationId), homeScore, awayScore, homeHtScore, awayHtScore, status: "post", source: "SportScore" });
+        resolved.push({
+          observationId: String(item.observationId), homeScore, awayScore, homeHtScore, awayHtScore,
+          status: "post", source: "SportScore", fixtureId: fixture.id || null,
+          fixtureDate: fixture.date, league: fixture.league || null,
+          home: fixture.home, away: fixture.away
+        });
       }
       return send(res, 200, { ok: true, resolved });
     } catch (error) {
@@ -2274,8 +2293,7 @@ const server = http.createServer(async (req, res) => {
           }
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
           const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, "").trim();
-          const completedScoreboardByTeams = new Map();
-          const completedScoreboardById = new Map();
+          const completedScoreboardFixtures = [];
           for (const event of scoreboardEvents) {
             const competition = event.competitions?.[0];
             const competitors = competition?.competitors || [];
@@ -2286,13 +2304,23 @@ const server = http.createServer(async (req, res) => {
             if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusLabel))) continue;
             const homeFirstPeriod = Number(home.linescores?.[0]?.value ?? home.linescores?.[0]?.displayValue);
             const awayFirstPeriod = Number(away.linescores?.[0]?.value ?? away.linescores?.[0]?.displayValue);
+            const fixtureDate = String(event.date || "").slice(0, 10);
+            const leagueName = String(competition?.name || "");
             const completedResult = {
               status: "post", statusText: "finished", homeScore: home.score, awayScore: away.score,
               homeHtScore: Number.isFinite(homeFirstPeriod) ? homeFirstPeriod : null,
-              awayHtScore: Number.isFinite(awayFirstPeriod) ? awayFirstPeriod : null
+              awayHtScore: Number.isFinite(awayFirstPeriod) ? awayFirstPeriod : null,
+              settlementProvider: "ESPN",
+              settlementFixtureId: String(event.id || ""),
+              settlementFixtureDate: fixtureDate,
+              settlementLeague: leagueName
             };
-            completedScoreboardByTeams.set(normalizeTeam(home.team.displayName) + "|" + normalizeTeam(away.team.displayName), completedResult);
-            if (event.id != null && String(event.id).trim()) completedScoreboardById.set(String(event.id), completedResult);
+            completedScoreboardFixtures.push({
+              id: event.id == null ? "" : String(event.id),
+              date: fixtureDate, league: leagueName,
+              home: home.team.displayName, away: away.team.displayName,
+              result: completedResult
+            });
           }
           for (const row of pending.rows) {
             const alert = row.payload || {};
@@ -2315,10 +2343,12 @@ const server = http.createServer(async (req, res) => {
             // goals for a missing half-time score.
             const alertHome = alert.home || (Array.isArray(alert.teams) ? alert.teams[0] : "");
             const alertAway = alert.away || (Array.isArray(alert.teams) ? alert.teams[1] : "");
-            let completed = (alert.eventId != null ? completedScoreboardById.get(String(alert.eventId)) : null) ||
-              (alertHome && alertAway
-                ? completedScoreboardByTeams.get(normalizeTeam(alertHome) + "|" + normalizeTeam(alertAway))
-                : null);
+            const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+            const matchedCompletedFixture = findUniqueCompletedFixture(completedScoreboardFixtures, {
+              eventId: row.event_id || alert.eventId,
+              home: alertHome, away: alertAway, league: alert.league, date: alertDate
+            });
+            let completed = matchedCompletedFixture?.result || null;
             // The public day endpoint caps finished fixtures at 200. For a specific
             // unresolved alert, query SportScore by team so busy dates cannot hide its result.
             if (!completed && alertHome && alertAway && row.created_at) {
@@ -2334,7 +2364,16 @@ const server = http.createServer(async (req, res) => {
                 if (homeFinal == null || awayFinal == null) return null;
                 const homeHt = parseScore(match.home_ht_score ?? match.homeHtScore ?? match.half_time_score?.home);
                 const awayHt = parseScore(match.away_ht_score ?? match.awayHtScore ?? match.half_time_score?.away);
-                return { status: "post", statusText: "finished", homeScore: homeFinal, awayScore: awayFinal, homeHtScore: homeHt, awayHtScore: awayHt };
+                const leagueName = String(match.league?.name || match.league_name || match.competition?.name || match.competition_name || match.tournament?.name || "");
+                const fixtureDate = String(match.date || match.match_date || match.fixture_date || alertDate).slice(0, 10);
+                return {
+                  status: "post", statusText: "finished", homeScore: homeFinal, awayScore: awayFinal,
+                  homeHtScore: homeHt, awayHtScore: awayHt,
+                  settlementProvider: "SportScore",
+                  settlementFixtureId: String(match.id || match.fixture_id || match.event_id || ""),
+                  settlementFixtureDate: fixtureDate,
+                  settlementLeague: leagueName
+                };
               };
               for (const teamName of [alertHome, alertAway]) {
                 const slug = teamSlug(teamName);
@@ -2355,12 +2394,28 @@ const server = http.createServer(async (req, res) => {
                     historicalTeamResultCache.set(key, cached);
                   }
                 }
-                const exactMatch = cached.matches.map(toCompleted).find(Boolean);
-                if (exactMatch) { completed = exactMatch; break; }
+                const candidates = cached.matches.map(match => {
+                  const result = toCompleted(match);
+                  if (!result) return null;
+                  const matchHome = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || "").trim();
+                  const matchAway = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
+                  return {
+                    id: result.settlementFixtureId, date: result.settlementFixtureDate,
+                    league: result.settlementLeague, home: matchHome, away: matchAway, result
+                  };
+                }).filter(Boolean);
+                const uniqueCandidates = [...new Map(candidates.map(candidate => [
+                  candidate.id ? "id:" + candidate.id : [candidate.date, normalizeTeam(candidate.home), normalizeTeam(candidate.away), normalizeTeam(candidate.league)].join("|"),
+                  candidate
+                ])).values()];
+                const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
+                  home: alertHome, away: alertAway, league: alert.league, date: alertDate
+                });
+                if (exactMatch) { completed = exactMatch.result; break; }
               }
             }
             const liveStatusIsFinished = /finished|full.?time|ended|final|\bft\b/.test(String(live?.statusText || live?.status || "").toLowerCase());
-            if (secondHalf && (!live || !liveStatusIsFinished) && completed) {
+            if (secondHalf && completed) {
               live = completed;
             } else if (firstHalf && completed && completed.homeHtScore != null && completed.awayHtScore != null &&
                        (!live || liveStatusIsFinished)) {
@@ -2374,85 +2429,58 @@ const server = http.createServer(async (req, res) => {
             if (/κόρνερ|corner/i.test(String(alert.market || ""))) continue;
             if (!live) continue;
             const statusText = String(live.statusText || live.status || "").toLowerCase();
-            const statusClock = String(live.minute || "").toLowerCase();
             const homeScore = Number(live.homeScore), awayScore = Number(live.awayScore);
             const hasFullScore = live.homeScore != null && live.awayScore != null && Number.isFinite(homeScore) && Number.isFinite(awayScore);
-            let outcomeScore = null, periodEnded = false, won = false;
             const startScore = Number(alert.startScore);
-            if (!Number.isFinite(startScore)) continue;
-            if (firstHalf) {
-              const hasHtScore = live.homeHtScore != null && live.awayHtScore != null && Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
-              const explicitlySecondHalf = /second half|2nd half|2ο ημίχρονο/.test(statusText) || /second half|2nd half/.test(statusClock);
-              const explicitlyFirstHalf = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusText);
-              // Do not treat the phrase "1st half" / "1ο ημίχρονο" as confirmed half-time.
-              const isAtHalf = /half.?time|halftime|τέλος\s*(?:του\s*)?ημιχρόνου|^ημίχρονο$/.test(statusText) || /\bht\b/.test(statusClock);
-              const minuteNow = Number(String(live.minute || "").match(/(\d{1,3})/)?.[1]);
-              const clearlyFirstHalf = !isAtHalf && !explicitlySecondHalf &&
-                ((Number.isFinite(minuteNow) && minuteNow <= 45) || explicitlyFirstHalf);
-              // Settle first-half alerts only after the provider confirms half-time
-              // (or a completed fixture supplies its actual HT score). A live goal can
-              // be provisional and later disallowed by VAR, so never settle on live score changes.
-              if (isAtHalf && hasHtScore) {
-                outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
-                periodEnded = true;
-              } else if (isAtHalf && hasFullScore) {
-                outcomeScore = homeScore + awayScore;
-                periodEnded = true;
-              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && hasHtScore) {
-                // A completed fixture settles first-half markets only from its actual HT score.
-                outcomeScore = Number(live.homeHtScore) + Number(live.awayHtScore);
-                periodEnded = true;
-              } else if (explicitlySecondHalf || (Number.isFinite(minuteNow) && minuteNow > 45)) {
-                // Never infer a first-half result from a second-half/full-time score.
-                continue;
-              } else if (/finished|full.?time|ended|final|\bft\b/.test(statusText) && !hasHtScore) {
-                // Missing HT score means unknown, not a loss.
-                continue;
-              }
-            } else if (secondHalf) {
-              // Second-half alerts settle only after the match is confirmed finished.
-              // This prevents a provisional goal later disallowed by VAR from settling an alert.
-              periodEnded = /finished|full.?time|ended|final|\bft\b/.test(statusText) || live.status === "post";
-              if (periodEnded && hasFullScore) {
-                outcomeScore = homeScore + awayScore;
-              }
-            }
-            if (outcomeScore == null || !periodEnded) continue;
+            if (!Number.isFinite(startScore) || (!firstHalf && !secondHalf)) continue;
+            const settlement = getPeriodSettlementScore({
+              period: firstHalf ? "first_half" : "second_half",
+              status: live.status,
+              statusText,
+              minute: live.minute,
+              homeScore: live.homeScore,
+              awayScore: live.awayScore,
+              homeHtScore: live.homeHtScore,
+              awayHtScore: live.awayHtScore
+            });
+            // Fail closed: no first-half settlement without a confirmed period-1 score.
+            if (!settlement) continue;
+            const outcomeScore = settlement.total;
             const marketText = String(alert.market || "");
-            const overMarketMatch = marketText.match(/\bover\s*(\d+(?:[.,]\d+)?)/i);
+            let betOutcome;
             if (/\bover\b/i.test(marketText) && !/corner|κόρνερ/i.test(marketText)) {
-              // Always grade Over bets against their actual line, even if a goal was scored after the alert.
-              if (!overMarketMatch) {
+              const overLine = parseOverLine(marketText);
+              if (overLine == null) {
                 console.warn("AI alert settlement skipped: could not parse Over line", JSON.stringify({ alertId: row.alert_id, market: marketText, outcomeScore }));
                 continue;
               }
-              const overLine = Number(overMarketMatch[1].replace(",", "."));
-              if (!Number.isFinite(overLine)) continue;
-              won = outcomeScore > overLine;
+              betOutcome = gradeOverMarket(outcomeScore, overLine);
             } else {
               // Generic goal alert: at least one additional goal after the signal.
-              won = outcomeScore > startScore;
+              betOutcome = outcomeScore > startScore ? "won" : "lost";
             }
+            if (!betOutcome) continue;
+            const won = betOutcome === "won";
+            const isPush = betOutcome === "push";
             alert.outcome = won
               ? "Επιβεβαιώθηκε · επιτεύχθηκε ο στόχος γκολ"
+              : isPush ? "Επιστροφή · ισοπαλία στη γραμμή Over"
               : "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ";
-            alert.betOutcome = won ? "won" : "lost";
-            alert.betSettlementLabel = won ? "Κερδισμένο" : "Χαμένο";
-            // Store the exact score for the period that was graded. For first-half alerts,
-            // never save the full-time score as betFinalScore when the result used HT goals.
-            const hasHtScoreForSettlement = live.homeHtScore != null && live.awayHtScore != null &&
-              Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore));
-            const settlementHomeScore = firstHalf && hasHtScoreForSettlement
-              ? Number(live.homeHtScore)
-              : homeScore;
-            const settlementAwayScore = firstHalf && hasHtScoreForSettlement
-              ? Number(live.awayHtScore)
-              : awayScore;
-            alert.betFinalScore = Number.isFinite(settlementHomeScore) && Number.isFinite(settlementAwayScore)
-              ? settlementHomeScore + "-" + settlementAwayScore
-              : null;
+            alert.betOutcome = betOutcome;
+            alert.betSettlementLabel = won ? "Κερδισμένο" : isPush ? "Επιστροφή" : "Χαμένο";
+            // Persist both the graded period score and the match final score separately.
+            alert.betFinalScore = settlement.home + "-" + settlement.away;
             if (hasFullScore) alert.betMatchFinalScore = homeScore + "-" + awayScore;
-            alert.betScoreScope = firstHalf ? "first_half" : "full_time";
+            if (live.homeHtScore != null && live.awayHtScore != null &&
+                Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore))) {
+              alert.betHalfTimeScore = Number(live.homeHtScore) + "-" + Number(live.awayHtScore);
+            }
+            alert.betScoreScope = settlement.scope;
+            alert.betSettlementProvider = live.settlementProvider || "ESPN scoreboard";
+            alert.betSettlementFixtureId = live.settlementFixtureId || String(alert.eventId || row.event_id || "");
+            alert.betSettlementFixtureDate = live.settlementFixtureDate || alertDate;
+            alert.betSettlementLeague = live.settlementLeague || alert.league || null;
+            alert.betScoreSource = firstHalf ? "period_1_linescore" : "confirmed_full_time_score";
             alert.betSettledAt = now;
             alert.evaluatedAt = now;
             alert.evaluationRule = firstHalf ? "end_of_first_half_score" : "end_of_match_score";
@@ -2466,6 +2494,9 @@ const server = http.createServer(async (req, res) => {
               market: alert.market || null,
               outcome: alert.betOutcome,
               score: alert.betFinalScore,
+              scoreScope: alert.betScoreScope,
+              provider: alert.betSettlementProvider,
+              fixtureId: alert.betSettlementFixtureId,
               minute: alert.minute ?? null,
               rule: alert.evaluationRule
             }));
