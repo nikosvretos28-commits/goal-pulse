@@ -156,7 +156,7 @@ async function runProtocolAnalyst() {
   protocolAnalystRunInFlight = (async () => {
     if (!await ensureAlertHistoryDb() || !await ensureProtocolAnalystDb()) return null;
     const result = await analyticsPool.query(
-      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND payload->>'betSettlementProvider' IS NOT NULL AND payload->>'betSettlementFixtureId' IS NOT NULL AND payload->>'betScoreScope' IN ('first_half','full_time') AND (payload->>'betScoreScope' <> 'first_half' OR NULLIF(payload->>'betHalfTimeScore','') IS NOT NULL) AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
     );
     const allRecords = result.rows.map(row => {
       const p = row.payload || {};
@@ -1551,6 +1551,15 @@ const server = http.createServer(async (req, res) => {
       );
       const rows = result.rows.map(row => ({ id: row.alert_id, eventId: row.event_id, createdAt: row.created_at, payload: row.payload || {} }));
       const terminal = rows.filter(row => ['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()));
+      const isVerifiedSettlement = payload => {
+        const scope = String(payload.betScoreScope || "");
+        const score = String(payload.betFinalScore || "").match(/^(\d+)\s*-\s*(\d+)$/);
+        if (!score || !payload.betSettlementProvider || !payload.betSettlementFixtureId) return false;
+        if (scope === "first_half") return Boolean(payload.betHalfTimeScore) && String(payload.betHalfTimeScore) === String(payload.betFinalScore);
+        return scope === "full_time";
+      };
+      const verifiedTerminal = terminal.filter(row => isVerifiedSettlement(row.payload));
+      const unverifiedTerminal = terminal.length - verifiedTerminal.length;
       const pending = rows.filter(row => !['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()));
       const signalMinute = payload => {
         const raw = payload.minuteNumber !== null && payload.minuteNumber !== undefined && String(payload.minuteNumber).trim() !== ""
@@ -1563,14 +1572,16 @@ const server = http.createServer(async (req, res) => {
       const summarizeSignalWindow = (period, minMinute, maxMinute, label) => {
         const sample = rows.filter(row => row.payload.periodAtSignal === period && signalMinute(row.payload) !== null
           && signalMinute(row.payload) >= minMinute && signalMinute(row.payload) <= maxMinute);
-        const outcomes = sample.map(row => String(row.payload.betOutcome || "pending").toLowerCase());
+        const verified = sample.filter(row => isVerifiedSettlement(row.payload));
+        const unverified = sample.filter(row => ['won','lost','push','void'].includes(String(row.payload.betOutcome || '').toLowerCase()) && !isVerifiedSettlement(row.payload)).length;
+        const outcomes = verified.map(row => String(row.payload.betOutcome || "pending").toLowerCase());
         const wins = outcomes.filter(value => value === "won").length;
         const losses = outcomes.filter(value => value === "lost").length;
         const pushes = outcomes.filter(value => value === "push").length;
         const voids = outcomes.filter(value => value === "void").length;
         const settled = wins + losses;
-        return { window: label, total: sample.length, settled, wins, losses,
-          pending: sample.length - settled - pushes - voids, pushes, voids,
+        return { window: label, total: sample.length, settled, wins, losses, unverified,
+          pending: sample.length - verified.length - unverified, pushes, voids,
           successRate: settled ? Math.round(wins / settled * 1000) / 10 : null };
       };
       const bySignalWindow = [
@@ -1580,10 +1591,12 @@ const server = http.createServer(async (req, res) => {
       const byOutcome = {};
       const byPeriod = {};
       for (const row of terminal) {
-        const p = row.payload;
-        const outcome = String(p.betOutcome || 'unknown').toLowerCase();
-        const period = String(p.periodAtSignal || 'unknown');
+        const outcome = String(row.payload.betOutcome || 'unknown').toLowerCase();
         byOutcome[outcome] = (byOutcome[outcome] || 0) + 1;
+      }
+      for (const row of verifiedTerminal) {
+        const outcome = String(row.payload.betOutcome || 'unknown').toLowerCase();
+        const period = String(row.payload.periodAtSignal || 'unknown');
         if (!byPeriod[period]) byPeriod[period] = { settled: 0, wins: 0, losses: 0, pushes: 0, voids: 0 };
         byPeriod[period].settled++;
         if (outcome === 'won') byPeriod[period].wins++;
@@ -1629,6 +1642,8 @@ const server = http.createServer(async (req, res) => {
           }
           if (firstHalfSettlement && !p.betHalfTimeScore) {
             addIssue(row, 'first_half_score_unverified', 'First-half settlement does not retain the exact half-time score separately.');
+          } else if (firstHalfSettlement && String(p.betHalfTimeScore) !== String(p.betFinalScore)) {
+            addIssue(row, 'first_half_score_conflict', 'Saved first-half settlement score does not match the separately retained half-time score.');
           }
           if (p.lineType === 'asian' && p.asianPeriod === 'second_half' && ['won','lost','push'].includes(outcome)) {
             const secondHalfGoals = Number(p.betSecondHalfGoals);
@@ -1662,7 +1677,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
       }
-      const winRate = terminal.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won' || String(row.payload.betOutcome).toLowerCase() === 'lost');
+      const winRate = verifiedTerminal.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won' || String(row.payload.betOutcome).toLowerCase() === 'lost');
       const wins = winRate.filter(row => String(row.payload.betOutcome).toLowerCase() === 'won').length;
       const nowMs = Date.now();
       const pendingRows = rows.filter(row => pending.includes(row));
@@ -1693,14 +1708,15 @@ const server = http.createServer(async (req, res) => {
       }));
       return send(res, 200, {
         ok: true, readOnly: true, generatedAt: new Date().toISOString(), windowDays: 180,
-        scanned: rows.length, settled: terminal.length, pending: pending.length,
+        scanned: rows.length, settled: terminal.length, verifiedSettled: verifiedTerminal.length,
+        unverifiedSettled: unverifiedTerminal, pending: pending.length,
         pendingAge, pendingSample,
         settledWinLossSample: winRate.length,
         wins, losses: winRate.length - wins,
         successRate: winRate.length ? Math.round(wins / winRate.length * 1000) / 10 : null,
         byOutcome, byPeriod, bySignalWindow,
         integrity: { issueCount: issueCountTotal, issueLimit: 100, issues },
-        note: "Read-only audit. Pending age helps identify stale alerts but does not prove match completion; stored outcomes are not independently checked against provider final scores."
+        note: "Read-only audit. Accuracy rates include only settlements with explicit score scope, provider, fixture ID and retained half-time score where applicable. Legacy outcomes remain visible but are excluded until independently reconciled; this audit does not itself re-fetch provider scores."
       });
     } catch (error) {
       console.error("Alert history verification failed:", error.message);
