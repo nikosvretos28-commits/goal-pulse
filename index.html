@@ -3735,6 +3735,7 @@ function evaluateHighActivityObservations(ranked){
   // of the exact same signal deduplicate, while a genuinely new signal can be counted.
   const signalType=rankedItem.manAdvantagePressure?'MAN_ADVANTAGE_PRESSURE':rankedItem.generalSot10mTrial?'SOT10M_FIRST_HALF':rankedItem.secondHalfSot10mTrial?'SOT10M_SECOND_HALF':'EXISTING_HI_ACTIVITY';
   const observationId=[eventId,periodKey,minute,score.home+'-'+score.away,signalType,
+   signalStats.redCardTeam??'na',signalStats.manAdvantageTeam??'na',
    signalStats.totalOnTarget??'na',signalStats.recentOnTarget??'na',
    signalStats.recentShotsOnTarget10m??'na',signalStats.shotsOnTargetInsideBox??'na',signalStats.bigChances??'na'].join(':');
   if(highActivityObservations.some(x=>String(x.observationId)===observationId))continue;
