@@ -103,13 +103,16 @@ async function main() {
       report.transactionalWriteChecks.alert_history =
         alertRead.rowCount === 1;
 
-      const snapshot = await client.query(
-        "INSERT INTO public.live_stat_snapshots(event_id,match_date,team_name,shots_on_target) VALUES($1,$2,$3,$4) RETURNING id",
-        ["storage-check-" + suffix, new Date().toISOString().slice(0, 10), "Storage diagnostic", 1]
+      // Supply a temporary negative primary key so the test does not advance
+      // the BIGSERIAL sequence (PostgreSQL sequences are not rolled back).
+      const snapshotId = -Number.parseInt(suffix.replace(/-/g, "").slice(0, 12), 16);
+      await client.query(
+        "INSERT INTO public.live_stat_snapshots(id,event_id,match_date,team_name,shots_on_target) VALUES($1,$2,$3,$4,$5)",
+        [snapshotId, "storage-check-" + suffix, new Date().toISOString().slice(0, 10), "Storage diagnostic", 1]
       );
       const snapshotRead = await client.query(
         "SELECT 1 FROM public.live_stat_snapshots WHERE id=$1",
-        [snapshot.rows[0].id]
+        [snapshotId]
       );
       report.transactionalWriteChecks.live_stat_snapshots =
         snapshotRead.rowCount === 1;
