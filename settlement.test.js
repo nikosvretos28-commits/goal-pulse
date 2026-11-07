@@ -78,3 +78,9 @@ test('fixture ID match is still checked against the team identity', () => {
     eventId: '123', home: 'Wrong', away: 'Teams', league: 'League', date: '2026-11-07'
   }), null);
 });
+
+test('normalizes common club prefixes', () => {
+  assert.equal(findUniqueCompletedFixture([{id:'x',date:'2026-11-07',home:'Alpha FC',away:'Beta SC',league:'League'}], {
+    home:'Alpha',away:'Beta',league:'League',date:'2026-11-07'
+  }).id, 'x');
+});
