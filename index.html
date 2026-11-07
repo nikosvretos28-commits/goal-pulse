@@ -3135,6 +3135,9 @@ function autoSettleFinishedOverBets(){
     // Automatically settle only ordinary Over x.5 markets; leave Asian/integer lines for manual handling.
     const market=String(alert.market||'');
     if(/asian|ασιατ/i.test(market))continue;
+    // First-half signals must not be graded against full-time scores in this client fallback.
+    // The historical reconciler/server has the period score; otherwise keep the alert pending.
+    if(String(alert.periodAtSignal||'').toLowerCase()==='first_half'||/^1ο ημίχρονο/i.test(market))continue;
     const lineMatch=market.match(/\bover\s*(\d+(?:[.,]\d+)?)/i);
     if(!lineMatch)continue;
     const line=Number(lineMatch[1].replace(',','.'));
@@ -3999,7 +4002,8 @@ async function reconcileHistoricalAlertSettlements(){
    if(!a||!a.eventId||!Number.isFinite(Number(a.createdAt)))return false;
    if(a.manualBetOutcome||a.betSettlementRule==='manual_history_entry')return false;
    const market=String(a.market||'').trim();
-   const expectedScope=/^1ο ημίχρονο/i.test(market)?'first_half':/^2ο ημίχρονο/i.test(market)?'second_half':'';
+   const signalPeriod=String(a.periodAtSignal||'').toLowerCase();
+    const expectedScope=/^1ο ημίχρονο/i.test(market)||signalPeriod==='first_half'?'first_half':/^2ο ημίχρονο/i.test(market)?'second_half':'';
    const scopeMismatch=!!expectedScope&&String(a.betScoreScope||'')!==expectedScope;
    return scopeMismatch||!['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase())||
     !a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase());
@@ -4058,8 +4062,9 @@ async function reconcileHistoricalAlertSettlements(){
    const h1=firstHalfGoals(home),a1=firstHalfGoals(away);
    const halfTotal=h1!=null&&a1!=null?h1+a1:null;
    const market=String(alert.market||'').trim();
+   const signalPeriod=String(alert.periodAtSignal||'').toLowerCase();
    const isAsian=String(alert.lineType||'')==='asian'||/asian|ασιατικ[όο]/i.test(market);
-   const isFirstHalf=/^1ο ημίχρονο/i.test(market);
+   const isFirstHalf=/^1ο ημίχρονο/i.test(market)||signalPeriod==='first_half';
    const isSecondHalf=/^2ο ημίχρονο/i.test(market)||isAsian&&alert.asianPeriod==='second_half';
    let graded=false,won=false,push=false,scoreScope='full_time',scopedTotal=total;
    const lineMatch=market.match(/over\s*(\d+(?:[.,]\d+)?)/i);
