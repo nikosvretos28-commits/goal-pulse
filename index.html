@@ -3665,10 +3665,13 @@ function evaluateHighActivityObservations(ranked){
  for(const [eventId,rankedItem] of active){
   const match=rankedItem.match;
   const stats=liveMetricsCache.get(eventId);
-  const minute=parseGoalMatrixLiveMinute([match.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute]);
+  const clockValues=[match.clock,stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute];
+  const minute=parseGoalMatrixLiveMinute(clockValues);
   if(!Number.isFinite(minute))continue;
-  const half=minute<=45?'1ο ΗΜΙΧΡΟΝΟ':'2ο ΗΜΙΧΡΟΝΟ';
-  const periodKey=minute<=45?'1H':'2H';
+  const periodText=clockValues.map(value=>String(value??'')).join(' ')+' '+String(match.statusText||match.status||match.state||'');
+  const isSecondHalf=/\b(?:2h|second half|2nd half|2ο ημίχρονο|second_half)\b/i.test(periodText)||minute>=46;
+  const half=isSecondHalf?'2ο ΗΜΙΧΡΟΝΟ':'1ο ΗΜΙΧΡΟΝΟ';
+  const periodKey=isSecondHalf?'2H':'1H';
   const score=highActivityScore(match);if(!score)continue;
   const signalStats={
    totalOnTarget:Number.isFinite(Number(rankedItem.totalOnTarget))?Number(rankedItem.totalOnTarget):null,
