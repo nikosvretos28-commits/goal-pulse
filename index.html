@@ -3848,6 +3848,7 @@ function parseGoalMatrixLiveMinute(values){
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
  const now=Date.now();
+ const manAdvantageTag=item=>item.manAdvantagePressure?'<div class="subtle" style="padding:3px 0;color:#b7ff46;font-size:11px;font-weight:800">🟥 MAN ADVANTAGE PRESSURE</div>':'';
  const scoreMatch=m=>{
   const stats=liveMetricsCache.get(String(m.id));
   // Prefer a clock value that actually contains a minute. Some live-score feeds use
@@ -4105,7 +4106,7 @@ function renderHighActivityMatches(){
  if(powerGamesUnlocked){
   const powerRows=document.getElementById("powerGamesRows");
   if(powerRows)powerRows.innerHTML=ranked.length
-   ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)).join("")
+   ?ranked.map(x=>liveMatchLine(x.match,true,x.intensity)+manAdvantageTag(x)).join("")
    :'<div class="top-ai-alert-empty">Δεν υπάρχουν αυτή τη στιγμή αγώνες που να πληρούν τα κριτήρια ισχυρού, πρόσφατου σήματος.</div>';
   const status=document.getElementById("powerGamesStatus");if(status)status.textContent=ranked.length+" ΙΣΧΥΡΑ ΣΗΜΑΤΑ";
   const count=document.getElementById("powerGamesCount");if(count)count.textContent=String(ranked.length);
@@ -4115,7 +4116,7 @@ function renderHighActivityMatches(){
  const topTen=hiActivityRanked;
  highActivityTopIds=new Set(topTen.map(x=>String(x.match.id)));
  box.innerHTML=topTen.length
-  ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
+  ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+manAdvantageTag(x)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν διαθέσιμες επιλογές αυτή τη στιγμή.</div>';
 }
 document.addEventListener('click',async event=>{
