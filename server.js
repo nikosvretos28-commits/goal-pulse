@@ -2910,10 +2910,12 @@ const server = http.createServer(async (req, res) => {
           if (latestCardIncident && Number.isFinite(current.minute)) {
             const minutesSinceCard = Math.max(0, current.minute - latestCardIncident.minute);
             const incidentAt = now - minutesSinceCard * 60 * 1000;
-            const baselineAtCard = [...snapshots].reverse().find(snapshot =>
+            // Use the first observed snapshot strictly after the dismissal.
+            // This avoids counting pre-card SOT / dangerous attacks in the trigger.
+            const baselineAtCard = snapshots.find(snapshot =>
               Number.isFinite(snapshot.minute) &&
-              snapshot.minute <= latestCardIncident.minute &&
-              latestCardIncident.minute - snapshot.minute <= 2
+              snapshot.minute > latestCardIncident.minute &&
+              snapshot.minute - latestCardIncident.minute <= 2
             ) || null;
             redCardInfo = {
               team: current.redCardsByTeam[redCardSideIndex].team,
