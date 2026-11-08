@@ -203,6 +203,101 @@ async function runProtocolAnalyst() {
       (row.phase === "first_half" && Number.isFinite(row.minute) && row.minute >= 1 && row.minute <= 40) ||
       (row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 88)
     );
+    // Trigger-level attribution is explicit and forward-looking. Older alerts without
+    // triggerIds remain visible as unattributed; never infer their cause from outcomes.
+    const triggerHistoryResult = await analyticsPool.query(
+      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+    );
+    const triggerHistoryRows = triggerHistoryResult.rows.map(row => {
+      const p = row.payload || {};
+      const rawMinute = p.minuteNumber !== null && p.minuteNumber !== undefined && String(p.minuteNumber).trim() !== ""
+        ? p.minuteNumber : String(p.minute || "").match(/\d{1,3}/)?.[0];
+      const parsedMinute = Number(rawMinute);
+      const minute = Number.isFinite(parsedMinute) ? parsedMinute : null;
+      const phase = p.periodAtSignal || "unknown";
+      const finalScore = String(p.betFinalScore || "");
+      const verified = ["won","lost"].includes(String(p.betOutcome || "").toLowerCase()) &&
+        Boolean(p.betSettlementProvider) && Boolean(p.betSettlementFixtureId) &&
+        ["first_half","full_time"].includes(String(p.betScoreScope || "")) &&
+        /^[0-9]+-[0-9]+$/.test(finalScore) &&
+        (p.betScoreScope !== "first_half" || (String(p.betHalfTimeScore || "").trim() !== "" && String(p.betHalfTimeScore) === finalScore));
+      const outcome = verified ? String(p.betOutcome).toLowerCase()
+        : ["won","lost","void","push"].includes(String(p.betOutcome || "").toLowerCase()) ? "unverified" : "pending";
+      return {
+        triggerIds: Array.isArray(p.triggerIds) ? [...new Set(p.triggerIds.map(String))] : [],
+        supportSignalIds: Array.isArray(p.supportSignalIds) ? [...new Set(p.supportSignalIds.map(String))] : [],
+        minute,
+        phase,
+        minuteBand: !Number.isFinite(minute) ? "Άγνωστο λεπτό"
+          : phase === "first_half" ? (minute < 30 ? "1′–29′" : "30′–40′")
+          : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–88′"),
+        league: String(p.league || "Άγνωστη διοργάνωση"),
+        outcome,
+        createdAt: row.created_at
+      };
+    });
+    const instrumentedTriggerRows = triggerHistoryRows.filter(row => row.triggerIds.length > 0);
+    const legacyUnattributedAlerts = triggerHistoryRows.filter(row => row.triggerIds.length === 0).length;
+    const triggerDefinitions = [
+      { id: "recent_sot_pressure", label: "Πρόσφατη πίεση SOT", detail: "3+ SOT / 5′ ή 6+ SOT / 10′" },
+      { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.00 xG και η άλλη ≥2.00 xG" },
+      { id: "cumulative_15_sot", label: "15+ συνολικά SOT", detail: "Συνολικά SOT πριν από το 70′" },
+      { id: "dual_team_sot_pressure", label: "Dual Team SOT Pressure", detail: "Πίεση SOT και από τις δύο ομάδες" },
+      { id: "man_advantage_pressure", label: "Man Advantage", detail: "Πρόσφατη κόκκινη κάρτα και πίεση της αριθμητικά υπερέχουσας ομάδας" }
+    ];
+    const summarizeTriggerRows = rows => {
+      const wins = rows.filter(row => row.outcome === "won").length;
+      const losses = rows.filter(row => row.outcome === "lost").length;
+      const verifiedSettled = wins + losses;
+      return {
+        activated: rows.length,
+        verifiedSettled,
+        wins,
+        losses,
+        pending: rows.filter(row => row.outcome === "pending").length,
+        unverified: rows.filter(row => row.outcome === "unverified").length,
+        successRate: verifiedSettled ? Math.round(wins / verifiedSettled * 1000) / 10 : null
+      };
+    };
+    const groupTriggerRows = (rows, field) => {
+      const groups = new Map();
+      for (const row of rows) {
+        const key = String(row[field] || "Άγνωστο");
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(row);
+      }
+      return [...groups.entries()].map(([value, groupRows]) => ({
+        value, ...summarizeTriggerRows(groupRows)
+      })).sort((a,b) => b.activated - a.activated);
+    };
+    const triggerPerformance = triggerDefinitions.map(definition => {
+      const rows = instrumentedTriggerRows.filter(row => row.triggerIds.includes(definition.id));
+      return {
+        ...definition,
+        ...summarizeTriggerRows(rows),
+        byMinute: groupTriggerRows(rows, "minuteBand"),
+        byLeague: groupTriggerRows(rows, "league")
+      };
+    });
+    const triggerCombinationMap = new Map();
+    for (const row of instrumentedTriggerRows) {
+      const key = [...row.triggerIds].sort().join(" + ");
+      if (!key) continue;
+      if (!triggerCombinationMap.has(key)) triggerCombinationMap.set(key, []);
+      triggerCombinationMap.get(key).push(row);
+    }
+    const triggerCombinations = [...triggerCombinationMap.entries()].map(([combination, rows]) => ({
+      combination,
+      labels: combination.split(" + ").map(id => triggerDefinitions.find(item => item.id === id)?.label || id),
+      ...summarizeTriggerRows(rows)
+    })).sort((a,b) => b.activated - a.activated);
+    const dangerousAttackSupportRows = instrumentedTriggerRows.filter(row => row.supportSignalIds.includes("dangerous_attacks_pressure"));
+    const dangerousAttackSupport = {
+      label: "Επικίνδυνες επιθέσεις (συμπληρωματική ένδειξη, όχι αυτόνομο trigger)",
+      ...summarizeTriggerRows(dangerousAttackSupportRows),
+      byMinute: groupTriggerRows(dangerousAttackSupportRows, "minuteBand"),
+      byLeague: groupTriggerRows(dangerousAttackSupportRows, "league")
+    };
     const summarize = rows => {
       const wins = rows.filter(row => row.won).length;
       return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
@@ -352,6 +447,15 @@ async function runProtocolAnalyst() {
       byLiveConversion: segment("liveConversionBand", "liveConversionBand"),
       byTotalSotSupport: segment("totalSotSupport", "totalSotSupport"),
       byHistoricalOverSupport: segment("historicalOverSupport", "historicalOverSupport"),
+      triggerEvaluation: {
+        windowDays: 180,
+        instrumentedAlerts: instrumentedTriggerRows.length,
+        legacyUnattributedAlerts: legacyUnattributedAlerts,
+        triggers: triggerPerformance,
+        combinations: triggerCombinations,
+        dangerousAttackSupport,
+        note: "Η απόδοση υπολογίζεται μόνο από διακανονισμένα alerts με επαληθευμένο provider, fixture και σκορ. Τα παλαιότερα alerts χωρίς triggerIds δεν αποδίδονται εκ των υστέρων. Τα ποσοστά συνδυασμών δείχνουν συσχέτιση, όχι αιτιότητα."
+      },
       missingData: { historicalOverSupport: records.filter(row => row.historicalOverSupport === null || row.historicalOverSupport === undefined).length },
       recommendations
     };
@@ -3323,7 +3427,19 @@ const server = http.createServer(async (req, res) => {
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, dualTeamSotPressure, dualTeamSot5, dualTeamSot10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
+                  triggerIds: [
+                    ...(recentSotQualifies ? ["recent_sot_pressure"] : []),
+                    ...(xGQualifies ? ["xg_threshold"] : []),
+                    ...(cumulativeSotQualifies ? ["cumulative_15_sot"] : []),
+                    ...(dualTeamSotPressure ? ["dual_team_sot_pressure"] : []),
+                    ...(manAdvantagePressure ? ["man_advantage_pressure"] : [])
+                  ],
+                  supportSignalIds: [
+                    ...(Array.isArray(dangerousAttacks5) && dangerousAttacks5.some(value => value != null && value >= 3) ||
+                       Array.isArray(dangerousAttacks10) && dangerousAttacks10.some(value => value != null && value >= 10)
+                      ? ["dangerous_attacks_pressure"] : [])
+                  ],
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, xGQualifies, recentSotQualifies, cumulativeSotQualifies, manAdvantagePressure, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, dangerousAttacks5, dangerousAttacks10, dualTeamSotPressure, dualTeamSot5, dualTeamSot10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
