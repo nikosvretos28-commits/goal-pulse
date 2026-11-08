@@ -3,7 +3,7 @@ const webpush = require("web-push");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
-const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, findUniqueCompletedFixture } = require("./settlement");
+const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute } = require("./ai-minute-window");
 let Pool = null;
@@ -2685,7 +2685,7 @@ const server = http.createServer(async (req, res) => {
                 const fixtureDate = String(match.date || match.match_date || match.fixture_date || alertDate).slice(0, 10);
                 return { status: "post", statusText: "finished", homeScore: homeFinal, awayScore: awayFinal,
                   homeHtScore: homeHt, awayHtScore: awayHt, settlementProvider: "SportScore",
-                  settlementFixtureId: String(match.id || match.fixture_id || match.event_id || ""),
+                  settlementFixtureId: getProviderFixtureId(match),
                   settlementFixtureDate: fixtureDate, settlementLeague: leagueName };
               };
               const alertDateCandidates = [alertDate, ...[-1, 1].map(offset =>

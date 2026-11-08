@@ -5,6 +5,7 @@ const {
   getPeriodSettlementScore,
   parseOverLine,
   gradeOverMarket,
+  getProviderFixtureId,
   findUniqueCompletedFixture
 } = require('./settlement');
 
@@ -83,4 +84,15 @@ test('normalizes common club prefixes', () => {
   assert.equal(findUniqueCompletedFixture([{id:'x',date:'2026-11-07',home:'Alpha FC',away:'Beta SC',league:'League'}], {
     home:'Alpha',away:'Beta',league:'League',date:'2026-11-07'
   }).id, 'x');
+});
+
+test('SportScore fixture identity falls back to a stable slug when numeric IDs are absent', () => {
+  assert.equal(getProviderFixtureId({ slug: 'alpha-vs-beta-2026-11-08' }), 'alpha-vs-beta-2026-11-08');
+  assert.equal(getProviderFixtureId({ match_slug: 'alpha-beta' }), 'alpha-beta');
+  assert.equal(getProviderFixtureId({ url: 'https://sportscore.com/match/football/alpha-vs-beta-2026-11-08' }), 'alpha-vs-beta-2026-11-08');
+});
+
+test('SportScore fixture identity prefers provider IDs and never fabricates an identity', () => {
+  assert.equal(getProviderFixtureId({ id: 123, slug: 'alpha-beta' }), '123');
+  assert.equal(getProviderFixtureId({}), '');
 });
