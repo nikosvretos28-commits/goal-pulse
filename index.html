@@ -3889,7 +3889,7 @@ function renderAllLivePowerRanking(){
   const w5=stats?.trend?.window5m,w10=stats?.trend?.window10m,sot5=windowDelta(w5,sot,4.5,8),sot10=windowDelta(w10,sot,8,13),danger10=windowDelta(w10,danger,8,13),attacks10=windowDelta(w10,attacks,8,13);
   const totalSot=total(sot),totalXg=total(xg);
   const signals=[(sot5!==null&&sot5>=2)||(sot10!==null&&sot10>=3)?'Πρόσφατη πίεση SOT':null,totalSot!==null&&totalSot>=8?'Όγκος SOT':null,totalXg!==null&&totalXg>=2.5?'Πίεση xG':null,danger10!==null&&danger10>=15?'Επικίνδυνες επιθέσεις':null].filter(Boolean);
-  const score=Math.max(0,Math.min(100,Math.round(Math.min(25,(totalSot||0)*2.5)+Math.min(15,(sot5||0)*5)+Math.min(10,(sot10||0)*2)+Math.min(24,(totalXg||0)*6)+Math.min(15,(danger10||0))+Math.min(10,(attacks10||0)*.25)));
+  const score=Math.max(0,Math.min(100,Math.round(Math.min(25,(totalSot||0)*2.5)+Math.min(15,(sot5||0)*5)+Math.min(10,(sot10||0)*2)+Math.min(24,(totalXg||0)*6)+Math.min(15,(danger10||0))+Math.min(10,(attacks10||0)*.25))));
   return {m,score,signals,hasStats:teams.length===2,totalSot,clock:String(stats?.live_minute??stats?.liveMinute??stats?.elapsed??m.clock??'LIVE')};
  }).sort((a,b)=>b.score-a.score||b.signals.length-a.signals.length||(b.totalSot||0)-(a.totalSot||0));
  if(status)status.textContent=live.length+' LIVE MATCHES · '+ranked.filter(x=>x.signals.length>=2).length+' ΜΕ 2+ TRIGGERS';
