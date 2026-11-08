@@ -2248,9 +2248,13 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
   const showSummary=data=>{
     const summary=data?.summary||{};
     const count=Number(summary.teams||0),competitions=Number(summary.competitions||0),fixtures=Number(summary.fixtures||0);
+    const leagues=Array.isArray(summary.leagues)?summary.leagues:[];
+    const latest=summary.lastUpdatedAt?new Date(summary.lastUpdatedAt):null;
+    const latestLabel=latest&&!Number.isNaN(latest.getTime())?latest.toLocaleString("el-GR"):"μη διαθέσιμη";
+    const fresh=Number(summary.freshLeagues||0),stale=Number(summary.staleLeagues||0),failed=Number(summary.failedLeagues||0);
     details.textContent=count
-      ? "Αποθηκευμένα ιστορικά προφίλ: "+count+" ομάδες σε "+competitions+" διοργανώσεις · έως "+fixtures+" ολοκληρωμένοι αγώνες ανά διοργάνωση. Αποθήκευση: "+(data.persistent?"μόνιμη βάση δεδομένων":"προσωρινή μνήμη")
-      : "Δεν υπάρχουν ακόμη αποθηκευμένα ιστορικά προφίλ για τις τελευταίες 30 ημέρες.";
+      ? "Ιστορικά προφίλ: "+count+" ομάδες σε "+competitions+" διοργανώσεις · έως "+fixtures+" ολοκληρωμένοι αγώνες ανά διοργάνωση. Πρόσφατες (≤12 ώρες): "+fresh+" · παλαιότερες: "+stale+" · αποτυχημένες συλλογές: "+failed+". Τελευταία επιτυχής ενημέρωση: "+latestLabel+". Αποθήκευση: "+(data.persistent?"μόνιμη βάση δεδομένων":"προσωρινή μνήμη")
+      : "Δεν υπάρχουν ακόμη αποθηκευμένα ιστορικά προφίλ. Η σάρωση θα εμφανίσει αποτελέσματα μετά από επιτυχή συλλογή ολοκληρωμένων αγώνων.";
     const runState=data?.run||{};
     if(runState.status==="running"){status.textContent="Η σάρωση εκτελείται στο παρασκήνιο…";run.disabled=true;}
     else {
@@ -2258,9 +2262,10 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
       if(runState.status==="complete"){
         const results=Array.isArray(runState.results)?runState.results:[];
         const ok=results.filter(x=>x.ok),failed=results.filter(x=>!x.ok);
+        const skipped=Number(runState.skipped||0);
         status.textContent=results.length
-          ? "Ολοκληρώθηκε: "+ok.length+" διοργανώσεις επιτυχώς · "+failed.length+" με πρόβλημα."
-          : (runState.error||"Δεν απαιτήθηκε νέα λήψη· τα πρόσφατα προφίλ παραμένουν διαθέσιμα.");
+          ? "Ολοκληρώθηκε: "+ok.length+" διοργανώσεις επιτυχώς · "+failed.length+" με πρόβλημα · "+skipped+" εντός ορίου ανανέωσης."
+          : (skipped>0?"Δεν χρειάστηκε νέα λήψη: "+skipped+" διοργανώσεις είναι ακόμη εντός του ορίου ανανέωσης. "+(runState.error||""):(runState.error||"Δεν ολοκληρώθηκε νέα συλλογή."));
       } else if(runState.status==="error") status.textContent="Η σάρωση δεν ολοκληρώθηκε: "+(runState.error||"άγνωστο σφάλμα");
       else status.textContent=count?"Υπάρχουν αποθηκευμένα ιστορικά δεδομένα. Πάτησε για νέα σάρωση.":"Δεν έχει επιβεβαιωθεί ακόμη ολοκληρωμένη σάρωση.";
     }
