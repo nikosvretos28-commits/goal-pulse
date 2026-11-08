@@ -5,6 +5,7 @@ const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, readExactSotStat } = require("./sot-integrity");
+const { isAiMinuteEligible, isCumulativeSotMinute } = require("./ai-minute-window");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -198,11 +199,10 @@ async function runProtocolAnalyst() {
         createdAt: row.created_at
       };
     });
-    // Analyze the approved AI windows independently: first half 1–40 and second half 46–88.
-    // Never mix halftime, stoppage/out-of-window alerts, or unknown periods into either sample.
+    // Analyze only the currently approved AI window: second half 46–88.
+    // Never include first-half, halftime, stoppage/out-of-window alerts, or unknown periods.
     const records = allRecords.filter(row =>
-      (row.phase === "first_half" && Number.isFinite(row.minute) && row.minute >= 1 && row.minute <= 40) ||
-      (row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 88)
+      row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 88
     );
     // Trigger-level attribution is explicit and forward-looking. Older alerts without
     // triggerIds remain visible as unattributed; never infer their cause from outcomes.
@@ -2811,7 +2811,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
       let checked = 0, sent = 0, candidates = 0;
-      let strongSignals = 0, firstHalfOddsChecks = 0, firstHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
+      let strongSignals = 0, firstHalfOddsChecks = 0, secondHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const aiSignalDiagnostics = [];
       // Enforce a persistent maximum of four AI alerts per match per half.
       // Seed counts from the alert history so restarts do not reset the limit.
@@ -2872,9 +2872,8 @@ const server = http.createServer(async (req, res) => {
         const minuteForEligibility = parseLiveMinute(minuteRawForEligibility);
         const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
-        const firstHalfStatusForEligibility = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(statusForEligibility);
-        const validFirstHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 1 && minuteForEligibility <= 45;
-        if ((validFirstHalfMinute || (firstHalfStatusForEligibility && !Number.isFinite(minuteForEligibility))) && !/second half|2nd half|halftime|half.?time|ημίχρονο/.test(statusForEligibility.replace(/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/g, "")) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) firstHalfEligible++;
+        const validSecondHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 46 && minuteForEligibility <= 88;
+        if (validSecondHalfMinute && /second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(statusForEligibility) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) secondHalfEligible++;
         // xG alternative: one team must have xG >= 3.00 and the other >= 2.00.
         // Missing/invalid xG stays neutral and never blocks an otherwise valid SOT alert.
         const teamXGValues = teams.map(team =>
@@ -3191,17 +3190,16 @@ const server = http.createServer(async (req, res) => {
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
-        // Approved AI protocol: 1–40' and 46–88'; 3+ SOT/5m OR 6+ SOT/10m,
+        // Approved AI protocol: second half only, minutes 46–88; 3+ SOT/5m OR 6+ SOT/10m,
         // OR one team's xG >= 3.00 and the other's >= 2.00.
-        // Additional cumulative trigger: 15+ combined match SOT before minute 70.
+        // Additional cumulative trigger: 15+ combined match SOT, only during minutes 46–69.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
-        const eligibleMinute = Number.isFinite(aiMinute) && ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute <= 88));
-        const cumulativeSotWindow = Number.isFinite(aiMinute) && aiMinute < 70 &&
-          ((aiMinute >= 1 && aiMinute <= 40) || (aiMinute >= 46 && aiMinute < 70));
+        const eligibleMinute = isAiMinuteEligible(aiMinute);
+        const cumulativeSotWindow = isCumulativeSotMinute(aiMinute);
         const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
         const cumulativeSotQualifies = combined15SotQualifies;
         const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure || manAdvantagePressure);
-        // Keep the first 16 general samples, but never omit an eligible 1′–40′ or 46′–88′ match.
+        // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
@@ -3239,7 +3237,7 @@ const server = http.createServer(async (req, res) => {
           dualTeamSot10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_1_40_or_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !dualTeamSotPressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !dualTeamSotPressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -3494,7 +3492,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const liveMatchSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, firstHalfEligible, strongSignals, aiSignalDiagnostics, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, secondHalfEligible, strongSignals, aiSignalDiagnostics, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
