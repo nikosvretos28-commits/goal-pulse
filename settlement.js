@@ -53,6 +53,13 @@ function normalizeFixtureName(value) {
   return String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, '').replace(/\s+(?:fc|cf|sc|ac|afc)$/, '').trim();
 }
 
+function calendarDayDistance(left, right) {
+  const a = Date.parse(String(left || '').slice(0, 10) + 'T00:00:00Z');
+  const b = Date.parse(String(right || '').slice(0, 10) + 'T00:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round(Math.abs(a - b) / 86400000);
+}
+
 function findUniqueCompletedFixture(candidates, alert = {}) {
   const rows = Array.isArray(candidates) ? candidates : [];
   const home = normalizeFixtureName(alert.home);
@@ -60,28 +67,27 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
   if (!home || !away) return null;
   const league = normalizeFixtureName(alert.league);
   const date = String(alert.date || '').slice(0, 10);
+  const dateToleranceDays = Math.max(0, Math.min(1, Number(alert.dateToleranceDays) || 0));
   const identityMatches = candidate => {
     if (normalizeFixtureName(candidate.home) !== home || normalizeFixtureName(candidate.away) !== away) return false;
     const candidateDate = String(candidate.date || '').slice(0, 10);
-    if (date && candidateDate && candidateDate !== date) return false;
+    if (date && candidateDate) {
+      const distance = calendarDayDistance(date, candidateDate);
+      if (distance === null || distance > dateToleranceDays) return false;
+    } else if (date && !candidateDate) return false;
     const candidateLeague = normalizeFixtureName(candidate.league);
     if (league && candidateLeague && candidateLeague !== league) return false;
     return true;
   };
   if (alert.eventId != null && String(alert.eventId).trim()) {
     const idMatches = rows.filter(candidate => String(candidate.id ?? '') === String(alert.eventId));
-    if (idMatches.length) {
-      const exact = idMatches.filter(identityMatches);
-      return exact.length === 1 ? exact[0] : null;
-    }
+    const exactById = idMatches.filter(identityMatches);
+    if (exactById.length === 1) return exactById[0];
+    // A provider ID may belong to another feed. If its identity does not match,
+    // continue with the strict team/league/date fallback instead of stopping here.
   }
   if (!date) return null;
-  const exact = rows.filter(candidate => {
-    if (!identityMatches(candidate)) return false;
-    if (String(candidate.date || '').slice(0, 10) !== date) return false;
-    if (league && normalizeFixtureName(candidate.league) !== league) return false;
-    return true;
-  });
+  const exact = rows.filter(identityMatches);
   return exact.length === 1 ? exact[0] : null;
 }
 
