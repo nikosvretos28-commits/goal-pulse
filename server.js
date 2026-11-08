@@ -4240,7 +4240,9 @@ const server = http.createServer(async (req, res) => {
                   const sideIndex = incident?.is_home === true || /^(home|host|h|1)$/.test(rawSide) ? 0
                     : incident?.is_home === false || /^(away|guest|a|2)$/.test(rawSide) ? 1 : -1;
                   if (sideIndex < 0) return null;
-                  const minute = parseLiveMinute(incident?.time ?? incident?.minute ?? incident?.elapsed);
+                  const rawMinute = String(incident?.time ?? incident?.minute ?? incident?.elapsed ?? "").trim();
+                  const minuteMatch = rawMinute.match(/^([0-9]{1,3})/);
+                  const minute = minuteMatch ? Number(minuteMatch[1]) : NaN;
                   return { sideIndex, minute: Number.isFinite(minute) ? minute : null };
                 })
                 .filter(Boolean);
