@@ -2061,11 +2061,11 @@ const server = http.createServer(async (req, res) => {
                   MAX(s.last_error) AS last_error,
                   MAX(s.last_success_at) AS last_success_at,
                   MAX(s.retry_after) AS retry_after
-             FROM pre_match_season_profiles p
-             LEFT JOIN pre_match_collection_state s
+             FROM pre_match_collection_state s
+             FULL OUTER JOIN pre_match_season_profiles p
                ON s.league_code=p.league_code AND s.season_key=p.season_key
-            GROUP BY p.league_code, p.season_key
-            ORDER BY MAX(p.fetched_at) DESC
+            GROUP BY COALESCE(p.league_code,s.league_code), COALESCE(p.season_key,s.season_key)
+            ORDER BY MAX(COALESCE(s.completed_at,p.fetched_at)) DESC
             LIMIT 40`
         );
         leagues = result.rows.map(row => ({
@@ -2097,6 +2097,7 @@ const server = http.createServer(async (req, res) => {
           fixtures: leagues.reduce((sum, item) => sum + item.fixtures, 0),
           freshLeagues: leagues.filter(item => item.updatedAt && Date.now() - new Date(item.updatedAt).getTime() < PRE_MATCH_PROFILE_TTL_MS).length,
           staleLeagues: leagues.filter(item => !item.updatedAt || Date.now() - new Date(item.updatedAt).getTime() >= PRE_MATCH_PROFILE_TTL_MS).length,
+          failedLeagues: leagues.filter(item => item.status === "error").length,
           lastUpdatedAt: leagues.reduce((latest, item) => !latest || new Date(item.updatedAt || 0) > new Date(latest) ? item.updatedAt : latest, null),
           leagues
         }
