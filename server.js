@@ -58,6 +58,7 @@ const pushRateLimit = new Map();
 const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || require("node:crypto").randomBytes(32).toString("hex");
 const POWER_GAMES_ADMIN_PIN = process.env.POWER_GAMES_ADMIN_PIN || "";
 const powerGamesAuthAttempts = new Map();
+const aiAdminSessions = new Map();
 const pushScanSnapshots = new Map();
 const pushScanRedCardSince = new Map();
 const historicalTeamResultCache = new Map();
@@ -79,6 +80,29 @@ function saveVolatileRecord(store, key, payload, settledFields = []) {
   }
 }
 function volatileHistoryRows(store) { return [...store.values()].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)); }
+function publicAlertPayload(payload) {
+  if (!payload || String(payload.level || "AI").toUpperCase() !== "AI") return payload;
+  const safe = { ...payload };
+  for (const key of [
+    "reason", "triggerIds", "supportSignalIds", "statsAtSignal",
+    "supportingCriteriaScore", "evidenceKinds", "points",
+    "liveConversionSupport", "dirtySheetSupport", "historicalOverSupport",
+    "xGDelta", "odds", "bookmaker", "oddsVerifiedAt"
+  ]) delete safe[key];
+  return safe;
+}
+function aiAdminSessionForRequest(req) {
+  const cookie = String(req.headers.cookie || "");
+  const match = cookie.split(";").map(part => part.trim()).find(part => part.startsWith("goalmatrix_ai_admin="));
+  const token = match ? match.slice("goalmatrix_ai_admin=".length) : "";
+  if (!token) return false;
+  const session = aiAdminSessions.get(token);
+  if (!session || session.expiresAt <= Date.now()) {
+    aiAdminSessions.delete(token);
+    return false;
+  }
+  return true;
+}
 let pushDbInit = null;
 let alertHistoryDbInit = null;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -1704,6 +1728,78 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
 
+  if (url.pathname === "/api/ai-alerts/admin/access" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "AI Alerts admin access is not configured" });
+    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+    const now = Date.now();
+    const attempt = powerGamesAuthAttempts.get("ai-admin:" + ip) || { count: 0, since: now, blockedUntil: 0 };
+    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
+    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+    try {
+      const body = await readJsonBody(req, 4096);
+      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
+        attempt.count += 1;
+        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+        powerGamesAuthAttempts.set("ai-admin:" + ip, attempt);
+        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
+      }
+      powerGamesAuthAttempts.delete("ai-admin:" + ip);
+      const token = require("node:crypto").randomBytes(32).toString("hex");
+      const expiresAt = now + 12 * 60 * 60 * 1000;
+      aiAdminSessions.set(token, { expiresAt });
+      for (const [key, value] of aiAdminSessions) if (value.expiresAt <= now) aiAdminSessions.delete(key);
+      res.setHeader("Set-Cookie", "goalmatrix_ai_admin=" + token + "; HttpOnly; Secure; SameSite=Strict; Path=/api/; Max-Age=43200");
+      return send(res, 200, { ok: true, expiresAt });
+    } catch (error) {
+      return send(res, 400, { ok: false, error: "Invalid request" });
+    }
+  }
+
+  if (url.pathname === "/api/alerts/admin/history" && req.method === "GET") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!aiAdminSessionForRequest(req)) return send(res, 401, { error: "Admin session required" });
+    const limit = Math.max(1, Math.min(5000, Number(url.searchParams.get("limit") || 5000)));
+    const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)));
+    const period = String(url.searchParams.get("period") || "all").toLowerCase();
+    const now = Date.now();
+    const dateKey = value => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+    const today = dateKey(now), yesterday = dateKey(now - 86400000);
+    if (!await ensureAlertHistoryDb()) {
+      const rows = volatileHistoryRows(volatileAlertHistory).filter(item => {
+        if (String(item.level || "AI").toUpperCase() !== "AI") return false;
+        const at = Number(item.createdAt || 0);
+        if (!at) return false;
+        if (period === "today") return dateKey(at) === today;
+        if (period === "yesterday") return dateKey(at) === yesterday;
+        if (period === "7d") return at >= now - 7 * 86400000;
+        if (period === "30d") return at >= now - 30 * 86400000;
+        return true;
+      });
+      return send(res, 200, { ok: true, persistent: false, volatile: true, alerts: rows.slice(offset, offset + limit) });
+    }
+    try {
+      const windowSql = period === "today"
+        ? "created_at >= (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+        : period === "yesterday"
+          ? "created_at >= ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') - INTERVAL '1 day') AT TIME ZONE 'Europe/Athens') AND created_at < (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+          : period === "7d"
+            ? "created_at >= NOW() - INTERVAL '7 days'"
+            : period === "30d"
+              ? "created_at >= NOW() - INTERVAL '30 days'"
+              : "TRUE";
+      const result = await analyticsPool.query(
+        `SELECT payload FROM alert_history
+          WHERE level = 'AI' AND ${windowSql}
+          ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+      return send(res, 200, { ok: true, persistent: true, alerts: result.rows.map(row => row.payload) });
+    } catch (error) {
+      return send(res, 503, { error: "Could not load private AI alert history" });
+    }
+  }
+
   if (url.pathname === "/api/power-games/access" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Power Games admin access is not configured" });
@@ -1906,6 +2002,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!aiAdminSessionForRequest(req)) return send(res, 401, { error: "Private analyst access required" });
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
       // Always recompute from current settled history; cached reports may predate
@@ -2060,7 +2157,7 @@ const server = http.createServer(async (req, res) => {
         if (period === "30d") return at >= now - 30 * 86400000;
         return true;
       });
-      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit) });
+      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit).map(publicAlertPayload) });
     }
     try {
       // Return the requested history window using Greece-local calendar boundaries.
@@ -2084,7 +2181,7 @@ const server = http.createServer(async (req, res) => {
           LIMIT $1 OFFSET $2`,
         [limit, offset]
       );
-      return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => row.payload) });
+      return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => publicAlertPayload(row.payload)) });
     } catch (error) {
       return send(res, 503, { error: "Could not load alert history" });
     }
@@ -2103,7 +2200,7 @@ const server = http.createServer(async (req, res) => {
       });
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
       if (!alertHistoryDbReady) {
-        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betSettlementReason", "betFinalScore", "betMatchFinalScore", "betHalfTimeScore", "betScoreScope", "betScoreSource", "betSettlementProvider", "betSettlementFixtureId", "betSettlementFixtureDate", "betSettlementLeague", "betSettledAt", "evaluatedAt", "evaluationRule"]);
+        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betSettlementReason", "betFinalScore", "betMatchFinalScore", "betHalfTimeScore", "betScoreScope", "betScoreSource", "betSettlementProvider", "betSettlementFixtureId", "betSettlementFixtureDate", "betSettlementLeague", "betSettledAt", "evaluatedAt", "evaluationRule", "reason", "triggerIds", "supportSignalIds", "statsAtSignal", "supportingCriteriaScore", "evidenceKinds", "points", "liveConversionSupport", "dirtySheetSupport", "historicalOverSupport", "xGDelta", "odds", "bookmaker", "oddsVerifiedAt"]);
         return send(res, 200, { ok: true, persistent: false, volatile: true, saved: records.length });
       }
       await analyticsPool.query(
@@ -2160,7 +2257,22 @@ const server = http.createServer(async (req, res) => {
             'betSettlementLeague', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLeague','null'::jsonb), alert_history.payload->'betSettlementLeague')
           ))
           ELSE EXCLUDED.payload
-        END, updated_at=NOW()`,
+        END || jsonb_strip_nulls(jsonb_build_object(
+          'reason', COALESCE(NULLIF(EXCLUDED.payload->'reason','null'::jsonb), alert_history.payload->'reason'),
+          'triggerIds', COALESCE(NULLIF(EXCLUDED.payload->'triggerIds','null'::jsonb), alert_history.payload->'triggerIds'),
+          'supportSignalIds', COALESCE(NULLIF(EXCLUDED.payload->'supportSignalIds','null'::jsonb), alert_history.payload->'supportSignalIds'),
+          'statsAtSignal', COALESCE(NULLIF(EXCLUDED.payload->'statsAtSignal','null'::jsonb), alert_history.payload->'statsAtSignal'),
+          'supportingCriteriaScore', COALESCE(NULLIF(EXCLUDED.payload->'supportingCriteriaScore','null'::jsonb), alert_history.payload->'supportingCriteriaScore'),
+          'evidenceKinds', COALESCE(NULLIF(EXCLUDED.payload->'evidenceKinds','null'::jsonb), alert_history.payload->'evidenceKinds'),
+          'points', COALESCE(NULLIF(EXCLUDED.payload->'points','null'::jsonb), alert_history.payload->'points'),
+          'liveConversionSupport', COALESCE(NULLIF(EXCLUDED.payload->'liveConversionSupport','null'::jsonb), alert_history.payload->'liveConversionSupport'),
+          'dirtySheetSupport', COALESCE(NULLIF(EXCLUDED.payload->'dirtySheetSupport','null'::jsonb), alert_history.payload->'dirtySheetSupport'),
+          'historicalOverSupport', COALESCE(NULLIF(EXCLUDED.payload->'historicalOverSupport','null'::jsonb), alert_history.payload->'historicalOverSupport'),
+          'xGDelta', COALESCE(NULLIF(EXCLUDED.payload->'xGDelta','null'::jsonb), alert_history.payload->'xGDelta'),
+          'odds', COALESCE(NULLIF(EXCLUDED.payload->'odds','null'::jsonb), alert_history.payload->'odds'),
+          'bookmaker', COALESCE(NULLIF(EXCLUDED.payload->'bookmaker','null'::jsonb), alert_history.payload->'bookmaker'),
+          'oddsVerifiedAt', COALESCE(NULLIF(EXCLUDED.payload->'oddsVerifiedAt','null'::jsonb), alert_history.payload->'oddsVerifiedAt')
+        )), updated_at=NOW()` ,
         [JSON.stringify(records)]
       );
       return send(res, 200, { ok: true, persistent: true, saved: records.length });
@@ -2323,7 +2435,7 @@ const server = http.createServer(async (req, res) => {
       // scored, settled, or included in AI/HI/VIP history or scanner results.
       const result = await sendPushToSubscribers({
         title: "TEST · ΔΟΚΙΜΑΣΤΙΚΟ AI ALERT",
-        body: "ΔΟΚΙΜΑΣΤΙΚΟΣ ΑΓΩΝΑΣ — North City 1–0 South United · 32′ | 3 SOT στα τελευταία 5′ (εικονικά στοιχεία). Δεν είναι πραγματικός αγώνας ή πρόταση στοιχήματος.",
+        body: "ΔΟΚΙΜΑΣΤΙΚΟΣ ΑΓΩΝΑΣ — North City 1–0 South United · 32′. Δεν είναι πραγματικός αγώνας ή πρόταση στοιχήματος.",
         tag: "goal-matrix-synthetic-ai-test",
         url: "/"
       });
@@ -3377,12 +3489,14 @@ const server = http.createServer(async (req, res) => {
           const alertTitle = level === "VIP" ? "GoalMatrix · ◆ VIP ALERT" : "GoalMatrix · AI ALERT";
           const notificationMinute = parseLiveMinute(getMatchMinute(match));
           const minutePrefix = Number.isFinite(notificationMinute) ? notificationMinute + "′ " : "";
-          const marketLabel = oddsPeriod === "second_half" ? "Τελικό σύνολο Over " : "1ο ημίχ. Over ";
-          const priceSuffix = hasVerifiedOdds
-            ? " @" + Number(verifiedOdds.price).toFixed(2)
-            : " (χωρίς επιβεβαιωμένη απόδοση)";
-          const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
+          const marketLabel = oddsPeriod === "second_half" ? "ΤΕΛΙΚΟ Over " : "1ο ΗΜΙΧΡΟΝΟ Over ";
+          const competitionLabel = String(match.league || match.competition || match.country || "Διοργάνωση").trim();
+          const alertBody = [
+            (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος"),
+            competitionLabel,
+            minutePrefix.trim(),
+            marketLabel + overLine
+          ].filter(Boolean).join(" · ");
           const volatileAlertId = "push:" + id + ":" + level + ":" + now;
           saveVolatileRecord(volatileAlertHistory, volatileAlertId, {
             alertId: volatileAlertId, source: "server-push", eventId: id, level, createdAt: now,

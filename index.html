@@ -2203,6 +2203,7 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
 
 <div class="gp-section-buttons" id="gpSectionButtons" aria-label="Ενότητες GoalMatrix">
  <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
+ <button type="button" class="gp-section-button gp-vip-button" id="myAiAlertsToggle" aria-controls="myAiAlerts" aria-expanded="false">🔒 MY AI ALERTS <span class="gp-button-count">PRIVATE</span></button>
  <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
@@ -2306,6 +2307,21 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
  <div class="top-ai-alert-list" id="topAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων ενδείξεων από πραγματικά live στατιστικά…</div></div>
  <p class="top-ai-alert-privacy">Οι ενδείξεις βασίζονται στα διαθέσιμα στατιστικά και δεν εγγυώνται αποτέλεσμα.</p>
  
+</section>
+
+<section class="top-ai-alerts" id="myAiAlerts" hidden aria-labelledby="myAiAlertsTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="myAiAlertsTitle">🔒 MY AI ALERTS · PRIVATE ANALYST VIEW</h2><p>Τα ίδια AI alerts με τα εσωτερικά triggers και τα δεδομένα αξιολόγησης. Ορατά μόνο μετά από προσωπική σύνδεση.</p></div><span class="pulse-status" id="myAiAlertsStatus">ΚΛΕΙΔΩΜΕΝΟ</span></div>
+ <div id="myAiAlertsLogin" style="padding:16px">
+  <label for="myAiAlertsPin" class="subtle">Προσωπικό PIN διαχειριστή</label>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+   <input id="myAiAlertsPin" type="password" autocomplete="current-password" inputmode="numeric" placeholder="PIN" style="max-width:220px">
+   <button type="button" class="login" id="myAiAlertsLoginButton">🔓 Σύνδεση</button>
+  </div>
+  <p id="myAiAlertsLoginMessage" class="subtle" aria-live="polite">Η ιδιωτική προβολή απαιτεί το ήδη ρυθμισμένο POWER_GAMES_ADMIN_PIN.</p>
+ </div>
+ <div id="myAiAlertsPrivate" hidden>
+  <div class="top-ai-alert-list" id="myAiAlertsPrivateList" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση ιδιωτικών AI alerts…</div></div>
+ </div>
 </section>
 
 <section class="top-ai-alerts top-vip-alerts" id="topVipAlerts" hidden aria-labelledby="topVipAlertsTitle">
@@ -3129,11 +3145,92 @@ function renderTopAiAlerts(){
   const shown=alerts.filter(a=>!isExpired(a)).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));count.textContent=shown.length+' '+label;
   if(!shown.length){host.innerHTML='<div class="top-ai-alert-empty">'+emptyText+'</div>';return}
   const formatAlertIssueScore=a=>{const home=a?.scoreAtSignal?.home,away=a?.scoreAtSignal?.away;if(home!=null&&away!=null&&Number.isFinite(Number(home))&&Number.isFinite(Number(away)))return Number(home)+'–'+Number(away);const reasonMatch=String(a?.reason||'').match(/Σκορ επιλογής:\s*(\d+)\s*[–-]\s*(\d+)/i);if(reasonMatch)return reasonMatch[1]+'–'+reasonMatch[2];return '';};
-  host.innerHTML=shown.map((a,i)=>{const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;const isMinuteValue=value=>/^\s*(?:\d{1,3}\s*(?:['′’]|min)?(?:\s*\+)?|HT|FT|LIVE|ΗΜΙΧΡΟΝΟ|ΤΕΛΟΣ)\s*$/i.test(String(value||''));const validCompetition=value=>{const text=String(value||'').trim();return Boolean(text)&&!isMinuteValue(text)&&!/^(?:διοργάνωση|competition|league|international|διεθνής|άλλη διοργάνωση)$/i.test(text)};const competition=[match&&match.league,a.league,a.country].find(validCompetition)||'Άλλη διοργάνωση';const minuteCandidate=a.minute||match&&match.clock||'LIVE';const minute=isMinuteValue(minuteCandidate)?String(minuteCandidate).trim():(match&&match.clock)||'LIVE';const market=String(a.market||'Live signal');const marketPeriodLabel=alertMarketPeriodLabel(a);const issuedAt=new Date(Number(a.createdAt));const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'ώρα άγνωστη';return '<button type="button" class="top-ai-alert-card" data-top-alert="'+prefix+'" data-alert-index="'+i+'"><span class="alert-card-kicker"><span>'+prefix+' '+esc(a.level||'AI')+' ALERT</span><span>'+esc(a.time||issuedTime)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">Διοργάνωση: '+esc(competition)+' · '+esc(minute)+' · '+esc(market)+'</div><div class="alert-card-market">Περίοδος αγοράς: '+esc(marketPeriodLabel)+'</div><div class="alert-card-market">'+(formatAlertIssueScore(a)?'Σκορ έκδοσης '+esc(formatAlertIssueScore(a))+' · ':'')+(hasValidOdds(a)?('Απόδοση '+Number(a.odds??a.oddsAtSignal).toFixed(2)):'Απόδοση μη διαθέσιμη')+'</div><div class="alert-card-reason">'+esc(a.reason||'Νέα μεταβολή live στατιστικών')+'</div></button>';}).join('');
+  host.innerHTML=shown.map((a,i)=>{
+   if(String(a.level||"AI").toUpperCase()!=="VIP"){
+    const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;
+    const isMinuteValue=value=>/^\s*(?:\d{1,3}\s*(?:['′’]|min)?(?:\s*\+)?|HT|FT|LIVE|ΗΜΙΧΡΟΝΟ|ΤΕΛΟΣ)\s*$/i.test(String(value||''));
+    const validCompetition=value=>{const text=String(value||'').trim();return Boolean(text)&&!isMinuteValue(text)&&!/^(?:διοργάνωση|competition|league|international|διεθνής|άλλη διοργάνωση)$/i.test(text)};
+    const competition=[match&&match.league,a.league,a.country].find(validCompetition)||'Διοργάνωση';
+    const minuteCandidate=a.minute||match&&match.clock||'LIVE';
+    const minute=isMinuteValue(minuteCandidate)?String(minuteCandidate).trim():(match&&match.clock)||'LIVE';
+    const market=String(a.market||'Over market');
+    const period=alertMarketPeriodLabel(a);
+    const issuedAt=new Date(Number(a.createdAt));
+    const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}):'';
+    return '<button type="button" class="top-ai-alert-card" data-top-alert="'+prefix+'" data-alert-index="'+i+'"><span class="alert-card-kicker"><span>⚡ AI ALERT</span><span>'+esc(a.time||issuedTime)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">'+esc(competition)+' · '+esc(minute)+'</div><div class="alert-card-market">'+esc(market)+' · '+esc(period)+'</div></button>';
+   }
+   const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;const isMinuteValue=value=>/^\s*(?:\d{1,3}\s*(?:['′’]|min)?(?:\s*\+)?|HT|FT|LIVE|ΗΜΙΧΡΟΝΟ|ΤΕΛΟΣ)\s*$/i.test(String(value||''));const validCompetition=value=>{const text=String(value||'').trim();return Boolean(text)&&!isMinuteValue(text)&&!/^(?:διοργάνωση|competition|league|international|διεθνής|άλλη διοργάνωση)$/i.test(text)};const competition=[match&&match.league,a.league,a.country].find(validCompetition)||'Άλλη διοργάνωση';const minuteCandidate=a.minute||match&&match.clock||'LIVE';const minute=isMinuteValue(minuteCandidate)?String(minuteCandidate).trim():(match&&match.clock)||'LIVE';const market=String(a.market||'Live signal');const marketPeriodLabel=alertMarketPeriodLabel(a);const issuedAt=new Date(Number(a.createdAt));const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'ώρα άγνωστη';return '<button type="button" class="top-ai-alert-card" data-top-alert="'+prefix+'" data-alert-index="'+i+'"><span class="alert-card-kicker"><span>'+prefix+' '+esc(a.level||'AI')+' ALERT</span><span>'+esc(a.time||issuedTime)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">Διοργάνωση: '+esc(competition)+' · '+esc(minute)+' · '+esc(market)+'</div><div class="alert-card-market">Περίοδος αγοράς: '+esc(marketPeriodLabel)+'</div><div class="alert-card-market">'+(formatAlertIssueScore(a)?'Σκορ έκδοσης '+esc(formatAlertIssueScore(a))+' · ':'')+(hasValidOdds(a)?('Απόδοση '+Number(a.odds??a.oddsAtSignal).toFixed(2)):'Απόδοση μη διαθέσιμη')+'</div><div class="alert-card-reason">'+esc(a.reason||'Νέα μεταβολή live στατιστικών')+'</div></button>';}).join('');
  };
  render('topAiAlertList','topAiAlertCount',all.filter(a=>a.level!=='VIP'),'ALERTS','Δεν υπάρχει αυτή τη στιγμή νέα ένδειξη AI.','⚡');
  render('topVipAlertList','topVipAlertCount',all.filter(a=>a.level==='VIP'),'VIP','Δεν υπάρχει αυτή τη στιγμή νέα VIP ένδειξη.','◆');
 }
+
+let myAiAlertsPrivateData=[];
+const myAiTriggerNumbers={
+ recent_sot_pressure:1,
+ xg_threshold:2,
+ cumulative_15_sot:3,
+ dual_team_sot_pressure:4,
+ man_advantage_pressure:5
+};
+function renderMyAiAlertsPrivate(){
+ const host=document.getElementById('myAiAlertsPrivateList');if(!host)return;
+ const rows=myAiAlertsPrivateData.filter(a=>a&&String(a.level||'AI').toUpperCase()==='AI').sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
+ if(!rows.length){host.innerHTML='<div class="top-ai-alert-empty">Δεν υπάρχουν καταγεγραμμένα AI alerts.</div>';return}
+ host.innerHTML=rows.map(a=>{
+  const ids=Array.isArray(a.triggerIds)?[...new Set(a.triggerIds.map(id=>myAiTriggerNumbers[id]).filter(Number.isInteger))].sort((x,y)=>x-y):[];
+  const triggerText=ids.length?ids.map(n=>'Trigger '+n).join(' · '):'Δεν καταγράφηκε Trigger ID σε αυτό το alert';
+  const sourceLabel=a.source==='server-push'?'BACKGROUND AI PROTOCOL':'CLIENT AI SCANNER';
+  const stats=a.statsAtSignal&&typeof a.statsAtSignal==='object'?JSON.stringify(a.statsAtSignal,null,2):'Δεν υπάρχουν αναλυτικά statsAtSignal';
+  const at=new Date(Number(a.createdAt));
+  const time=Number.isFinite(at.getTime())?at.toLocaleString('el-GR'):'';
+  const minute=String(a.minute||'');
+  const league=String(a.league||'Διοργάνωση');
+  const market=String(a.market||'Over');
+  const period=alertMarketPeriodLabel(a);
+  return '<article class="top-ai-alert-card" style="text-align:left;cursor:default"><span class="alert-card-kicker"><span>🔒 PRIVATE AI · '+esc(sourceLabel)+' · '+esc(time)+'</span><span>'+esc(minute)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">'+esc(league)+' · '+esc(market)+' · '+esc(period)+'</div><div class="alert-card-market"><strong>Ενεργοποιήθηκαν:</strong> '+esc(triggerText)+'</div><div class="alert-card-reason">'+esc(a.reason||'Δεν υπάρχει αποθηκευμένη περιγραφή κριτηρίων')+'</div><details style="margin-top:10px"><summary>Εσωτερικά δεδομένα trigger / stats</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:360px;overflow:auto">'+esc(stats)+'</pre><p class="subtle">Trigger IDs: '+esc((Array.isArray(a.triggerIds)?a.triggerIds:[]).join(', ')||'—')+'</p><p class="subtle">Support signals: '+esc((Array.isArray(a.supportSignalIds)?a.supportSignalIds:[]).join(', ')||'—')+'</p></details></article>';
+ }).join('');
+}
+async function loadMyAiAlertsPrivate(){
+ const status=document.getElementById('myAiAlertsStatus');
+ const login=document.getElementById('myAiAlertsLogin');
+ const content=document.getElementById('myAiAlertsPrivate');
+ const message=document.getElementById('myAiAlertsLoginMessage');
+ try{
+  const response=await fetch(ANALYTICS_API+'/api/alerts/admin/history?limit=5000&period=all',{cache:'no-store',credentials:'same-origin'});
+  if(response.status===401){if(login)login.hidden=false;if(content)content.hidden=true;if(status)status.textContent='ΚΛΕΙΔΩΜΕΝΟ';return false}
+  if(!response.ok)throw new Error('HTTP '+response.status);
+  const data=await response.json();
+  myAiAlertsPrivateData=Array.isArray(data.alerts)?data.alerts:[];
+  if(login)login.hidden=true;if(content)content.hidden=false;if(status)status.textContent=myAiAlertsPrivateData.length+' PRIVATE AI';
+  renderMyAiAlertsPrivate();return true;
+ }catch(error){if(message)message.textContent='Δεν φορτώθηκαν τα ιδιωτικά alerts: '+String(error.message||error);return false}
+}
+async function loginMyAiAlerts(){
+ const input=document.getElementById('myAiAlertsPin');
+ const button=document.getElementById('myAiAlertsLoginButton');
+ const message=document.getElementById('myAiAlertsLoginMessage');
+ if(!input||!button)return;
+ const pin=String(input.value||'').trim();
+ if(!pin){if(message)message.textContent='Πληκτρολόγησε το προσωπικό PIN.';return}
+ button.disabled=true;if(message)message.textContent='Έλεγχος PIN…';
+ try{
+  const response=await fetch(ANALYTICS_API+'/api/ai-alerts/admin/access',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({pin})});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||('HTTP '+response.status));
+  input.value='';
+  if(await loadMyAiAlertsPrivate()){if(message)message.textContent='Η ιδιωτική προβολή ξεκλειδώθηκε.'}
+ }catch(error){if(message)message.textContent='Αποτυχία σύνδεσης: '+String(error.message||error)}
+ finally{button.disabled=false}
+}
+document.getElementById('myAiAlertsToggle')?.addEventListener('click',async()=>{
+ const panel=document.getElementById('myAiAlerts'),button=document.getElementById('myAiAlertsToggle');
+ if(!panel||!button)return;
+ const open=panel.hidden;panel.hidden=!open;button.setAttribute('aria-expanded',open?'true':'false');
+ if(open){panel.scrollIntoView({behavior:'smooth',block:'start'});await loadMyAiAlertsPrivate();}
+});
+document.getElementById('myAiAlertsLoginButton')?.addEventListener('click',loginMyAiAlerts);
+document.getElementById('myAiAlertsPin')?.addEventListener('keydown',event=>{if(event.key==='Enter')loginMyAiAlerts()});
 
 function autoSettleFinishedOverBets(){
   if(!Array.isArray(signalAlertHistory)||!Array.isArray(allMatches))return false;
@@ -3211,7 +3308,7 @@ function showSignalHistory(){
   const labels={today:'σήμερα',yesterday:'χθες',date:exactDate?('στις '+new Date(exactStart).toLocaleDateString('el-GR')):'στην επιλεγμένη ημερομηνία','7days':'τις τελευταίες 7 ημέρες',week:'την τρέχουσα εβδομάδα',month:'τον τρέχοντα μήνα',year:'το τρέχον έτος','30days':'τις τελευταίες 30 ημέρες',all:'σε όλο το ιστορικό'};
   if(!filtered.length){signalResults.innerHTML='<p>Δεν υπάρχουν αποθηκευμένα alerts για '+esc(labels[period]||'αυτή την περίοδο')+'.</p><p class="signal-muted">Το ιστορικό συγχρονίζεται με τη βάση GoalMatrix όταν ο server είναι διαθέσιμος. Οι αποδόσεις καταχωρίζονται όπως τις είδες τη στιγμή του alert.</p>';return}
   const groups=new Map();filtered.forEach(a=>{const d=new Date(Number(a.createdAt)),key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');if(!groups.has(key))groups.set(key,[]);groups.get(key).push(a)});
-  const dayHtml=[...groups.entries()].map(([key,items])=>{const [yy,mm,dd]=key.split('-').map(Number),heading=new Date(yy,mm-1,dd).toLocaleDateString('el-GR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});const dayAi=items.filter(a=>a.level!=='VIP'),dayVip=items.filter(a=>a.level==='VIP'),settledBets=items.filter(a=>a.betOutcome==='won'||a.betOutcome==='lost'),betWins=settledBets.filter(a=>a.betOutcome==='won').length,betLosses=settledBets.filter(a=>a.betOutcome==='lost').length,betWinRate=settledBets.length?Math.round(betWins/settledBets.length*100)+'%':'—';return '<h4 class="detail-heading" style="margin:18px 0 8px">📅 '+esc(heading)+' · '+items.length+' alerts <span class="signal-muted">· AI '+dayAi.length+' · VIP '+dayVip.length+' · Κερδισμένα '+betWins+' · Χαμένα '+betLosses+' · Επιτυχία '+betWinRate+'</span></h4>'+items.map(a=>{const i=signalAlertHistory.indexOf(a),marketPeriodLabel=alertMarketPeriodLabel(a),pending=!a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές'].includes(String(a.outcome).trim().toLowerCase()),betPending=!['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase());const linkedMatch=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;const completedPending=linkedMatch&&linkedMatch.state==='post'&&(!a.outcome||a.outcome==='εκκρεμεί'||String(a.outcome).includes('εκκρεμεί'));const issuedMinuteRaw=a.minuteNumber??String(a.minute||'').match(/\d{1,3}/)?.[0];const issuedMinute=issuedMinuteRaw!=null&&issuedMinuteRaw!==''&&Number.isFinite(Number(issuedMinuteRaw))?Number(issuedMinuteRaw)+'′':'';return '<div class="signal-row"><div><strong>'+(a.level==='VIP'?'◆':'⚡')+' '+esc(a.level||'AI')+' · '+esc(a.home||'')+' – '+esc(a.away||'')+'</strong><div class="signal-muted">'+esc((a.country?a.country+' · ':'')+(a.league||'Διοργάνωση'))+' · '+esc(a.minute||'LIVE')+' · '+esc(a.market||'ένταση')+' · Περίοδος αγοράς: '+esc(marketPeriodLabel)+(a.scoreAtSignal?' · Σκορ έκδοσης '+esc(a.scoreAtSignal.home)+'–'+esc(a.scoreAtSignal.away):'')+' · '+esc(a.reason||'')+'<br><span>Αξιολόγηση alert: '+esc(a.outcome||'εκκρεμεί')+(completedPending?' · αγώνας ολοκληρώθηκε — αξιολόγηση εκκρεμεί':'')+(a.evaluationWindowMinutes?' · παράθυρο '+esc(a.evaluationWindowMinutes)+'′':'')+'</span></div>' +(pending?'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px"><button class="mini-btn" data-outcome="hit" data-alert="'+i+'">Επιβεβαιώθηκε χειροκίνητα</button><button class="mini-btn" data-outcome="miss" data-alert="'+i+'">Δεν επιβεβαιώθηκε χειροκίνητα</button></div>':'')+'<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:7px"><label class="signal-muted">Απόδοση <input inputmode="decimal" placeholder="π.χ. 1.75" value="'+esc(a.oddsAtSignal??'')+'" data-odds-input="'+i+'" style="width:76px;min-width:76px;padding:5px;background:#0d1b2a;color:inherit;border:1px solid #38516a;border-radius:6px"></label><button class="mini-btn" data-bet-action="save-odds" data-alert="'+i+'">Αποθήκευση</button>'+'<button class="mini-btn" data-bet-action="won" data-alert="'+i+'" style="background:#166534;color:#fff;border-color:#22c55e">'+(betPending?'Bet κερδισμένο':'Διόρθωση: κερδισμένο')+'</button><button class="mini-btn" data-bet-action="lost" data-alert="'+i+'" style="background:#991b1b;color:#fff;border-color:#ef4444">'+(betPending?'Bet χαμένο':'Διόρθωση: χαμένο')+'</button><button class="mini-btn" data-bet-action="void" data-alert="'+i+'">'+(betPending?'Άκυρο':'Διόρθωση: άκυρο')+'</button>'+'</div><div class="signal-muted"><span style="display:inline-block;padding:3px 8px;border-radius:6px;font-weight:700;color:#fff;background:'+(a.betOutcome==='won'?'#166534':a.betOutcome==='lost'?'#991b1b':a.betOutcome==='void'?'#475569':a.betOutcome==='push'?'#854d0e':'#475569')+'">Bet: '+esc(a.betOutcome==='won'?'Κερδισμένο':a.betOutcome==='lost'?'Χαμένο':a.betOutcome==='void'?(a.betSettlementLabel||'Άκυρο'):a.betOutcome==='push'?'Επιστροφή (ασιατικό push)':'Εκκρεμεί')+(issuedMinute?' · Δόθηκε στο '+esc(issuedMinute):'')+'</span>' +(a.oddsAtSignal?' · απόδοση '+esc(a.oddsAtSignal):' · δεν έχει καταχωριστεί απόδοση')+'</div></div><span class="signal-score">'+esc(new Date(Number(a.createdAt)).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}))+'</span></div>'}).join('')}).join('');
+  const dayHtml=[...groups.entries()].map(([key,items])=>{const [yy,mm,dd]=key.split('-').map(Number),heading=new Date(yy,mm-1,dd).toLocaleDateString('el-GR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});const dayAi=items.filter(a=>a.level!=='VIP'),dayVip=items.filter(a=>a.level==='VIP'),settledBets=items.filter(a=>a.betOutcome==='won'||a.betOutcome==='lost'),betWins=settledBets.filter(a=>a.betOutcome==='won').length,betLosses=settledBets.filter(a=>a.betOutcome==='lost').length,betWinRate=settledBets.length?Math.round(betWins/settledBets.length*100)+'%':'—';return '<h4 class="detail-heading" style="margin:18px 0 8px">📅 '+esc(heading)+' · '+items.length+' alerts <span class="signal-muted">· AI '+dayAi.length+' · VIP '+dayVip.length+' · Κερδισμένα '+betWins+' · Χαμένα '+betLosses+' · Επιτυχία '+betWinRate+'</span></h4>'+items.map(a=>{const i=signalAlertHistory.indexOf(a),marketPeriodLabel=alertMarketPeriodLabel(a),pending=!a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές'].includes(String(a.outcome).trim().toLowerCase()),betPending=!['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase());const linkedMatch=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;const completedPending=linkedMatch&&linkedMatch.state==='post'&&(!a.outcome||a.outcome==='εκκρεμεί'||String(a.outcome).includes('εκκρεμεί'));const issuedMinuteRaw=a.minuteNumber??String(a.minute||'').match(/\d{1,3}/)?.[0];const issuedMinute=issuedMinuteRaw!=null&&issuedMinuteRaw!==''&&Number.isFinite(Number(issuedMinuteRaw))?Number(issuedMinuteRaw)+'′':'';return '<div class="signal-row"><div><strong>'+(a.level==='VIP'?'◆':'⚡')+' '+esc(a.level||'AI')+' · '+esc(a.home||'')+' – '+esc(a.away||'')+'</strong><div class="signal-muted">'+esc((a.country?a.country+' · ':'')+(a.league||'Διοργάνωση'))+' · '+esc(a.minute||'LIVE')+' · '+esc(a.market||'ένταση')+' · Περίοδος αγοράς: '+esc(marketPeriodLabel)+(a.level==='VIP'&&a.scoreAtSignal?' · Σκορ έκδοσης '+esc(a.scoreAtSignal.home)+'–'+esc(a.scoreAtSignal.away):'')+(a.level==='VIP'?' · '+esc(a.reason||''):'')+'<br><span>Αξιολόγηση alert: '+esc(a.outcome||'εκκρεμεί')+(completedPending?' · αγώνας ολοκληρώθηκε — αξιολόγηση εκκρεμεί':'')+(a.evaluationWindowMinutes?' · παράθυρο '+esc(a.evaluationWindowMinutes)+'′':'')+'</span></div>' +(pending?'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px"><button class="mini-btn" data-outcome="hit" data-alert="'+i+'">Επιβεβαιώθηκε χειροκίνητα</button><button class="mini-btn" data-outcome="miss" data-alert="'+i+'">Δεν επιβεβαιώθηκε χειροκίνητα</button></div>':'')+'<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:7px"><label class="signal-muted">Απόδοση <input inputmode="decimal" placeholder="π.χ. 1.75" value="'+esc(a.oddsAtSignal??'')+'" data-odds-input="'+i+'" style="width:76px;min-width:76px;padding:5px;background:#0d1b2a;color:inherit;border:1px solid #38516a;border-radius:6px"></label><button class="mini-btn" data-bet-action="save-odds" data-alert="'+i+'">Αποθήκευση</button>'+'<button class="mini-btn" data-bet-action="won" data-alert="'+i+'" style="background:#166534;color:#fff;border-color:#22c55e">'+(betPending?'Bet κερδισμένο':'Διόρθωση: κερδισμένο')+'</button><button class="mini-btn" data-bet-action="lost" data-alert="'+i+'" style="background:#991b1b;color:#fff;border-color:#ef4444">'+(betPending?'Bet χαμένο':'Διόρθωση: χαμένο')+'</button><button class="mini-btn" data-bet-action="void" data-alert="'+i+'">'+(betPending?'Άκυρο':'Διόρθωση: άκυρο')+'</button>'+'</div><div class="signal-muted"><span style="display:inline-block;padding:3px 8px;border-radius:6px;font-weight:700;color:#fff;background:'+(a.betOutcome==='won'?'#166534':a.betOutcome==='lost'?'#991b1b':a.betOutcome==='void'?'#475569':a.betOutcome==='push'?'#854d0e':'#475569')+'">Bet: '+esc(a.betOutcome==='won'?'Κερδισμένο':a.betOutcome==='lost'?'Χαμένο':a.betOutcome==='void'?(a.betSettlementLabel||'Άκυρο'):a.betOutcome==='push'?'Επιστροφή (ασιατικό push)':'Εκκρεμεί')+(issuedMinute?' · Δόθηκε στο '+esc(issuedMinute):'')+'</span>' +(a.oddsAtSignal?' · απόδοση '+esc(a.oddsAtSignal):' · δεν έχει καταχωριστεί απόδοση')+'</div></div><span class="signal-score">'+esc(new Date(Number(a.createdAt)).toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}))+'</span></div>'}).join('')}).join('');
   signalResults.innerHTML=dayHtml+'<p class="signal-muted">Οι αποδόσεις δεν συμπληρώνονται αυτόματα από bookmaker· καταχώρισε την πραγματική απόδοση που είδες όταν εμφανίστηκε η ειδοποίηση. Το ιστορικό συγχρονίζεται με τη μόνιμη βάση όταν ο server είναι διαθέσιμος.</p>';
 }
 function updateIntervalStats(match,trail,current,now){
@@ -4530,12 +4627,13 @@ async function runSignalCheck(){
      const signalClock=String(m.clock||live.minute||'');const minuteMatchAtSignal=signalClock.match(/^\s*(\d{1,3})(?:\s*\+\s*\d{1,2})?\s*['′’]?\s*$/);const signalMinute=minuteMatchAtSignal?Number(minuteMatchAtSignal[1]):NaN;const atHalfTime=/\bHT\b|HALF[ -]?TIME|ΗΜΙΧΡΟΝΟ/i.test(signalClock+' '+String(m.statusText||m.status||''));const periodAtSignal=atHalfTime||(Number.isFinite(signalMinute)&&signalMinute>45)||/second half|2nd half|2ο ημίχρονο/i.test(signalClock)?'second_half':'first_half';const asianLineSelected=false; // Asian Over is reserved for manually registered VIP alerts only.const base={eventId:m.id,home:m.home.name,away:m.away.name,league:m.league,country:m.country||'Διεθνής',minute:m.clock||'LIVE',minuteNumber:Number.isFinite(signalMinute)?signalMinute:null,periodAtSignal,marketPeriod:market.key==='corner'?'full_match':periodAtSignal,reason:market.key==='corner'?'Σύνολο τώρα: '+totalCorners+' κόρνερ · Εκτίμηση λήξης: '+(projectedCorners==null?'—':projectedCorners.toFixed(1))+' · Γραμμή: Over '+overLine+' · Επιβεβαιωτικές ενδείξεις επίθεσης: '+(attacksAdded>0?'επιθέσεις ':'')+(dangerousAttacksAdded>0?'επικίνδυνες επιθέσεις ':'')+(shotsOnTargetAdded>0?'σουτ στην εστία':'')+' · '+[...new Set(reasons)].join(' · '):reason,market:market.key==='goal'?(asianLineSelected?'2ο ημίχρονο · Ασιατικό Over '+(Number(m.home.score||0)+Number(m.away.score||0)+2):(periodAtSignal==='first_half'?'1ο ημίχρονο Over '+(Number(m.home.score||0)+Number(m.away.score||0)+0.5):'2ο ημίχρονο Over '+(Number(m.home.score||0)+Number(m.away.score||0)+0.5))):market.label,overLine:market.key==='corner'?overLine:(market.key==='goal'?(asianLineSelected?Number(m.home.score||0)+Number(m.away.score||0)+2:(Number(m.home.score||0)+Number(m.away.score||0)+0.5)):null),projectedCorners:market.key==='corner'?projectedCorners:null,time:new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'}),createdAt:now,startScore:Number(m.home.score||0)+Number(m.away.score||0),scoreAtSignal:{home:Number(m.home.score||0),away:Number(m.away.score||0)},startCorners:live.teams.every(t=>t.corners!=null)?live.teams.reduce((sum,t)=>sum+Number(t.corners),0):null,startShotsOnTarget:live.teams.every(t=>t.shotsOnTarget!=null)?live.teams.reduce((sum,t)=>sum+Number(t.shotsOnTarget),0):null,evaluationWindowMinutes:Number(signalOutcomeWindow.value),outcome:'εκκρεμεί'};
      const aiRecord={...base,level:'AI'};aiRecord.alertId=alertHistoryKey(aiRecord);signalAlertHistory.unshift(aiRecord);persistAlertRecord(aiRecord);
 
-     sendGoalPulsePushAlert('AI',m.home.name+' – '+m.away.name+' · '+base.market+' · '+alertMarketPeriodLabel(base)+' · '+reason,base.eventId||m.id);
+     const publicAiAlertSummary=[m.home.name+' – '+m.away.name,m.league||m.competition||base.league||'Διοργάνωση',base.minute||base.minuteNumber||'LIVE',base.market,alertMarketPeriodLabel(base)].filter(Boolean).join(' · ');
+     sendGoalPulsePushAlert('AI',publicAiAlertSummary,base.eventId||m.id);
      
      signalAlertHistory=signalAlertHistory.slice(0,5000);signalLastAlertAt.set(candidateKey,now);newAlerts++;
      try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch{}
      renderTopAiAlerts();renderHighActivityMatches();
-     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('GoalMatrix · AI Alert',{body:m.home.name+' – '+m.away.name+' · '+base.market+' · '+reason,tag:'goal-pulse-ai-'+candidateKey})}catch{}}
+     if('Notification' in window&&Notification.permission==='granted'){try{new Notification('GoalMatrix · AI Alert',{body:publicAiAlertSummary,tag:'goal-pulse-ai-'+candidateKey})}catch{}}
     }
    }
   }
@@ -4560,7 +4658,11 @@ async function runSignalCheck(){
  document.getElementById('analysisTitle').textContent=(alert.level||'AI')+' ALERT · '+(alert.market||'Live signal');
  document.getElementById('analysisSubtitle').textContent=(alert.home||'')+' – '+(alert.away||'')+' · '+(alert.league||'')+' · '+(alert.minute||'LIVE')+' · '+alertMarketPeriodLabel(alert);
  const issuedAt=new Date(Number(alert.createdAt));const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
- document.getElementById('analysisContent').innerHTML='<div class="analysis-note"><strong>Γιατί εμφανίστηκε</strong><p>'+esc(alert.reason||'Μεταβολή στα διαθέσιμα live στατιστικά')+'</p><p><strong>Ώρα έκδοσης:</strong> '+esc(alert.time||issuedTime)+'</p><p><strong>Περίοδος αγοράς:</strong> '+esc(alertMarketPeriodLabel(alert))+'</p><p><strong>Αξιολόγηση:</strong> '+esc(alert.outcome||'Εκκρεμεί')+'</p><p>Η ένδειξη βασίζεται σε μεταβολές στα διαθέσιμα στατιστικά. Δεν αποτελεί βεβαιότητα ούτε εγγύηση αποτελέσματος.</p></div>';
+ if(!isVip){
+  document.getElementById('analysisContent').innerHTML='<div class="analysis-note"><strong>AI ALERT</strong><p>Η δημόσια προβολή περιλαμβάνει μόνο την αγορά, τη διοργάνωση, το λεπτό και την περίοδο.</p><p><strong>Ώρα έκδοσης:</strong> '+esc(alert.time||issuedTime)+'</p><p><strong>Περίοδος:</strong> '+esc(alertMarketPeriodLabel(alert))+'</p></div>';
+ }else{
+  document.getElementById('analysisContent').innerHTML='<div class="analysis-note"><strong>Γιατί εμφανίστηκε</strong><p>'+esc(alert.reason||'Μεταβολή στα διαθέσιμα live στατιστικά')+'</p><p><strong>Ώρα έκδοσης:</strong> '+esc(alert.time||issuedTime)+'</p><p><strong>Περίοδος αγοράς:</strong> '+esc(alertMarketPeriodLabel(alert))+'</p><p><strong>Αξιολόγηση:</strong> '+esc(alert.outcome||'Εκκρεμεί')+'</p><p>Η ένδειξη βασίζεται σε μεταβολές στα διαθέσιμα στατιστικά. Δεν αποτελεί βεβαιότητα ούτε εγγύηση αποτελέσματος.</p></div>';
+ }
  modal.classList.add('open');
 }));
 
@@ -4899,7 +5001,8 @@ async function loadProtocolAnalyst(){
  const root=document.getElementById('protocolAnalystPanel');if(!root)return;
  root.innerHTML='<p>Έλεγχος αποθηκευμένων αποτελεσμάτων…</p>';
  try{
-  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst',{cache:'no-store',signal:AbortSignal.timeout(20000)});
+  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst',{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(20000)});
+  if(response.status===401){root.innerHTML='<p>🔒 AI Protocol Analyst είναι ιδιωτικό. Ξεκλείδωσε πρώτα το MY AI ALERTS με το προσωπικό PIN.</p>';return}
   const data=await response.json();if(!response.ok||!data.report)throw new Error(data.error||('HTTP '+response.status));
   const report=data.report,sample=report.sample||{},quality=report.dataQuality||{},daily=report.dailySummary||{};
   const recommendations=Array.isArray(report.recommendations)?report.recommendations:[];
