@@ -2755,7 +2755,9 @@ const server = http.createServer(async (req, res) => {
         const maxTeamSOT = teamSOTValues.length ? Math.max(...teamSOTValues) : null;
         const current = {
           at: now,
-            onTarget: total("shotsOnTarget"),
+          minute: parseLiveMinute(getMatchMinute(match)),
+          redCardIncidents: Array.isArray(match.redCardIncidents) ? match.redCardIncidents : [],
+          onTarget: total("shotsOnTarget"),
           // Preserve each team's SOT independently; a missing value for one side
           // must not erase the other side's valid rolling SOT measurement.
           sotByTeam: teams.map(team => ({
@@ -2896,7 +2898,47 @@ const server = http.createServer(async (req, res) => {
           ? current.redCardsByTeam[0].value > current.redCardsByTeam[1].value ? 0
             : current.redCardsByTeam[1].value > current.redCardsByTeam[0].value ? 1 : -1
           : -1;
-        const redCardInfo = pushScanRedCardSince.get(id);
+        let redCardInfo = pushScanRedCardSince.get(id) || null;
+        // Prefer the provider's dated red-card incident when available. This fixes
+        // the first-snapshot gap: if scanning starts after the card, there is no
+        // red-card count transition to observe, even though the dismissal is real.
+        if (redCardSideIndex >= 0) {
+          const latestCardIncident = current.redCardIncidents
+            .filter(incident => incident?.sideIndex === redCardSideIndex && Number.isFinite(incident.minute))
+            .sort((a, b) => a.minute - b.minute)
+            .slice(-1)[0] || null;
+          if (latestCardIncident && Number.isFinite(current.minute)) {
+            const minutesSinceCard = Math.max(0, current.minute - latestCardIncident.minute);
+            const incidentAt = now - minutesSinceCard * 60 * 1000;
+            // Use the first observed snapshot strictly after the dismissal.
+            // This avoids counting pre-card SOT / dangerous attacks in the trigger.
+            const baselineAtCard = snapshots.find(snapshot =>
+              Number.isFinite(snapshot.minute) &&
+              snapshot.minute > latestCardIncident.minute &&
+              snapshot.minute - latestCardIncident.minute <= 2
+            ) || null;
+            redCardInfo = {
+              team: current.redCardsByTeam[redCardSideIndex].team,
+              at: incidentAt,
+              advantagedTeam: current.sotByTeam[1 - redCardSideIndex]?.team || null,
+              sotAtCard: baselineAtCard?.sotByTeam?.[1 - redCardSideIndex]?.value ?? null,
+              dangerousAtCard: baselineAtCard?.dangerousByTeam?.[1 - redCardSideIndex]?.value ?? null
+            };
+            pushScanRedCardSince.set(id, redCardInfo);
+          }
+        }
+        // Conservative fallback for feeds that expose red-card counts but no
+        // incident timeline. Start the post-card evidence clock at first detection.
+        if (redCardSideIndex >= 0 && !redCardInfo) {
+          redCardInfo = {
+            team: current.redCardsByTeam[redCardSideIndex].team,
+            at: now,
+            advantagedTeam: current.sotByTeam[1 - redCardSideIndex]?.team || null,
+            sotAtCard: current.sotByTeam[1 - redCardSideIndex]?.value ?? null,
+            dangerousAtCard: current.dangerousByTeam[1 - redCardSideIndex]?.value ?? null
+          };
+          pushScanRedCardSince.set(id, redCardInfo);
+        }
         const redCardRecent = redCardSideIndex >= 0 && redCardInfo &&
           redCardInfo.team === current.redCardsByTeam[redCardSideIndex].team &&
           now - redCardInfo.at >= 0 && now - redCardInfo.at <= 15 * 60 * 1000;
@@ -3027,6 +3069,16 @@ const server = http.createServer(async (req, res) => {
           cumulativeSotQualifies,
           dualTeamSotPressure,
           manAdvantagePressure,
+          redCardsByTeam: current.redCardsByTeam,
+          redCardCountsKnown,
+          redCardSideIndex,
+          redCardRecent: Boolean(redCardRecent),
+          redCardAgeSeconds: Number.isFinite(redCardAge) ? Math.round(redCardAge / 1000) : null,
+          redCardIncidentMinutes: current.redCardIncidents.map(incident => incident.minute),
+          manAdvantageSot5,
+          manAdvantageSot10,
+          manAdvantageDanger5,
+          manAdvantageDanger10,
           dangerousAttacks5,
           dangerousAttacks10,
           dualTeamSot5,
@@ -4177,9 +4229,33 @@ const server = http.createServer(async (req, res) => {
                 const n = Number.parseFloat(String(raw).replace("%", "").replace(",", "."));
                 return Number.isFinite(n) ? n : null;
               };
+              // SportScore exposes red cards in the match incident timeline as well as
+              // (on some fixtures) a statistics row. Use the incident timeline as a
+              // fallback so a card already present on the first scan is not missed.
+              const redCardIncidents = (Array.isArray(root.incidents) ? root.incidents : [])
+                .map(incident => {
+                  const incidentType = String(incident?.type ?? incident?.name ?? incident?.description ?? "").toLowerCase();
+                  const incidentTypeId = Number(incident?.type_id ?? incident?.typeId);
+                  const isRedCard = /red.?card|second.?yellow|yellow.?red/.test(incidentType) || incidentTypeId === 418;
+                  if (!isRedCard) return null;
+                  const rawSide = String(incident?.side ?? "").toLowerCase().trim();
+                  const sideIndex = incident?.is_home === true || /^(home|host|h|1)$/.test(rawSide) ? 0
+                    : incident?.is_home === false || /^(away|guest|a|2)$/.test(rawSide) ? 1 : -1;
+                  if (sideIndex < 0) return null;
+                  const rawMinute = String(incident?.time ?? incident?.minute ?? incident?.elapsed ?? "").trim();
+                  const minuteMatch = rawMinute.match(/^([0-9]{1,3})/);
+                  const minute = minuteMatch ? Number(minuteMatch[1]) : NaN;
+                  return { sideIndex, minute: Number.isFinite(minute) ? minute : null };
+                })
+                .filter(Boolean);
+              const incidentRedCardCounts = [
+                redCardIncidents.filter(incident => incident.sideIndex === 0).length,
+                redCardIncidents.filter(incident => incident.sideIndex === 1).length
+              ];
+              const hasIncidentTimeline = Array.isArray(root.incidents);
               const values = [
-                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
-                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
+                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
+                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
                             matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "SportScore",
@@ -4189,7 +4265,8 @@ const server = http.createServer(async (req, res) => {
                 status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
                 homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
-                teams: values
+                teams: values,
+                redCardIncidents
               });
               continue;
             }
