@@ -3187,7 +3187,7 @@ function renderMyAiAlertsPrivate(){
   const league=String(a.league||'Διοργάνωση');
   const market=String(a.market||'Over');
   const period=alertMarketPeriodLabel(a);
-  return '<article class="top-ai-alert-card" style="text-align:left;cursor:default"><span class="alert-card-kicker"><span>🔒 PRIVATE AI · '+esc(time)+'</span><span>'+esc(minute)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">'+esc(league)+' · '+esc(market)+' · '+esc(period)+'</div><div class="alert-card-market"><strong>Ενεργοποιήθηκαν:</strong> '+esc(triggerText)+'</div><div class="alert-card-reason">'+esc(a.reason||'Δεν υπάρχει αποθηκευμένη περιγραφή κριτηρίων')+'</div><details style="margin-top:10px"><summary>Εσωτερικά δεδομένα trigger / stats</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:360px;overflow:auto">'+esc(stats)+'</pre><p class="subtle">Trigger IDs: '+esc((Array.isArray(a.triggerIds)?a.triggerIds:[]).join(', ')||'—')+'</p></details></article>';
+  return '<article class="top-ai-alert-card" style="text-align:left;cursor:default"><span class="alert-card-kicker"><span>🔒 PRIVATE AI · '+esc(time)+'</span><span>'+esc(minute)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">'+esc(league)+' · '+esc(market)+' · '+esc(period)+'</div><div class="alert-card-market"><strong>Ενεργοποιήθηκαν:</strong> '+esc(triggerText)+'</div><div class="alert-card-reason">'+esc(a.reason||'Δεν υπάρχει αποθηκευμένη περιγραφή κριτηρίων')+'</div><details style="margin-top:10px"><summary>Εσωτερικά δεδομένα trigger / stats</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:360px;overflow:auto">'+esc(stats)+'</pre><p class="subtle">Trigger IDs: '+esc((Array.isArray(a.triggerIds)?a.triggerIds:[]).join(', ')||'—')+'</p><p class="subtle">Support signals: '+esc((Array.isArray(a.supportSignalIds)?a.supportSignalIds:[]).join(', ')||'—')+'</p></details></article>';
  }).join('');
 }
 async function loadMyAiAlertsPrivate(){
@@ -5000,7 +5000,8 @@ async function loadProtocolAnalyst(){
  const root=document.getElementById('protocolAnalystPanel');if(!root)return;
  root.innerHTML='<p>Έλεγχος αποθηκευμένων αποτελεσμάτων…</p>';
  try{
-  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst',{cache:'no-store',signal:AbortSignal.timeout(20000)});
+  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst',{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(20000)});
+  if(response.status===401){root.innerHTML='<p>🔒 AI Protocol Analyst είναι ιδιωτικό. Ξεκλείδωσε πρώτα το MY AI ALERTS με το προσωπικό PIN.</p>';return}
   const data=await response.json();if(!response.ok||!data.report)throw new Error(data.error||('HTTP '+response.status));
   const report=data.report,sample=report.sample||{},quality=report.dataQuality||{},daily=report.dailySummary||{};
   const recommendations=Array.isArray(report.recommendations)?report.recommendations:[];
