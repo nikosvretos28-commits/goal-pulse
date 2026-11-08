@@ -820,6 +820,19 @@ nav a{flex:0 0 auto}
 .gp-vip-button .gp-button-count{background:#164c35;color:#8bffc1}
 .gp-power-button{border-color:#b58c39;background:linear-gradient(135deg,#3a2a0b,#172536)}.gp-power-button .gp-button-count{background:#57411a;color:#ffe39a}.gp-power-panel{border-color:#8d702e;background:linear-gradient(120deg,#2b230f,#0d2232 70%,#102b36)}.gp-power-lock{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px;border:1px solid #725b29;border-radius:12px;background:#171f25}.gp-power-lock p{flex:1 1 240px;margin:0;color:#f4e8c7}.gp-power-lock button{flex:0 0 auto}.gp-power-lock .subtle{flex:1 1 100%}
 .gp-history-toggle{width:100%;margin:10px 0;text-align:left}
+
+/* Independent all-live Power Ranking; isolated from alert protocols. */
+.gp-live-ranking{margin:12px 0 16px;padding:14px;border:1px solid #386b79;border-radius:15px;background:linear-gradient(135deg,#102b3c,#101c2d 70%,#172b32)}
+.gp-live-ranking-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.gp-live-ranking-head h3{margin:0;color:#d9f7ee;font-size:15px}.gp-live-ranking-head span{font-size:10px;color:#8edbc9;letter-spacing:.06em}
+.gp-ranking-list{display:grid;gap:8px}.gp-ranking-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px;border:1px solid #29495a;border-radius:11px;background:#091b2a}
+.gp-ranking-position{font-size:17px;font-weight:950;color:#77e4c4;text-align:center}.gp-ranking-main{min-width:0}
+.gp-ranking-teams{font-size:12px;font-weight:850;color:#f0f7fa;line-height:1.4;overflow-wrap:anywhere}.gp-ranking-meta{margin-top:3px;font-size:10px;color:#9db7c6}
+.gp-ranking-triggers{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}.gp-ranking-trigger{font-size:9px;padding:3px 6px;border:1px solid #315b61;border-radius:20px;color:#a9f1d8;background:#123a3a}
+.gp-ranking-score{text-align:center;min-width:52px}.gp-ranking-score strong{display:block;font-size:20px;line-height:1;color:#8bf0cb;font-variant-numeric:tabular-nums}.gp-ranking-score small{font-size:9px;color:#9db7c6}
+.gp-ranking-empty{padding:12px;color:#9db7c6;font-size:11px}
+@media(max-width:520px){.gp-ranking-row{grid-template-columns:27px minmax(0,1fr) 46px;padding:8px;gap:6px}.gp-ranking-teams{font-size:11px}.gp-ranking-score strong{font-size:18px}}
+
 .gp-section-buttons [hidden],#topAiAlerts[hidden],#topVipAlerts[hidden],#powerGames[hidden],#trends[hidden],#topTrends[hidden],#signalResults[hidden],#signalHistoryControls[hidden]{display:none!important}
 @media(max-width:700px){.gp-section-buttons{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.gp-section-button{padding:10px 9px;font-size:11px}.gp-section-buttons .gp-section-button:last-child{grid-column:1/-1}}
 .notification-optin-global{display:grid;gap:10px;margin:12px 0 18px;padding:14px;border:1px solid #234457;border-radius:14px;background:linear-gradient(120deg,#0d2232,#102b3d)}.notification-optin-global>strong{font-size:14px;color:#f2f7fa}.notification-optin-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.notification-optin-row .subtle{font-size:12px;color:#a5b8c6}.notification-optin-row button{min-height:38px}@media(max-width:600px){.notification-optin-row button{flex:1 1 42%;font-size:12px;padding:9px 8px}.notification-optin-row .subtle{flex:1 1 100%}}
@@ -2342,7 +2355,12 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
 
 <section class="scoreboard-top">
  <div class="scoreboard-title"><div><div class="eyebrow">GOALMATRIX · AI FOOTBALL INTELLIGENCE</div><h1>Live Score <span>+</span></h1><p>Όλοι οι διαθέσιμοι αγώνες και τα live δεδομένα σε μία οθόνη.</p></div><div class="scoreboard-status"><span class="pulse-dot"></span><span id="liveCountTop">LIVE CENTER</span><small id="topUpdated">Αυτόματη ενημέρωση</small></div></div>
- <div class="top-live live-match-centre" id="highActivity"><div class="top-live-head"><strong>⚡ High Activity Matches</strong><span class="subtle">Αγώνες με έντονη επιθετική πίεση</span></div><div id="highActivityRows"><div class="subtle" style="padding:10px">Αναμονή πραγματικών live στατιστικών…</div></div></div><button type="button" class="gp-section-button gp-power-button gp-power-between-live" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button><div class="top-live live-match-centre" id="live"><div class="top-live-head"><strong>● Live Matches</strong><span class="subtle">Αγώνας και στατιστικά στην ίδια γραμμή</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
+ <div class="top-live live-match-centre" id="highActivity"><div class="top-live-head"><strong>⚡ High Activity Matches</strong><span class="subtle">Αγώνες με έντονη επιθετική πίεση</span></div><div id="highActivityRows"><div class="subtle" style="padding:10px">Αναμονή πραγματικών live στατιστικών…</div></div></div><section class="gp-live-ranking" id="allLivePowerRanking" aria-labelledby="allLivePowerRankingTitle">
+ <div class="gp-live-ranking-head"><h3 id="allLivePowerRankingTitle">🏆 POWER RANKING · ΟΛΟ ΤΟ LIVE ΚΟΥΠΟΝΙ</h3><span id="allLivePowerRankingStatus">LIVE SCAN</span></div>
+ <p class="subtle" style="margin:0 0 10px;font-size:10px">Κατάταξη όλων των ζωντανών αγώνων με βάση τη δυναμική τους — ανεξάρτητα από AI Alerts και HI Activity. Βαθμολογία 0–100, ενημέρωση με τα live στατιστικά.</p>
+ <div class="gp-ranking-list" id="allLivePowerRankingRows" aria-live="polite"><div class="gp-ranking-empty">Αναμονή ζωντανών αγώνων…</div></div>
+</section>
+<button type="button" class="gp-section-button gp-power-button gp-power-between-live" data-gp-toggle="powerGames" id="powerGamesToggle">⚡ POWER GAMES <span class="gp-button-count" id="powerGamesCount">ΚΛΕΙΔΩΜΕΝΟ</span></button><div class="top-live live-match-centre" id="live"><div class="top-live-head"><strong>● Live Matches</strong><span class="subtle">Αγώνας και στατιστικά στην ίδια γραμμή</span></div><div id="liveRows"><div class="subtle" style="padding:12px">Φόρτωση πραγματικών αποτελεσμάτων…</div></div></div>
 </section>
 <nav class="product-nav" aria-label="Μενού LIVE αγώνων"><a class="selected" href="#matches" data-menu-filter="live">🔴 LIVE ΤΩΡΑ</a><a href="#matches" data-menu-filter="all">⚽ Όλοι οι αγώνες</a><a href="#matches" data-menu-filter="upcoming">📅 Πρόγραμμα</a><a href="#matches" data-menu-filter="finished">✓ Αποτελέσματα</a><a href="#leagues">🏆 Πρωταθλήματα</a><a href="#matches" data-menu-filter="favorites">★ Αγαπημένα</a><a href="#insights">📊 Στατιστικά</a><a href="#gpSectionButtons">⚡ AI Alerts</a><a href="#gpSectionButtons">◆ VIP Alerts</a><a href="#gpSectionButtons">↗ Trends</a><a href="#gpSectionButtons">★ Top Trends</a><a href="#savedScanner">☷ Προσωπικά φίλτρα</a><a href="#gpSectionButtons">◷ Ιστορικό</a></nav>
 
@@ -3857,6 +3875,28 @@ function parseGoalMatrixLiveMinute(values){
  }
  return null;
 }
+
+function renderAllLivePowerRanking(){
+ const rows=document.getElementById('allLivePowerRankingRows'),status=document.getElementById('allLivePowerRankingStatus');if(!rows)return;
+ const live=allMatches.filter(m=>m&&m.state==='in');
+ const ranked=live.map(m=>{
+  const stats=liveMetricsCache.get(String(m.id)),teams=Array.isArray(stats?.teams)?stats.teams.slice(0,2):[];
+  const num=(...values)=>{for(const v of values)if(v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v)))return Math.max(0,Number(v));return null;};
+  const sot=t=>num(t.shotsOnTarget,t.shots_on_target,t.shots_on_goal,t.shotsOnGoal,t.onTargetShots);
+  const danger=t=>num(t.dangerousAttacks,t.dangerous_attacks,t.dangerousAttack),attacks=t=>num(t.attacks,t.totalAttacks,t.total_attacks),xg=t=>num(t.xG,t.xg,t.expectedGoals);
+  const total=getter=>teams.length===2&&teams.every(t=>getter(t)!==null)?teams.reduce((sum,t)=>sum+getter(t),0):null;
+  const windowDelta=(w,getter,min,max)=>{const age=Number(w?.sampleMinutes);if(!w?.available||!Array.isArray(w.teams)||w.teams.length<2||!Number.isFinite(age)||age<min||age>max)return null;const v=w.teams.slice(0,2).map(getter);return v.every(x=>x!==null)?v.reduce((a,b)=>a+b,0):null;};
+  const w5=stats?.trend?.window5m,w10=stats?.trend?.window10m,sot5=windowDelta(w5,sot,4.5,8),sot10=windowDelta(w10,sot,8,13),danger10=windowDelta(w10,danger,8,13),attacks10=windowDelta(w10,attacks,8,13);
+  const totalSot=total(sot),totalXg=total(xg);
+  const signals=[(sot5!==null&&sot5>=2)||(sot10!==null&&sot10>=3)?'Πρόσφατη πίεση SOT':null,totalSot!==null&&totalSot>=8?'Όγκος SOT':null,totalXg!==null&&totalXg>=2.5?'Πίεση xG':null,danger10!==null&&danger10>=15?'Επικίνδυνες επιθέσεις':null].filter(Boolean);
+  const score=Math.max(0,Math.min(100,Math.round(Math.min(25,(totalSot||0)*2.5)+Math.min(15,(sot5||0)*5)+Math.min(10,(sot10||0)*2)+Math.min(24,(totalXg||0)*6)+Math.min(15,(danger10||0))+Math.min(10,(attacks10||0)*.25)));
+  return {m,score,signals,hasStats:teams.length===2,totalSot,clock:String(stats?.live_minute??stats?.liveMinute??stats?.elapsed??m.clock??'LIVE')};
+ }).sort((a,b)=>b.score-a.score||b.signals.length-a.signals.length||(b.totalSot||0)-(a.totalSot||0));
+ if(status)status.textContent=live.length+' LIVE MATCHES · '+ranked.filter(x=>x.signals.length>=2).length+' ΜΕ 2+ TRIGGERS';
+ if(!ranked.length){rows.innerHTML='<div class="gp-ranking-empty">Δεν υπάρχουν ζωντανοί αγώνες αυτή τη στιγμή.</div>';return;}
+ rows.innerHTML=ranked.map((x,i)=>{const m=x.m,home=m.home?.name||'Γηπεδούχος',away=m.away?.name||'Φιλοξενούμενος',score=(m.home?.score??'–')+' – '+(m.away?.score??'–');const badges=x.signals.length?x.signals.map(t=>'<span class="gp-ranking-trigger">'+esc(t)+'</span>').join(''):'<span class="gp-ranking-meta">'+(x.hasStats?'Δεν έχει ενεργοποιηθεί trigger':'Αναμονή live στατιστικών')+'</span>';const meta=[m.league||m.country||'LIVE',x.clock,score].filter(Boolean).map(esc).join(' · ');return '<article class="gp-ranking-row"><div class="gp-ranking-position">#'+(i+1)+'</div><div class="gp-ranking-main"><div class="gp-ranking-teams">'+esc(home)+' – '+esc(away)+'</div><div class="gp-ranking-meta">'+meta+'</div><div class="gp-ranking-triggers">'+badges+'</div></div><div class="gp-ranking-score"><strong>'+x.score+'</strong><small>/ 100</small></div></article>';}).join('');
+}
+
 function renderHighActivityMatches(){
  const box=document.getElementById("highActivityRows");if(!box)return;
  const now=Date.now();
@@ -4130,6 +4170,7 @@ function renderHighActivityMatches(){
  box.innerHTML=topTen.length
   ?topTen.map(x=>liveMatchLine(x.match,true,x.intensity)+manAdvantageTag(x)+renderHighActivityTeamMetricsForMatch(x.match)).join("")
   :'<div class="subtle" style="padding:10px">Δεν υπάρχουν διαθέσιμες επιλογές αυτή τη στιγμή.</div>';
+ renderAllLivePowerRanking();
 }
 document.addEventListener('click',async event=>{
  const button=event.target.closest('button[data-manual-vip]');if(!button||!button.closest('#highActivityRows,#powerGamesRows'))return;
