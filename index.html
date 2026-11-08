@@ -827,7 +827,7 @@ nav a{flex:0 0 auto}
 .gp-live-ranking-head h3{margin:0;color:#d9f7ee;font-size:15px}.gp-live-ranking-head span{font-size:10px;color:#8edbc9;letter-spacing:.06em}
 .gp-ranking-list{display:grid;gap:8px}.gp-ranking-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px;border:1px solid #29495a;border-radius:11px;background:#091b2a}
 .gp-ranking-position{font-size:17px;font-weight:950;color:#77e4c4;text-align:center}.gp-ranking-main{min-width:0}
-.gp-ranking-teams{font-size:12px;font-weight:850;color:#f0f7fa;line-height:1.4;overflow-wrap:anywhere}.gp-ranking-meta{margin-top:3px;font-size:10px;color:#9db7c6}
+.gp-ranking-teams{font-size:12px;font-weight:850;color:#f0f7fa;line-height:1.4;overflow-wrap:anywhere}.gp-ranking-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:4px;font-size:10px;color:#9db7c6}.gp-ranking-clock{display:inline-flex;align-items:center;padding:3px 7px;border:1px solid rgba(67,224,162,.42);border-radius:6px;background:linear-gradient(110deg,rgba(20,79,63,.72),rgba(15,48,64,.82));color:#a6f6d8;font-size:11px;font-weight:950;letter-spacing:.02em;font-variant-numeric:tabular-nums;box-shadow:0 0 10px rgba(67,224,162,.08)}
 .gp-ranking-triggers{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}.gp-ranking-trigger{font-size:9px;padding:3px 6px;border:1px solid #315b61;border-radius:20px;color:#a9f1d8;background:#123a3a}
 .gp-ranking-score{text-align:center;min-width:52px}.gp-ranking-score strong{display:block;font-size:20px;line-height:1;color:#8bf0cb;font-variant-numeric:tabular-nums}.gp-ranking-score small{font-size:9px;color:#9db7c6}
 .gp-ranking-empty{padding:12px;color:#9db7c6;font-size:11px}
@@ -3879,6 +3879,20 @@ function parseGoalMatrixLiveMinute(values){
 function renderAllLivePowerRanking(){
  const rows=document.getElementById('allLivePowerRankingRows'),status=document.getElementById('allLivePowerRankingStatus');if(!rows)return;
  const live=allMatches.filter(m=>m&&m.state==='in');
+ const rankingClock=(m,stats)=>{
+  const candidates=[stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute,m.clock]
+   .map(value=>String(value??'').trim()).filter(Boolean);
+  const status=String(m.statusText||m.status||'').trim();
+  const combined=candidates.join(' ')+' '+status;
+  if(/\b(?:HT|half[ -]?time|halftime|interval)\b/i.test(combined))return 'HT';
+  if(/\b(?:ET|extra[ -]?time)\b/i.test(combined))return 'ET';
+  const stoppage=candidates.map(value=>value.match(/(?:^|\s)(\d{1,3})\s*\+\s*(\d{1,2})(?:\s*['′’]|\s*(?:min|minute)s?)?/i)).find(Boolean);
+  if(stoppage)return Number(stoppage[1])+"′+"+Number(stoppage[2]);
+  const minute=parseGoalMatrixLiveMinute(candidates);
+  if(minute!==null&&minute>=1&&minute<=90)return minute+"′";
+  if(candidates.some(value=>/^90\s*\+?$/i.test(value)))return "90′+";
+  return 'LIVE';
+ };
  const ranked=live.map(m=>{
   const stats=liveMetricsCache.get(String(m.id)),teams=Array.isArray(stats?.teams)?stats.teams.slice(0,2):[];
   const num=(...values)=>{for(const v of values)if(v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v)))return Math.max(0,Number(v));return null;};
@@ -3890,11 +3904,11 @@ function renderAllLivePowerRanking(){
   const totalSot=total(sot),totalXg=total(xg);
   const signals=[(sot5!==null&&sot5>=2)||(sot10!==null&&sot10>=3)?'Πρόσφατη πίεση SOT':null,totalSot!==null&&totalSot>=8?'Όγκος SOT':null,totalXg!==null&&totalXg>=2.5?'Πίεση xG':null,danger10!==null&&danger10>=15?'Επικίνδυνες επιθέσεις':null].filter(Boolean);
   const score=Math.max(0,Math.min(100,Math.round(Math.min(25,(totalSot||0)*2.5)+Math.min(15,(sot5||0)*5)+Math.min(10,(sot10||0)*2)+Math.min(24,(totalXg||0)*6)+Math.min(15,(danger10||0))+Math.min(10,(attacks10||0)*.25))));
-  return {m,score,signals,hasStats:teams.length===2,totalSot,clock:String(stats?.live_minute??stats?.liveMinute??stats?.elapsed??m.clock??'LIVE')};
+  return {m,score,signals,hasStats:teams.length===2,totalSot,clock:rankingClock(m,stats)};
  }).sort((a,b)=>b.score-a.score||b.signals.length-a.signals.length||(b.totalSot||0)-(a.totalSot||0));
  if(status)status.textContent=live.length+' LIVE MATCHES · '+ranked.filter(x=>x.signals.length>=2).length+' ΜΕ 2+ TRIGGERS';
  if(!ranked.length){rows.innerHTML='<div class="gp-ranking-empty">Δεν υπάρχουν ζωντανοί αγώνες αυτή τη στιγμή.</div>';return;}
- rows.innerHTML=ranked.map((x,i)=>{const m=x.m,home=m.home?.name||'Γηπεδούχος',away=m.away?.name||'Φιλοξενούμενος',score=(m.home?.score??'–')+' – '+(m.away?.score??'–');const badges=x.signals.length?x.signals.map(t=>'<span class="gp-ranking-trigger">'+esc(t)+'</span>').join(''):'<span class="gp-ranking-meta">'+(x.hasStats?'Δεν έχει ενεργοποιηθεί trigger':'Αναμονή live στατιστικών')+'</span>';const meta=[m.league||m.country||'LIVE',x.clock,score].filter(Boolean).map(esc).join(' · ');return '<article class="gp-ranking-row" data-match-id="'+esc(m.id)+'" data-score-home="'+esc(m.home?.score??'')+'" data-score-away="'+esc(m.away?.score??'')+'"><div class="gp-ranking-position">#'+(i+1)+'</div><div class="gp-ranking-main"><div class="gp-ranking-teams">'+esc(home)+' – '+esc(away)+'</div><div class="gp-ranking-meta">'+meta+'</div><div class="gp-ranking-triggers">'+badges+'</div></div><div class="gp-ranking-score"><strong>'+x.score+'</strong><small>/ 100</small></div></article>';}).join('');
+ rows.innerHTML=ranked.map((x,i)=>{const m=x.m,home=m.home?.name||'Γηπεδούχος',away=m.away?.name||'Φιλοξενούμενος',score=(m.home?.score??'–')+' – '+(m.away?.score??'–');const badges=x.signals.length?x.signals.map(t=>'<span class="gp-ranking-trigger">'+esc(t)+'</span>').join(''):'<span class="gp-ranking-meta">'+(x.hasStats?'Δεν έχει ενεργοποιηθεί trigger':'Αναμονή live στατιστικών')+'</span>';const meta='<span>'+esc(m.league||m.country||'LIVE')+'</span><span class="gp-ranking-clock">'+esc(x.clock)+'</span><span>'+esc(score)+'</span>';return '<article class="gp-ranking-row" data-match-id="'+esc(m.id)+'" data-score-home="'+esc(m.home?.score??'')+'" data-score-away="'+esc(m.away?.score??'')+'"><div class="gp-ranking-position">#'+(i+1)+'</div><div class="gp-ranking-main"><div class="gp-ranking-teams">'+esc(home)+' – '+esc(away)+'</div><div class="gp-ranking-meta">'+meta+'</div><div class="gp-ranking-triggers">'+badges+'</div></div><div class="gp-ranking-score"><strong>'+x.score+'</strong><small>/ 100</small></div></article>';}).join('');
 }
 
 function renderHighActivityMatches(){
