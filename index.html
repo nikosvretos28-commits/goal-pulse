@@ -1422,6 +1422,102 @@ nav a:hover{color:#a4eee7;text-shadow:0 0 14px rgba(83,200,212,.18)}
 a{color:#72d8d1}.disclaimer{color:#9eafb5}::selection{background:rgba(83,200,212,.24);color:#fff}
 @media(max-width:700px){.hero-main{background:radial-gradient(ellipse at 90% 0%,rgba(66,214,189,.09),transparent 65%),linear-gradient(135deg,#1c303c,#14222d)}.hero-ball{opacity:.3}.panel,.side-live,.top-ai-alerts,.gp-matrix-analytics-panel{box-shadow:0 9px 23px rgba(0,0,0,.2)}}
 
+
+
+/* GOALMATRIX LIGHT PURPLE SUNSET — bright palette only; preserve app behavior */
+:root{
+ --bg:#fff5fb;--panel:#fffaff;--panel2:#f8edff;--line:#e5c9f3;
+ --text:#382044;--muted:#765b83;--green:#8b43c6;--cyan:#bd67d8;
+ --gm-brand-lime:#9b4bc9;--gm-brand-mint:#c06bd8;--gm-brand-ice:#f0a0b9;
+ color-scheme:light;
+}
+html,body{background:#fff5fb!important;color:#382044!important}
+body{
+ background:
+  radial-gradient(ellipse at 10% 0%,rgba(202,139,244,.38),transparent 34rem),
+  radial-gradient(ellipse at 88% 7%,rgba(255,174,164,.34),transparent 37rem),
+  radial-gradient(ellipse at 52% -18%,rgba(255,207,132,.30),transparent 42rem),
+  linear-gradient(180deg,#fff0fa 0%,#fbf3ff 48%,#fff8f2 100%)!important;
+}
+header{background:rgba(255,250,255,.96)!important;border-bottom:1px solid #e7c9f1!important;box-shadow:0 5px 22px rgba(130,73,153,.10)!important}
+header:after{background:linear-gradient(90deg,transparent,#a45bd0 25%,#f29aab 52%,#ffc36f 78%,transparent)!important}
+.brand img{filter:none!important}
+.brand-name{color:#482451!important;text-shadow:none!important}
+.brand-name span{background:linear-gradient(100deg,#8e45c5,#c05bc9 52%,#ee8fa2)!important;-webkit-background-clip:text!important;background-clip:text!important;color:transparent!important}
+.brand-tagline{color:#80618b!important}
+.brand-tagline:before,.pulse-dot{background:#a34dcc!important;box-shadow:0 0 8px rgba(163,77,204,.28)!important}
+nav a,nav a:first-child,nav a:hover{color:#75418f!important}
+nav a:after,nav a:not(:first-child):after{background:linear-gradient(90deg,#9b4bc9,#e98da8)!important}
+.live-badge{background:#f4e7fb!important;border:1px solid #d9b6ed!important;color:#78419a!important;box-shadow:none!important}
+.gp-section-button,.gp-ai-button,.gp-vip-button,.gp-matrix-analytics-button{
+ background:linear-gradient(135deg,#fffaff,#f2e5fb)!important;
+ border:1px solid #dfc2ee!important;color:#623579!important;
+ box-shadow:0 3px 12px rgba(133,75,157,.08)!important;
+}
+.gp-section-button:hover,.gp-section-button[aria-expanded="true"],
+.gp-ai-button:hover,.gp-ai-button[aria-expanded="true"],
+.gp-matrix-analytics-button:hover,.gp-matrix-analytics-button[aria-expanded="true"]{
+ background:linear-gradient(135deg,#f1ddfb,#ffe5e9)!important;border-color:#b77bd4!important;color:#54236d!important;
+}
+.gp-button-count{background:#fff!important;border-color:#e4c9ef!important;color:#8b43b4!important}
+.hero-main{
+ background:
+  radial-gradient(ellipse at 88% 4%,rgba(255,174,164,.50),transparent 38%),
+  radial-gradient(ellipse at 5% 100%,rgba(196,139,237,.35),transparent 45%),
+  linear-gradient(115deg,#f1ddff 0%,#fff0f5 55%,#ffe8d4 100%)!important;
+ border:1px solid #e4c2ed!important;box-shadow:0 12px 32px rgba(141,82,164,.12)!important;
+}
+.hero-main:before{background:linear-gradient(90deg,transparent 49.8%,rgba(145,76,184,.08) 50%,transparent 50.2%)!important}
+.hero-main:after{border-color:rgba(153,83,189,.20)!important;box-shadow:0 -15px 0 -13px #b46bd0,0 -30px 0 -28px #f0a0ad!important}
+.hero .eyebrow,.hero h1 span{color:#9146bb!important}
+.hero h1{color:#482451!important;text-shadow:none!important}
+.hero h1 span{background:linear-gradient(95deg,#8f43bd,#c65bbd 58%,#e98d9d)!important;-webkit-background-clip:text!important;background-clip:text!important;color:transparent!important;-webkit-text-fill-color:transparent!important}
+.hero p{color:#765d7d!important}
+.hero-ball{filter:drop-shadow(0 0 18px rgba(165,92,193,.16))!important;opacity:.28!important}
+.primary,.login{background:linear-gradient(105deg,#8d45bd,#b45bc9 55%,#e88fa5)!important;border:1px solid #a95bc4!important;color:#fff!important;box-shadow:0 5px 16px rgba(151,76,180,.20)!important}
+.panel,.side-live,.top-ai-alerts,.gp-matrix-analytics-panel{
+ background:linear-gradient(155deg,#fffaff 0%,#fbf4ff 72%,#fff7f5 100%)!important;
+ border:1px solid #e7cfee!important;box-shadow:0 8px 24px rgba(123,74,144,.09)!important;
+}
+.panel-head,.top-ai-alerts-head{background:linear-gradient(90deg,rgba(193,133,221,.12),rgba(246,174,181,.08),transparent)!important;border-bottom-color:#ecd9f1!important}
+.panel-head h2,.pressure-head h3,.top-ai-alerts-head h2{color:#542b65!important}
+.subtle,.match-meta,.disclaimer{color:#806b88!important}
+.live-row{border-bottom-color:#efdeF3!important}
+.live-row .score,.score{color:#8e43bd!important;text-shadow:none!important}
+.match,.feature,.insight-card,.gm-matrix-category{
+ background:linear-gradient(125deg,#fffaff,#f7edfc 75%,#fff3f1)!important;
+ border:1px solid #e6cdef!important;box-shadow:0 3px 12px rgba(126,75,147,.07)!important;
+}
+.match:before{background:linear-gradient(90deg,#9c4bc4,#d66fc4 48%,#f2a0a0)!important}
+.match:hover{border-color:#c18bd8!important;box-shadow:0 8px 20px rgba(126,75,147,.12)!important}
+.match-score{color:#4e285c!important;text-shadow:none!important}
+.stat,.filter,.date-label,.search,.mini-btn,.gm-panel-close{
+ background:#fff!important;border:1px solid #e7d4ed!important;color:#62436f!important;
+}
+.filter.active,.filter:hover,.gm-panel-close:hover{background:#f0e1f8!important;border-color:#b77bd4!important;color:#713a91!important}
+.search:focus,.date-label:focus-within{border-color:#b77bd4!important;box-shadow:0 0 0 3px rgba(168,103,198,.12)!important}
+.top-ai-alert-card{
+ background:linear-gradient(130deg,#fffaff,#f4e8fb 72%,#fff0f1)!important;
+ border:1px solid #e4c9ee!important;box-shadow:0 4px 13px rgba(126,75,147,.08)!important;
+}
+.top-ai-alert-card:before{background:linear-gradient(180deg,#9146bd,#d36bc3,#f1a0a0)!important;width:3px!important}
+.top-ai-alert-card:hover{border-color:#bd83d5!important;box-shadow:0 8px 20px rgba(126,75,147,.13)!important}
+.gp-matrix-analytics-panel:before{background:linear-gradient(90deg,#9146bd,#d36bc3,#f1a0a0)!important}
+.gp-matrix-analytics-panel #matrixAnalyticsTitle{background:linear-gradient(100deg,#7d3b9f,#b653bf 55%,#e58a9b)!important;-webkit-background-clip:text!important;background-clip:text!important;color:transparent!important}
+.gm-matrix-category:before,.gm-matrix-category:nth-child(2):before,.gm-matrix-category:nth-child(3):before{background:linear-gradient(180deg,#9146bd,#d36bc3,#f1a0a0)!important;width:3px!important}
+.gm-matrix-category .ha-team-table th{background:#f0e2f7!important;color:#684078!important}
+.gm-matrix-category .ha-team-table td strong{border-color:#dfc2ed!important;background:#f5eafa!important;color:#8244a6!important}
+.count{background:#f2e4fa!important;border-color:#e1c6ef!important;color:#8244a6!important}
+.minute{background:#ffebe8!important;color:#a64d69!important}
+a{color:#8c43b7!important}
+::selection{background:rgba(173,104,205,.22)!important;color:#382044!important}
+input,select,textarea{background:#fff!important;color:#382044!important;border-color:#e4c9ed!important}
+@media(max-width:700px){
+ .hero-main{background:radial-gradient(ellipse at 90% 0%,rgba(255,174,164,.42),transparent 65%),linear-gradient(135deg,#f0ddfb,#fff0f4)!important}
+ .hero-ball{opacity:.18!important}
+ .panel,.side-live,.top-ai-alerts,.gp-matrix-analytics-panel{box-shadow:0 5px 16px rgba(123,74,144,.08)!important}
+}
+
 </style>
 
 <style id="goalmatrix-premium-finish">
