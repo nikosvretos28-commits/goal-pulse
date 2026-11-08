@@ -3148,7 +3148,7 @@ function renderTopAiAlerts(){
   host.innerHTML=shown.map((a,i)=>{
    if(String(a.level||"AI").toUpperCase()!=="VIP"){
     const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;
-    const isMinuteValue=value=>/^\\s*(?:\\d{1,3}\\s*(?:['′’]|min)?(?:\\s*\\+)?|HT|FT|LIVE|ΗΜΙΧΡΟΝΟ|ΤΕΛΟΣ)\\s*$/i.test(String(value||''));
+    const isMinuteValue=value=>/^\s*(?:\d{1,3}\s*(?:['′’]|min)?(?:\s*\+)?|HT|FT|LIVE|ΗΜΙΧΡΟΝΟ|ΤΕΛΟΣ)\s*$/i.test(String(value||''));
     const validCompetition=value=>{const text=String(value||'').trim();return Boolean(text)&&!isMinuteValue(text)&&!/^(?:διοργάνωση|competition|league|international|διεθνής|άλλη διοργάνωση)$/i.test(text)};
     const competition=[match&&match.league,a.league,a.country].find(validCompetition)||'Διοργάνωση';
     const minuteCandidate=a.minute||match&&match.clock||'LIVE';
