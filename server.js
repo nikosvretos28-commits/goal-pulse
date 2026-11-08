@@ -3471,7 +3471,7 @@ const server = http.createServer(async (req, res) => {
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
           const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · " + String(match.league || match.competition || "Live");
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · " + String(match.country || match.countryName || match.league || match.competition || "Live");
           const volatileAlertId = "push:" + id + ":" + level + ":" + now;
           saveVolatileRecord(volatileAlertHistory, volatileAlertId, {
             alertId: volatileAlertId, source: "server-push", eventId: id, level, createdAt: now,
