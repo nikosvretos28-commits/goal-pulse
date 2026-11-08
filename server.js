@@ -906,6 +906,20 @@ async function ensurePreMatchSeasonDb() {
     );
     CREATE INDEX IF NOT EXISTS pre_match_season_profiles_fetched_idx
       ON pre_match_season_profiles(fetched_at DESC);
+    CREATE TABLE IF NOT EXISTS pre_match_collection_state (
+      league_code TEXT NOT NULL,
+      season_key TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'idle',
+      started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      last_success_at TIMESTAMPTZ,
+      retry_after TIMESTAMPTZ,
+      fixtures INTEGER NOT NULL DEFAULT 0,
+      teams INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      source TEXT NOT NULL DEFAULT 'ESPN public scoreboard',
+      PRIMARY KEY (league_code, season_key)
+    );
   `).then(() => true).catch(error => {
     preMatchSeasonDbInit = null;
     console.warn("[Pre-Match] persistent profile store unavailable:", error.message);
@@ -947,8 +961,18 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
   const cacheKey = code + "|" + bounds.seasonKey;
   const now = Date.now();
   const last = preMatchSeasonCollectionAt.get(cacheKey) || 0;
-  if (!options.force && now - last < PRE_MATCH_PROFILE_TTL_MS) return { ok: true, cached: true };
+  if (!options.force && now - last < PRE_MATCH_PROFILE_TTL_MS) return { ok: true, cached: true, leagueCode: code, season: bounds.seasonKey };
   preMatchSeasonCollectionAt.set(cacheKey, now);
+  const dbReadyAtStart = await ensurePreMatchSeasonDb();
+  if (dbReadyAtStart) {
+    await analyticsPool.query(
+      `INSERT INTO pre_match_collection_state (league_code,season_key,status,started_at,completed_at,retry_after,last_error)
+       VALUES ($1,$2,'running',NOW(),NULL,NULL,NULL)
+       ON CONFLICT (league_code,season_key) DO UPDATE SET
+       status='running',started_at=NOW(),completed_at=NULL,retry_after=NULL,last_error=NULL`,
+      [code, bounds.seasonKey]
+    ).catch(error => console.warn("[Pre-Match] collection state start write failed:", error.message));
+  }
   try {
     const startYear = Number(bounds.start.slice(0,4));
     const monthRanges = preMatchSeasonMonthKeys(bounds.start, bounds.end);
@@ -1032,6 +1056,7 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
     const leagueOverRates = Object.fromEntries(PRE_MATCH_OVER_LINES.map(line =>
       [line, completed.size ? Number((leagueOverCounts[line] / completed.size).toFixed(4)) : null]
     ));
+    if (!completed.size) throw new Error("ESPN returned no completed, score-validated fixtures for the selected season");
     const profiles = [];
     for (const [teamKey, value] of aggregates) {
       if (!value.matches) continue;
@@ -1056,6 +1081,7 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
       preMatchSeasonProfileCache.set(code + "|" + bounds.seasonKey + "|" + teamKey, entry);
       profiles.push({ teamKey, teamName: value.teamName, profile });
     }
+    if (!profiles.length) throw new Error("No valid team profiles could be built from the completed fixtures");
     const dbReady = await ensurePreMatchSeasonDb();
     if (dbReady && profiles.length) {
       const client = await analyticsPool.connect();
@@ -1076,17 +1102,41 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
         throw error;
       } finally { client.release(); }
     }
+    const fetchedAt = new Date().toISOString();
+    if (dbReady) {
+      await analyticsPool.query(
+        `INSERT INTO pre_match_collection_state
+           (league_code,season_key,status,started_at,completed_at,last_success_at,retry_after,fixtures,teams,last_error,source)
+         VALUES ($1,$2,'complete',NOW(),NOW(),NOW(),NULL,$3,$4,NULL,$5)
+         ON CONFLICT (league_code,season_key) DO UPDATE SET
+           status='complete',completed_at=NOW(),last_success_at=NOW(),retry_after=NULL,
+           fixtures=EXCLUDED.fixtures,teams=EXCLUDED.teams,last_error=NULL,source=EXCLUDED.source`,
+        [code, bounds.seasonKey, completed.size, profiles.length, "ESPN public scoreboard"]
+      );
+    }
     return {
       ok: true, leagueCode: code, season: bounds.seasonKey, source: "ESPN public scoreboard",
       fixtures: completed.size, teams: profiles.length, persisted: dbReady,
-      coverage: events.length ? (expectedSeasonSlug ? "season-slug-filtered" : "season-year-filtered") : "unknown",
-      fetchedAt: new Date().toISOString()
+      coverage: expectedSeasonSlug ? "season-slug-filtered" : "season-year-filtered",
+      fetchedAt
     };
   } catch (error) {
-    // Back off on provider failures; do not retry the same league every scanner minute.
-    preMatchSeasonCollectionAt.set(cacheKey, Date.now() - PRE_MATCH_PROFILE_TTL_MS + 30 * 60 * 1000);
+    // Back off on provider failures; persist the failure so a restart cannot trigger
+    // an immediate retry storm. A failed refresh never overwrites valid team profiles.
+    const retryAt = Date.now() + 30 * 60 * 1000;
+    preMatchSeasonCollectionAt.set(cacheKey, retryAt - PRE_MATCH_PROFILE_TTL_MS);
+    if (await ensurePreMatchSeasonDb()) {
+      await analyticsPool.query(
+        `INSERT INTO pre_match_collection_state
+           (league_code,season_key,status,started_at,completed_at,retry_after,last_error)
+         VALUES ($1,$2,'error',NOW(),NOW(),TO_TIMESTAMP($3 / 1000.0),$4)
+         ON CONFLICT (league_code,season_key) DO UPDATE SET
+           status='error',completed_at=NOW(),retry_after=EXCLUDED.retry_after,last_error=EXCLUDED.last_error`,
+        [code, bounds.seasonKey, retryAt, String(error.message || error).slice(0, 500)]
+      ).catch(stateError => console.warn("[Pre-Match] collection failure state write failed:", stateError.message));
+    }
     console.warn("[Pre-Match] season collection unavailable for", code, error.message);
-    return { ok: false, reason: "provider-unavailable" };
+    return { ok: false, leagueCode: code, season: bounds.seasonKey, reason: "provider-unavailable", error: String(error.message || error).slice(0, 240) };
   }
 }
 async function getPreMatchSeasonProfile(leagueCode, teamName) {
@@ -1134,31 +1184,58 @@ async function getPreMatchSeasonSupport(leagueCode, homeName, awayName, targetLi
   };
 }
 async function schedulePreMatchSeasonCollection(events) {
-  if (!Array.isArray(events) || !events.length) return { attempted: 0, results: [] };
+  if (!Array.isArray(events) || !events.length) return { attempted: 0, skipped: 0, results: [] };
   const leagues = [...new Set(events.map(event => String(event.__goalPulseLeagueCode || "")).filter(code => isPreMatchLeagueCode(code)))];
-  const due = leagues.map(code => {
+  const candidates = leagues.map(code => {
     const leagueEvents = events.filter(event => String(event.__goalPulseLeagueCode || "") === code);
     const seasonEvent = leagueEvents.find(event => event.season?.slug || event.season?.year) || leagueEvents[0];
     const bounds = preMatchSeasonBounds(code);
     return {
       code, seasonSlug: String(seasonEvent?.season?.slug || ""),
       seasonYear: Number(seasonEvent?.season?.year || bounds.start.slice(0,4)),
-      key: code + "|" + bounds.seasonKey
+      seasonKey: bounds.seasonKey, key: code + "|" + bounds.seasonKey
     };
-  }).filter(item => Date.now() - (preMatchSeasonCollectionAt.get(item.key) || 0) >= PRE_MATCH_PROFILE_TTL_MS);
-  // Keep provider load bounded: two league jobs at a time, at most two yearly requests per job.
-  // The caller intentionally does not await this background preparation.
+  });
+  const persisted = new Map();
+  if (await ensurePreMatchSeasonDb()) {
+    const states = await analyticsPool.query(
+      `SELECT league_code,season_key,status,last_success_at,retry_after
+         FROM pre_match_collection_state
+        WHERE league_code = ANY($1::text[])`,
+      [candidates.map(item => item.code)]
+    ).catch(error => {
+      console.warn("[Pre-Match] collection state read failed:", error.message);
+      return { rows: [] };
+    });
+    for (const row of states.rows || []) persisted.set(row.league_code + "|" + row.season_key, row);
+  }
+  const now = Date.now();
+  const due = [];
+  let skipped = 0;
+  for (const item of candidates) {
+    const state = persisted.get(item.key);
+    const successAt = state?.last_success_at ? new Date(state.last_success_at).getTime() : 0;
+    const retryAt = state?.retry_after ? new Date(state.retry_after).getTime() : 0;
+    const memoryAt = preMatchSeasonCollectionAt.get(item.key) || 0;
+    const fresh = successAt > 0 && now - successAt < PRE_MATCH_PROFILE_TTL_MS;
+    const coolingDown = retryAt > now;
+    const memoryFresh = !state && memoryAt > 0 && now - memoryAt < PRE_MATCH_PROFILE_TTL_MS;
+    if (fresh || coolingDown || memoryFresh) { skipped++; continue; }
+    due.push(item);
+  }
+  // Keep provider load bounded: two league jobs at a time, at most three month requests per job.
+  // Persisted state makes the 12-hour refresh window survive service restarts.
   const results = [];
   for (let offset = 0; offset < due.length; offset += 2) {
     const batch = await Promise.all(due.slice(offset, offset + 2).map(item =>
       collectPreMatchLeagueSeason(item.code, { seasonSlug: item.seasonSlug, seasonYear: item.seasonYear }).catch(error => {
         console.warn("[Pre-Match] collection task failed for", item.code, error.message);
-        return { ok: false, leagueCode: item.code, reason: "collection-failed" };
+        return { ok: false, leagueCode: item.code, reason: "collection-failed", error: String(error.message || error).slice(0, 240) };
       })
     ));
     results.push(...batch);
   }
-  return { attempted: due.length, results };
+  return { attempted: due.length, skipped, results };
 }
 
 async function pitchGet(apiPath) {
@@ -1977,19 +2054,26 @@ const server = http.createServer(async (req, res) => {
       let persistent = false;
       if (await ensurePreMatchSeasonDb()) {
         const result = await analyticsPool.query(
-          `SELECT league_code, season_key, COUNT(*)::int AS teams,
-                  MAX(fetched_at) AS updated_at,
-                  MAX(COALESCE((profile->>'fixtureCount')::int, 0)) AS fixtures
-             FROM pre_match_season_profiles
-            WHERE fetched_at > NOW() - INTERVAL '30 days'
-            GROUP BY league_code, season_key
-            ORDER BY MAX(fetched_at) DESC
+          `SELECT p.league_code, p.season_key, COUNT(*)::int AS teams,
+                  MAX(p.fetched_at) AS updated_at,
+                  MAX(COALESCE((p.profile->>'fixtureCount')::int, 0)) AS fixtures,
+                  MAX(s.status) AS collection_status,
+                  MAX(s.last_error) AS last_error,
+                  MAX(s.last_success_at) AS last_success_at,
+                  MAX(s.retry_after) AS retry_after
+             FROM pre_match_season_profiles p
+             LEFT JOIN pre_match_collection_state s
+               ON s.league_code=p.league_code AND s.season_key=p.season_key
+            GROUP BY p.league_code, p.season_key
+            ORDER BY MAX(p.fetched_at) DESC
             LIMIT 40`
         );
         leagues = result.rows.map(row => ({
           leagueCode: row.league_code, season: row.season_key,
           teams: Number(row.teams || 0), fixtures: Number(row.fixtures || 0),
-          updatedAt: row.updated_at
+          updatedAt: row.updated_at, lastSuccessAt: row.last_success_at || row.updated_at,
+          status: row.collection_status || "legacy-profile",
+          lastError: row.last_error || null, retryAfter: row.retry_after || null
         }));
         persistent = true;
       } else {
@@ -2011,6 +2095,9 @@ const server = http.createServer(async (req, res) => {
           competitions: leagues.length,
           teams: leagues.reduce((sum, item) => sum + item.teams, 0),
           fixtures: leagues.reduce((sum, item) => sum + item.fixtures, 0),
+          freshLeagues: leagues.filter(item => item.updatedAt && Date.now() - new Date(item.updatedAt).getTime() < PRE_MATCH_PROFILE_TTL_MS).length,
+          staleLeagues: leagues.filter(item => !item.updatedAt || Date.now() - new Date(item.updatedAt).getTime() >= PRE_MATCH_PROFILE_TTL_MS).length,
+          lastUpdatedAt: leagues.reduce((latest, item) => !latest || new Date(item.updatedAt || 0) > new Date(latest) ? item.updatedAt : latest, null),
           leagues
         }
       });
@@ -2047,11 +2134,13 @@ const server = http.createServer(async (req, res) => {
         preMatchScanState.status = "complete";
         preMatchScanState.completedAt = new Date().toISOString();
         preMatchScanState.results = result.results || [];
+        preMatchScanState.skipped = Number(result.skipped || 0);
         preMatchScanState.error = result.attempted === 0
-          ? "No league collection was due for a new attempt; a recent refresh or retry cooldown may apply."
+          ? "All supported competitions are within the refresh window or a provider retry cooldown."
           : null;
         console.log("[Pre-Match] manual scan completed:", JSON.stringify({
           supportedLeagues: supported.length, attempted: result.attempted,
+          skipped: preMatchScanState.skipped,
           successful: preMatchScanState.results.filter(item => item.ok).length,
           failed: preMatchScanState.results.filter(item => !item.ok).length
         }));
