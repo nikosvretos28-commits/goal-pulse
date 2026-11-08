@@ -2231,7 +2231,7 @@ const server = http.createServer(async (req, res) => {
           'supportingCriteriaScore', CASE WHEN EXCLUDED.payload ? 'supportingCriteriaScore' THEN NULL ELSE alert_history.payload->'supportingCriteriaScore' END,
           'evidenceKinds', CASE WHEN EXCLUDED.payload ? 'evidenceKinds' THEN NULL ELSE alert_history.payload->'evidenceKinds' END,
           'points', CASE WHEN EXCLUDED.payload ? 'points' THEN NULL ELSE alert_history.payload->'points' END
-        )), updated_at=NOW(),
+        )), updated_at=NOW()`,
         [JSON.stringify(records)]
       );
       return send(res, 200, { ok: true, persistent: true, saved: records.length });
