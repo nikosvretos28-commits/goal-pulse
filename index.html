@@ -3990,7 +3990,7 @@ function renderHighActivityMatches(){
   const dangerousAttacks10=perTeamMetricWindow(readDangerousValue,'dangerousAttacks',baseline10,stats.trend?.window10m,8,13);
   const redCardValues=teams.slice(0,2).map(team=>{const value=team.redCards??team.red_cards??team.redCard??team.red_card;return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value);});
   const redCardSideIndex=redCardValues.length===2&&redCardValues.every(value=>value!==null)
-   ?(redCardValues[0]>0&&redCardValues[1]===0?0:redCardValues[1]>0&&redCardValues[0]===0?1:-1):-1;
+   ?(redCardValues[0]>redCardValues[1]?0:redCardValues[1]>redCardValues[0]?1:-1):-1;
   const redCardInfo=highActivityRedCardSince.get(trailKey);
   const redCardRecent=redCardSideIndex>=0&&redCardInfo&&redCardInfo.side===redCardSideIndex&&now-redCardInfo.at>=0&&now-redCardInfo.at<=15*60*1000;
   const advantagedSideIndex=redCardSideIndex>=0?1-redCardSideIndex:-1;
