@@ -20,6 +20,13 @@ test("explicit first-half and halftime statuses override a misleading clock", ()
   assert.equal(isAiMinuteEligible(60, "LIVE"), true);
 });
 
+test("completed fixtures are never eligible even when a stale minute remains", () => {
+  for (const status of ["Finished", "Full Time", "FT", "Ended", "Completed", "AET", "Ολοκληρώθηκε", "Λήξη αγώνα"]) {
+    assert.equal(isAiMinuteEligible(54, status), false, status);
+    assert.equal(isCumulativeSotMinute(54, status), false, status);
+  }
+});
+
 test("cumulative 15-SOT trigger is limited to minutes 46 through 69", () => {
   for (const minute of [1, 40, 45, 70, 88, 89, 69.9]) {
     assert.equal(isCumulativeSotMinute(minute), false, String(minute));
