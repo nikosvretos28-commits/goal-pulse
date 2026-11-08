@@ -2753,8 +2753,8 @@ const server = http.createServer(async (req, res) => {
         const dangerousAttacks10 = perTeamMetricWindow(current.dangerousByTeam, previous10?.dangerousByTeam, match.trend?.window10m, "dangerousAttacks", 8, 13);
         const redCardCountsKnown = current.redCardsByTeam.length >= 2 && current.redCardsByTeam.slice(0, 2).every(side => side.value != null && Number.isFinite(Number(side.value)));
         const redCardSideIndex = redCardCountsKnown
-          ? current.redCardsByTeam[0].value > 0 && current.redCardsByTeam[1].value === 0 ? 0
-            : current.redCardsByTeam[1].value > 0 && current.redCardsByTeam[0].value === 0 ? 1 : -1
+          ? current.redCardsByTeam[0].value > current.redCardsByTeam[1].value ? 0
+            : current.redCardsByTeam[1].value > current.redCardsByTeam[0].value ? 1 : -1
           : -1;
         const redCardInfo = pushScanRedCardSince.get(id);
         const redCardRecent = redCardSideIndex >= 0 && redCardInfo &&
