@@ -79,6 +79,11 @@ function saveVolatileRecord(store, key, payload, settledFields = []) {
   }
 }
 function volatileHistoryRows(store) { return [...store.values()].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)); }
+// Public alert history deliberately excludes proprietary trigger attribution and signal evidence.
+function publicAlertPayload(payload) {
+  const { reason, triggerIds, supportSignalIds, statsAtSignal, odds, bookmaker, oddsVerifiedAt, scoreAtSignal, supportingCriteriaScore, evidenceKinds, points, ...publicFields } = payload || {};
+  return publicFields;
+}
 let pushDbInit = null;
 let alertHistoryDbInit = null;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -2042,6 +2047,57 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/alerts/history/private" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private AI access is not configured" });
+    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+    const now = Date.now();
+    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
+    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
+    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+    try {
+      const body = await readJsonBody(req, 4096);
+      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
+        attempt.count += 1;
+        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+        powerGamesAuthAttempts.set(ip, attempt);
+        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
+      }
+      powerGamesAuthAttempts.delete(ip);
+      const limit = Math.max(1, Math.min(1000, Number(body.limit || 500)));
+      const offset = Math.max(0, Math.floor(Number(body.offset || 0)));
+      const period = String(body.period || "all").toLowerCase();
+      if (!await ensureAlertHistoryDb()) {
+        const dateKey = value => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+        const today = dateKey(now), yesterday = dateKey(now - 86400000);
+        const rows = volatileHistoryRows(volatileAlertHistory).filter(item => {
+          const at = Number(item.createdAt || 0);
+          if (!at) return false;
+          if (period === "today") return dateKey(at) === today;
+          if (period === "yesterday") return dateKey(at) === yesterday;
+          if (period === "7d") return at >= now - 7 * 86400000;
+          if (period === "30d") return at >= now - 30 * 86400000;
+          return true;
+        });
+        return send(res, 200, { ok: true, private: true, persistent: false, alerts: rows.slice(offset, offset + limit) });
+      }
+      const windowSql = period === "today"
+        ? "created_at >= (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+        : period === "yesterday"
+          ? "created_at >= ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') - INTERVAL '1 day') AT TIME ZONE 'Europe/Athens') AND created_at < (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+          : period === "7d" ? "created_at >= NOW() - INTERVAL '7 days'"
+          : period === "30d" ? "created_at >= NOW() - INTERVAL '30 days'" : "TRUE";
+      const result = await analyticsPool.query(
+        `SELECT payload FROM alert_history WHERE ${windowSql} ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+      return send(res, 200, { ok: true, private: true, persistent: true, alerts: result.rows.map(row => row.payload) });
+    } catch (error) {
+      console.error("Private AI alert history request failed:", error.message);
+      return send(res, 400, { ok: false, error: "Could not load private AI alert history" });
+    }
+  }
+
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) {
@@ -2060,7 +2116,7 @@ const server = http.createServer(async (req, res) => {
         if (period === "30d") return at >= now - 30 * 86400000;
         return true;
       });
-      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit) });
+      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit).map(publicAlertPayload) });
     }
     try {
       // Return the requested history window using Greece-local calendar boundaries.
@@ -2084,7 +2140,7 @@ const server = http.createServer(async (req, res) => {
           LIMIT $1 OFFSET $2`,
         [limit, offset]
       );
-      return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => row.payload) });
+      return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => publicAlertPayload(row.payload)) });
     } catch (error) {
       return send(res, 503, { error: "Could not load alert history" });
     }
@@ -3382,7 +3438,7 @@ const server = http.createServer(async (req, res) => {
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
           const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · " + String(match.league || match.competition || "Live");
           const volatileAlertId = "push:" + id + ":" + level + ":" + now;
           saveVolatileRecord(volatileAlertHistory, volatileAlertId, {
             alertId: volatileAlertId, source: "server-push", eventId: id, level, createdAt: now,
