@@ -1994,7 +1994,7 @@ const server = http.createServer(async (req, res) => {
       });
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
       if (!alertHistoryDbReady) {
-        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
+        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betSettlementReason", "betFinalScore", "betMatchFinalScore", "betHalfTimeScore", "betScoreScope", "betScoreSource", "betSettlementProvider", "betSettlementFixtureId", "betSettlementFixtureDate", "betSettlementLeague", "betSettledAt", "evaluatedAt", "evaluationRule"]);
         return send(res, 200, { ok: true, persistent: false, volatile: true, saved: records.length });
       }
       await analyticsPool.query(
@@ -2018,9 +2018,16 @@ const server = http.createServer(async (req, res) => {
             'betOutcome', alert_history.payload->'betOutcome',
             'outcome', COALESCE(alert_history.payload->'outcome','"εκκρεμεί"'::jsonb),
             'betSettlementLabel', alert_history.payload->'betSettlementLabel',
+            'betSettlementReason', alert_history.payload->'betSettlementReason',
             'betFinalScore', alert_history.payload->'betFinalScore',
             'betMatchFinalScore', alert_history.payload->'betMatchFinalScore',
+            'betHalfTimeScore', alert_history.payload->'betHalfTimeScore',
             'betScoreScope', alert_history.payload->'betScoreScope',
+            'betScoreSource', alert_history.payload->'betScoreSource',
+            'betSettlementProvider', alert_history.payload->'betSettlementProvider',
+            'betSettlementFixtureId', alert_history.payload->'betSettlementFixtureId',
+            'betSettlementFixtureDate', alert_history.payload->'betSettlementFixtureDate',
+            'betSettlementLeague', alert_history.payload->'betSettlementLeague',
             'betSettledAt', alert_history.payload->'betSettledAt',
             'evaluatedAt', alert_history.payload->'evaluatedAt',
             'evaluationRule', alert_history.payload->'evaluationRule'
@@ -2034,7 +2041,14 @@ const server = http.createServer(async (req, res) => {
             'betSettledAt', COALESCE(NULLIF(EXCLUDED.payload->'betSettledAt','null'::jsonb), alert_history.payload->'betSettledAt'),
             'evaluatedAt', COALESCE(NULLIF(EXCLUDED.payload->'evaluatedAt','null'::jsonb), alert_history.payload->'evaluatedAt'),
             'evaluationRule', COALESCE(NULLIF(EXCLUDED.payload->'evaluationRule','null'::jsonb), alert_history.payload->'evaluationRule'),
-            'betSettlementLabel', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLabel','null'::jsonb), alert_history.payload->'betSettlementLabel')
+            'betSettlementLabel', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLabel','null'::jsonb), alert_history.payload->'betSettlementLabel'),
+            'betSettlementReason', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementReason','null'::jsonb), alert_history.payload->'betSettlementReason'),
+            'betHalfTimeScore', COALESCE(NULLIF(EXCLUDED.payload->'betHalfTimeScore','null'::jsonb), alert_history.payload->'betHalfTimeScore'),
+            'betScoreSource', COALESCE(NULLIF(EXCLUDED.payload->'betScoreSource','null'::jsonb), alert_history.payload->'betScoreSource'),
+            'betSettlementProvider', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementProvider','null'::jsonb), alert_history.payload->'betSettlementProvider'),
+            'betSettlementFixtureId', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementFixtureId','null'::jsonb), alert_history.payload->'betSettlementFixtureId'),
+            'betSettlementFixtureDate', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementFixtureDate','null'::jsonb), alert_history.payload->'betSettlementFixtureDate'),
+            'betSettlementLeague', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLeague','null'::jsonb), alert_history.payload->'betSettlementLeague')
           ))
           ELSE EXCLUDED.payload
         END, updated_at=NOW()`,
@@ -2584,6 +2598,30 @@ const server = http.createServer(async (req, res) => {
               minute: alert.minute ?? null,
               rule: alert.evaluationRule
             }));
+          }
+          // Never leave an old alert pending forever. After 48 hours, if the
+          // completed fixture/period still has no verifiable provider score,
+          // close it as void (unverified), never as a win or loss.
+          const staleUnverified = await analyticsPool.query(
+            `UPDATE alert_history
+                SET payload = payload || jsonb_build_object(
+                  'betOutcome', 'void',
+                  'outcome', 'Μη επαληθεύτηκε · έκλεισε χωρίς αξιόπιστο σκορ',
+                  'betSettlementLabel', 'Μη επαληθευμένο · ακυρώθηκε',
+                  'betSettlementReason', 'Δεν βρέθηκε επαληθεύσιμο σκορ από πάροχο εντός 48 ωρών',
+                  'betSettledAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+                  'evaluatedAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+                  'evaluationRule', 'unverified_after_48h'
+                ),
+                updated_at = NOW()
+              WHERE created_at < NOW() - INTERVAL '48 hours'
+                AND COALESCE(payload->>'level', 'AI') IN ('AI', 'VIP')
+                AND lower(trim(COALESCE(payload->>'outcome', ''))) IN ('', 'εκκρεμεί', 'pending', 'σε εκκρεμότητα', 'εκκρεμές')
+                AND lower(trim(COALESCE(payload->>'betOutcome', ''))) IN ('', 'pending', 'εκκρεμεί', 'σε εκκρεμότητα')
+              RETURNING alert_id`
+          );
+          if (staleUnverified.rowCount) {
+            console.warn("[settlement] Closed stale alerts as unverified voids:", JSON.stringify({ count: staleUnverified.rowCount, ageHours: 48 }));
           }
         } catch (evaluationError) {
           console.error("AI alert halftime outcome evaluation failed:", evaluationError.message);
