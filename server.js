@@ -71,7 +71,10 @@ function saveVolatileRecord(store, key, payload, settledFields = []) {
   if (!id || !payload || typeof payload !== "object") return;
   const previous = store.get(id);
   const next = { ...payload };
-  if (previous) for (const field of settledFields) if (previous[field] != null && (next[field] == null || next[field] === "pending" || next[field] === "εκκρεμεί")) next[field] = previous[field];
+  if (previous) {
+    for (const field of ["reason","triggerIds","supportSignalIds","statsAtSignal","odds","bookmaker","oddsVerifiedAt","scoreAtSignal","supportingCriteriaScore","evidenceKinds","points"]) if (next[field] == null && previous[field] != null) next[field] = previous[field];
+    for (const field of settledFields) if (previous[field] != null && (next[field] == null || next[field] === "pending" || next[field] === "εκκρεμεί")) next[field] = previous[field];
+  }
   store.set(id, next);
   if (store.size > VOLATILE_HISTORY_LIMIT) {
     const oldest = [...store.entries()].sort((a,b) => Number(a[1].createdAt || 0) - Number(b[1].createdAt || 0));
@@ -2216,7 +2219,19 @@ const server = http.createServer(async (req, res) => {
             'betSettlementLeague', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLeague','null'::jsonb), alert_history.payload->'betSettlementLeague')
           ))
           ELSE EXCLUDED.payload
-        END, updated_at=NOW()`,
+        END || jsonb_strip_nulls(jsonb_build_object(
+          'reason', CASE WHEN EXCLUDED.payload ? 'reason' THEN NULL ELSE alert_history.payload->'reason' END,
+          'triggerIds', CASE WHEN EXCLUDED.payload ? 'triggerIds' THEN NULL ELSE alert_history.payload->'triggerIds' END,
+          'supportSignalIds', CASE WHEN EXCLUDED.payload ? 'supportSignalIds' THEN NULL ELSE alert_history.payload->'supportSignalIds' END,
+          'statsAtSignal', CASE WHEN EXCLUDED.payload ? 'statsAtSignal' THEN NULL ELSE alert_history.payload->'statsAtSignal' END,
+          'odds', CASE WHEN EXCLUDED.payload ? 'odds' THEN NULL ELSE alert_history.payload->'odds' END,
+          'bookmaker', CASE WHEN EXCLUDED.payload ? 'bookmaker' THEN NULL ELSE alert_history.payload->'bookmaker' END,
+          'oddsVerifiedAt', CASE WHEN EXCLUDED.payload ? 'oddsVerifiedAt' THEN NULL ELSE alert_history.payload->'oddsVerifiedAt' END,
+          'scoreAtSignal', CASE WHEN EXCLUDED.payload ? 'scoreAtSignal' THEN NULL ELSE alert_history.payload->'scoreAtSignal' END,
+          'supportingCriteriaScore', CASE WHEN EXCLUDED.payload ? 'supportingCriteriaScore' THEN NULL ELSE alert_history.payload->'supportingCriteriaScore' END,
+          'evidenceKinds', CASE WHEN EXCLUDED.payload ? 'evidenceKinds' THEN NULL ELSE alert_history.payload->'evidenceKinds' END,
+          'points', CASE WHEN EXCLUDED.payload ? 'points' THEN NULL ELSE alert_history.payload->'points' END
+        )), updated_at=NOW(),
         [JSON.stringify(records)]
       );
       return send(res, 200, { ok: true, persistent: true, saved: records.length });
