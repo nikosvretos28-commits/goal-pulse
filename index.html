@@ -5623,7 +5623,7 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
  const container=document.getElementById('allLivePowerRankingRows');
  if(!container||container.dataset.gmGoalFlashObserver==='1')return;
  container.dataset.gmGoalFlashObserver='1';
- const lastScores=new Map();
+ const lastScores=new Map(),activeFlashes=new Map(),flashTimers=new Map();
  const readScore=value=>{
   if(value===null||value===undefined||String(value).trim()==='')return null;
   const n=Number(value);
@@ -5667,9 +5667,8 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
    }catch(error){}
   }
  };
- const flashGoal=(row,goalCount)=>{
-  row.classList.remove('gm-goal-flash');
-  row.querySelectorAll('.gm-goal-flash-sweep,.gm-goal-flash-label').forEach(node=>node.remove());
+ const applyVisual=(row,goalCount)=>{
+  if(row.querySelector('.gm-goal-flash-label'))return;
   const sweep=document.createElement('span');
   sweep.className='gm-goal-flash-sweep';
   sweep.setAttribute('aria-hidden','true');
@@ -5679,27 +5678,46 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
   label.textContent=goalCount>1?'⚽ '+goalCount+' GOALS! 💚❤️':'⚽ GOAL! 💚❤️';
   row.append(sweep,label);
   row.classList.add('gm-goal-flash');
+ };
+ const startFlash=(id,row,goalCount)=>{
+  const until=Date.now()+6000;
+  activeFlashes.set(id,{until,goalCount});
+  const oldTimer=flashTimers.get(id);
+  if(oldTimer)window.clearTimeout(oldTimer);
+  applyVisual(row,goalCount);
   playGoalCrowdSound();
-  window.setTimeout(()=>{
-   row.classList.remove('gm-goal-flash');
-   sweep.remove();
-   label.remove();
-  },6000);
+  flashTimers.set(id,window.setTimeout(()=>{
+   activeFlashes.delete(id);
+   flashTimers.delete(id);
+   container.querySelectorAll('.gp-ranking-row[data-match-id]').forEach(current=>{
+    if(current.getAttribute('data-match-id')===id){
+     current.classList.remove('gm-goal-flash');
+     current.querySelectorAll('.gm-goal-flash-sweep,.gm-goal-flash-label').forEach(node=>node.remove());
+    }
+   });
+  },6000));
  };
  const scan=()=>{
+  const now=Date.now();
   container.querySelectorAll('.gp-ranking-row[data-match-id]').forEach(row=>{
    const id=row.getAttribute('data-match-id');
    if(!id)return;
    const home=readScore(row.getAttribute('data-score-home'));
    const away=readScore(row.getAttribute('data-score-away'));
    if(home===null||away===null)return;
-   const total=home+away,previous=lastScores.get(id);
-   if(previous&&total>previous.total)flashGoal(row,total-previous.total);
-   lastScores.set(id,{home,away,total});
+   const previous=lastScores.get(id);
+   if(previous){
+    const goals=Math.max(0,home-previous.home)+Math.max(0,away-previous.away);
+    if(goals>0)startFlash(id,row,goals);
+   }
+   lastScores.set(id,{home,away});
+   const active=activeFlashes.get(id);
+   if(active&&active.until>now)applyVisual(row,active.goalCount);
+   else if(active)activeFlashes.delete(id);
   });
  };
  const observer=new MutationObserver(scan);
- observer.observe(container,{childList:true,subtree:true});
+ observer.observe(container,{childList:true,subtree:true,attributes:true,attributeFilter:['data-score-home','data-score-away']});
  scan();
 })();
 </script>
