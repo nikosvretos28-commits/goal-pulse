@@ -2317,7 +2317,11 @@ const server = http.createServer(async (req, res) => {
           statusText,
           status: String(firstStatusValue(eventStatus.type?.state, competitionStatus.type?.state, eventStatus.type?.name, competitionStatus.type?.name) || ""),
           minute: scoreboardMinute,
-          leagueCode: String(event.__goalPulseLeagueCode || "")
+          leagueCode: String(event.__goalPulseLeagueCode || ""),
+          settlementProvider: "ESPN",
+          settlementFixtureId: event.id == null ? "" : String(event.id),
+          settlementFixtureDate: String(event.date || "").slice(0, 10),
+          settlementLeague: String(competition?.name || "")
         });
       }
       for (const match of (metrics.matches || [])) {
@@ -2331,6 +2335,13 @@ const server = http.createServer(async (req, res) => {
         if (!match.statusText) match.statusText = score.statusText;
         if (!match.status) match.status = score.status;
         if (!match.leagueCode && score.leagueCode) match.leagueCode = score.leagueCode;
+        // Carry the exact scoreboard fixture identity with the score; never invent a fixture ID from an alert ID.
+        if (score.settlementFixtureId) {
+          match.settlementProvider = score.settlementProvider;
+          match.settlementFixtureId = score.settlementFixtureId;
+          match.settlementFixtureDate = score.settlementFixtureDate;
+          match.settlementLeague = score.settlementLeague;
+        }
         // Convert clocks like "45:00" to a minute number for the alert gate.
         if (match.minute != null && !Number.isFinite(Number(match.minute))) {
           const clockMatch = String(match.minute).trim().match(/^([0-9]{1,3})(?::[0-9]{1,2})?[ ]*['′’]?$/);
@@ -2519,6 +2530,15 @@ const server = http.createServer(async (req, res) => {
               status: live.status, statusText, minute: live.minute, homeScore: live.homeScore, awayScore: live.awayScore,
               homeHtScore: live.homeHtScore, awayHtScore: live.awayHtScore });
             if (!settlement) continue;
+            // A result is not considered settled unless its score is tied to a real provider fixture.
+            // Keep the record pending when a feed supplies a score but no verifiable fixture identity.
+            if (!live.settlementProvider || !live.settlementFixtureId) {
+              console.warn("[settlement] Skipped score without provider fixture identity:", JSON.stringify({
+                alertId: row.alert_id, eventId: alert.eventId || row.event_id || null,
+                provider: live.settlementProvider || null, fixtureId: live.settlementFixtureId || null
+              }));
+              continue;
+            }
             const outcomeScore = settlement.total;
             const marketText = String(alert.market || "");
             let betOutcome;
@@ -2540,8 +2560,8 @@ const server = http.createServer(async (req, res) => {
               alert.betHalfTimeScore = Number(live.homeHtScore) + "-" + Number(live.awayHtScore);
             }
             alert.betScoreScope = settlement.scope;
-            alert.betSettlementProvider = live.settlementProvider || "ESPN scoreboard";
-            alert.betSettlementFixtureId = live.settlementFixtureId || String(alert.eventId || row.event_id || "");
+            alert.betSettlementProvider = String(live.settlementProvider);
+            alert.betSettlementFixtureId = String(live.settlementFixtureId);
             alert.betSettlementFixtureDate = live.settlementFixtureDate || alertDate;
             alert.betSettlementLeague = live.settlementLeague || alert.league || null;
             alert.betScoreSource = firstHalf ? "period_1_linescore" : "confirmed_full_time_score";
@@ -2575,8 +2595,7 @@ const server = http.createServer(async (req, res) => {
           const pendingAsian = await analyticsPool.query(
             "SELECT alert_id,payload FROM alert_history WHERE payload->>'lineType'='asian' AND COALESCE(payload->>'betOutcome','pending') IN ('pending','') AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
           );
-          const normalizeSettlementTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-          const finalByTeams = new Map();
+          const finalFixtures = [];
           for (const event of scoreboardEvents) {
             const competition = event.competitions?.[0];
             const competitors = competition?.competitors || [];
@@ -2586,13 +2605,26 @@ const server = http.createServer(async (req, res) => {
             const statusLabel = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
             const hs = Number(home?.score), as = Number(away?.score);
             if (!home?.team?.displayName || !away?.team?.displayName || !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusLabel)) || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
-            finalByTeams.set(normalizeSettlementTeam(home.team.displayName) + "|" + normalizeSettlementTeam(away.team.displayName), {homeScore:hs,awayScore:as});
+            const fixtureDate = String(event.date || "").slice(0, 10);
+            const leagueName = String(competition?.name || "");
+            if (!event.id || !fixtureDate) continue;
+            finalFixtures.push({
+              id: String(event.id), date: fixtureDate, league: leagueName,
+              home: home.team.displayName, away: away.team.displayName,
+              result: { homeScore: hs, awayScore: as, settlementProvider: "ESPN",
+                settlementFixtureId: String(event.id), settlementFixtureDate: fixtureDate,
+                settlementLeague: leagueName }
+            });
           }
           let settledAsianBets = 0;
           for (const row of pendingAsian.rows) {
             const bet = row.payload || {};
             if (!bet.home || !bet.away || !Number.isFinite(Number(bet.overLine))) continue;
-            const final = finalByTeams.get(normalizeSettlementTeam(bet.home) + "|" + normalizeSettlementTeam(bet.away));
+            const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+            const exactFixture = findUniqueCompletedFixture(finalFixtures, {
+              home: bet.home, away: bet.away, league: bet.league, date: alertDate, dateToleranceDays: 1
+            });
+            const final = exactFixture?.result;
             if (!final) continue;
             // Asian alerts are second-half-only. Never grade one against full-time total
             // when its period/start score metadata is missing; leave it pending for review.
@@ -2613,6 +2645,12 @@ const server = http.createServer(async (req, res) => {
             bet.betSettlementLabel = result === "won" ? "Κερδισμένο" : result === "lost" ? "Χαμένο" : "Επιστροφή (ασιατικό push)";
             bet.betFinalScore = final.homeScore + "-" + final.awayScore;
             bet.betScoreScope = "full_time";
+            bet.betSettlementProvider = final.settlementProvider;
+            bet.betSettlementFixtureId = final.settlementFixtureId;
+            bet.betSettlementFixtureDate = final.settlementFixtureDate;
+            bet.betSettlementLeague = final.settlementLeague || bet.league || null;
+            bet.betScoreSource = "confirmed_full_time_score";
+            bet.evaluationRule = "asian_over_second_half_goals_vs_line";
             bet.betSettledAt = now;
             bet.betSettlementRule = "asian_over_second_half_goals_vs_line";
             bet.betSecondHalfGoals = settledTotal;
