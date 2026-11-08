@@ -3179,7 +3179,8 @@ function renderMyAiAlertsPrivate(){
  if(!rows.length){host.innerHTML='<div class="top-ai-alert-empty">Δεν υπάρχουν καταγεγραμμένα AI alerts.</div>';return}
  host.innerHTML=rows.map(a=>{
   const ids=Array.isArray(a.triggerIds)?[...new Set(a.triggerIds.map(id=>myAiTriggerNumbers[id]).filter(Number.isInteger))].sort((x,y)=>x-y):[];
-  const triggerText=ids.length?ids.map(n=>'Trigger '+n).join(' · '):'Δεν έχει αποθηκευτεί αναγνωριστικό trigger';
+  const triggerText=ids.length?ids.map(n=>'Trigger '+n).join(' · '):'Δεν καταγράφηκε Trigger ID σε αυτό το alert';
+  const sourceLabel=a.source==='server-push'?'BACKGROUND AI PROTOCOL':'CLIENT AI SCANNER';
   const stats=a.statsAtSignal&&typeof a.statsAtSignal==='object'?JSON.stringify(a.statsAtSignal,null,2):'Δεν υπάρχουν αναλυτικά statsAtSignal';
   const at=new Date(Number(a.createdAt));
   const time=Number.isFinite(at.getTime())?at.toLocaleString('el-GR'):'';
@@ -3187,7 +3188,7 @@ function renderMyAiAlertsPrivate(){
   const league=String(a.league||'Διοργάνωση');
   const market=String(a.market||'Over');
   const period=alertMarketPeriodLabel(a);
-  return '<article class="top-ai-alert-card" style="text-align:left;cursor:default"><span class="alert-card-kicker"><span>🔒 PRIVATE AI · '+esc(time)+'</span><span>'+esc(minute)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">'+esc(league)+' · '+esc(market)+' · '+esc(period)+'</div><div class="alert-card-market"><strong>Ενεργοποιήθηκαν:</strong> '+esc(triggerText)+'</div><div class="alert-card-reason">'+esc(a.reason||'Δεν υπάρχει αποθηκευμένη περιγραφή κριτηρίων')+'</div><details style="margin-top:10px"><summary>Εσωτερικά δεδομένα trigger / stats</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:360px;overflow:auto">'+esc(stats)+'</pre><p class="subtle">Trigger IDs: '+esc((Array.isArray(a.triggerIds)?a.triggerIds:[]).join(', ')||'—')+'</p><p class="subtle">Support signals: '+esc((Array.isArray(a.supportSignalIds)?a.supportSignalIds:[]).join(', ')||'—')+'</p></details></article>';
+  return '<article class="top-ai-alert-card" style="text-align:left;cursor:default"><span class="alert-card-kicker"><span>🔒 PRIVATE AI · '+esc(sourceLabel)+' · '+esc(time)+'</span><span>'+esc(minute)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">'+esc(league)+' · '+esc(market)+' · '+esc(period)+'</div><div class="alert-card-market"><strong>Ενεργοποιήθηκαν:</strong> '+esc(triggerText)+'</div><div class="alert-card-reason">'+esc(a.reason||'Δεν υπάρχει αποθηκευμένη περιγραφή κριτηρίων')+'</div><details style="margin-top:10px"><summary>Εσωτερικά δεδομένα trigger / stats</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:360px;overflow:auto">'+esc(stats)+'</pre><p class="subtle">Trigger IDs: '+esc((Array.isArray(a.triggerIds)?a.triggerIds:[]).join(', ')||'—')+'</p><p class="subtle">Support signals: '+esc((Array.isArray(a.supportSignalIds)?a.supportSignalIds:[]).join(', ')||'—')+'</p></details></article>';
  }).join('');
 }
 async function loadMyAiAlertsPrivate(){
