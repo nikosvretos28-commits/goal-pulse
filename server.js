@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, findUniqueCompletedFixture } = require("./settlement");
+const { validateRollingSot } = require("./sot-integrity");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -2976,24 +2977,32 @@ const server = http.createServer(async (req, res) => {
         // valid team's SOT delta to count when the opponent's SOT is unavailable,
         // while never treating an unknown value as zero.
         const memorySotDelta = baseline => {
-          if (!Array.isArray(current.sotByTeam) || !Array.isArray(baseline?.sotByTeam)) return 0;
+          if (!Array.isArray(current.sotByTeam) || !Array.isArray(baseline?.sotByTeam)) return null;
           const previousByTeam = new Map(baseline.sotByTeam
             .filter(side => side?.team && side.value != null && Number.isFinite(Number(side.value)))
             .map(side => [side.team, Number(side.value)]));
-          return current.sotByTeam.reduce((sum, side) => {
+          let comparableTeams = 0;
+          const delta = current.sotByTeam.reduce((sum, side) => {
             if (!side?.team || side.value == null || !Number.isFinite(Number(side.value))) return sum;
             const oldValue = previousByTeam.get(side.team);
             if (oldValue == null) return sum;
+            comparableTeams++;
             return sum + Math.max(0, Number(side.value) - oldValue);
           }, 0);
+          return comparableTeams ? delta : null;
         };
         const memory5mSot = memorySotDelta(previous);
         const memory10mSot = memorySotDelta(previous10);
-        // A persisted baseline can be present but stale or undercounted (including a zero delta).
-        // Never let that persisted value mask stronger independently observed in-memory SOT activity.
-        // Use the stronger of the two measurements for each window; never add them together.
-        const onTarget = Math.max(memory5mSot, persisted5mSot ?? 0);
-        const onTarget10m = Math.max(memory10mSot, persisted10mSot ?? 0);
+        // Require independent agreement when both rolling baselines exist.
+        // Never allow a rolling delta to exceed the current match-wide cumulative SOT.
+        const sot5Validation = validateRollingSot({
+          memoryDelta: memory5mSot, persistedDelta: persisted5mSot, cumulativeTotal: current.onTarget
+        });
+        const sot10Validation = validateRollingSot({
+          memoryDelta: memory10mSot, persistedDelta: persisted10mSot, cumulativeTotal: current.onTarget
+        });
+        const onTarget = sot5Validation.value;
+        const onTarget10m = sot10Validation.value;
         // Additive dual-team SOT pressure trigger. Unknown team/window values fail closed.
         const perTeamSotDelta = baseline => {
           if (!Array.isArray(current.sotByTeam) || !Array.isArray(baseline?.sotByTeam)) return [];
@@ -3203,6 +3212,9 @@ const server = http.createServer(async (req, res) => {
           statsAvailable: Boolean(match.statsAvailable),
           sot5m: onTarget,
           sot10m: onTarget10m,
+          sotCumulativeTotal: current.onTarget,
+          sot5mValidation: sot5Validation,
+          sot10mValidation: sot10Validation,
           xGHome: teamXGValues[0],
           xGAway: teamXGValues[1],
           recentSotQualifies,
@@ -4362,7 +4374,7 @@ const server = http.createServer(async (req, res) => {
               if (sportScoreDetailDiagnostics.sample?.eventId === String(event.id)) {
                 sportScoreDetailDiagnostics.sample.statLabels = statsRows.slice(0, 30).map(row => ({ label: row.label, home: row.home, away: row.away }));
               }
-              const readStat = (side, aliases) => {
+              const readStat = (side, aliases, exactOnly = false) => {
                                 let found = null;
                 for (const alias of aliases) {
                   found = statsRows.find(row => row.label === alias);
@@ -4371,7 +4383,7 @@ const server = http.createServer(async (req, res) => {
                 // Providers often append qualifiers such as "(including penalties)" to a
                 // stat label. Keep exact alias priority, then accept a qualified version
                 // of a known label while rejecting percentages/rates.
-                if (!found) {
+                if (!found && !exactOnly) {
                   const qualifiedAliases = aliases.filter(alias => String(alias).length >= 5);
                   found = statsRows.find(row =>
                     qualifiedAliases.some(alias => row.label.startsWith(alias + "_")) &&
@@ -4408,8 +4420,8 @@ const server = http.createServer(async (req, res) => {
               ];
               const hasIncidentTimeline = Array.isArray(root.incidents);
               const values = [
-                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
-                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
+                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
+                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
                             matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "SportScore",
@@ -4431,7 +4443,7 @@ const server = http.createServer(async (req, res) => {
               // Some provider responses only expose half-by-half periods; do not silently drop all stats.
               const groups = (allPeriods.length ? allPeriods : periods).flatMap(period => period.groups || []);
               const items = groups.flatMap(group => group.items || []);
-              const readStat = (side, aliases) => {
+              const readStat = (side, aliases, exactOnly = false) => {
                 // Resolve aliases in priority order (specific total first), not provider row order.
                 let found = null;
                 for (const alias of aliases) {
@@ -4441,7 +4453,7 @@ const server = http.createServer(async (req, res) => {
                   );
                   if (found) break;
                 }
-                if (!found) {
+                if (!found && !exactOnly) {
                   const normalizedAliases = aliases.filter(alias => String(alias).length >= 5);
                   found = items.find(stat => {
                     const key = String(stat.key || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
