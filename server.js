@@ -2041,7 +2041,14 @@ const server = http.createServer(async (req, res) => {
             'betSettledAt', COALESCE(NULLIF(EXCLUDED.payload->'betSettledAt','null'::jsonb), alert_history.payload->'betSettledAt'),
             'evaluatedAt', COALESCE(NULLIF(EXCLUDED.payload->'evaluatedAt','null'::jsonb), alert_history.payload->'evaluatedAt'),
             'evaluationRule', COALESCE(NULLIF(EXCLUDED.payload->'evaluationRule','null'::jsonb), alert_history.payload->'evaluationRule'),
-            'betSettlementLabel', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLabel','null'::jsonb), alert_history.payload->'betSettlementLabel')
+            'betSettlementLabel', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLabel','null'::jsonb), alert_history.payload->'betSettlementLabel'),
+            'betSettlementReason', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementReason','null'::jsonb), alert_history.payload->'betSettlementReason'),
+            'betHalfTimeScore', COALESCE(NULLIF(EXCLUDED.payload->'betHalfTimeScore','null'::jsonb), alert_history.payload->'betHalfTimeScore'),
+            'betScoreSource', COALESCE(NULLIF(EXCLUDED.payload->'betScoreSource','null'::jsonb), alert_history.payload->'betScoreSource'),
+            'betSettlementProvider', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementProvider','null'::jsonb), alert_history.payload->'betSettlementProvider'),
+            'betSettlementFixtureId', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementFixtureId','null'::jsonb), alert_history.payload->'betSettlementFixtureId'),
+            'betSettlementFixtureDate', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementFixtureDate','null'::jsonb), alert_history.payload->'betSettlementFixtureDate'),
+            'betSettlementLeague', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLeague','null'::jsonb), alert_history.payload->'betSettlementLeague')
           ))
           ELSE EXCLUDED.payload
         END, updated_at=NOW()`,
