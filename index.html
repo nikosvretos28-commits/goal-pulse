@@ -3880,7 +3880,7 @@ function renderAllLivePowerRanking(){
  const rows=document.getElementById('allLivePowerRankingRows'),status=document.getElementById('allLivePowerRankingStatus');if(!rows)return;
  const live=allMatches.filter(m=>m&&m.state==='in');
  const rankingClock=(m,stats)=>{
-  const candidates=[stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute,m.clock]
+  const candidates=[stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute,m.clock,m.statusText,m.status]
    .map(value=>String(value??'').trim()).filter(Boolean);
   const status=String(m.statusText||m.status||'').trim();
   const combined=candidates.join(' ')+' '+status;
@@ -5719,5 +5719,41 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
  const observer=new MutationObserver(scan);
  observer.observe(container,{childList:true,subtree:true,attributes:true,attributeFilter:['data-score-home','data-score-away']});
  scan();
+})();
+</script>
+
+<script id="gm-box-font-boost-script">
+(function(){
+ 'use strict';
+ // Increase readable text inside existing cards/panels without changing their box CSS.
+ const boxSelector='.panel,.side-live,.match,[class*="card"],[class*="box"],[class*="row"],.gp-ranking-row';
+ const textTags='A,B,BUTTON,CAPTION,DD,DT,H1,H2,H3,H4,LABEL,LI,P,SMALL,SPAN,STRONG,TD,TH';
+ const boost=element=>{
+  if(!element||element.nodeType!==1||element.dataset.gmFontBoosted==='1')return;
+  if(!element.closest(boxSelector)||!textTags.split(',').includes(element.tagName))return;
+  if(!Array.from(element.childNodes).some(node=>node.nodeType===3&&node.textContent.trim()))return;
+  const size=parseFloat(window.getComputedStyle(element).fontSize);
+  if(!Number.isFinite(size)||size<=0)return;
+  element.style.fontSize=(size+1)+'px';
+  element.dataset.gmFontBoosted='1';
+ };
+ const scan=root=>{
+  if(!root)return;
+  if(root.nodeType===1)boost(root);
+  if(root.querySelectorAll)root.querySelectorAll(textTags.toLowerCase().split(',').map(tag=>tag).join(',')).forEach(boost);
+ };
+ const start=()=> {
+  scan(document.body);
+  const observer=new MutationObserver(records=>{
+   records.forEach(record=>{
+    record.addedNodes.forEach(node=>{
+     if(node.nodeType===1)scan(node);
+     else if(node.nodeType===3)boost(node.parentElement);
+    });
+   });
+  });
+  observer.observe(document.body,{childList:true,subtree:true});
+ };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 </script>
