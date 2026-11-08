@@ -3894,7 +3894,7 @@ function renderAllLivePowerRanking(){
  }).sort((a,b)=>b.score-a.score||b.signals.length-a.signals.length||(b.totalSot||0)-(a.totalSot||0));
  if(status)status.textContent=live.length+' LIVE MATCHES · '+ranked.filter(x=>x.signals.length>=2).length+' ΜΕ 2+ TRIGGERS';
  if(!ranked.length){rows.innerHTML='<div class="gp-ranking-empty">Δεν υπάρχουν ζωντανοί αγώνες αυτή τη στιγμή.</div>';return;}
- rows.innerHTML=ranked.map((x,i)=>{const m=x.m,home=m.home?.name||'Γηπεδούχος',away=m.away?.name||'Φιλοξενούμενος',score=(m.home?.score??'–')+' – '+(m.away?.score??'–');const badges=x.signals.length?x.signals.map(t=>'<span class="gp-ranking-trigger">'+esc(t)+'</span>').join(''):'<span class="gp-ranking-meta">'+(x.hasStats?'Δεν έχει ενεργοποιηθεί trigger':'Αναμονή live στατιστικών')+'</span>';const meta=[m.league||m.country||'LIVE',x.clock,score].filter(Boolean).map(esc).join(' · ');return '<article class="gp-ranking-row"><div class="gp-ranking-position">#'+(i+1)+'</div><div class="gp-ranking-main"><div class="gp-ranking-teams">'+esc(home)+' – '+esc(away)+'</div><div class="gp-ranking-meta">'+meta+'</div><div class="gp-ranking-triggers">'+badges+'</div></div><div class="gp-ranking-score"><strong>'+x.score+'</strong><small>/ 100</small></div></article>';}).join('');
+ rows.innerHTML=ranked.map((x,i)=>{const m=x.m,home=m.home?.name||'Γηπεδούχος',away=m.away?.name||'Φιλοξενούμενος',score=(m.home?.score??'–')+' – '+(m.away?.score??'–');const badges=x.signals.length?x.signals.map(t=>'<span class="gp-ranking-trigger">'+esc(t)+'</span>').join(''):'<span class="gp-ranking-meta">'+(x.hasStats?'Δεν έχει ενεργοποιηθεί trigger':'Αναμονή live στατιστικών')+'</span>';const meta=[m.league||m.country||'LIVE',x.clock,score].filter(Boolean).map(esc).join(' · ');return '<article class="gp-ranking-row" data-match-id="'+esc(m.id)+'" data-score-home="'+esc(m.home?.score??'')+'" data-score-away="'+esc(m.away?.score??'')+'"><div class="gp-ranking-position">#'+(i+1)+'</div><div class="gp-ranking-main"><div class="gp-ranking-teams">'+esc(home)+' – '+esc(away)+'</div><div class="gp-ranking-meta">'+meta+'</div><div class="gp-ranking-triggers">'+badges+'</div></div><div class="gp-ranking-score"><strong>'+x.score+'</strong><small>/ 100</small></div></article>';}).join('');
 }
 
 function renderHighActivityMatches(){
@@ -5569,3 +5569,84 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
 @media(max-width:700px){.brand{gap:8px}.brand svg{width:43px;height:43px}.brand-tagline{font-size:7px;letter-spacing:1.15px}.brand-name{font-size:21px}nav{gap:5px 12px}}
 @media(prefers-reduced-motion:reduce){.pulse-dot{animation:none}nav a{transition:none}}
 </style>
+
+<style id="gm-goal-impact-flash">
+/* GoalMatrix GOAL IMPACT: score-change celebration, isolated to Power Ranking cards. */
+#allLivePowerRankingRows .gp-ranking-row.gm-goal-flash{
+ position:relative;isolation:isolate;overflow:hidden;
+ border-color:rgba(67,224,162,.92)!important;
+ box-shadow:0 0 0 1px rgba(67,224,162,.28),0 0 24px rgba(67,224,162,.22),0 0 38px rgba(255,77,112,.12);
+ animation:gmGoalCardPulse 2.9s ease-out both;
+}
+#allLivePowerRankingRows .gp-ranking-row.gm-goal-flash>*:not(.gm-goal-flash-sweep):not(.gm-goal-flash-label){position:relative;z-index:1}
+#allLivePowerRankingRows .gm-goal-flash-sweep{
+ position:absolute;z-index:0;inset:-5% auto -5% -65%;width:65%;pointer-events:none;
+ background:linear-gradient(105deg,transparent 0%,rgba(67,224,162,.06) 20%,rgba(67,224,162,.42) 43%,rgba(255,75,112,.38) 61%,transparent 100%);
+ filter:blur(2px);transform:skewX(-14deg);animation:gmGoalSweep 1.15s cubic-bezier(.18,.72,.22,1) both;
+}
+#allLivePowerRankingRows .gm-goal-flash-label{
+ position:absolute;z-index:3;top:7px;right:8px;pointer-events:none;
+ display:inline-flex;align-items:center;gap:5px;padding:5px 10px;
+ border:1px solid rgba(255,255,255,.35);border-radius:999px;
+ background:linear-gradient(105deg,rgba(14,111,75,.97),rgba(145,35,67,.97));
+ color:#fff;font-size:10px;font-weight:1000;letter-spacing:.12em;
+ text-shadow:0 1px 5px rgba(0,0,0,.35);
+ box-shadow:0 3px 18px rgba(0,0,0,.28),0 0 18px rgba(67,224,162,.24);
+ animation:gmGoalLabelIn .35s cubic-bezier(.2,.85,.25,1.2) both;
+}
+@keyframes gmGoalSweep{0%{transform:translateX(0) skewX(-14deg);opacity:0}12%{opacity:1}100%{transform:translateX(290%) skewX(-14deg);opacity:0}}
+@keyframes gmGoalCardPulse{0%,100%{border-color:rgba(67,224,162,.35);box-shadow:0 0 0 0 rgba(67,224,162,0)}18%{border-color:rgba(255,93,128,.95);box-shadow:0 0 0 2px rgba(255,93,128,.18),0 0 32px rgba(67,224,162,.28),0 0 40px rgba(255,77,112,.2)}55%{border-color:rgba(67,224,162,.9);box-shadow:0 0 0 1px rgba(67,224,162,.18),0 0 25px rgba(67,224,162,.18),0 0 30px rgba(255,77,112,.12)}}
+@keyframes gmGoalLabelIn{from{opacity:0;transform:translateY(-7px) scale(.82)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){
+ #allLivePowerRankingRows .gp-ranking-row.gm-goal-flash{animation:none}
+ #allLivePowerRankingRows .gm-goal-flash-sweep{display:none}
+ #allLivePowerRankingRows .gm-goal-flash-label{animation:none}
+}
+</style>
+<script id="gm-goal-impact-flash-script">
+(function(){
+ 'use strict';
+ const container=document.getElementById('allLivePowerRankingRows');
+ if(!container||container.dataset.gmGoalFlashObserver==='1')return;
+ container.dataset.gmGoalFlashObserver='1';
+ const lastScores=new Map();
+ const readScore=value=>{
+  if(value===null||value===undefined||String(value).trim()==='')return null;
+  const n=Number(value);
+  return Number.isInteger(n)&&n>=0?n:null;
+ };
+ const flashGoal=(row,goalCount)=>{
+  row.classList.remove('gm-goal-flash');
+  row.querySelectorAll('.gm-goal-flash-sweep,.gm-goal-flash-label').forEach(node=>node.remove());
+  const sweep=document.createElement('span');
+  sweep.className='gm-goal-flash-sweep';
+  sweep.setAttribute('aria-hidden','true');
+  const label=document.createElement('span');
+  label.className='gm-goal-flash-label';
+  label.setAttribute('aria-live','polite');
+  label.textContent=goalCount>1?'⚽ '+goalCount+' GOALS! 💚❤️':'⚽ GOAL! 💚❤️';
+  row.append(sweep,label);
+  row.classList.add('gm-goal-flash');
+  window.setTimeout(()=>{
+   row.classList.remove('gm-goal-flash');
+   sweep.remove();
+   label.remove();
+  },3000);
+ };
+ const scan=()=>{
+  container.querySelectorAll('.gp-ranking-row[data-match-id]').forEach(row=>{
+   const id=row.getAttribute('data-match-id');
+   if(!id)return;
+   const home=readScore(row.getAttribute('data-score-home'));
+   const away=readScore(row.getAttribute('data-score-away'));
+   if(home===null||away===null)return;
+   const total=home+away,previous=lastScores.get(id);
+   if(previous&&total>previous.total)flashGoal(row,total-previous.total);
+   lastScores.set(id,{home,away,total});
+  });
+ };
+ const observer=new MutationObserver(scan);
+ observer.observe(container,{childList:true,subtree:true});
+ scan();
+})();
+</script>
