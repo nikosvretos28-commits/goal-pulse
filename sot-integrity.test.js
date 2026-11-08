@@ -22,3 +22,29 @@ test("missing rolling baselines fail closed", () => {
   const r=validateRollingSot({memoryDelta:null,persistedDelta:null,cumulativeTotal:5});
   assert.equal(r.value,0); assert.equal(r.valid,false);
 });
+
+const { readExactSotStat } = require("./sot-integrity");
+test("exact SOT parser accepts only explicit total SOT labels", () => {
+  const rows = [
+    { key: "shots_on_target_inside_box", home: 3, away: 1 },
+    { key: "total_shots", home: 12, away: 8 }
+  ];
+  assert.equal(readExactSotStat(rows, "home"), null);
+  assert.equal(readExactSotStat(rows, "away"), null);
+});
+test("exact SOT parser accepts explicit shots-on-target totals", () => {
+  const rows = [
+    { key: "shots_on_target", home: 1, away: 0 },
+    { key: "shots_on_target_inside_box", home: 3, away: 1 }
+  ];
+  assert.equal(readExactSotStat(rows, "home"), 1);
+  assert.equal(readExactSotStat(rows, "away"), 0);
+});
+test("exact SOT parser rejects qualified labels and total shots", () => {
+  const rows = [
+    { title: "Shots on Target Inside Box", home: 4, away: 2 },
+    { title: "Total Shots", home: 10, away: 7 }
+  ];
+  assert.equal(readExactSotStat(rows, "home"), null);
+  assert.equal(readExactSotStat(rows, "away"), null);
+});

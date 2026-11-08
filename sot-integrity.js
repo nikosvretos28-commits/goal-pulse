@@ -19,4 +19,26 @@ function validateRollingSot({ memoryDelta, persistedDelta, cumulativeTotal }) {
     memory, persisted, cumulative
   };
 }
-module.exports = { validateRollingSot };
+
+const EXACT_SOT_LABELS = new Set([
+  "shots_on_target",
+  "shots_on_goal",
+  "shots_on_target_total",
+  "sot",
+  "on_target"
+]);
+function normalizeStatLabel(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+function readExactSotStat(items, side) {
+  if (!Array.isArray(items) || !["home", "away"].includes(side)) return null;
+  for (const stat of items) {
+    const labels = [normalizeStatLabel(stat?.key), normalizeStatLabel(stat?.title)];
+    if (!labels.some(label => EXACT_SOT_LABELS.has(label))) continue;
+    const raw = stat?.[side];
+    const value = Number.parseFloat(String(raw ?? "").replace("%", "").replace(",", "."));
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+module.exports = { validateRollingSot, readExactSotStat, normalizeStatLabel };
