@@ -1912,8 +1912,26 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
+  if (url.pathname === "/api/protocol-analyst" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private analyst access is not configured" });
+    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+    const now = Date.now();
+    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
+    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
+    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+    try {
+      const body = await readJsonBody(req, 4096);
+      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
+        attempt.count += 1;
+        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+        powerGamesAuthAttempts.set(ip, attempt);
+        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
+      }
+      powerGamesAuthAttempts.delete(ip);
+    } catch (error) {
+      return send(res, 400, { ok: false, error: "Invalid admin request" });
+    }
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
       // Always recompute from current settled history; cached reports may predate
