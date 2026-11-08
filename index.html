@@ -5590,7 +5590,7 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
  position:relative;isolation:isolate;overflow:hidden;
  border-color:rgba(67,224,162,.92)!important;
  box-shadow:0 0 0 1px rgba(67,224,162,.28),0 0 24px rgba(67,224,162,.22),0 0 38px rgba(255,77,112,.12);
- animation:gmGoalCardPulse 2.9s ease-out both;
+ animation:gmGoalCardPulse 6s ease-out both;
 }
 #allLivePowerRankingRows .gp-ranking-row.gm-goal-flash>*:not(.gm-goal-flash-sweep):not(.gm-goal-flash-label){position:relative;z-index:1}
 #allLivePowerRankingRows .gm-goal-flash-sweep{
@@ -5629,6 +5629,44 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
   const n=Number(value);
   return Number.isInteger(n)&&n>=0?n:null;
  };
+ // Browser audio is unlocked by the visitor's first interaction; no sound is forced on page load.
+ let goalAudioContext=null;
+ let goalAudioUnlocked=false;
+ const unlockGoalAudio=()=>{
+  if(goalAudioUnlocked)return;
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return;
+  try{
+   if(!goalAudioContext)goalAudioContext=new AudioContextClass();
+   goalAudioContext.resume().then(()=>{goalAudioUnlocked=goalAudioContext.state==='running';}).catch(()=>{});
+  }catch(error){}
+ };
+ ['pointerdown','touchstart','keydown'].forEach(type=>document.addEventListener(type,unlockGoalAudio,{once:true,passive:true}));
+ const playGoalCrowdSound=()=>{
+  if(!goalAudioUnlocked||!goalAudioContext||goalAudioContext.state!=='running')return;
+  try{
+   const ctx=goalAudioContext,duration=6,buffer=ctx.createBuffer(1,Math.ceil(ctx.sampleRate*duration),ctx.sampleRate);
+   const samples=buffer.getChannelData(0);
+   for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*0.72;
+   const source=ctx.createBufferSource(),low=ctx.createBiquadFilter(),high=ctx.createBiquadFilter(),volume=ctx.createGain();
+   source.buffer=buffer;
+   high.type='highpass';high.frequency.value=130;
+   low.type='lowpass';low.frequency.value=1250;low.Q.value=0.7;
+   volume.gain.setValueAtTime(0.001,ctx.currentTime);
+   volume.gain.linearRampToValueAtTime(0.17,ctx.currentTime+0.65);
+   volume.gain.setValueAtTime(0.15,ctx.currentTime+3.9);
+   volume.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+duration);
+   source.connect(high);high.connect(low);low.connect(volume);volume.connect(ctx.destination);
+   source.start();source.stop(ctx.currentTime+duration);
+  }catch(error){}
+  if('speechSynthesis' in window&&'SpeechSynthesisUtterance' in window){
+   try{
+    const shout=new SpeechSynthesisUtterance('GOOOOOAL!');
+    shout.lang='en-US';shout.rate=0.72;shout.pitch=0.72;shout.volume=1;
+    window.speechSynthesis.speak(shout);
+   }catch(error){}
+  }
+ };
  const flashGoal=(row,goalCount)=>{
   row.classList.remove('gm-goal-flash');
   row.querySelectorAll('.gm-goal-flash-sweep,.gm-goal-flash-label').forEach(node=>node.remove());
@@ -5641,11 +5679,12 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
   label.textContent=goalCount>1?'⚽ '+goalCount+' GOALS! 💚❤️':'⚽ GOAL! 💚❤️';
   row.append(sweep,label);
   row.classList.add('gm-goal-flash');
+  playGoalCrowdSound();
   window.setTimeout(()=>{
    row.classList.remove('gm-goal-flash');
    sweep.remove();
    label.remove();
-  },4000);
+  },6000);
  };
  const scan=()=>{
   container.querySelectorAll('.gp-ranking-row[data-match-id]').forEach(row=>{
