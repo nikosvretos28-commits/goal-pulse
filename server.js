@@ -2054,7 +2054,7 @@ const server = http.createServer(async (req, res) => {
       let persistent = false;
       if (await ensurePreMatchSeasonDb()) {
         const result = await analyticsPool.query(
-          `SELECT p.league_code, p.season_key, COUNT(*)::int AS teams,
+          `SELECT COALESCE(p.league_code,s.league_code) AS league_code, COALESCE(p.season_key,s.season_key) AS season_key, COUNT(p.team_key)::int AS teams,
                   MAX(p.fetched_at) AS updated_at,
                   MAX(COALESCE((p.profile->>'fixtureCount')::int, 0)) AS fixtures,
                   MAX(s.status) AS collection_status,
