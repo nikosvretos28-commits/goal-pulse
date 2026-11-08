@@ -306,8 +306,9 @@ async function runProtocolAnalyst() {
     const overall = summarize(records);
     // Diagnose the requested late-alert windows independently of the live protocol's 88′ cutoff.
     const bySignalWindow = [
-      { window: "1ο ημίχρονο 35′–40′", ...summarize(allRecords.filter(row => row.phase === "first_half" && row.minute >= 35 && row.minute <= 40)) },
-      { window: "2ο ημίχρονο 76′–88′", ...summarize(allRecords.filter(row => row.phase === "second_half" && row.minute >= 76 && row.minute <= 88)) }
+      { window: "2ο ημίχρονο 46′–59′", ...summarize(records.filter(row => row.minute >= 46 && row.minute <= 59)) },
+      { window: "2ο ημίχρονο 60′–74′", ...summarize(records.filter(row => row.minute >= 60 && row.minute <= 74)) },
+      { window: "2ο ημίχρονο 75′–88′", ...summarize(records.filter(row => row.minute >= 75 && row.minute <= 88)) }
     ];
     const segment = (field, label, sourceRows = records) => {
       const values = [...new Set(sourceRows.map(row => row[field]).filter(value => value !== null && value !== undefined && value !== ""))].sort();
@@ -370,7 +371,7 @@ async function runProtocolAnalyst() {
     }
     // Compare signal groups within each half, never against a pooled cross-half baseline.
     // Recommendations are research-only and require at least 20 settled alerts per segment.
-    for (const phase of ["first_half", "second_half"]) {
+    for (const phase of ["second_half"]) {
       const phaseRows = records.filter(row => row.phase === phase);
       const phaseOverall = summarize(phaseRows);
       if (phaseOverall.settled < 20) continue;
@@ -421,13 +422,13 @@ async function runProtocolAnalyst() {
         successRate: dailySettled ? Math.round(dailyWins / dailySettled * 1000) / 10 : null,
         note: "AI alerts created today in Greece local time; excludes HI ACTIVITY observations."
       },
-      method: "statistical_review_of_settled_server_generated_ai_alerts_both_halves_with_separate_phase_comparisons",
+      method: "statistical_review_of_settled_server_generated_ai_alerts_second_half_only",
       automaticRuleChanges: false,
       sample: overall,
       dataQuality: {
         recordsAnalyzed: records.length,
         allSettledAlertsIn180Days: allRecords.length,
-        researchScope: "first_half_1_to_40_and_second_half_46_to_88_analyzed_separately",
+        researchScope: "second_half_46_to_88_only",
         alertsExcludedOutsideResearchScope: allRecords.length - records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
         alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
