@@ -237,8 +237,11 @@ async function runProtocolAnalyst() {
         createdAt: row.created_at
       };
     });
-    const instrumentedTriggerRows = triggerHistoryRows.filter(row => row.triggerIds.length > 0);
-    const legacyUnattributedAlerts = triggerHistoryRows.filter(row => row.triggerIds.length === 0).length;
+    const approvedWindowTriggerRows = triggerHistoryRows.filter(row =>
+      row.phase === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88
+    );
+    const instrumentedTriggerRows = approvedWindowTriggerRows.filter(row => row.triggerIds.length > 0);
+    const legacyUnattributedAlerts = approvedWindowTriggerRows.filter(row => row.triggerIds.length === 0).length;
     const triggerDefinitions = [
       { id: "recent_sot_pressure", label: "Πρόσφατη πίεση SOT", detail: "3+ SOT / 5′ ή 6+ SOT / 10′" },
       { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.00 xG και η άλλη ≥2.00 xG" },
@@ -3195,8 +3198,8 @@ const server = http.createServer(async (req, res) => {
         // OR one team's xG >= 3.00 and the other's >= 2.00.
         // Additional cumulative trigger: 15+ combined match SOT, only during minutes 46–69.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
-        const eligibleMinute = isAiMinuteEligible(aiMinute);
-        const cumulativeSotWindow = isCumulativeSotMinute(aiMinute);
+        const eligibleMinute = isAiMinuteEligible(aiMinute, statusForEligibility);
+        const cumulativeSotWindow = isCumulativeSotMinute(aiMinute, statusForEligibility);
         const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
         const cumulativeSotQualifies = combined15SotQualifies;
         const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure || manAdvantagePressure);
