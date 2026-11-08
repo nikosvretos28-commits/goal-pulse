@@ -4572,6 +4572,7 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
  try{
   const response=await fetch(ANALYTICS_API+'/api/alerts/history/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,limit:1000,period:'all'})});
   const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));privateAiAdminPin=pin;
+  void loadProtocolAnalyst();
   const liveIds=new Set((Array.isArray(allMatches)?allMatches:[]).filter(m=>m&&m.state==='in').map(m=>String(m.id)));
   const rows=(Array.isArray(data.alerts)?data.alerts:[]).filter(a=>a&&a.level!=='VIP'&&liveIds.has(String(a.eventId))).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
   if(!rows.length)host.innerHTML='<div class="top-ai-alert-empty">Δεν υπάρχουν αυτή τη στιγμή ενεργά AI alerts με πλήρη εσωτερική καταγραφή.</div>';
@@ -4919,9 +4920,10 @@ async function sendGoalPulsePushAlert(level,body,eventId){
 function escapeProtocolText(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 async function loadProtocolAnalyst(){
  const root=document.getElementById('protocolAnalystPanel');if(!root)return;
+ if(!privateAiAdminPin){root.innerHTML='<p>Η εσωτερική αξιολόγηση triggers είναι ιδιωτική. Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS με το προσωπικό PIN.</p>';return;}
  root.innerHTML='<p>Έλεγχος αποθηκευμένων αποτελεσμάτων…</p>';
  try{
-  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst',{cache:'no-store',signal:AbortSignal.timeout(20000)});
+  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin}),cache:'no-store',signal:AbortSignal.timeout(20000)});
   const data=await response.json();if(!response.ok||!data.report)throw new Error(data.error||('HTTP '+response.status));
   const report=data.report,sample=report.sample||{},quality=report.dataQuality||{},daily=report.dailySummary||{};
   const recommendations=Array.isArray(report.recommendations)?report.recommendations:[];
