@@ -2274,8 +2274,13 @@ const server = http.createServer(async (req, res) => {
           const pendingDates = new Set();
           for (const pendingRow of pending.rows) {
             if (!pendingRow.created_at) continue;
-            const alertDate = new Date(pendingRow.created_at).toISOString().slice(0, 10).replace(/-/g, "");
-            if (alertDate !== todayUtc && !loadedPastDates.has(alertDate)) pendingDates.add(alertDate);
+            const alertDate = new Date(pendingRow.created_at).toISOString().slice(0, 10);
+            // A UTC alert timestamp can fall on a different calendar day from the
+            // provider's fixture date. Load adjacent historical scoreboard dates too.
+            for (const offset of [0, -1, 1]) {
+              const lookupDate = new Date(Date.parse(alertDate + "T00:00:00Z") + offset * 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+              if (lookupDate <= todayUtc && lookupDate !== todayUtc && !loadedPastDates.has(lookupDate)) pendingDates.add(lookupDate);
+            }
           }
           for (const alertDate of pendingDates) {
             try {
@@ -2343,7 +2348,7 @@ const server = http.createServer(async (req, res) => {
             const alertAway = alert.away || (Array.isArray(alert.teams) ? alert.teams[1] : "");
             const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
             const matchedCompletedFixture = findUniqueCompletedFixture(completedScoreboardFixtures, {
-              eventId: row.event_id || alert.eventId, home: alertHome, away: alertAway, league: alert.league, date: alertDate
+              eventId: row.event_id || alert.eventId, home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
             });
             let completed = matchedCompletedFixture?.result || null;
             // The public day endpoint caps finished fixtures at 200. For a specific
@@ -2368,40 +2373,45 @@ const server = http.createServer(async (req, res) => {
                   settlementFixtureId: String(match.id || match.fixture_id || match.event_id || ""),
                   settlementFixtureDate: fixtureDate, settlementLeague: leagueName };
               };
-              for (const teamName of [alertHome, alertAway]) {
-                const slug = teamSlug(teamName);
-                if (!slug) continue;
-                const key = alertDate + "|" + slug;
-                let cached = historicalTeamResultCache.get(key);
-                const cacheTtl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
-                if (!cached || Date.now() - cached.at > cacheTtl) {
-                  try {
-                    const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(alertDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
-                    const body = historicalResponse.ok ? await historicalResponse.json() : {};
-                    const matches = Array.isArray(body.matches) ? body.matches : Array.isArray(body.data) ? body.data : Array.isArray(body.fixtures) ? body.fixtures : [];
-                    cached = { at: Date.now(), matches };
-                    historicalTeamResultCache.set(key, cached);
-                    if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
-                  } catch (lookupError) {
-                    cached = { at: Date.now(), matches: [] };
-                    historicalTeamResultCache.set(key, cached);
+              const alertDateCandidates = [alertDate, ...[-1, 1].map(offset =>
+                new Date(Date.parse(alertDate + "T00:00:00Z") + offset * 86400000).toISOString().slice(0, 10)
+              )];
+              lookupLoop: for (const lookupDate of alertDateCandidates) {
+                for (const teamName of [alertHome, alertAway]) {
+                  const slug = teamSlug(teamName);
+                  if (!slug) continue;
+                  const key = lookupDate + "|" + slug;
+                  let cached = historicalTeamResultCache.get(key);
+                  const cacheTtl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
+                  if (!cached || Date.now() - cached.at > cacheTtl) {
+                    try {
+                      const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+                      const body = historicalResponse.ok ? await historicalResponse.json() : {};
+                      const matches = Array.isArray(body.matches) ? body.matches : Array.isArray(body.data) ? body.data : Array.isArray(body.fixtures) ? body.fixtures : [];
+                      cached = { at: Date.now(), matches };
+                      historicalTeamResultCache.set(key, cached);
+                      if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
+                    } catch (lookupError) {
+                      cached = { at: Date.now(), matches: [] };
+                      historicalTeamResultCache.set(key, cached);
+                    }
                   }
+                  const candidates = cached.matches.map(match => {
+                    const result = toCompleted(match);
+                    if (!result) return null;
+                    const matchHome = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || "").trim();
+                    const matchAway = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
+                    return { id: result.settlementFixtureId, date: result.settlementFixtureDate, league: result.settlementLeague,
+                      home: matchHome, away: matchAway, result, raw: match };
+                  }).filter(Boolean);
+                  const uniqueCandidates = [...new Map(candidates.map(candidate => [
+                    candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.raw), candidate
+                  ])).values()];
+                  const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
+                    home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
+                  });
+                  if (exactMatch) { completed = exactMatch.result; break lookupLoop; }
                 }
-                const candidates = cached.matches.map(match => {
-                  const result = toCompleted(match);
-                  if (!result) return null;
-                  const matchHome = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || "").trim();
-                  const matchAway = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
-                  return { id: result.settlementFixtureId, date: result.settlementFixtureDate, league: result.settlementLeague,
-                    home: matchHome, away: matchAway, result, raw: match };
-                }).filter(Boolean);
-                const uniqueCandidates = [...new Map(candidates.map(candidate => [
-                  candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.raw), candidate
-                ])).values()];
-                const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
-                  home: alertHome, away: alertAway, league: alert.league, date: alertDate
-                });
-                if (exactMatch) { completed = exactMatch.result; break; }
               }
             }
             if (secondHalf && completed) live = completed;
