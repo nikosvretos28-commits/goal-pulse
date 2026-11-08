@@ -71,7 +71,10 @@ function saveVolatileRecord(store, key, payload, settledFields = []) {
   if (!id || !payload || typeof payload !== "object") return;
   const previous = store.get(id);
   const next = { ...payload };
-  if (previous) for (const field of settledFields) if (previous[field] != null && (next[field] == null || next[field] === "pending" || next[field] === "εκκρεμεί")) next[field] = previous[field];
+  if (previous) {
+    for (const field of ["reason","triggerIds","supportSignalIds","statsAtSignal","odds","bookmaker","oddsVerifiedAt","scoreAtSignal","supportingCriteriaScore","evidenceKinds","points"]) if (next[field] == null && previous[field] != null) next[field] = previous[field];
+    for (const field of settledFields) if (previous[field] != null && (next[field] == null || next[field] === "pending" || next[field] === "εκκρεμεί")) next[field] = previous[field];
+  }
   store.set(id, next);
   if (store.size > VOLATILE_HISTORY_LIMIT) {
     const oldest = [...store.entries()].sort((a,b) => Number(a[1].createdAt || 0) - Number(b[1].createdAt || 0));
@@ -79,6 +82,11 @@ function saveVolatileRecord(store, key, payload, settledFields = []) {
   }
 }
 function volatileHistoryRows(store) { return [...store.values()].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)); }
+// Public alert history deliberately excludes proprietary trigger attribution and signal evidence.
+function publicAlertPayload(payload) {
+  const { reason, triggerIds, supportSignalIds, statsAtSignal, odds, bookmaker, oddsVerifiedAt, scoreAtSignal, supportingCriteriaScore, evidenceKinds, points, ...publicFields } = payload || {};
+  return publicFields;
+}
 let pushDbInit = null;
 let alertHistoryDbInit = null;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -1904,8 +1912,26 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
+  if (url.pathname === "/api/protocol-analyst" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private analyst access is not configured" });
+    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+    const now = Date.now();
+    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
+    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
+    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+    try {
+      const body = await readJsonBody(req, 4096);
+      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
+        attempt.count += 1;
+        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+        powerGamesAuthAttempts.set(ip, attempt);
+        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
+      }
+      powerGamesAuthAttempts.delete(ip);
+    } catch (error) {
+      return send(res, 400, { ok: false, error: "Invalid admin request" });
+    }
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
       // Always recompute from current settled history; cached reports may predate
@@ -2042,6 +2068,57 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/alerts/history/private" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private AI access is not configured" });
+    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+    const now = Date.now();
+    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
+    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
+    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+    try {
+      const body = await readJsonBody(req, 4096);
+      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
+        attempt.count += 1;
+        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+        powerGamesAuthAttempts.set(ip, attempt);
+        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
+      }
+      powerGamesAuthAttempts.delete(ip);
+      const limit = Math.max(1, Math.min(1000, Number(body.limit || 500)));
+      const offset = Math.max(0, Math.floor(Number(body.offset || 0)));
+      const period = String(body.period || "all").toLowerCase();
+      if (!await ensureAlertHistoryDb()) {
+        const dateKey = value => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+        const today = dateKey(now), yesterday = dateKey(now - 86400000);
+        const rows = volatileHistoryRows(volatileAlertHistory).filter(item => {
+          const at = Number(item.createdAt || 0);
+          if (!at) return false;
+          if (period === "today") return dateKey(at) === today;
+          if (period === "yesterday") return dateKey(at) === yesterday;
+          if (period === "7d") return at >= now - 7 * 86400000;
+          if (period === "30d") return at >= now - 30 * 86400000;
+          return true;
+        });
+        return send(res, 200, { ok: true, private: true, persistent: false, alerts: rows.slice(offset, offset + limit) });
+      }
+      const windowSql = period === "today"
+        ? "created_at >= (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+        : period === "yesterday"
+          ? "created_at >= ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') - INTERVAL '1 day') AT TIME ZONE 'Europe/Athens') AND created_at < (date_trunc('day', NOW() AT TIME ZONE 'Europe/Athens') AT TIME ZONE 'Europe/Athens')"
+          : period === "7d" ? "created_at >= NOW() - INTERVAL '7 days'"
+          : period === "30d" ? "created_at >= NOW() - INTERVAL '30 days'" : "TRUE";
+      const result = await analyticsPool.query(
+        `SELECT payload FROM alert_history WHERE ${windowSql} ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+      return send(res, 200, { ok: true, private: true, persistent: true, alerts: result.rows.map(row => row.payload) });
+    } catch (error) {
+      console.error("Private AI alert history request failed:", error.message);
+      return send(res, 400, { ok: false, error: "Could not load private AI alert history" });
+    }
+  }
+
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) {
@@ -2060,7 +2137,7 @@ const server = http.createServer(async (req, res) => {
         if (period === "30d") return at >= now - 30 * 86400000;
         return true;
       });
-      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit) });
+      return send(res, 200, { ok: true, persistent: false, volatile: true, historyScope: period, alerts: rows.slice(offset, offset + limit).map(publicAlertPayload) });
     }
     try {
       // Return the requested history window using Greece-local calendar boundaries.
@@ -2084,7 +2161,7 @@ const server = http.createServer(async (req, res) => {
           LIMIT $1 OFFSET $2`,
         [limit, offset]
       );
-      return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => row.payload) });
+      return send(res, 200, { ok: true, persistent: true, historyScope: period, alerts: result.rows.map(row => publicAlertPayload(row.payload)) });
     } catch (error) {
       return send(res, 503, { error: "Could not load alert history" });
     }
@@ -2160,7 +2237,19 @@ const server = http.createServer(async (req, res) => {
             'betSettlementLeague', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLeague','null'::jsonb), alert_history.payload->'betSettlementLeague')
           ))
           ELSE EXCLUDED.payload
-        END, updated_at=NOW()`,
+        END || jsonb_strip_nulls(jsonb_build_object(
+          'reason', CASE WHEN EXCLUDED.payload ? 'reason' THEN NULL ELSE alert_history.payload->'reason' END,
+          'triggerIds', CASE WHEN EXCLUDED.payload ? 'triggerIds' THEN NULL ELSE alert_history.payload->'triggerIds' END,
+          'supportSignalIds', CASE WHEN EXCLUDED.payload ? 'supportSignalIds' THEN NULL ELSE alert_history.payload->'supportSignalIds' END,
+          'statsAtSignal', CASE WHEN EXCLUDED.payload ? 'statsAtSignal' THEN NULL ELSE alert_history.payload->'statsAtSignal' END,
+          'odds', CASE WHEN EXCLUDED.payload ? 'odds' THEN NULL ELSE alert_history.payload->'odds' END,
+          'bookmaker', CASE WHEN EXCLUDED.payload ? 'bookmaker' THEN NULL ELSE alert_history.payload->'bookmaker' END,
+          'oddsVerifiedAt', CASE WHEN EXCLUDED.payload ? 'oddsVerifiedAt' THEN NULL ELSE alert_history.payload->'oddsVerifiedAt' END,
+          'scoreAtSignal', CASE WHEN EXCLUDED.payload ? 'scoreAtSignal' THEN NULL ELSE alert_history.payload->'scoreAtSignal' END,
+          'supportingCriteriaScore', CASE WHEN EXCLUDED.payload ? 'supportingCriteriaScore' THEN NULL ELSE alert_history.payload->'supportingCriteriaScore' END,
+          'evidenceKinds', CASE WHEN EXCLUDED.payload ? 'evidenceKinds' THEN NULL ELSE alert_history.payload->'evidenceKinds' END,
+          'points', CASE WHEN EXCLUDED.payload ? 'points' THEN NULL ELSE alert_history.payload->'points' END
+        )), updated_at=NOW()`,
         [JSON.stringify(records)]
       );
       return send(res, 200, { ok: true, persistent: true, saved: records.length });
@@ -3382,12 +3471,12 @@ const server = http.createServer(async (req, res) => {
             ? " @" + Number(verifiedOdds.price).toFixed(2)
             : " (χωρίς επιβεβαιωμένη απόδοση)";
           const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
-          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + priceSuffix + " · " + activatedSotRule;
+          const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · " + String(match.country || match.countryName || match.league || match.competition || "Live");
           const volatileAlertId = "push:" + id + ":" + level + ":" + now;
           saveVolatileRecord(volatileAlertHistory, volatileAlertId, {
             alertId: volatileAlertId, source: "server-push", eventId: id, level, createdAt: now,
             home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
-            league: match.league || match.competition || "", minute: formatPushMinute(match),
+            league: match.league || match.competition || "", country: match.country || match.countryName || null, minute: formatPushMinute(match),
             market: "Over " + overLine, odds: hasVerifiedOdds ? verifiedOdds.price : null,
             bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
             periodAtSignal: oddsPeriod, reason, outcome: "εκκρεμεί", betOutcome: "pending",
@@ -3433,6 +3522,7 @@ const server = http.createServer(async (req, res) => {
                   createdAt: now, home: homeCompetitor?.team?.displayName || match.home || match.homeTeam || "",
                   away: awayCompetitor?.team?.displayName || match.away || match.awayTeam || "",
                   league: scoreEvent?.competitions?.[0]?.name || match.league || match.competition || "",
+                  country: match.country || match.countryName || scoreEvent?.competitions?.[0]?.country?.name || scoreEvent?.leagues?.[0]?.name || null,
                   minute: rawMinute, minuteNumber,
                   market: "Over " + overLine,
                   odds: hasVerifiedOdds ? verifiedOdds.price : null,
