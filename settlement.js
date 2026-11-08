@@ -49,6 +49,27 @@ function gradeOverMarket(totalGoals, line) {
   return total > target ? 'won' : 'lost';
 }
 
+function getProviderFixtureId(match = {}) {
+  for (const key of ['id', 'fixture_id', 'fixtureId', 'event_id', 'eventId', 'slug', 'match_slug', 'matchSlug']) {
+    const value = match[key];
+    if (value !== null && value !== undefined && String(value).trim()) return String(value).trim();
+  }
+  for (const key of ['url', 'match_url', 'href']) {
+    const value = match[key];
+    if (!value) continue;
+    try {
+      const pathname = new URL(String(value), 'https://sportscore.com').pathname;
+      const segments = pathname.split('/').filter(Boolean);
+      const matchIndex = segments.indexOf('match');
+      if (matchIndex >= 0) {
+        const slug = segments[matchIndex + 2] || segments[matchIndex + 1] || '';
+        if (slug) return String(slug);
+      }
+    } catch {}
+  }
+  return '';
+}
+
 function normalizeFixtureName(value) {
   return String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, '').replace(/\s+(?:fc|cf|sc|ac|afc)$/, '').trim();
 }
@@ -97,5 +118,6 @@ module.exports = {
   parseOverLine,
   gradeOverMarket,
   normalizeFixtureName,
+  getProviderFixtureId,
   findUniqueCompletedFixture
 };
