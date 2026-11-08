@@ -2434,7 +2434,7 @@ const server = http.createServer(async (req, res) => {
       // scored, settled, or included in AI/HI/VIP history or scanner results.
       const result = await sendPushToSubscribers({
         title: "TEST · ΔΟΚΙΜΑΣΤΙΚΟ AI ALERT",
-        body: "ΔΟΚΙΜΑΣΤΙΚΟΣ ΑΓΩΝΑΣ — North City 1–0 South United · 32′ | 3 SOT στα τελευταία 5′ (εικονικά στοιχεία). Δεν είναι πραγματικός αγώνας ή πρόταση στοιχήματος.",
+        body: "ΔΟΚΙΜΑΣΤΙΚΟΣ ΑΓΩΝΑΣ — North City 1–0 South United · 32′. Δεν είναι πραγματικός αγώνας ή πρόταση στοιχήματος.",
         tag: "goal-matrix-synthetic-ai-test",
         url: "/"
       });
