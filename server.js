@@ -2199,7 +2199,7 @@ const server = http.createServer(async (req, res) => {
       });
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
       if (!alertHistoryDbReady) {
-        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betSettlementReason", "betFinalScore", "betMatchFinalScore", "betHalfTimeScore", "betScoreScope", "betScoreSource", "betSettlementProvider", "betSettlementFixtureId", "betSettlementFixtureDate", "betSettlementLeague", "betSettledAt", "evaluatedAt", "evaluationRule"]);
+        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betSettlementReason", "betFinalScore", "betMatchFinalScore", "betHalfTimeScore", "betScoreScope", "betScoreSource", "betSettlementProvider", "betSettlementFixtureId", "betSettlementFixtureDate", "betSettlementLeague", "betSettledAt", "evaluatedAt", "evaluationRule", "reason", "triggerIds", "supportSignalIds", "statsAtSignal", "supportingCriteriaScore", "evidenceKinds", "points", "liveConversionSupport", "dirtySheetSupport", "historicalOverSupport", "xGDelta", "odds", "bookmaker", "oddsVerifiedAt"]);
         return send(res, 200, { ok: true, persistent: false, volatile: true, saved: records.length });
       }
       await analyticsPool.query(
@@ -2256,7 +2256,22 @@ const server = http.createServer(async (req, res) => {
             'betSettlementLeague', COALESCE(NULLIF(EXCLUDED.payload->'betSettlementLeague','null'::jsonb), alert_history.payload->'betSettlementLeague')
           ))
           ELSE EXCLUDED.payload
-        END, updated_at=NOW()`,
+        END || jsonb_strip_nulls(jsonb_build_object(
+          'reason', COALESCE(NULLIF(EXCLUDED.payload->'reason','null'::jsonb), alert_history.payload->'reason'),
+          'triggerIds', COALESCE(NULLIF(EXCLUDED.payload->'triggerIds','null'::jsonb), alert_history.payload->'triggerIds'),
+          'supportSignalIds', COALESCE(NULLIF(EXCLUDED.payload->'supportSignalIds','null'::jsonb), alert_history.payload->'supportSignalIds'),
+          'statsAtSignal', COALESCE(NULLIF(EXCLUDED.payload->'statsAtSignal','null'::jsonb), alert_history.payload->'statsAtSignal'),
+          'supportingCriteriaScore', COALESCE(NULLIF(EXCLUDED.payload->'supportingCriteriaScore','null'::jsonb), alert_history.payload->'supportingCriteriaScore'),
+          'evidenceKinds', COALESCE(NULLIF(EXCLUDED.payload->'evidenceKinds','null'::jsonb), alert_history.payload->'evidenceKinds'),
+          'points', COALESCE(NULLIF(EXCLUDED.payload->'points','null'::jsonb), alert_history.payload->'points'),
+          'liveConversionSupport', COALESCE(NULLIF(EXCLUDED.payload->'liveConversionSupport','null'::jsonb), alert_history.payload->'liveConversionSupport'),
+          'dirtySheetSupport', COALESCE(NULLIF(EXCLUDED.payload->'dirtySheetSupport','null'::jsonb), alert_history.payload->'dirtySheetSupport'),
+          'historicalOverSupport', COALESCE(NULLIF(EXCLUDED.payload->'historicalOverSupport','null'::jsonb), alert_history.payload->'historicalOverSupport'),
+          'xGDelta', COALESCE(NULLIF(EXCLUDED.payload->'xGDelta','null'::jsonb), alert_history.payload->'xGDelta'),
+          'odds', COALESCE(NULLIF(EXCLUDED.payload->'odds','null'::jsonb), alert_history.payload->'odds'),
+          'bookmaker', COALESCE(NULLIF(EXCLUDED.payload->'bookmaker','null'::jsonb), alert_history.payload->'bookmaker'),
+          'oddsVerifiedAt', COALESCE(NULLIF(EXCLUDED.payload->'oddsVerifiedAt','null'::jsonb), alert_history.payload->'oddsVerifiedAt')
+        )), updated_at=NOW()` ,
         [JSON.stringify(records)]
       );
       return send(res, 200, { ok: true, persistent: true, saved: records.length });
