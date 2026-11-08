@@ -1749,7 +1749,7 @@ const server = http.createServer(async (req, res) => {
       const expiresAt = now + 12 * 60 * 60 * 1000;
       aiAdminSessions.set(token, { expiresAt });
       for (const [key, value] of aiAdminSessions) if (value.expiresAt <= now) aiAdminSessions.delete(key);
-      res.setHeader("Set-Cookie", "goalmatrix_ai_admin=" + token + "; HttpOnly; Secure; SameSite=Strict; Path=/api/alerts/admin; Max-Age=43200");
+      res.setHeader("Set-Cookie", "goalmatrix_ai_admin=" + token + "; HttpOnly; Secure; SameSite=Strict; Path=/api/; Max-Age=43200");
       return send(res, 200, { ok: true, expiresAt });
     } catch (error) {
       return send(res, 400, { ok: false, error: "Invalid request" });
@@ -2002,6 +2002,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/protocol-analyst" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!aiAdminSessionForRequest(req)) return send(res, 401, { error: "Private analyst access required" });
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
       // Always recompute from current settled history; cached reports may predate
