@@ -2184,6 +2184,118 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
 .gp-matrix-analytics-button{border-color:rgba(114,198,163,.42)!important;background:linear-gradient(112deg,#183b3b 0%,#102d40 52%,#102238 100%)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 7px 24px rgba(0,0,0,.16)!important}
 .gp-matrix-analytics-button:hover,.gp-matrix-analytics-button[aria-expanded="true"]{border-color:rgba(114,198,163,.62)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 28px rgba(0,0,0,.2)!important}
 </style>
+<style id="gm-modern-premium-lift">
+/* GoalMatrix Modern Premium — visual-only layer. No markup, data, or protocol changes. */
+:root{
+ --bg:#06111d;--panel:#0b1b2b;--panel2:#10263a;--line:rgba(117,164,190,.22);
+ --gm-premium-mint:#55e6ad;--gm-premium-lime:#c2ff62;--gm-premium-ice:#75d9f2;
+}
+html{scroll-behavior:smooth}
+body{
+ background:
+  radial-gradient(ellipse at 50% -18%,rgba(36,112,135,.25),transparent 44%),
+  radial-gradient(ellipse at 100% 34%,rgba(28,91,76,.10),transparent 36%),
+  linear-gradient(180deg,#071522 0%,#050e19 100%);
+}
+.wrap{max-width:1540px}
+header{height:72px;border-bottom:1px solid rgba(117,217,242,.16)}
+.product-nav{
+ margin:10px 0 14px;padding:6px;gap:5px;
+ border:1px solid rgba(117,217,242,.18);border-radius:14px;
+ background:rgba(8,24,38,.86);backdrop-filter:blur(16px);
+ box-shadow:0 10px 28px rgba(0,0,0,.22);
+}
+.product-nav a{
+ border:1px solid transparent;border-radius:9px;padding:9px 12px;
+ color:#b9cbd6;font-size:11px;font-weight:800;
+}
+.product-nav a:hover,.product-nav a.selected{
+ color:#eafff6;background:linear-gradient(135deg,rgba(36,130,99,.24),rgba(30,87,111,.2));
+ border-color:rgba(85,230,173,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
+}
+.panel,.side-live,.live-stats-panel,.top-live,.top-ai-alerts,.gp-matrix-analytics-panel{
+ border-radius:16px;border-color:rgba(117,217,242,.18);
+ box-shadow:0 14px 36px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.panel-head,.top-live-head{
+ background:linear-gradient(100deg,rgba(18,46,64,.96),rgba(12,31,48,.92));
+ border-bottom-color:rgba(117,217,242,.13);
+}
+.top-live-head{padding:12px 15px}
+.live-match-line{border-bottom-color:rgba(117,164,190,.13)}
+.live-match-line .live-row{border-right-color:rgba(117,164,190,.14)}
+.live-inline-stat,.live-interval-card{
+ border-radius:9px;border-color:rgba(117,217,242,.15);
+ background:linear-gradient(150deg,rgba(17,43,61,.94),rgba(9,25,40,.96));
+}
+.live-inline-stat.interval{border-color:rgba(85,230,173,.24)}
+.match{border-radius:11px}
+.stat{border-radius:7px}
+.filter,.date-label,.search{
+ border-radius:10px;border-color:rgba(117,164,190,.25);
+ background:rgba(12,32,49,.92);
+}
+.filter{padding:9px 14px}
+.filter.active,.filter:hover{
+ color:#061b17;background:linear-gradient(110deg,var(--gm-premium-lime),var(--gm-premium-mint));
+ border-color:transparent;box-shadow:0 5px 18px rgba(85,230,173,.12);
+}
+.search:focus,.date-label:focus-within{border-color:rgba(117,217,242,.62);box-shadow:0 0 0 3px rgba(117,217,242,.08)}
+.gp-section-button{
+ min-height:43px!important;border-radius:11px!important;
+ border-color:rgba(117,217,242,.2)!important;
+ background:linear-gradient(135deg,rgba(17,43,61,.98),rgba(9,25,40,.98))!important;
+ color:#e9f5fa!important;letter-spacing:.01em;
+ transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease,background .18s ease;
+}
+.gp-section-button:hover,.gp-section-button[aria-expanded="true"]{
+ transform:translateY(-1px);border-color:rgba(85,230,173,.5)!important;
+ background:linear-gradient(135deg,rgba(20,62,57,.98),rgba(12,38,54,.98))!important;
+ box-shadow:0 9px 24px rgba(0,0,0,.2),0 0 18px rgba(85,230,173,.07);
+}
+.top-ai-alerts{
+ padding:17px;border-radius:17px;
+ background:linear-gradient(145deg,rgba(13,37,52,.98),rgba(7,22,36,.98));
+ border-color:rgba(85,230,173,.2);
+}
+.top-ai-alerts-head h2{letter-spacing:-.025em}
+.top-ai-alert-card{
+ border-radius:12px!important;border-color:rgba(117,217,242,.2)!important;
+ background:linear-gradient(145deg,rgba(10,29,45,.98),rgba(7,20,33,.98))!important;
+ padding:14px!important;
+}
+.top-ai-alert-card:hover,.top-ai-alert-card:focus-visible{
+ border-color:rgba(85,230,173,.45)!important;
+}
+.mini-btn,.analysis-close{
+ border-radius:8px;border-color:rgba(117,217,242,.24);
+ background:linear-gradient(135deg,#142f43,#0d2235);
+}
+.primary,.login{
+ background:linear-gradient(105deg,var(--gm-premium-lime),var(--gm-premium-mint) 68%,#78e5d2);
+ box-shadow:0 7px 22px rgba(85,230,173,.13);
+}
+.feature{border-radius:12px;background:linear-gradient(145deg,#0d2234,#091827);border-color:rgba(117,217,242,.16)}
+.analysis-box{border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.42)}
+@media(max-width:850px){
+ .product-nav{border-radius:12px}
+ .panel,.side-live,.live-stats-panel,.top-live{border-radius:13px}
+}
+@media(max-width:560px){
+ header{height:58px}
+ .wrap{padding-left:8px;padding-right:8px}
+ .product-nav{margin:7px 0 10px;padding:4px}
+ .product-nav a{border-radius:8px;padding:8px 9px}
+ .top-ai-alerts{padding:11px;border-radius:13px}
+ .top-ai-alert-card{padding:11px!important}
+ .gp-section-button{min-height:40px!important}
+}
+@media(prefers-reduced-motion:reduce){
+ html{scroll-behavior:auto}
+ .gp-section-button{transition:none}
+ .gp-section-button:hover,.gp-section-button[aria-expanded="true"]{transform:none}
+}
+</style>
 </head>
 <body>
 <div class="wrap">
