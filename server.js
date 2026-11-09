@@ -4357,6 +4357,9 @@ const server = http.createServer(async (req, res) => {
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
+      // Reuse one live-fixture response for both direct stats and the detail-slug map.
+      let sportScoreLiveFixturesForSlugMap = null;
+      let sportScoreLivePayloadForSlugMap = null;
       // Load direct live stats for every live scoreboard, not only SportScore-ID fixtures.
       // This is a fallback when another provider's summary omits SOT/corners.
       if (liveEvents.length) {
@@ -4368,6 +4371,8 @@ const server = http.createServer(async (req, res) => {
           if (liveResponse.ok) {
             const livePayload = await liveResponse.json();
             const liveFixtures = extractFixtureArray(livePayload);
+            sportScoreLivePayloadForSlugMap = livePayload;
+            sportScoreLiveFixturesForSlugMap = liveFixtures;
             const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             for (const fixture of liveFixtures) {
               const statusText = [fixture.status, fixture.status_text, fixture.status_name, fixture.state, fixture.minute, fixture.elapsed].filter(v => v != null).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(" ").toLowerCase();
@@ -4386,16 +4391,25 @@ const server = http.createServer(async (req, res) => {
       }
       if (liveEvents.length && Date.now() - sportScoreWidgetSlugCache.at > 45000) {
         try {
-          const liveDateForSlugMap = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
-          const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
-            headers: { "Accept": "application/json" },
-            signal: AbortSignal.timeout(8000)
-          });
-          if (response.ok) {
-            const payload = await response.json();
-            const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+          // The direct-stats request above already fetched this exact live-fixtures
+          // endpoint. Reuse it instead of issuing a duplicate request every scan.
+          let payload = sportScoreLivePayloadForSlugMap;
+          let liveSlugFixtures = sportScoreLiveFixturesForSlugMap;
+          // Preserve the old independent fallback when the direct-stats request failed.
+          if (!Array.isArray(liveSlugFixtures)) {
+            const liveDateForSlugMap = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+            const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
+              headers: { "Accept": "application/json" },
+              signal: AbortSignal.timeout(8000)
+            });
+            if (response.ok) {
+              payload = await response.json();
+              liveSlugFixtures = extractFixtureArray(payload);
+            }
+          }
+          if (Array.isArray(liveSlugFixtures)) {
+            const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             const map = new Map();
-            const liveSlugFixtures = extractFixtureArray(payload);
             for (const match of liveSlugFixtures) {
               const homeName = match.home?.name || match.home_team?.name || match.home_name || (typeof match.home === "string" ? match.home : "");
               const awayName = match.away?.name || match.away_team?.name || match.away_name || (typeof match.away === "string" ? match.away : "");
