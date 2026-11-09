@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
+const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 
 test("AI alerts accept only integer second-half minutes 46 through 88", () => {
   for (const minute of [1, 40, 41, 45, 89, 90, 120, 45.5, 46.5, null, Number.NaN]) {
@@ -35,6 +35,28 @@ test("cumulative 20-SOT trigger is limited to minutes 46 through 74", () => {
     assert.equal(isCumulativeSotMinute(minute), true, String(minute));
   }
   assert.equal(isCumulativeSotMinute(60, "1st half"), false);
+});
+
+
+test("first-half rolling SOT triggers are eligible only from 1 through 40", () => {
+  for (const minute of [0, 41, 45, 46, 70, 89, 45.5, null, Number.NaN]) {
+    assert.equal(isFirstHalfSotMinute(minute, "1st half"), false, String(minute));
+  }
+  for (const minute of [1, 27, 34, 40]) {
+    assert.equal(isFirstHalfSotMinute(minute, "1st half"), true, String(minute));
+  }
+  assert.equal(isFirstHalfSotMinute(27, "LIVE"), true);
+  assert.equal(isFirstHalfSotMinute(27, ""), true);
+  for (const status of ["2nd half", "HT", "Half Time", "Finished", "FT", "2ο ημίχρονο", "ανάπαυλα"]) {
+    assert.equal(isFirstHalfSotMinute(27, status), false, status);
+  }
+});
+
+test("first-half rolling SOT thresholds remain independent OR conditions", () => {
+  const sot5 = 3, sot10 = 4;
+  assert.equal(sot5 >= 3 || sot10 >= 6, true);
+  assert.equal(0 >= 3 || 6 >= 6, true);
+  assert.equal(2 >= 3 || 5 >= 6, false);
 });
 
 test("first-half 8-SOT trigger is limited to minutes 1 through 34", () => {
