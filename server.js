@@ -4371,9 +4371,15 @@ const server = http.createServer(async (req, res) => {
               const home = fixture.home?.name || fixture.home_team?.name || fixture.home_name || (typeof fixture.home === "string" ? fixture.home : "");
               const away = fixture.away?.name || fixture.away_team?.name || fixture.away_name || (typeof fixture.away === "string" ? fixture.away : "");
               const h = normalizeDirectTeam(home), a = normalizeDirectTeam(away);
-              if (h && a && Array.isArray(fixture.stats)) {
-                sportScoreLiveStatsByPair.set(h + "|" + a, fixture);
-                sportScoreLiveStatsByPair.set(a + "|" + h, fixture);
+              if (h && a && h !== a && Array.isArray(fixture.stats)) {
+                // Preserve provider home/away orientation. A reversed name-pair match
+                // must swap every team-side statistic before the scanner evaluates it.
+                const addUniqueDirectStatsPair = (key, entry) => {
+                  if (sportScoreLiveStatsByPair.has(key)) sportScoreLiveStatsByPair.set(key, null);
+                  else sportScoreLiveStatsByPair.set(key, entry);
+                };
+                addUniqueDirectStatsPair(h + "|" + a, { fixture, swapped: false });
+                addUniqueDirectStatsPair(a + "|" + h, { fixture, swapped: true });
               }
             }
             console.log("SportScore direct live stats feed:", JSON.stringify({ httpStatus: liveResponse.status, fixtures: liveFixtures.length, fixturesWithStats: sportScoreLiveStatsByPair.size / 2 }));
@@ -4447,7 +4453,9 @@ const server = http.createServer(async (req, res) => {
               }
               if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
               let detail;
-              const directLiveMatch = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair);
+              const directLiveMatchEntry = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair) || null;
+              const directLiveMatch = directLiveMatchEntry?.fixture || null;
+              const directLiveStatsSwapped = Boolean(directLiveMatchEntry?.swapped);
               if (directLiveMatch && Array.isArray(directLiveMatch.stats) && directLiveMatch.stats.length) {
                 detail = directLiveMatch;
                 sportScoreDetailDiagnostics.ok++;
@@ -4550,7 +4558,8 @@ const server = http.createServer(async (req, res) => {
                   ) || null;
                 }
                 if (!found) return null;
-                const raw = found[side];
+                const sourceSide = directLiveStatsSwapped ? (side === "home" ? "away" : "home") : side;
+                const raw = found[sourceSide];
                 const n = Number.parseFloat(String(raw).replace("%", "").replace(",", "."));
                 return Number.isFinite(n) ? n : null;
               };
@@ -4570,7 +4579,7 @@ const server = http.createServer(async (req, res) => {
                   const rawMinute = String(incident?.time ?? incident?.minute ?? incident?.elapsed ?? "").trim();
                   const minuteMatch = rawMinute.match(/^([0-9]{1,3})/);
                   const minute = minuteMatch ? Number(minuteMatch[1]) : NaN;
-                  return { sideIndex, minute: Number.isFinite(minute) ? minute : null };
+                  return { sideIndex: directLiveStatsSwapped ? 1 - sideIndex : sideIndex, minute: Number.isFinite(minute) ? minute : null };
                 })
                 .filter(Boolean);
               const incidentRedCardCounts = [
