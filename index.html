@@ -4615,7 +4615,7 @@ async function runSignalCheck(){
 
 // Owner-only AI alert view. The PIN is held in memory and sent only to the protected same-origin endpoint.
 let privateAiAdminPin='';
-const privateTriggerNumbers=[{id:'recent_sot_pressure',number:1},{id:'cumulative_20_sot',number:3},{id:'xg_threshold',number:5},{id:'man_advantage_pressure',number:6},{id:'first_half_8_sot',number:7}];
+const privateTriggerNumbers=[{id:'recent_sot_pressure',number:1},{id:'cumulative_20_sot',number:3},{id:'xg_threshold',number:5},{id:'man_advantage_pressure',number:6},{id:'first_half_8_sot',number:7},{id:'power_ranking_59',number:8}];
 function setPrivateAiPanel(open){const panel=document.getElementById('privateAiAlertsPanel'),button=document.getElementById('privateAiAlertsToggle');if(panel)panel.hidden=!open;if(button)button.setAttribute('aria-expanded',open?'true':'false');if(open)panel?.scrollIntoView({behavior:'smooth',block:'start'});}
 document.getElementById('privateAiAlertsToggle')?.addEventListener('click',()=>setPrivateAiPanel(!!document.getElementById('privateAiAlertsPanel')?.hidden));
 document.getElementById('privateAiAlertsClose')?.addEventListener('click',()=>setPrivateAiPanel(false));
