@@ -3315,13 +3315,14 @@ const server = http.createServer(async (req, res) => {
             if (await ensureAlertHistoryDb()) {
               const periodAtSignal = powerRankingMinute <= 35 ? "first_half" : "second_half";
               const homeScore = Number(match.homeScore), awayScore = Number(match.awayScore);
+              const overLine = (homeScore + awayScore + 0.5).toFixed(1);
               const rawMinute = String(formatPushMinute(match));
               const alertRecord = {
                 alertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
                 home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
                 league: match.league || match.competition || "", country: match.country || match.countryName || null,
                 minute: rawMinute, minuteNumber: powerRankingMinute,
-                market: periodAtSignal === "first_half" ? "1ο ημίχρονο · επόμενο γκολ" : "2ο ημίχρονο · επόμενο γκολ",
+                market: "Over " + overLine,
                 alertType: "power_ranking_signal",
                 odds: null, oddsVerifiedAt: null, periodAtSignal, reason: "Power Ranking " + powerRankingScore + "/100 · όριο 59+",
                 outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
@@ -3341,7 +3342,7 @@ const server = http.createServer(async (req, res) => {
                 try {
                   const pushResult = await sendPushToSubscribers({
                     title: "GoalMatrix · AI ALERT",
-                    body: "🏆 POWER RANKING " + powerRankingScore + "/100 · " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + rawMinute,
+                    body: "🏆 POWER RANKING " + powerRankingScore + "/100 · " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · Over " + overLine + " · " + (periodAtSignal === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "ΤΕΛΙΚΟ ΣΥΝΟΛΟ") + " · " + rawMinute,
                     tag: "goal-pulse-bg-ai-power-ranking-" + id, url: "/"
                   });
                   sent += Number(pushResult?.sent || 0);
