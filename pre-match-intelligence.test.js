@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normalizeTeamKey, seasonBoundsForLeague, buildPreMatchMatchupContext } = require("./pre-match-intelligence");
+const { normalizeTeamKey, seasonBoundsForLeague, buildPreMatchMatchupContext, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 
 test("European season keeps July in the season that began the previous August", () => {
   const july = seasonBoundsForLeague("eng.1", new Date("2026-07-15T12:00:00.000Z"));
@@ -66,4 +66,38 @@ test("insufficient team history stays unknown instead of becoming zero", () => {
   assert.equal(context.away.goalsForAvg, null);
   assert.equal(context.expectedGoals.total, null);
   assert.equal(context.headToHead.available, false);
+});
+
+
+test("historical matchup score is bounded and rewards strong scoring evidence", () => {
+  const result = scorePreMatchMatchupContext({
+    expectedGoals: { total: 3.6 },
+    home: { sample: 12, overRates: { "2.5": 0.8, "3.5": 0.7 }, cleanSheetRate: 0.1, failedToScoreRate: 0.05 },
+    away: { sample: 12, overRates: { "2.5": 0.7, "3.5": 0.6 }, cleanSheetRate: 0.1, failedToScoreRate: 0.05 },
+    headToHead: { available: true, sample: 4, avgTotalGoals: 3.5 }
+  });
+  assert.equal(result.score, 1.5);
+  assert.ok(result.reasons.length >= 4);
+});
+
+test("historical matchup score stays neutral when samples are missing", () => {
+  const result = scorePreMatchMatchupContext({
+    expectedGoals: { total: null },
+    home: { sample: 2, overRates: {}, cleanSheetRate: null, failedToScoreRate: null },
+    away: { sample: 3, overRates: {}, cleanSheetRate: null, failedToScoreRate: null },
+    headToHead: { available: false, sample: 0 }
+  });
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.reasons, []);
+});
+
+test("historical matchup score can lower ranking for consistently low-scoring evidence", () => {
+  const result = scorePreMatchMatchupContext({
+    expectedGoals: { total: 1.5 },
+    home: { sample: 12, overRates: { "2.5": 0.2, "3.5": 0.1 }, cleanSheetRate: 0.6, failedToScoreRate: 0.4 },
+    away: { sample: 12, overRates: { "2.5": 0.3, "3.5": 0.1 }, cleanSheetRate: 0.5, failedToScoreRate: 0.4 },
+    headToHead: { available: true, sample: 4, avgTotalGoals: 1.25 }
+  });
+  assert.ok(result.score < 0);
+  assert.ok(result.score >= -1.5);
 });
