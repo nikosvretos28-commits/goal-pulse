@@ -3433,6 +3433,22 @@ const server = http.createServer(async (req, res) => {
           ["first_half_8_sot", firstHalfEightSotQualifies],
           ["man_advantage_pressure", eligibleMinute && manAdvantagePressure]
         ];
+        // Keep one fixture-wide provider-integrity guard in addition to per-trigger
+        // confirmations. A provider correction must quarantine every SOT trigger,
+        // including a trigger whose own confirmation state did not observe the regression.
+        let providerSotIntegrity = { confirmed: false, reason: "provider_integrity_unchecked", regression: false };
+        try {
+          providerSotIntegrity = confirmSotSignal({
+            stateMap: pushScanSotConfirmations,
+            eventId: id,
+            now,
+            qualifies: true,
+            cumulativeByTeam: current.sotByTeam
+          });
+        } catch (error) {
+          providerSotIntegrity = { confirmed: false, reason: "provider_integrity_error", regression: false };
+          console.error("Fixture-wide SOT provider integrity check failed closed:", JSON.stringify({ eventId: id, error: String(error.message || error).slice(0, 160) }));
+        }
         const confirmedSotTriggerIds = [];
         const sotConfirmationReasons = {};
         const sotConfirmationRegressions = {};
@@ -3442,7 +3458,7 @@ const server = http.createServer(async (req, res) => {
               stateMap: pushScanSotConfirmations,
               eventId: sotTriggerConfirmationKey(id, triggerId),
               now,
-              qualifies: Boolean(triggerQualifies),
+              qualifies: Boolean(providerSotIntegrity.confirmed && triggerQualifies),
               cumulativeByTeam: current.sotByTeam
             });
             sotConfirmationReasons[triggerId] = confirmation.reason;
@@ -3490,6 +3506,7 @@ const server = http.createServer(async (req, res) => {
           sotSignalConfirmed: confirmedSotSignal,
           sotSignalConfirmationReason: sotConfirmationReasons,
           sotProviderRegression: sotConfirmationRegressions,
+          fixtureSotProviderIntegrity: { confirmed: providerSotIntegrity.confirmed, reason: providerSotIntegrity.reason, regression: providerSotIntegrity.regression },
           firstHalfSotWindow,
           firstHalfRecentSotQualifies,
           firstHalfEightSotQualifies,
