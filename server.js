@@ -3090,7 +3090,7 @@ const server = http.createServer(async (req, res) => {
         const minuteForEligibility = parseLiveMinute(minuteRawForEligibility);
         const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
-        const validSecondHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 46 && minuteForEligibility <= 88;
+        const validSecondHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 46 && minuteForEligibility <= 84;
         if (validSecondHalfMinute && /second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(statusForEligibility) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) secondHalfEligible++;
         // xG alternative: both teams must qualify, one at >= 3.50 and the other at >= 2.50.
         // Missing/invalid xG cannot qualify this trigger, but does not block independent SOT triggers.
@@ -3368,7 +3368,7 @@ const server = http.createServer(async (req, res) => {
                 outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
                 startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore,
                 triggerIds: ["power_ranking_59"], supportSignalIds: [],
-                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–88′" }
+                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–84′" }
               };
               const saved = await analyticsPool.query(
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
@@ -3455,7 +3455,7 @@ const server = http.createServer(async (req, res) => {
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
-        // Existing second-half AI protocol remains unchanged (46′–88′).
+        // Updated second-half AI protocol window: 46′–84′ for every second-half trigger.
         // Independent first-half exception: 8+ combined match SOT by minute 34.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = isAiMinuteEligible(aiMinute, statusForEligibility);
@@ -3533,7 +3533,7 @@ const server = http.createServer(async (req, res) => {
         const secondHalfAiQualifies = eligibleMinute && qualifiedAiTriggers.some(trigger => trigger.id !== "first_half_8_sot");
         const firstHalfSotAiQualifies = firstHalfSotWindow && qualifiedAiTriggers.some(trigger => trigger.id === "recent_sot_pressure" || trigger.id === "first_half_8_sot");
         const isAiGoal = scoreAvailable && qualifiedAiTriggers.length > 0;
-        // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
+        // Keep the first 16 general samples, but never omit an eligible 46′–84′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || firstHalfSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
@@ -3591,7 +3591,7 @@ const server = http.createServer(async (req, res) => {
           // send an alert after the agreed window.
           const dispatchMinute = parseLiveMinute(getMatchMinute(match));
           const dispatchMinuteAllowed = Number.isFinite(dispatchMinute) &&
-            ((dispatchMinute >= 1 && dispatchMinute <= 40) || (dispatchMinute >= 46 && dispatchMinute <= 88));
+            ((dispatchMinute >= 1 && dispatchMinute <= 40) || (dispatchMinute >= 46 && dispatchMinute <= 84));
           if (level === "AI" && !dispatchMinuteAllowed) {
             console.warn("[AI push blocked: minute outside protocol window]", JSON.stringify({
               eventId: String(match.eventId),

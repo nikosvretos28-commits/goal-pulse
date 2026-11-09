@@ -3,11 +3,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 
-test("AI alerts accept only integer second-half minutes 46 through 88", () => {
-  for (const minute of [1, 40, 41, 45, 89, 90, 120, 45.5, 46.5, null, Number.NaN]) {
+test("AI alerts accept only integer second-half minutes 46 through 84", () => {
+  for (const minute of [1, 40, 41, 45, 85, 86, 87, 88, 89, 90, 120, 45.5, 46.5, null, Number.NaN]) {
     assert.equal(isAiMinuteEligible(minute), false, String(minute));
   }
-  for (const minute of [46, 47, 60, 69, 70, 88]) {
+  for (const minute of [46, 47, 60, 69, 70, 84]) {
     assert.equal(isAiMinuteEligible(minute), true, String(minute));
   }
 });
@@ -28,7 +28,7 @@ test("completed fixtures are never eligible even when a stale minute remains", (
 });
 
 test("cumulative 20-SOT trigger is limited to minutes 46 through 74", () => {
-  for (const minute of [1, 40, 45, 75, 88, 89, 74.9]) {
+  for (const minute of [1, 40, 45, 75, 84, 85, 88, 89, 74.9]) {
     assert.equal(isCumulativeSotMinute(minute), false, String(minute));
   }
   for (const minute of [46, 47, 60, 74]) {
