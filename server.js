@@ -1912,6 +1912,67 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/protocol-analyst/alerts" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private analyst access is not configured" });
+    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+    const now = Date.now();
+    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
+    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
+    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+    try {
+      const body = await readJsonBody(req, 4096);
+      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
+        attempt.count += 1;
+        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+        powerGamesAuthAttempts.set(ip, attempt);
+        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
+      }
+      powerGamesAuthAttempts.delete(ip);
+    } catch (error) {
+      return send(res, 400, { ok: false, error: "Invalid admin request" });
+    }
+    if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
+    try {
+      // Read-only detail view. The returned records are filtered with the existing verified-settlement rules.
+      const result = await analyticsPool.query(
+        "SELECT alert_id, event_id, created_at, payload FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND payload->>'betSettlementProvider' IS NOT NULL AND payload->>'betSettlementFixtureId' IS NOT NULL AND payload->>'betScoreScope' IN ('first_half','full_time') AND payload->>'betFinalScore' IS NOT NULL AND payload->>'betFinalScore' <> '' AND (payload->>'betScoreScope' <> 'first_half' OR (NULLIF(payload->>'betHalfTimeScore','') IS NOT NULL AND payload->>'betHalfTimeScore'=payload->>'betFinalScore')) AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+      );
+      const records = result.rows.map(row => {
+        const p = row.payload || {};
+        const minuteCandidate = p.minuteNumber !== null && p.minuteNumber !== undefined && String(p.minuteNumber).trim() !== ""
+          ? p.minuteNumber : String(p.minute || "").match(/[0-9]{1,3}/)?.[0];
+        const parsedMinute = Number(minuteCandidate);
+        const minute = Number.isFinite(parsedMinute) ? parsedMinute : Number(String(minuteCandidate ?? "").match(/[0-9]{1,3}/)?.[0]);
+        const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : null;
+        const stats = p.statsAtSignal || {};
+        const scoreParts = String(p.betFinalScore || "").split("-").map(Number);
+        const verifiedScore = scoreParts.length === 2 && String(p.betFinalScore || "").split("-").every(part => part.length > 0 && [...part].every(char => char >= "0" && char <= "9")) && scoreParts.every(value => Number.isInteger(value) && value >= 0);
+        return {
+          alertId: row.alert_id, eventId: row.event_id, createdAt: row.created_at,
+          teams: [p.homeTeam || p.home || null, p.awayTeam || p.away || null],
+          league: p.league || "Άγνωστη διοργάνωση",
+          minute: Number.isFinite(minute) ? minute : null, period: p.periodAtSignal || "unknown",
+          odds: Number.isFinite(odds) && odds > 1 ? odds : null,
+          triggerIds: Array.isArray(p.triggerIds) ? [...new Set(p.triggerIds.map(String))] : [],
+          supportSignalIds: Array.isArray(p.supportSignalIds) ? [...new Set(p.supportSignalIds.map(String))] : [],
+          market: p.market || null, startScore: p.startScore ?? null, finalScore: p.betFinalScore || null,
+          halfTimeScore: p.betHalfTimeScore || null, outcome: p.betOutcome, scoreScope: p.betScoreScope,
+          settlementProvider: p.betSettlementProvider, verifiedScore,
+          statsAtSignal: { onTarget: stats.onTarget ?? null, onTarget10m: stats.onTarget10m ?? null, xGDelta: stats.xGDelta ?? null }
+        };
+      }).filter(row => row.verifiedScore && row.period === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88);
+      return send(res, 200, {
+        ok: true, readOnly: true, windowDays: 180, generatedAt: new Date().toISOString(),
+        scanned: result.rows.length, verifiedSettled: records.length, records,
+        note: "Only server-generated AI alerts with verified provider, fixture, score scope and final score are included. No records or live rules are changed."
+      });
+    } catch (error) {
+      console.error("MIE alert detail read failed:", error.message);
+      return send(res, 503, { error: "Could not load verified alert details" });
+    }
+  }
+
   if (url.pathname === "/api/protocol-analyst" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private analyst access is not configured" });
