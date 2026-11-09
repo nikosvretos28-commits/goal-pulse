@@ -3374,8 +3374,6 @@ const server = http.createServer(async (req, res) => {
         if (!powerRankingAboveThreshold) pushScanPowerRankingAlerts.delete(id);
         const powerRankingCrossedUp = powerRankingAboveThreshold && scoreAvailable && powerRankingEligible && !pushScanPowerRankingAlerts.has(id);
         if (powerRankingCrossedUp) {
-          pushScanPowerRankingAlerts.add(id);
-          if (powerRankingEligible) {
           const alertSequence = Number(pushScanPowerRankingAlertCounts.get(id) || 0) + 1;
           const alertId = "push:" + id + ":AI:power-ranking-59" + (alertSequence > 1 ? "-" + alertSequence : "");
           try {
@@ -3401,6 +3399,8 @@ const server = http.createServer(async (req, res) => {
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
                 [alertId, id, now, JSON.stringify(alertRecord)]
               );
+              // Mark this crossing only after the durable history write succeeds.
+              pushScanPowerRankingAlerts.add(id);
               // Each upward crossing gets its own stable history ID.
               if (saved.rows.length) {
                 pushScanPowerRankingAlertCounts.set(id, alertSequence);
@@ -3423,7 +3423,6 @@ const server = http.createServer(async (req, res) => {
             }
           } catch (powerRankingError) {
             console.error("Power Ranking 59+ AI alert failed:", powerRankingError.message);
-          }
           }
         }
         const recentGoalEvidence = dangerousAvailable
