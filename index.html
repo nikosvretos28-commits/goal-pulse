@@ -4303,8 +4303,10 @@ async function reconcileHistoricalAlertSettlements(){
     if(!Number.isFinite(signalTotal))continue;
     const period=String(alert.periodAtSignal||'first_half');
     if(period==='first_half'){
-     if(halfTotal==null)continue;
+     if(halfTotal==null||!Number.isInteger(signalTotal))continue;
      won=halfTotal>signalTotal;scoreScope='first_half';
+     alert.market='Over '+(signalTotal+0.5).toFixed(1);
+     alert.overLine=signalTotal+0.5;
      alert.betFinalScore=String(h1)+'-'+String(a1);
      alert.betHalfTimeScore=alert.betFinalScore;
      alert.betScoreSource='period_1_linescore';
