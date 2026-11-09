@@ -45,6 +45,21 @@ test("matchup context combines attack, defence, clean sheets and exact Over rate
   assert.equal(context.headToHead.wins, 1);
 });
 
+
+test("head-to-head fallback reverses the away team's record into home-team perspective", () => {
+  const away = {
+    matches: 18,
+    opponents: {
+      "home fc": { matches: 3, wins: 2, draws: 0, losses: 1, goalsFor: 5, goalsAgainst: 3 }
+    }
+  };
+  const context = buildPreMatchMatchupContext(null, away, "Home FC", "Away FC");
+  assert.equal(context.headToHead.wins, 1);
+  assert.equal(context.headToHead.losses, 2);
+  assert.equal(context.headToHead.goalsFor, 3);
+  assert.equal(context.headToHead.goalsAgainst, 5);
+});
+
 test("insufficient team history stays unknown instead of becoming zero", () => {
   const context = buildPreMatchMatchupContext({ matches: 2 }, { matches: 4 }, "Home", "Away");
   assert.equal(context.home.cleanSheetRate, null);
