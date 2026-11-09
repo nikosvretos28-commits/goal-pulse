@@ -24,6 +24,8 @@ const PRE_MATCH_OVER_LINES = Object.freeze(["0.5","1.5","2.5","3.5","4.5","5.5",
 const SPORTAPI_API_KEY = process.env.SPORTAPI_API_KEY || "";
 const sportApiDateFixturesCache = new Map();
 const sportApiFixtureStatsCache = new Map();
+const sportApiIsraelLeagueFixturesCache = new Map();
+const SPORTAPI_ISRAEL_LEAGUE_CACHE_MS = 6 * 60 * 60 * 1000;
 let sportApiLastStatsRequestAt = 0;
 const SPORTAPI_FIXTURE_CACHE_MS = 10 * 60 * 1000;
 const SPORTAPI_STATS_REFRESH_MS = 5 * 60 * 1000;
@@ -5046,6 +5048,75 @@ const server = http.createServer(async (req, res) => {
             console.warn("[SportAPI canary] fixture list request failed:", error.message || "request failed");
           }
         }
+        // The date endpoint has returned only a small partial fixture set for some
+        // countries. Recover Israeli league fixtures through the documented league
+        // catalogue/detail endpoints, without changing any alert or SOT rules.
+        let israelLeagueFixtures = sportApiIsraelLeagueFixturesCache.get(liveDate);
+        if (!israelLeagueFixtures || now - israelLeagueFixtures.at >= SPORTAPI_ISRAEL_LEAGUE_CACHE_MS) {
+          try {
+            const leaguesResponse = await fetch("https://sportapi.ai/api/leagues", {
+              headers: { "Accept": "application/json", "X-Api-Key": SPORTAPI_API_KEY },
+              signal: AbortSignal.timeout(10000)
+            });
+            if (leaguesResponse.ok) {
+              const leaguesPayload = await leaguesResponse.json();
+              const countryGroups = Array.isArray(leaguesPayload?.data) ? leaguesPayload.data : [];
+              const israelGroup = countryGroups.find(group => /^(israel|il)$/i.test(String(group.country || group.name || group.geo || "")));
+              const israelLeagues = Array.isArray(israelGroup?.leagues) ? israelGroup.leagues : [];
+              const targetedLeagues = israelLeagues
+                .filter(league => /women|female|ladies|national/i.test(String(league.name || "")))
+                .slice(0, 20);
+              const selectedLeagues = targetedLeagues.length ? targetedLeagues : israelLeagues.slice(0, 12);
+              const detailResults = await Promise.all(selectedLeagues.map(async league => {
+                if (league.id == null) return { league, fixtures: [] };
+                try {
+                  const detailResponse = await fetch("https://sportapi.ai/api/leagues/" + encodeURIComponent(String(league.id)), {
+                    headers: { "Accept": "application/json", "X-Api-Key": SPORTAPI_API_KEY },
+                    signal: AbortSignal.timeout(10000)
+                  });
+                  if (!detailResponse.ok) return { league, fixtures: [] };
+                  const detail = await detailResponse.json();
+                  const body = detail?.data && !Array.isArray(detail.data) ? detail.data : detail;
+                  const arrays = ["fixtures", "matches", "upcoming_fixtures", "recent_results"];
+                  const fixtures = arrays.flatMap(key => Array.isArray(body?.[key]) ? body[key] : []);
+                  const todayFixtures = fixtures.filter(fixture => {
+                    const fixtureDate = String(fixture.date || fixture.local_date || fixture.datetime || "").slice(0, 10);
+                    const live = /^(live|ht|in play|1h|2h)$/i.test(String(fixture.status || ""));
+                    return fixtureDate === liveDate || (!fixtureDate && live);
+                  });
+                  return { league, fixtures: todayFixtures };
+                } catch (error) {
+                  console.warn("[SportAPI canary] Israel league detail unavailable:", JSON.stringify({ leagueId: league.id, error: error.message || "request failed" }));
+                  return { league, fixtures: [] };
+                }
+              }));
+              const recovered = detailResults.flatMap(result => result.fixtures.map(fixture => ({
+                ...fixture,
+                league_name: fixture.league_name || result.league.name || "Israel"
+              })));
+              israelLeagueFixtures = { at: now, rows: recovered };
+              sportApiIsraelLeagueFixturesCache.set(liveDate, israelLeagueFixtures);
+              console.log("[SportAPI canary] Israel league recovery:", JSON.stringify({
+                leaguesChecked: selectedLeagues.length,
+                targetedWomenLeagues: targetedLeagues.length,
+                fixturesRecovered: recovered.length,
+                leagueNames: selectedLeagues.map(league => league.name).slice(0, 12)
+              }));
+            } else {
+              israelLeagueFixtures = { at: now, rows: [] };
+              sportApiIsraelLeagueFixturesCache.set(liveDate, israelLeagueFixtures);
+              console.warn("[SportAPI canary] Israel league catalogue unavailable:", JSON.stringify({ status: leaguesResponse.status }));
+            }
+          } catch (error) {
+            israelLeagueFixtures = { at: now, rows: [] };
+            sportApiIsraelLeagueFixturesCache.set(liveDate, israelLeagueFixtures);
+            console.warn("[SportAPI canary] Israel league recovery failed:", error.message || "request failed");
+          }
+        }
+        const baseFixtureRows = sportApiFixtures?.rows || [];
+        const mergedFixtureRows = [...baseFixtureRows, ...(israelLeagueFixtures?.rows || [])];
+        const uniqueFixtureRows = Array.from(new Map(mergedFixtureRows.filter(fixture => fixture?.id != null).map(fixture => [String(fixture.id), fixture])).values());
+        sportApiFixtures = { ...(sportApiFixtures || {}), rows: uniqueFixtureRows };
         const normalizeSportApiTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
         const fixtureByPair = new Map();
         for (const fixture of sportApiFixtures?.rows || []) {
