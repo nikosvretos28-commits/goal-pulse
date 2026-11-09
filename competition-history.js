@@ -7,13 +7,13 @@ function createLimiter(maxConcurrent = 4) {
   return async function run(task) {
     if (typeof task !== "function") throw new TypeError("A task function is required");
     if (active >= limit) await new Promise(resolve => queue.push(resolve));
-    active += 1;
+    else active += 1;
     try {
       return await task();
     } finally {
-      active -= 1;
       const next = queue.shift();
       if (next) next();
+      else active -= 1;
     }
   };
 }
