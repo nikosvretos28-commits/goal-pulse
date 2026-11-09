@@ -35,16 +35,16 @@ function profileSide(profile, venue, kind) {
   const source = useSplit ? split : overallMatches >= 5 ? profile : null;
   if (!source) return { sample: splitMatches || overallMatches, source: "insufficient-sample", goalsForAvg: null, goalsAgainstAvg: null, cleanSheetRate: null, failedToScoreRate: null, overRates: {} };
   const sample = Number(source.matches || 0);
-  const goalsForAvg = Number.isFinite(Number(source.goalsForAvg))
+  const goalsForAvg = source.goalsForAvg != null && Number.isFinite(Number(source.goalsForAvg))
     ? Number(source.goalsForAvg)
     : finiteRate(source.goalsFor, sample);
-  const goalsAgainstAvg = Number.isFinite(Number(source.goalsAgainstAvg))
+  const goalsAgainstAvg = source.goalsAgainstAvg != null && Number.isFinite(Number(source.goalsAgainstAvg))
     ? Number(source.goalsAgainstAvg)
     : finiteRate(source.goalsAgainst, sample);
-  const cleanSheetRate = Number.isFinite(Number(source.cleanSheetRate))
+  const cleanSheetRate = source.cleanSheetRate != null && Number.isFinite(Number(source.cleanSheetRate))
     ? Number(source.cleanSheetRate)
     : finiteRate(source.cleanSheets, sample);
-  const failedToScoreRate = Number.isFinite(Number(source.failedToScoreRate))
+  const failedToScoreRate = source.failedToScoreRate != null && Number.isFinite(Number(source.failedToScoreRate))
     ? Number(source.failedToScoreRate)
     : finiteRate(source.failedToScore, sample);
   const overRates = source.overRates || Object.fromEntries(Object.entries(source.over || {}).map(([line, count]) => [line, finiteRate(count, sample)]));
