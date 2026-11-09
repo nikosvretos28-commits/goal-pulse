@@ -3349,54 +3349,78 @@ const server = http.createServer(async (req, res) => {
         const powerRankingMinute = minuteForEligibility;
         const powerRankingEligible = isPowerRankingMinuteEligible(powerRankingMinute, statusForEligibility);
         const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
-        if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && !pushScanPowerRankingAlerts.has(id)) {
-          const alertId = "push:" + id + ":AI:power-ranking-59";
-          try {
-            if (await ensureAlertHistoryDb()) {
+        // Persist the re-arm state on the latest Power Ranking alert. A new alert is
+        // permitted only after the live score has genuinely fallen below 59 and later
+        // returned to 59+, including across process restarts.
+        if (await ensureAlertHistoryDb()) {
+          const latestPowerRankingResult = await analyticsPool.query(
+            "SELECT alert_id, payload FROM alert_history WHERE event_id=$1 AND payload->>'source'='server-push' AND COALESCE(payload->>'alertType','')='power_ranking_signal' ORDER BY created_at DESC LIMIT 1",
+            [id]
+          );
+          const latestPowerRankingAlert = latestPowerRankingResult.rows[0] || null;
+          const alreadyRearmed = Boolean(latestPowerRankingAlert?.payload?.powerRankingRearmed);
+          if (powerRankingScore < 59 && latestPowerRankingAlert && !alreadyRearmed) {
+            await analyticsPool.query(
+              "UPDATE alert_history SET payload=jsonb_set(COALESCE(payload,'{}'::jsonb),'{powerRankingRearmed}','true'::jsonb,true), updated_at=NOW() WHERE alert_id=$1",
+              [latestPowerRankingAlert.alert_id]
+            );
+            console.info("Power Ranking 59+ trigger re-armed below threshold:", JSON.stringify({ eventId: id, score: powerRankingScore }));
+          } else if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && (!latestPowerRankingAlert || alreadyRearmed)) {
+            const alertId = "push:" + id + ":AI:power-ranking-59:" + String(now);
+            try {
               const periodAtSignal = powerRankingMinute <= 35 ? "first_half" : "second_half";
               const homeScore = Number(match.homeScore), awayScore = Number(match.awayScore);
               const overLine = (homeScore + awayScore + 0.5).toFixed(1);
               const rawMinute = String(formatPushMinute(match));
               const alertRecord = {
                 alertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
-                home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
-                league: match.league || match.competition || "", country: match.country || match.countryName || null,
+                home: match.home || match.homeTeam || "",
+                away: match.away || match.awayTeam || "",
+                league: match.league || match.competition || "",
+                country: match.country || match.countryName || null,
                 minute: rawMinute, minuteNumber: powerRankingMinute,
                 market: "Over " + overLine,
                 alertType: "power_ranking_signal",
-                odds: null, oddsVerifiedAt: null, periodAtSignal, reason: "Power Ranking " + powerRankingScore + "/100 · όριο 59+",
+                odds: null, oddsVerifiedAt: null, periodAtSignal,
+                reason: "Power Ranking " + powerRankingScore + "/100 · όριο 59+",
                 outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
                 startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore,
                 triggerIds: ["power_ranking_59"], supportSignalIds: [],
-                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–88′" }
+                statsAtSignal: {
+                  powerRankingScore, powerRankingThreshold: 59,
+                  powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–88′"
+                }
               };
               const saved = await analyticsPool.query(
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
                 [alertId, id, now, JSON.stringify(alertRecord)]
               );
-              // The stable primary key makes the one-alert-per-match rule survive process restarts.
-              pushScanPowerRankingAlerts.add(id);
               if (saved.rows.length) {
+                pushScanPowerRankingAlerts.add(id);
                 powerRankingAlerts++;
                 candidates++;
                 try {
                   const pushResult = await sendPushToSubscribers({
                     title: "GoalMatrix · AI ALERT",
                     body: "🏆 POWER RANKING " + powerRankingScore + "/100 · " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · Over " + overLine + " · " + (periodAtSignal === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "ΤΕΛΙΚΟ ΣΥΝΟΛΟ") + " · " + rawMinute,
-                    tag: "goal-pulse-bg-ai-power-ranking-" + id, url: "/"
+                    tag: "goal-pulse-bg-ai-power-ranking-" + id + "-" + String(now),
+                    url: "/"
                   });
                   sent += Number(pushResult?.sent || 0);
                 } catch (pushError) {
                   console.warn("Power Ranking AI push delivery failed; in-app alert remains saved:", pushError.message);
                 }
-                console.info("Power Ranking 59+ AI alert saved:", JSON.stringify({ eventId: id, minute: powerRankingMinute, period: periodAtSignal, score: powerRankingScore, alertId }));
+                console.info("Power Ranking 59+ AI alert saved:", JSON.stringify({
+                  eventId: id, minute: powerRankingMinute, period: periodAtSignal,
+                  score: powerRankingScore, alertId
+                }));
               }
-            } else {
-              console.error("Power Ranking 59+ alert skipped: persistent history unavailable; one-per-match deduplication cannot be guaranteed", id);
+            } catch (powerRankingError) {
+              console.error("Power Ranking 59+ AI alert failed:", powerRankingError.message);
             }
-          } catch (powerRankingError) {
-            console.error("Power Ranking 59+ AI alert failed:", powerRankingError.message);
           }
+        } else {
+          console.error("Power Ranking 59+ alert skipped: persistent history unavailable; re-arm state cannot be guaranteed", id);
         }
         const recentGoalEvidence = dangerousAvailable
           ? onTarget >= 1 && evidenceKinds >= 2 && dangerous >= 3
