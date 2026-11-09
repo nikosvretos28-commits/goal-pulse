@@ -3250,8 +3250,8 @@ const server = http.createServer(async (req, res) => {
           manAdvantageSot10 != null && manAdvantageSot10 >= 2 &&
           manAdvantageDanger5 != null && manAdvantageDanger5 >= 3 &&
           manAdvantageDanger10 != null && manAdvantageDanger10 >= 10);
-        // AI trigger: recent SOT threshold OR the two-team xG alternative:
-        // one team with xG >= 3.00 and the other with xG >= 2.00. Missing xG is neutral.
+        // AI trigger: recent SOT threshold OR the strict two-team xG alternative:
+        // one team with xG >= 3.50 and the other with xG >= 2.50. Both values are required.
         const xGQualifies = teamXGValues.length >= 2 &&
           ((teamXGValues[0] != null && teamXGValues[0] >= 3.5 && teamXGValues[1] != null && teamXGValues[1] >= 2.5) ||
            (teamXGValues[1] != null && teamXGValues[1] >= 3.5 && teamXGValues[0] != null && teamXGValues[0] >= 2.5));
