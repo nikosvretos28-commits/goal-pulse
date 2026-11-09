@@ -5053,12 +5053,21 @@ const server = http.createServer(async (req, res) => {
         // Canary budget: one fixture's stats endpoint at most every five minutes.
         // This intentionally tests real provider coverage before scaling beyond the
         // free monthly allowance. Missing values remain null; none are fabricated.
-        const candidate = matched.find(item => {
-          const sides = item.match.teams || [];
-          const missingSot = sides.length >= 2 && sides.slice(0, 2).some(team => team.shotsOnTarget == null);
-          const cached = sportApiFixtureStatsCache.get(String(item.fixture.id));
-          return missingSot && (!cached || now - cached.at >= SPORTAPI_STATS_REFRESH_MS);
-        });
+        // Rotate through fixtures with missing SOT instead of repeatedly selecting
+        // the first eligible match. Unqueried fixtures (no cache entry) go first;
+        // once all have been checked, the oldest cached sample is refreshed first.
+        const candidate = matched
+          .filter(item => {
+            const sides = item.match.teams || [];
+            const missingSot = sides.length >= 2 && sides.slice(0, 2).some(team => team.shotsOnTarget == null);
+            const cached = sportApiFixtureStatsCache.get(String(item.fixture.id));
+            return missingSot && (!cached || now - cached.at >= SPORTAPI_STATS_REFRESH_MS);
+          })
+          .sort((a, b) => {
+            const aCached = sportApiFixtureStatsCache.get(String(a.fixture.id));
+            const bCached = sportApiFixtureStatsCache.get(String(b.fixture.id));
+            return (aCached?.at ?? 0) - (bCached?.at ?? 0);
+          })[0] || null;
         console.log("[SportAPI canary] fixture matching diagnostic:", JSON.stringify({
           fixtureCount: (sportApiFixtures?.rows || []).length,
           fixtureSamples: (sportApiFixtures?.rows || []).slice(0, 10).map(fixture => ({
