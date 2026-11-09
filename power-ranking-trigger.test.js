@@ -41,6 +41,8 @@ test("Power Ranking first-half window is 1–35 inclusive", () => {
   assert.equal(isPowerRankingMinuteEligible(36, "1st half"), false);
   assert.equal(isPowerRankingMinuteEligible(45, "1st half"), false);
   assert.equal(isPowerRankingMinuteEligible(35, "2nd half"), false);
+  assert.equal(isPowerRankingMinuteEligible(35, "1ο ημίχρονο"), true);
+  assert.equal(isPowerRankingMinuteEligible(35, "first_half"), true);
 });
 
 test("Power Ranking second-half window is 46–88 inclusive", () => {
@@ -49,6 +51,9 @@ test("Power Ranking second-half window is 46–88 inclusive", () => {
   assert.equal(isPowerRankingMinuteEligible(45, "2nd half"), false);
   assert.equal(isPowerRankingMinuteEligible(89, "2nd half"), false);
   assert.equal(isPowerRankingMinuteEligible(60, "1st half"), false);
+  assert.equal(isPowerRankingMinuteEligible(60, "2ο ημίχρονο"), true);
+  assert.equal(isPowerRankingMinuteEligible(60, "second_half"), true);
+  assert.equal(isPowerRankingMinuteEligible(60, "first_half"), false);
 });
 
 test("halftime and completed matches are always rejected", () => {
