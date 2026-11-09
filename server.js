@@ -192,7 +192,7 @@ async function runProtocolAnalyst() {
         won, minute: Number.isFinite(minute) ? minute : null,
         phase: p.periodAtSignal || "unknown",
         oddsBand: Number.isFinite(odds) ? (odds < 1.2 ? "1.01–1.19" : odds < 1.4 ? "1.20–1.39" : odds < 1.6 ? "1.40–1.59" : odds < 1.8 ? "1.60–1.79" : odds < 2 ? "1.80–1.99" : "2.00+") : "missing",
-        minuteBand: !Number.isFinite(minute) ? "unknown" : (p.periodAtSignal === "first_half" ? (minute < 30 ? "1′–29′" : "30′–40′") : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–88′")),
+        minuteBand: !Number.isFinite(minute) ? "unknown" : (p.periodAtSignal === "first_half" ? (minute < 30 ? "1′–29′" : "30′–40′") : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–84′")),
         onTarget: stats.onTarget !== null && stats.onTarget !== undefined && Number.isFinite(Number(stats.onTarget)) ? Number(stats.onTarget) : null,
         onTarget10m: stats.onTarget10m !== null && stats.onTarget10m !== undefined && Number.isFinite(Number(stats.onTarget10m)) ? Number(stats.onTarget10m) : null,
         xGDelta: stats.xGDelta !== null && stats.xGDelta !== undefined && Number.isFinite(Number(stats.xGDelta)) ? Number(stats.xGDelta) : null,
@@ -220,7 +220,7 @@ async function runProtocolAnalyst() {
     // Analyze only the currently approved AI window: second half 46–88.
     // Never include first-half, halftime, stoppage/out-of-window alerts, or unknown periods.
     const records = allRecords.filter(row =>
-      row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 88
+      row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 84
     );
     // Trigger-level attribution is explicit and forward-looking. Older alerts without
     // triggerIds remain visible as unattributed; never infer their cause from outcomes.
@@ -249,17 +249,17 @@ async function runProtocolAnalyst() {
         phase,
         minuteBand: !Number.isFinite(minute) ? "Άγνωστο λεπτό"
           : phase === "first_half" ? (minute < 30 ? "1′–29′" : "30′–40′")
-          : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–88′"),
+          : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–84′"),
         powerRankingMinuteBand: !Number.isFinite(minute) ? "Άγνωστο λεπτό"
           : phase === "first_half" ? (minute < 30 ? "1′–29′" : "30′–35′")
-          : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–88′"),
+          : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–84′"),
         league: String(p.league || "Άγνωστη διοργάνωση"),
         outcome,
         createdAt: row.created_at
       };
     });
     const approvedWindowTriggerRows = triggerHistoryRows.filter(row =>
-      row.phase === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88
+      row.phase === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 84
     );
     const instrumentedTriggerRows = approvedWindowTriggerRows.filter(row => row.triggerIds.length > 0);
     const legacyUnattributedAlerts = approvedWindowTriggerRows.filter(row => row.triggerIds.length === 0).length;
@@ -268,7 +268,7 @@ async function runProtocolAnalyst() {
       { id: "cumulative_20_sot", label: "20+ συνολικά SOT", detail: "Συνολικά SOT πριν από το 75′" },
       { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.50 xG και η άλλη ≥2.50 xG" },
       { id: "man_advantage_pressure", label: "Man Advantage", detail: "Πρόσφατη κόκκινη κάρτα και πίεση της αριθμητικά υπερέχουσας ομάδας" },
-      { id: "power_ranking_59", label: "Power Ranking 59+", detail: "Βαθμολογία ≥59/100 · 1ο ημίχρονο 1′–35′, 2ο ημίχρονο 46′–88′" }
+      { id: "power_ranking_59", label: "Power Ranking 59+", detail: "Βαθμολογία ≥59/100 · 1ο ημίχρονο 1′–35′, 2ο ημίχρονο 46′–84′" }
     ];
     const summarizeTriggerRows = rows => {
       const wins = rows.filter(row => row.outcome === "won").length;
@@ -299,7 +299,7 @@ async function runProtocolAnalyst() {
       const rows = definition.id === "power_ranking_59"
         ? triggerHistoryRows.filter(row => row.triggerIds.includes(definition.id) && (
             (row.phase === "first_half" && Number.isInteger(row.minute) && row.minute >= 1 && row.minute <= 35) ||
-            (row.phase === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88)
+            (row.phase === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 84)
           ))
         : instrumentedTriggerRows.filter(row => row.triggerIds.includes(definition.id));
       return {
@@ -333,11 +333,11 @@ async function runProtocolAnalyst() {
       return { settled: rows.length, wins, losses: rows.length - wins, successRate: rows.length ? Math.round(wins / rows.length * 1000) / 10 : null };
     };
     const overall = summarize(records);
-    // Diagnose the requested late-alert windows independently of the live protocol's 88′ cutoff.
+    // Diagnose the requested late-alert windows independently of the live protocol's 84′ cutoff.
     const bySignalWindow = [
       { window: "2ο ημίχρονο 46′–59′", ...summarize(records.filter(row => row.minute >= 46 && row.minute <= 59)) },
       { window: "2ο ημίχρονο 60′–74′", ...summarize(records.filter(row => row.minute >= 60 && row.minute <= 74)) },
-      { window: "2ο ημίχρονο 75′–88′", ...summarize(records.filter(row => row.minute >= 75 && row.minute <= 88)) }
+      { window: "2ο ημίχρονο 75′–84′", ...summarize(records.filter(row => row.minute >= 75 && row.minute <= 84)) }
     ];
     const segment = (field, label, sourceRows = records) => {
       const values = [...new Set(sourceRows.map(row => row[field]).filter(value => value !== null && value !== undefined && value !== ""))].sort();
@@ -457,7 +457,7 @@ async function runProtocolAnalyst() {
       dataQuality: {
         recordsAnalyzed: records.length,
         allSettledAlertsIn180Days: allRecords.length,
-        researchScope: "second_half_46_to_88_only",
+        researchScope: "second_half_46_to_84_only",
         alertsExcludedOutsideResearchScope: allRecords.length - records.length,
         alertsMissingOdds: records.filter(row => row.oddsBand === "missing").length,
         alertsMissingSignalStats: result.rows.filter(row => !row.payload?.statsAtSignal).length,
@@ -1805,7 +1805,7 @@ const server = http.createServer(async (req, res) => {
       };
       const bySignalWindow = [
         summarizeSignalWindow("first_half", 35, 40, "1ο ημίχρονο 35′–40′"),
-        summarizeSignalWindow("second_half", 76, 88, "2ο ημίχρονο 76′–88′")
+        summarizeSignalWindow("second_half", 76, 84, "2ο ημίχρονο 76′–88′")
       ];
       const byOutcome = {};
       const byPeriod = {};
@@ -1985,7 +1985,7 @@ const server = http.createServer(async (req, res) => {
           settlementProvider: p.betSettlementProvider, verifiedScore,
           statsAtSignal: { onTarget: stats.onTarget ?? null, onTarget10m: stats.onTarget10m ?? null, totalOnTarget: stats.totalOnTarget ?? null, xG: stats.xG ?? null, xGDelta: stats.xGDelta ?? null }
         };
-      }).filter(row => row.verifiedScore && row.period === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88);
+      }).filter(row => row.verifiedScore && row.period === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 84);
       return send(res, 200, {
         ok: true, readOnly: true, windowDays: 180, generatedAt: new Date().toISOString(),
         scanned: result.rows.length, verifiedSettled: records.length, records,
@@ -3368,7 +3368,7 @@ const server = http.createServer(async (req, res) => {
                 outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
                 startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore,
                 triggerIds: ["power_ranking_59"], supportSignalIds: [],
-                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–88′" }
+                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–84′" }
               };
               const saved = await analyticsPool.query(
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
@@ -3455,7 +3455,7 @@ const server = http.createServer(async (req, res) => {
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
-        // Existing second-half AI protocol remains unchanged (46′–88′).
+        // Existing second-half AI protocol remains unchanged (46′–84′).
         // Independent first-half exception: 8+ combined match SOT by minute 34.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = isAiMinuteEligible(aiMinute, statusForEligibility);
@@ -3533,7 +3533,7 @@ const server = http.createServer(async (req, res) => {
         const secondHalfAiQualifies = eligibleMinute && qualifiedAiTriggers.some(trigger => trigger.id !== "first_half_8_sot");
         const firstHalfSotAiQualifies = firstHalfSotWindow && qualifiedAiTriggers.some(trigger => trigger.id === "recent_sot_pressure" || trigger.id === "first_half_8_sot");
         const isAiGoal = scoreAvailable && qualifiedAiTriggers.length > 0;
-        // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
+        // Keep the first 16 general samples, but never omit an eligible 46′–84′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || firstHalfSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
