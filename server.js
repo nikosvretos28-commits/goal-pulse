@@ -1239,6 +1239,7 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
         opponents: Object.fromEntries(Object.entries(value.opponents).map(([opponentKey, opponent]) =>
           [opponentKey, finalizeStats(opponent)])),
         leagueOverRates,
+        profileVersion: 2,
         coverage: "provider-season-range",
         season: bounds.seasonKey,
         seasonSlug: expectedSeasonSlug || null,
@@ -1370,9 +1371,15 @@ async function schedulePreMatchSeasonCollection(events) {
   const persisted = new Map();
   if (await ensurePreMatchSeasonDb()) {
     const states = await analyticsPool.query(
-      `SELECT league_code,season_key,status,last_success_at,retry_after
+`SELECT league_code,season_key,status,last_success_at,retry_after,
+              EXISTS (
+                SELECT 1 FROM pre_match_season_profiles p
+                 WHERE p.league_code=pre_match_collection_state.league_code
+                   AND p.season_key=pre_match_collection_state.season_key
+                   AND p.profile->>'profileVersion'='2'
+              ) AS profile_v2
          FROM pre_match_collection_state
-        WHERE league_code = ANY($1::text[])`,
+        WHERE league_code = ANY($1::text[])`
       [candidates.map(item => item.code)]
     ).catch(error => {
       console.warn("[Pre-Match] collection state read failed:", error.message);
@@ -1388,7 +1395,7 @@ async function schedulePreMatchSeasonCollection(events) {
     const successAt = state?.last_success_at ? new Date(state.last_success_at).getTime() : 0;
     const retryAt = state?.retry_after ? new Date(state.retry_after).getTime() : 0;
     const memoryAt = preMatchSeasonCollectionAt.get(item.key) || 0;
-    const fresh = successAt > 0 && now - successAt < PRE_MATCH_PROFILE_TTL_MS;
+    const fresh = successAt > 0 && now - successAt < PRE_MATCH_PROFILE_TTL_MS && state?.profile_v2 === true;
     const coolingDown = retryAt > now;
     const memoryFresh = !state && memoryAt > 0 && now - memoryAt < PRE_MATCH_PROFILE_TTL_MS;
     if (fresh || coolingDown || memoryFresh) { skipped++; continue; }
@@ -1416,6 +1423,7 @@ function getAthensDateKey(now = new Date()) {
 }
 let preMatchDailyScanDate = "";
 let preMatchDailyRetryAt = 0;
+let preMatchDailyScanRunning = false;
 async function runScheduledPreMatchCollection() {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
@@ -1423,7 +1431,15 @@ async function runScheduledPreMatchCollection() {
   const hour = Number(parts.find(part => part.type === "hour")?.value);
   if (!Number.isFinite(hour) || hour < 6) return { skipped: "before-daily-scan-time" };
   const date = getAthensDateKey();
-  if (preMatchDailyScanDate === date || Date.now() < preMatchDailyRetryAt) return { skipped: "already-run-or-retrying" };
+  if (preMatchDailyScanRunning || preMatchDailyScanDate === date || Date.now() < preMatchDailyRetryAt) {
+    return { skipped: "already-running-or-run-or-retrying" };
+  }
+  preMatchDailyScanRunning = true;
+  preMatchScanState.status = "running";
+  preMatchScanState.startedAt = new Date().toISOString();
+  preMatchScanState.completedAt = null;
+  preMatchScanState.results = [];
+  preMatchScanState.error = null;
   try {
     const response = await fetch("http://127.0.0.1:" + PORT + "/api/scoreboard?date=" + date, {
       headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(90000)
@@ -1436,6 +1452,13 @@ async function runScheduledPreMatchCollection() {
     const result = await schedulePreMatchSeasonCollection(events);
     preMatchDailyScanDate = date;
     preMatchDailyRetryAt = 0;
+    preMatchScanState.status = "complete";
+    preMatchScanState.completedAt = new Date().toISOString();
+    preMatchScanState.results = result.results || [];
+    preMatchScanState.skipped = Number(result.skipped || 0);
+    preMatchScanState.error = result.attempted === 0 && result.skipped === 0
+      ? "No supported league fixtures were found in today's scoreboard."
+      : null;
     console.log("[Pre-Match] scheduled daily scan completed:", JSON.stringify({
       date, scheduledFixtures: events.length,
       supportedLeagues: [...new Set(events.map(event => event.__goalPulseLeagueCode).filter(isPreMatchLeagueCode))].length,
@@ -1446,8 +1469,13 @@ async function runScheduledPreMatchCollection() {
     return result;
   } catch (error) {
     preMatchDailyRetryAt = Date.now() + 15 * 60 * 1000;
+    preMatchScanState.status = "error";
+    preMatchScanState.completedAt = new Date().toISOString();
+    preMatchScanState.error = String(error.message || error).slice(0, 240);
     console.warn("[Pre-Match] scheduled daily scan failed; will retry:", String(error.message || error).slice(0, 180));
     throw error;
+  } finally {
+    preMatchDailyScanRunning = false;
   }
 }
 
