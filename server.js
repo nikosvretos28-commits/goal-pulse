@@ -8,7 +8,7 @@ const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./so
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
 const { createCompetitionHistoryStore } = require("./competition-history-store");
-const { buildPreMatchMatchupContext, seasonBoundsForLeague } = require("./pre-match-intelligence");
+const { buildPreMatchMatchupContext, seasonBoundsForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 let Pool = null;
@@ -3624,7 +3624,9 @@ const server = http.createServer(async (req, res) => {
           try { preMatchSeason = await getPreMatchSeasonSupport(match.leagueCode, match.home, match.away, supportingOverLine); }
           catch (error) { console.warn("Optional pre-match season support failed; AI triggers continue independently:", error.message); }
         }
-        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
+        const matchupEvidence = scorePreMatchMatchupContext(preMatchSeason.context);
+        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) +
+          Number(preMatchSeason.support || 0) + Number(matchupEvidence.score || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // Updated second-half AI protocol window: 46′–84′ for every second-half trigger.
@@ -3880,6 +3882,7 @@ const server = http.createServer(async (req, res) => {
             preMatchSeason.context?.away?.cleanSheetRate != null ? "Away clean sheets " + Math.round(preMatchSeason.context.away.cleanSheetRate * 100) + "%" : "",
             preMatchSeason.context?.expectedGoals?.total != null ? "Season goal estimate " + preMatchSeason.context.expectedGoals.total.toFixed(2) + " (heuristic)" : "",
             preMatchSeason.context?.headToHead?.available ? "H2H " + preMatchSeason.context.headToHead.sample + " αγώνες" : "",
+            ...matchupEvidence.reasons,
             liveConversionSupport > 0 ? "Αποτελεσματικότητα SOT +" + liveConversionSupport.toFixed(1) : ""
           ].filter(Boolean).join(" · ");
           // Store a price only when the exact active market quote was verified.
@@ -3961,7 +3964,7 @@ const server = http.createServer(async (req, res) => {
                        Array.isArray(dangerousAttacks10) && dangerousAttacks10.some(value => value != null && value >= 10)
                       ? ["dangerous_attacks_pressure"] : [])
                   ],
-                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, xGQualifies, recentSotQualifies, cumulativeSotQualifies, manAdvantagePressure, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, dangerousAttacks5, dangerousAttacks10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, preMatchHistory: preMatchSeason.context || null, supportingCriteriaScore, evidenceKinds, points }
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, xGQualifies, recentSotQualifies, cumulativeSotQualifies, manAdvantagePressure, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, dangerousAttacks5, dangerousAttacks10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, preMatchHistory: preMatchSeason.context || null, preMatchHistoryScore: matchupEvidence.score, preMatchHistoryReasons: matchupEvidence.reasons, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
