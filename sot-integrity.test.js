@@ -97,5 +97,38 @@ test("detects an 8-to-2 provider correction even after the trigger stops qualify
   assert.equal(corrected.confirmed,false);
   assert.equal(corrected.regression,true);
   assert.equal(corrected.reason,"provider_cumulative_sot_regression");
-  assert.equal(stateMap.has("match-6"),false);
+  assert.equal(stateMap.has("match-6"),true);
+  assert.equal(stateMap.get("match-6").quarantinedUntil,160000 + 11 * 60 * 1000);
+});
+
+test("quarantines a fixture for the full rolling window after a provider SOT correction", () => {
+  const stateMap = new Map();
+  const first = confirmSotSignal({
+    stateMap,eventId:"match-7",now:100000,qualifies:true,
+    cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]
+  });
+  const corrected = confirmSotSignal({
+    stateMap,eventId:"match-7",now:160000,qualifies:false,
+    cumulativeByTeam:[{team:"home",value:2},{team:"away",value:0}]
+  });
+  const repeatedStable = confirmSotSignal({
+    stateMap,eventId:"match-7",now:220000,qualifies:true,
+    cumulativeByTeam:[{team:"home",value:2},{team:"away",value:0}]
+  });
+  assert.equal(first.confirmed,false);
+  assert.equal(corrected.reason,"provider_cumulative_sot_regression");
+  assert.equal(repeatedStable.confirmed,false);
+  assert.equal(repeatedStable.reason,"provider_sot_correction_quarantine");
+
+  const afterWindow = confirmSotSignal({
+    stateMap,eventId:"match-7",now:160000 + 11 * 60 * 1000 + 1,qualifies:true,
+    cumulativeByTeam:[{team:"home",value:2},{team:"away",value:0}]
+  });
+  assert.equal(afterWindow.confirmed,false);
+  assert.equal(afterWindow.reason,"awaiting_second_sot_sample");
+  const nextSample = confirmSotSignal({
+    stateMap,eventId:"match-7",now:160000 + 12 * 60 * 1000 + 1,qualifies:true,
+    cumulativeByTeam:[{team:"home",value:2},{team:"away",value:0}]
+  });
+  assert.equal(nextSample.confirmed,true);
 });

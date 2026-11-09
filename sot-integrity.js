@@ -20,7 +20,11 @@ function validateRollingSot({ memoryDelta, persistedDelta, cumulativeTotal }) {
   };
 }
 
-function confirmSotSignal({ stateMap, eventId, now, qualifies, cumulativeByTeam, minIntervalMs = 30000, maxIntervalMs = 150000 }) {
+function confirmSotSignal({
+  stateMap, eventId, now, qualifies, cumulativeByTeam,
+  minIntervalMs = 30000, maxIntervalMs = 150000,
+  correctionQuarantineMs = 11 * 60 * 1000
+}) {
   if (!(stateMap instanceof Map) || !eventId) return { confirmed: false, reason: "confirmation_state_unavailable", regression: false };
   const id = String(eventId);
   if (!Array.isArray(cumulativeByTeam) || cumulativeByTeam.length < 2 ||
@@ -36,14 +40,30 @@ function confirmSotSignal({ stateMap, eventId, now, qualifies, cumulativeByTeam,
     stateMap.delete(id);
     return { confirmed: false, reason: "ambiguous_team_sot_identity", regression: false };
   }
-  const previous = stateMap.get(id);
+
+  let previous = stateMap.get(id);
+  // A provider correction invalidates the rolling baseline, not just the current
+  // sample. Keep the fixture quarantined until the longest (10-minute) window
+  // has naturally rolled past the suspect snapshot.
+  if (previous?.quarantinedUntil != null) {
+    if (Number(now) < Number(previous.quarantinedUntil)) {
+      stateMap.set(id, { ...previous, at: now, teams: current });
+      return { confirmed: false, reason: "provider_sot_correction_quarantine", regression: false };
+    }
+    stateMap.delete(id);
+    previous = null;
+  }
   if (previous) {
     const priorByTeam = new Map(previous.teams.map(side => [side.team, side.value]));
     const comparable = current.every(side => priorByTeam.has(side.team));
     const regressed = comparable && current.some(side => side.value < priorByTeam.get(side.team));
     if (!comparable || regressed) {
-      if (qualifies) stateMap.set(id, { at: now, teams: current, confirmed: false });
-      else stateMap.delete(id);
+      stateMap.set(id, {
+        at: now,
+        teams: current,
+        confirmed: false,
+        quarantinedUntil: Number(now) + Math.max(0, Number(correctionQuarantineMs) || 0)
+      });
       return { confirmed: false, reason: regressed ? "provider_cumulative_sot_regression" : "team_identity_changed", regression: regressed };
     }
   }
