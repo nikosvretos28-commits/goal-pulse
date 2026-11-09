@@ -70,8 +70,10 @@ const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
 const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
-// Stable one-per-fixture deduplication for the independent Power Ranking AI trigger.
+// Power Ranking emits once per upward crossing of 59; dropping below 59 rearms it.
 const pushScanPowerRankingAlerts = new Set();
+const pushScanPowerRankingInitialized = new Set();
+const pushScanPowerRankingAlertCounts = new Map();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
 const volatileAlertHistory = new Map();
 const volatileHighActivityHistory = new Map();
@@ -3349,8 +3351,35 @@ const server = http.createServer(async (req, res) => {
         const powerRankingMinute = minuteForEligibility;
         const powerRankingEligible = isPowerRankingMinuteEligible(powerRankingMinute, statusForEligibility);
         const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
-        if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && !pushScanPowerRankingAlerts.has(id)) {
-          const alertId = "push:" + id + ":AI:power-ranking-59";
+        const powerRankingAboveThreshold = powerRankingScore >= 59;
+        if (!pushScanPowerRankingInitialized.has(id)) {
+          let previousPowerRankingAlerts = 0;
+          let previousPowerRankingCountKnown = false;
+          if (await ensureAlertHistoryDb()) {
+            try {
+              const previousPowerRankingResult = await analyticsPool.query(
+                "SELECT COUNT(*)::int AS count FROM alert_history WHERE event_id=$1 AND payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'alertType'='power_ranking_signal'",
+                [String(id)]
+              );
+              previousPowerRankingAlerts = Number(previousPowerRankingResult.rows[0]?.count || 0);
+              previousPowerRankingCountKnown = true;
+            } catch (powerRankingCountError) {
+              console.warn("Power Ranking prior alert count unavailable:", powerRankingCountError.message);
+            }
+          }
+          if (previousPowerRankingCountKnown) {
+            pushScanPowerRankingInitialized.add(id);
+            pushScanPowerRankingAlertCounts.set(id, previousPowerRankingAlerts);
+            // After a process restart, do not duplicate an already-active 59+ signal.
+            // The match must first be observed below 59 before another alert is armed.
+            if (previousPowerRankingAlerts > 0 && powerRankingAboveThreshold) pushScanPowerRankingAlerts.add(id);
+          }
+        }
+        if (!powerRankingAboveThreshold) pushScanPowerRankingAlerts.delete(id);
+        const powerRankingCrossedUp = pushScanPowerRankingInitialized.has(id) && powerRankingAboveThreshold && scoreAvailable && powerRankingEligible && !pushScanPowerRankingAlerts.has(id);
+        if (powerRankingCrossedUp) {
+          const alertSequence = Number(pushScanPowerRankingAlertCounts.get(id) || 0) + 1;
+          const alertId = "push:" + id + ":AI:power-ranking-59" + (alertSequence > 1 ? "-" + alertSequence : "");
           try {
             if (await ensureAlertHistoryDb()) {
               const periodAtSignal = powerRankingMinute <= 35 ? "first_half" : "second_half";
@@ -3374,22 +3403,24 @@ const server = http.createServer(async (req, res) => {
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
                 [alertId, id, now, JSON.stringify(alertRecord)]
               );
-              // The stable primary key makes the one-alert-per-match rule survive process restarts.
+              // Mark this crossing only after the durable history write succeeds.
               pushScanPowerRankingAlerts.add(id);
+              // Each upward crossing gets its own stable history ID.
               if (saved.rows.length) {
+                pushScanPowerRankingAlertCounts.set(id, alertSequence);
                 powerRankingAlerts++;
                 candidates++;
                 try {
                   const pushResult = await sendPushToSubscribers({
                     title: "GoalMatrix · AI ALERT",
                     body: "🏆 POWER RANKING " + powerRankingScore + "/100 · " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · Over " + overLine + " · " + (periodAtSignal === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "ΤΕΛΙΚΟ ΣΥΝΟΛΟ") + " · " + rawMinute,
-                    tag: "goal-pulse-bg-ai-power-ranking-" + id, url: "/"
+                    tag: "goal-pulse-bg-ai-power-ranking-" + id + "-" + alertSequence, url: "/"
                   });
                   sent += Number(pushResult?.sent || 0);
                 } catch (pushError) {
                   console.warn("Power Ranking AI push delivery failed; in-app alert remains saved:", pushError.message);
                 }
-                console.info("Power Ranking 59+ AI alert saved:", JSON.stringify({ eventId: id, minute: powerRankingMinute, period: periodAtSignal, score: powerRankingScore, alertId }));
+                console.info("Power Ranking 59+ AI alert saved:", JSON.stringify({ eventId: id, sequence: alertSequence, minute: powerRankingMinute, period: periodAtSignal, score: powerRankingScore, alertId }));
               }
             } else {
               console.error("Power Ranking 59+ alert skipped: persistent history unavailable; one-per-match deduplication cannot be guaranteed", id);
@@ -3826,6 +3857,8 @@ const server = http.createServer(async (req, res) => {
           }
           pushScanRedCardSince.delete(id);
           pushScanPowerRankingAlerts.delete(id);
+          pushScanPowerRankingInitialized.delete(id);
+          pushScanPowerRankingAlertCounts.delete(id);
         }
       }
       const liveMatches = Number(metrics.totalLive || 0);
