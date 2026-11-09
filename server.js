@@ -25,7 +25,7 @@ const SPORTAPI_API_KEY = process.env.SPORTAPI_API_KEY || "";
 const sportApiDateFixturesCache = new Map();
 const sportApiFixtureStatsCache = new Map();
 const sportApiIsraelLeagueFixturesCache = new Map();
-const SPORTAPI_ISRAEL_LEAGUE_CACHE_MS = 6 * 60 * 60 * 1000;
+const SPORTAPI_ISRAEL_LEAGUE_CACHE_MS = 60 * 60 * 1000;
 let sportApiLastStatsRequestAt = 0;
 const SPORTAPI_FIXTURE_CACHE_MS = 10 * 60 * 1000;
 const SPORTAPI_STATS_REFRESH_MS = 5 * 60 * 1000;
@@ -5065,7 +5065,7 @@ const server = http.createServer(async (req, res) => {
               const israelLeagues = Array.isArray(israelGroup?.leagues) ? israelGroup.leagues : [];
               const targetedLeagues = israelLeagues
                 .filter(league => /women|female|ladies|national/i.test(String(league.name || "")))
-                .slice(0, 20);
+                .slice(0, 12);
               const selectedLeagues = targetedLeagues.length ? targetedLeagues : israelLeagues.slice(0, 12);
               const detailResults = await Promise.all(selectedLeagues.map(async league => {
                 if (league.id == null) return { league, fixtures: [] };
@@ -5117,7 +5117,7 @@ const server = http.createServer(async (req, res) => {
         const mergedFixtureRows = [...baseFixtureRows, ...(israelLeagueFixtures?.rows || [])];
         const uniqueFixtureRows = Array.from(new Map(mergedFixtureRows.filter(fixture => fixture?.id != null).map(fixture => [String(fixture.id), fixture])).values());
         sportApiFixtures = { ...(sportApiFixtures || {}), rows: uniqueFixtureRows };
-        const normalizeSportApiTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+        const normalizeSportApiTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer|women|woman|ladies|female|w)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
         const fixtureByPair = new Map();
         for (const fixture of sportApiFixtures?.rows || []) {
           const home = normalizeSportApiTeam(fixture.home_team || fixture.home || fixture.home_short);
