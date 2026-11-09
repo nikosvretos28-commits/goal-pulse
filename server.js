@@ -1940,13 +1940,14 @@ const server = http.createServer(async (req, res) => {
       );
       const records = result.rows.map(row => {
         const p = row.payload || {};
-        const rawMinute = p.minuteNumber !== null && p.minuteNumber !== undefined && String(p.minuteNumber).trim() !== ""
+        const minuteCandidate = p.minuteNumber !== null && p.minuteNumber !== undefined && String(p.minuteNumber).trim() !== ""
           ? p.minuteNumber : String(p.minute || "").match(/[0-9]{1,3}/)?.[0];
-        const minute = Number(rawMinute);
+        const parsedMinute = Number(minuteCandidate);
+        const minute = Number.isFinite(parsedMinute) ? parsedMinute : Number(String(minuteCandidate ?? "").match(/[0-9]{1,3}/)?.[0]);
         const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : null;
         const stats = p.statsAtSignal || {};
         const scoreParts = String(p.betFinalScore || "").split("-").map(Number);
-        const verifiedScore = scoreParts.length === 2 && scoreParts.every(Number.isInteger) && scoreParts.every(value => value >= 0);
+        const verifiedScore = scoreParts.length === 2 && String(p.betFinalScore || "").split("-").every(part => part.length > 0 && [...part].every(char => char >= "0" && char <= "9")) && scoreParts.every(value => Number.isInteger(value) && value >= 0);
         return {
           alertId: row.alert_id, eventId: row.event_id, createdAt: row.created_at,
           teams: [p.homeTeam || p.home || null, p.awayTeam || p.away || null],
