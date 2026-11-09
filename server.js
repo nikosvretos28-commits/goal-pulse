@@ -1397,8 +1397,9 @@ async function schedulePreMatchSeasonCollection(events) {
     const memoryAt = preMatchSeasonCollectionAt.get(item.key) || 0;
     const fresh = successAt > 0 && now - successAt < PRE_MATCH_PROFILE_TTL_MS && state?.profile_v2 === true;
     const coolingDown = retryAt > now;
+    const collecting = state?.status === "running";
     const memoryFresh = !state && memoryAt > 0 && now - memoryAt < PRE_MATCH_PROFILE_TTL_MS;
-    if (fresh || coolingDown || memoryFresh) { skipped++; continue; }
+    if (fresh || coolingDown || collecting || memoryFresh) { skipped++; continue; }
     due.push(item);
   }
   // Keep provider load bounded: two league jobs at a time, at most three month requests per job.
