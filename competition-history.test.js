@@ -57,7 +57,7 @@ test("history request limiter never exceeds its configured concurrency", async (
   const limit = createLimiter(2);
   let active = 0;
   let peak = 0;
-  const tasks = Array.from({ length: 7 }, (_, index) => limit(async () => {
+  const tasks = Array.from({ length: 9 }, (_, index) => limit(async () => {
     active += 1;
     peak = Math.max(peak, active);
     await new Promise(resolve => setTimeout(resolve, 5));
@@ -66,5 +66,5 @@ test("history request limiter never exceeds its configured concurrency", async (
   }));
   const result = await Promise.all(tasks);
   assert.equal(peak, 2);
-  assert.deepEqual(result, [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(result, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
 });
