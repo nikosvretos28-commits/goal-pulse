@@ -4396,7 +4396,7 @@ const server = http.createServer(async (req, res) => {
           let payload = sportScoreLivePayloadForSlugMap;
           let liveSlugFixtures = sportScoreLiveFixturesForSlugMap;
           // Preserve the old independent fallback when the direct-stats request failed.
-          if (!Array.isArray(liveSlugFixtures)) {
+          if (!Array.isArray(liveSlugFixtures) || liveSlugFixtures.length === 0) {
             const liveDateForSlugMap = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
             const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDateForSlugMap + "&status=live&limit=200", {
               headers: { "Accept": "application/json" },
