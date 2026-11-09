@@ -13,7 +13,7 @@ function isAiMinuteEligible(minute, status = "") {
 }
 
 function isCumulativeSotMinute(minute, status = "") {
-  return isAiMinuteEligible(minute, status) && minute < 70;
+  return isAiMinuteEligible(minute, status) && minute < 75;
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.
