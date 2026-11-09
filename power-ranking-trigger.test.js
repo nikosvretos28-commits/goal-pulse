@@ -29,9 +29,14 @@ test("Power Ranking score matches the displayed weighted formula and rounds to a
 
 test("missing or stale statistics contribute zero and never fabricate a score", () => {
   assert.equal(calculatePowerRankingScore({ teams: [], trend: {} }), 0);
+  // Missing SOT on one side must not be imputed; valid xG still contributes its own points.
   assert.equal(calculatePowerRankingScore({
     teams: [{ shotsOnTarget: 5, xG: 1 }, { shotsOnTarget: null, xG: 2 }],
     trend: { window5m: makeWindow(20, [{ shotsOnTarget: 5 }, { shotsOnTarget: 5 }]) }
+  }), 18);
+  assert.equal(calculatePowerRankingScore({
+    teams: [{ shotsOnTarget: null, xG: null }, { shotsOnTarget: null, xG: null }],
+    trend: {}
   }), 0);
 });
 
