@@ -217,7 +217,7 @@ async function runProtocolAnalyst() {
         createdAt: row.created_at
       };
     });
-    // Analyze only the currently approved AI window: second half 46–88.
+    // Analyze only the currently approved AI window: second half 46–84.
     // Never include first-half, halftime, stoppage/out-of-window alerts, or unknown periods.
     const records = allRecords.filter(row =>
       row.phase === "second_half" && Number.isFinite(row.minute) && row.minute >= 46 && row.minute <= 84
@@ -1805,7 +1805,7 @@ const server = http.createServer(async (req, res) => {
       };
       const bySignalWindow = [
         summarizeSignalWindow("first_half", 35, 40, "1ο ημίχρονο 35′–40′"),
-        summarizeSignalWindow("second_half", 76, 84, "2ο ημίχρονο 76′–88′")
+        summarizeSignalWindow("second_half", 76, 84, "2ο ημίχρονο 76′–84′")
       ];
       const byOutcome = {};
       const byPeriod = {};
@@ -3090,7 +3090,7 @@ const server = http.createServer(async (req, res) => {
         const minuteForEligibility = parseLiveMinute(minuteRawForEligibility);
         const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
-        const validSecondHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 46 && minuteForEligibility <= 88;
+        const validSecondHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 46 && minuteForEligibility <= 84;
         if (validSecondHalfMinute && /second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(statusForEligibility) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) secondHalfEligible++;
         // xG alternative: both teams must qualify, one at >= 3.50 and the other at >= 2.50.
         // Missing/invalid xG cannot qualify this trigger, but does not block independent SOT triggers.
@@ -3591,7 +3591,7 @@ const server = http.createServer(async (req, res) => {
           // send an alert after the agreed window.
           const dispatchMinute = parseLiveMinute(getMatchMinute(match));
           const dispatchMinuteAllowed = Number.isFinite(dispatchMinute) &&
-            ((dispatchMinute >= 1 && dispatchMinute <= 40) || (dispatchMinute >= 46 && dispatchMinute <= 88));
+            ((dispatchMinute >= 1 && dispatchMinute <= 40) || (dispatchMinute >= 46 && dispatchMinute <= 84));
           if (level === "AI" && !dispatchMinuteAllowed) {
             console.warn("[AI push blocked: minute outside protocol window]", JSON.stringify({
               eventId: String(match.eventId),
