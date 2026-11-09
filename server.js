@@ -3858,11 +3858,21 @@ const server = http.createServer(async (req, res) => {
       // A single bad month must not erase every completed result for the season.
       const windowResults = await Promise.allSettled(windows.map(async window => {
         const range = compactDate(window.start) + "-" + compactDate(window.end);
-        const response = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range, {
-          headers: { "Accept": "application/json" },
+        const endpoint = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range;
+        const fallbackEndpoint = "https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range;
+        let response = await fetch(endpoint, {
+          headers: ESPN_HEADERS,
           signal: AbortSignal.timeout(15000)
         });
-        if (!response.ok) throw new Error("Competition history provider unavailable");
+        // ESPN sometimes blocks or throttles one hostname from a hosting region.
+        // Retry the same bounded month on its equivalent web API hostname.
+        if (response.status === 403 || response.status === 429 || response.status >= 500) {
+          response = await fetch(fallbackEndpoint, {
+            headers: ESPN_HEADERS,
+            signal: AbortSignal.timeout(15000)
+          });
+        }
+        if (!response.ok) throw new Error("Competition history provider unavailable (HTTP " + response.status + ")");
         const body = await response.json();
         return Array.isArray(body.events) ? body.events : [];
       }));
