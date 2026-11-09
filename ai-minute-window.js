@@ -16,4 +16,14 @@ function isCumulativeSotMinute(minute, status = "") {
   return isAiMinuteEligible(minute, status) && minute < 70;
 }
 
-module.exports = { isAiMinuteEligible, isCumulativeSotMinute };
+
+function isFirstHalfCumulativeSotMinute(minute, status = "") {
+  if (!Number.isInteger(minute) || minute < 1 || minute >= 35) return false;
+  const period = String(status || "").trim().toLowerCase();
+  // Completed fixtures and explicit second-half/halftime labels must never qualify.
+  if (/\\b(?:finished|full\\s*time|ended|complete|completed|ft|aet|2h|2nd\\s*half|second\\s*half|half[\\s-]*time|halftime|ht)\\b/.test(period) ||
+      /ολοκληρώθηκε|τελικό\\s*σφύριγμα|λήξη\\s*αγώνα|2ο\\s*ημίχρονο|δεύτερο\\s*ημίχρονο|ανάπαυλα/.test(period)) return false;
+  return true;
+}
+
+module.exports = { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfCumulativeSotMinute };
