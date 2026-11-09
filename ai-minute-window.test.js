@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { isAiMinuteEligible, isCumulativeSotMinute } = require("./ai-minute-window");
+const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfCumulativeSotMinute } = require("./ai-minute-window");
 
 test("AI alerts accept only integer second-half minutes 46 through 88", () => {
   for (const minute of [1, 40, 41, 45, 89, 90, 120, 45.5, 46.5, null, Number.NaN]) {
@@ -35,4 +35,21 @@ test("cumulative 15-SOT trigger is limited to minutes 46 through 69", () => {
     assert.equal(isCumulativeSotMinute(minute), true, String(minute));
   }
   assert.equal(isCumulativeSotMinute(60, "1st half"), false);
+});
+
+test("first-half 8+ combined SOT trigger is eligible only before minute 35", () => {
+  for (const minute of [0, 35, 36, 40, 45, 46, 60, 89, 34.5, null, Number.NaN]) {
+    assert.equal(isFirstHalfCumulativeSotMinute(minute), false, String(minute));
+  }
+  for (const minute of [1, 2, 20, 34]) {
+    assert.equal(isFirstHalfCumulativeSotMinute(minute), true, String(minute));
+  }
+});
+
+test("first-half 8+ SOT trigger rejects halftime, second-half, and completed statuses", () => {
+  for (const status of ["HT", "Half Time", "Halftime", "2H", "2nd half", "Second Half", "FT", "Finished", "AET", "ανάπαυλα", "2ο ημίχρονο", "δεύτερο ημίχρονο", "Ολοκληρώθηκε"]) {
+    assert.equal(isFirstHalfCumulativeSotMinute(30, status), false, status);
+  }
+  assert.equal(isFirstHalfCumulativeSotMinute(30, "1H"), true);
+  assert.equal(isFirstHalfCumulativeSotMinute(30, "LIVE"), true);
 });
