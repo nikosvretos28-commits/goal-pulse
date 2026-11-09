@@ -68,4 +68,17 @@ function isPowerRankingMinuteEligible(minute, status = "") {
   if (minute >= 46 && minute <= 84) return !explicitlyFirstHalf;
   return false;
 }
-module.exports = { calculatePowerRankingScore, isPowerRankingMinuteEligible };
+const AUTONOMOUS_POWER_RANKING_THRESHOLD = 65;
+
+function shouldEmitAutonomousPowerRankingAlert({ score, eligible, scoreAvailable } = {}) {
+  const numericScore = Number(score);
+  return eligible === true && scoreAvailable === true && Number.isFinite(numericScore) &&
+    numericScore >= AUTONOMOUS_POWER_RANKING_THRESHOLD;
+}
+
+module.exports = {
+  calculatePowerRankingScore,
+  isPowerRankingMinuteEligible,
+  AUTONOMOUS_POWER_RANKING_THRESHOLD,
+  shouldEmitAutonomousPowerRankingAlert
+};

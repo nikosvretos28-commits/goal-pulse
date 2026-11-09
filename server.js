@@ -8,7 +8,7 @@ const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./so
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
 const { createCompetitionHistoryStore } = require("./competition-history-store");
-const { calculatePowerRankingScore, isPowerRankingMinuteEligible } = require("./power-ranking-trigger");
+const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
@@ -72,8 +72,10 @@ const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
 const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
-// Stable one-per-fixture deduplication for the independent Power Ranking AI trigger.
+// Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
+// Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
+const pushScanAutonomousPowerRankingAlerts = new Set();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
 const volatileAlertHistory = new Map();
 const volatileHighActivityHistory = new Map();
@@ -270,7 +272,8 @@ async function runProtocolAnalyst() {
       { id: "cumulative_20_sot", label: "20+ συνολικά SOT", detail: "Συνολικά SOT πριν από το 75′" },
       { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.50 xG και η άλλη ≥2.50 xG" },
       { id: "man_advantage_pressure", label: "Man Advantage", detail: "Πρόσφατη κόκκινη κάρτα και πίεση της αριθμητικά υπερέχουσας ομάδας" },
-      { id: "power_ranking_59", label: "Power Ranking 59+", detail: "Βαθμολογία ≥59/100 · 1ο ημίχρονο 1′–35′, 2ο ημίχρονο 46′–88′" }
+      { id: "power_ranking_59", label: "Power Ranking 59+", detail: "Βαθμολογία ≥59/100 · trigger μέσα στα AI Alerts" },
+      { id: "power_ranking_autonomous_65", label: "Αυτόνομο Power Ranking 65+", detail: "Ανεξάρτητη ειδοποίηση μόνο από βαθμολογία ≥65/100" }
     ];
     const summarizeTriggerRows = rows => {
       const wins = rows.filter(row => row.outcome === "won").length;
@@ -298,7 +301,7 @@ async function runProtocolAnalyst() {
       })).sort((a,b) => b.activated - a.activated);
     };
     const triggerPerformance = triggerDefinitions.map(definition => {
-      const rows = definition.id === "power_ranking_59"
+      const rows = ["power_ranking_59", "power_ranking_autonomous_65"].includes(definition.id)
         ? triggerHistoryRows.filter(row => row.triggerIds.includes(definition.id) && (
             (row.phase === "first_half" && Number.isInteger(row.minute) && row.minute >= 1 && row.minute <= 35) ||
             (row.phase === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88)
@@ -307,12 +310,12 @@ async function runProtocolAnalyst() {
       return {
         ...definition,
         ...summarizeTriggerRows(rows),
-        byMinute: groupTriggerRows(rows, definition.id === "power_ranking_59" ? "powerRankingMinuteBand" : "minuteBand"),
+        byMinute: groupTriggerRows(rows, ["power_ranking_59", "power_ranking_autonomous_65"].includes(definition.id) ? "powerRankingMinuteBand" : "minuteBand"),
         byLeague: groupTriggerRows(rows, "league")
       };
     });
     const triggerCombinationMap = new Map();
-    for (const row of instrumentedTriggerRows) {
+    for (const row of instrumentedTriggerRows.filter(item => !item.triggerIds.includes("power_ranking_autonomous_65"))) {
       const key = [...row.triggerIds].sort().join(" + ");
       if (!key) continue;
       if (!triggerCombinationMap.has(key)) triggerCombinationMap.set(key, []);
@@ -3400,6 +3403,77 @@ const server = http.createServer(async (req, res) => {
             console.error("Power Ranking 59+ AI alert failed:", powerRankingError.message);
           }
         }
+        // Autonomous Power Ranking is a separate protocol: it does not depend on AI trigger 59+,
+        // SOT/xG triggers, their cooldowns, or the AI Power Ranking deduplication state.
+        const autonomousPowerRankingQualified = shouldEmitAutonomousPowerRankingAlert({
+          score: powerRankingScore,
+          eligible: powerRankingEligible,
+          scoreAvailable
+        });
+        if (autonomousPowerRankingQualified && !pushScanAutonomousPowerRankingAlerts.has(id)) {
+          const autonomousAlertId = "push:" + id + ":POWER_RANKING:autonomous-65";
+          try {
+            if (await ensureAlertHistoryDb()) {
+              const autonomousPeriod = powerRankingMinute <= 35 ? "first_half" : "second_half";
+              const autonomousHomeScore = Number(match.homeScore), autonomousAwayScore = Number(match.awayScore);
+              const autonomousOverLine = (autonomousHomeScore + autonomousAwayScore + 0.5).toFixed(1);
+              const autonomousRawMinute = String(formatPushMinute(match));
+              const autonomousRecord = {
+                alertId: autonomousAlertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
+                home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
+                league: match.league || match.competition || "", country: match.country || match.countryName || null,
+                minute: autonomousRawMinute, minuteNumber: powerRankingMinute,
+                market: "Over " + autonomousOverLine,
+                alertType: "power_ranking_autonomous_signal",
+                odds: null, oddsVerifiedAt: null, periodAtSignal: autonomousPeriod,
+                reason: "Αυτόνομο Power Ranking " + powerRankingScore + "/100 · όριο 65+",
+                outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
+                startScore: autonomousHomeScore + autonomousAwayScore,
+                startHomeScore: autonomousHomeScore, startAwayScore: autonomousAwayScore,
+                triggerIds: ["power_ranking_autonomous_65"], supportSignalIds: [],
+                statsAtSignal: {
+                  powerRankingScore,
+                  powerRankingThreshold: 65,
+                  powerRankingMode: "autonomous",
+                  powerRankingWindow: autonomousPeriod === "first_half" ? "1′–35′" : "46′–84′"
+                }
+              };
+              const autonomousSaved = await analyticsPool.query(
+                "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
+                [autonomousAlertId, id, now, JSON.stringify(autonomousRecord)]
+              );
+              // Stable unique alert_id prevents duplicates across scanner/process restarts.
+              pushScanAutonomousPowerRankingAlerts.add(id);
+              if (autonomousSaved.rows.length) {
+                powerRankingAlerts++;
+                candidates++;
+                try {
+                  const autonomousPushResult = await sendPushToSubscribers({
+                    title: "GoalMatrix · POWER RANKING",
+                    body: "🏆 ΑΥΤΟΝΟΜΟ POWER RANKING " + powerRankingScore + "/100 · " +
+                      (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") +
+                      " · Over " + autonomousOverLine + " · " +
+                      (autonomousPeriod === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "2ο ΗΜΙΧΡΟΝΟ") +
+                      " · " + autonomousRawMinute,
+                    tag: "goalmatrix-autonomous-power-ranking-" + id,
+                    url: "/"
+                  });
+                  sent += Number(autonomousPushResult?.sent || 0);
+                } catch (autonomousPushError) {
+                  console.warn("Autonomous Power Ranking push delivery failed; in-app alert remains saved:", autonomousPushError.message);
+                }
+                console.info("Autonomous Power Ranking 65+ alert saved:", JSON.stringify({
+                  eventId: id, minute: powerRankingMinute, period: autonomousPeriod,
+                  score: powerRankingScore, alertId: autonomousAlertId
+                }));
+              }
+            } else {
+              console.error("Autonomous Power Ranking 65+ alert skipped: persistent history unavailable", id);
+            }
+          } catch (autonomousPowerRankingError) {
+            console.error("Autonomous Power Ranking 65+ alert failed:", autonomousPowerRankingError.message);
+          }
+        }
         const recentGoalEvidence = dangerousAvailable
           ? onTarget >= 1 && evidenceKinds >= 2 && dangerous >= 3
           : attacksAvailable && onTarget >= 1 && attacks >= 5;
@@ -3828,6 +3902,7 @@ const server = http.createServer(async (req, res) => {
           }
           pushScanRedCardSince.delete(id);
           pushScanPowerRankingAlerts.delete(id);
+          pushScanAutonomousPowerRankingAlerts.delete(id);
         }
       }
       const liveMatches = Number(metrics.totalLive || 0);
