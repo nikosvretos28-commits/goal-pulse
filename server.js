@@ -252,9 +252,8 @@ async function runProtocolAnalyst() {
     const legacyUnattributedAlerts = approvedWindowTriggerRows.filter(row => row.triggerIds.length === 0).length;
     const triggerDefinitions = [
       { id: "recent_sot_pressure", label: "Πρόσφατη πίεση SOT", detail: "3+ SOT / 5′ ή 6+ SOT / 10′" },
-      { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.00 xG και η άλλη ≥2.00 xG" },
-      { id: "cumulative_15_sot", label: "15+ συνολικά SOT", detail: "Συνολικά SOT πριν από το 70′" },
-      { id: "dual_team_sot_pressure", label: "Dual Team SOT Pressure", detail: "Πίεση SOT και από τις δύο ομάδες" },
+      { id: "cumulative_20_sot", label: "20+ συνολικά SOT", detail: "Συνολικά SOT πριν από το 75′" },
+      { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.50 xG και η άλλη ≥2.50 xG" },
       { id: "man_advantage_pressure", label: "Man Advantage", detail: "Πρόσφατη κόκκινη κάρτα και πίεση της αριθμητικά υπερέχουσας ομάδας" }
     ];
     const summarizeTriggerRows = rows => {
@@ -3028,8 +3027,8 @@ const server = http.createServer(async (req, res) => {
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
         const validSecondHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 46 && minuteForEligibility <= 88;
         if (validSecondHalfMinute && /second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(statusForEligibility) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) secondHalfEligible++;
-        // xG alternative: one team must have xG >= 3.00 and the other >= 2.00.
-        // Missing/invalid xG stays neutral and never blocks an otherwise valid SOT alert.
+        // xG alternative: both teams must qualify, one at >= 3.50 and the other at >= 2.50.
+        // Missing/invalid xG cannot qualify this trigger, but does not block independent SOT triggers.
         const teamXGValues = teams.map(team =>
           team.xG == null || !Number.isFinite(Number(team.xG)) ? null : Number(team.xG)
         );
@@ -3040,11 +3039,11 @@ const server = http.createServer(async (req, res) => {
           : null;
         const validTeamXGValues = teamXGValues.filter(value => value != null);
         const qualifyingTeamXG = validTeamXGValues.length ? Math.max(...validTeamXGValues) : null;
-        // xG is a supporting signal when one team reaches 3.00 and the other reaches 2.00.
-        // Missing xG remains neutral and never blocks an otherwise valid SOT alert.
-        const atLeastOneTeamXGQualified = teamXGValues.length >= 2 &&
-          ((teamXGValues[0] != null && teamXGValues[0] >= 3.0 && teamXGValues[1] != null && teamXGValues[1] >= 2.0) ||
-           (teamXGValues[1] != null && teamXGValues[1] >= 3.0 && teamXGValues[0] != null && teamXGValues[0] >= 2.0));
+        // xG support is available only when both teams meet the 3.50 / 2.50 thresholds.
+        // Missing xG never qualifies the xG trigger; independent SOT triggers remain unaffected.
+        const bothTeamsXGQualified = teamXGValues.length >= 2 &&
+          ((teamXGValues[0] != null && teamXGValues[0] >= 3.5 && teamXGValues[1] != null && teamXGValues[1] >= 2.5) ||
+           (teamXGValues[1] != null && teamXGValues[1] >= 3.5 && teamXGValues[0] != null && teamXGValues[0] >= 2.5));
         const teamSOTValues = teams
           .map(team => team.shotsOnTarget == null ? null : Number(team.shotsOnTarget))
           .filter(value => value != null && Number.isFinite(value));
@@ -3076,7 +3075,7 @@ const server = http.createServer(async (req, res) => {
           attacks: total("attacks"),
           dangerous: total("dangerousAttacks"),
           xG: qualifyingTeamXG,
-          atLeastOneTeamXGQualified
+          bothTeamsXGQualified
         };
         const id = String(match.eventId);
         // Keep a rolling five-minute window so activity spread across scanner cycles
@@ -3156,22 +3155,6 @@ const server = http.createServer(async (req, res) => {
         });
         const onTarget = sot5Validation.value;
         const onTarget10m = sot10Validation.value;
-        // Additive dual-team SOT pressure trigger. Unknown team/window values fail closed.
-        const perTeamSotDelta = baseline => {
-          if (!Array.isArray(current.sotByTeam) || !Array.isArray(baseline?.sotByTeam)) return [];
-          const prior = new Map(baseline.sotByTeam.filter(x => x?.team && x.value != null && Number.isFinite(Number(x.value))).map(x => [x.team, Number(x.value)]));
-          return current.sotByTeam.map(x => {
-            const old = prior.get(x.team);
-            return x?.team && x.value != null && old != null && Number.isFinite(Number(x.value))
-              ? Math.max(0, Number(x.value) - old) : null;
-          });
-        };
-        const dualTeamSot5 = perTeamSotDelta(previous);
-        const dualTeamSot10 = perTeamSotDelta(previous10);
-        const dualTeamSotPressure = current.sotByTeam.length >= 2 &&
-          current.sotByTeam.slice(0, 2).every(x => x.value != null && Number.isFinite(Number(x.value)) && Number(x.value) >= 4) &&
-          dualTeamSot5.length >= 2 && dualTeamSot5.slice(0, 2).every(x => x != null && x >= 1) &&
-          dualTeamSot10.length >= 2 && dualTeamSot10.slice(0, 2).every(x => x != null && x >= 2);
         const perTeamMetricWindow = (currentRows, memoryBaseline, trend, metric, minAge, maxAge) => {
           let values = null;
           if (Array.isArray(currentRows) && Array.isArray(memoryBaseline) && currentRows.length >= 2) {
@@ -3270,17 +3253,17 @@ const server = http.createServer(async (req, res) => {
         // AI trigger: recent SOT threshold OR the two-team xG alternative:
         // one team with xG >= 3.00 and the other with xG >= 2.00. Missing xG is neutral.
         const xGQualifies = teamXGValues.length >= 2 &&
-          ((teamXGValues[0] != null && teamXGValues[0] >= 3.0 && teamXGValues[1] != null && teamXGValues[1] >= 2.0) ||
-           (teamXGValues[1] != null && teamXGValues[1] >= 3.0 && teamXGValues[0] != null && teamXGValues[0] >= 2.0));
+          ((teamXGValues[0] != null && teamXGValues[0] >= 3.5 && teamXGValues[1] != null && teamXGValues[1] >= 2.5) ||
+           (teamXGValues[1] != null && teamXGValues[1] >= 3.5 && teamXGValues[0] != null && teamXGValues[0] >= 2.5));
         const recentSotQualifies = onTarget >= 3 || onTarget10m >= 6;
         const corners = delta("corners");
         const attacks = delta("attacks"), dangerous = delta("dangerous");
-        // Reuse atLeastOneTeamXGQualified computed from the two team xG values above.
+        // Reuse the strict two-team xG qualification computed above.
         const xGDelta = xGQualifies && previous?.xG != null
           ? Math.max(0, Number(current.xG) - Number(previous.xG)) : null;
         const xGSupport = xGDelta == null ? 0 : Math.min(2, xGDelta * 2);
-        // Missing xG or xG below 2.50 is neutral; one team at 2.50+ adds support.
-        const xGTotalSupport = atLeastOneTeamXGQualified ? 2.5 : 0;
+        // Only the strict two-team xG threshold can add xG support.
+        const xGTotalSupport = bothTeamsXGQualified ? 2.5 : 0;
         // Match the reference pressure model: last-five-minute corners support the signal,
         // SOT and non-shot context remain the only eligible live evidence.
         const evidenceKinds = [onTarget, corners, attacks, dangerous].filter(value => value > 0).length;
@@ -3352,10 +3335,10 @@ const server = http.createServer(async (req, res) => {
         const firstHalfEightSotQualifies = firstHalfEightSotWindow &&
           current.onTarget != null && Number(current.onTarget) >= 8;
         const cumulativeSotWindow = isCumulativeSotMinute(aiMinute, statusForEligibility);
-        const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
-        const cumulativeSotQualifies = combined15SotQualifies;
+        const combined20SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 20;
+        const cumulativeSotQualifies = combined20SotQualifies;
         const secondHalfAiQualifies = eligibleMinute &&
-          (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure || manAdvantagePressure);
+          (recentSotQualifies || xGQualifies || cumulativeSotQualifies || manAdvantagePressure);
         const isAiGoal = scoreAvailable && (secondHalfAiQualifies || firstHalfEightSotQualifies);
         // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
@@ -3376,9 +3359,8 @@ const server = http.createServer(async (req, res) => {
           recentSotQualifies,
           firstHalfEightSotQualifies,
           xGQualifies,
-          combined15SotQualifies,
+          combined20SotQualifies,
           cumulativeSotQualifies,
-          dualTeamSotPressure,
           manAdvantagePressure,
           redCardsByTeam: current.redCardsByTeam,
           redCardCountsKnown,
@@ -3392,11 +3374,9 @@ const server = http.createServer(async (req, res) => {
           manAdvantageDanger10,
           dangerousAttacks5,
           dangerousAttacks10,
-          dualTeamSot5,
-          dualTeamSot10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !dualTeamSotPressure && !manAdvantagePressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !manAdvantagePressure ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -3518,8 +3498,7 @@ const server = http.createServer(async (req, res) => {
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : "",
             current.shotsOnTargetInsideBox != null ? current.shotsOnTargetInsideBox + " σουτ εντός εστίας από την περιοχή" : "",
             current.bigChances != null ? current.bigChances + " μεγάλες ευκαιρίες" : "",
-            totalOnTarget >= 20 ? "20+ συνολικά SOT" : "",
-            dualTeamSotPressure ? "DUAL TEAM SOT PRESSURE (2+/10′, 1+/5′, 4+ συνολικά ανά ομάδα)" : "",
+            cumulativeSotQualifies ? "20+ συνολικά SOT πριν από το 75′" : "",
             manAdvantagePressure ? "MAN ADVANTAGE PRESSURE (κόκκινη κάρτα + 4+ SOT, 2+/10′, 1+/5′, 10+/3+ επικίνδυνες επιθέσεις)" : "",
             dirtySheetSupport > 0 ? "Dirty Sheet +" + dirtySheetSupport.toFixed(1) : "",
             historicalOver.support > 0 ? "Ιστορικό Over " + supportingOverLine + " +" + Number(historicalOver.support).toFixed(1) : "",
@@ -3548,7 +3527,7 @@ const server = http.createServer(async (req, res) => {
             periodAtSignal: oddsPeriod, reason, outcome: "εκκρεμεί", betOutcome: "pending",
             evaluationRule: "end_of_relevant_half",
             ...(currentHomeScore != null && currentAwayScore != null ? { startScore: Number(currentHomeScore) + Number(currentAwayScore), startHomeScore: Number(currentHomeScore), startAwayScore: Number(currentAwayScore) } : {}),
-            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, dualTeamSotPressure, manAdvantagePressure, redCardTeam: redCardInfo?.team || null, advantagedTeam: redCardInfo?.advantagedTeam || null, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, sotPressure5, sotPressure10, dangerousAttacks5, dangerousAttacks10, dualTeamSot5, dualTeamSot10, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
+            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, manAdvantagePressure, redCardTeam: redCardInfo?.team || null, advantagedTeam: redCardInfo?.advantagedTeam || null, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, sotPressure5, sotPressure10, dangerousAttacks5, dangerousAttacks10, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
           }, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
           // Persist every protocol-qualified AI alert independently of push delivery.
           // Push subscriptions are optional; an empty subscriber list must not hide alerts in-app.
@@ -3600,9 +3579,8 @@ const server = http.createServer(async (req, res) => {
                   triggerIds: [
                     ...(recentSotQualifies ? ["recent_sot_pressure"] : []),
                     ...(xGQualifies ? ["xg_threshold"] : []),
-                    ...(cumulativeSotQualifies ? ["cumulative_15_sot"] : []),
+                    ...(cumulativeSotQualifies ? ["cumulative_20_sot"] : []),
                     ...(firstHalfEightSotQualifies ? ["first_half_8_sot"] : []),
-                    ...(dualTeamSotPressure ? ["dual_team_sot_pressure"] : []),
                     ...(manAdvantagePressure ? ["man_advantage_pressure"] : [])
                   ],
                   supportSignalIds: [
@@ -3610,7 +3588,7 @@ const server = http.createServer(async (req, res) => {
                        Array.isArray(dangerousAttacks10) && dangerousAttacks10.some(value => value != null && value >= 10)
                       ? ["dangerous_attacks_pressure"] : [])
                   ],
-                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, xGQualifies, recentSotQualifies, cumulativeSotQualifies, manAdvantagePressure, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, dangerousAttacks5, dangerousAttacks10, dualTeamSotPressure, dualTeamSot5, dualTeamSot10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, xGQualifies, recentSotQualifies, cumulativeSotQualifies, manAdvantagePressure, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, dangerousAttacks5, dangerousAttacks10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
