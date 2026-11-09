@@ -3353,8 +3353,8 @@ const server = http.createServer(async (req, res) => {
         const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
         const powerRankingAboveThreshold = powerRankingScore >= 59;
         if (!pushScanPowerRankingInitialized.has(id)) {
-          pushScanPowerRankingInitialized.add(id);
           let previousPowerRankingAlerts = 0;
+          let previousPowerRankingCountKnown = false;
           if (await ensureAlertHistoryDb()) {
             try {
               const previousPowerRankingResult = await analyticsPool.query(
@@ -3362,17 +3362,21 @@ const server = http.createServer(async (req, res) => {
                 [String(id)]
               );
               previousPowerRankingAlerts = Number(previousPowerRankingResult.rows[0]?.count || 0);
+              previousPowerRankingCountKnown = true;
             } catch (powerRankingCountError) {
               console.warn("Power Ranking prior alert count unavailable:", powerRankingCountError.message);
             }
           }
-          pushScanPowerRankingAlertCounts.set(id, previousPowerRankingAlerts);
-          // After a process restart, do not duplicate an already-active 59+ signal.
-          // The match must first be observed below 59 before another alert is armed.
-          if (previousPowerRankingAlerts > 0 && powerRankingAboveThreshold) pushScanPowerRankingAlerts.add(id);
+          if (previousPowerRankingCountKnown) {
+            pushScanPowerRankingInitialized.add(id);
+            pushScanPowerRankingAlertCounts.set(id, previousPowerRankingAlerts);
+            // After a process restart, do not duplicate an already-active 59+ signal.
+            // The match must first be observed below 59 before another alert is armed.
+            if (previousPowerRankingAlerts > 0 && powerRankingAboveThreshold) pushScanPowerRankingAlerts.add(id);
+          }
         }
         if (!powerRankingAboveThreshold) pushScanPowerRankingAlerts.delete(id);
-        const powerRankingCrossedUp = powerRankingAboveThreshold && scoreAvailable && powerRankingEligible && !pushScanPowerRankingAlerts.has(id);
+        const powerRankingCrossedUp = pushScanPowerRankingInitialized.has(id) && powerRankingAboveThreshold && scoreAvailable && powerRankingEligible && !pushScanPowerRankingAlerts.has(id);
         if (powerRankingCrossedUp) {
           const alertSequence = Number(pushScanPowerRankingAlertCounts.get(id) || 0) + 1;
           const alertId = "push:" + id + ":AI:power-ranking-59" + (alertSequence > 1 ? "-" + alertSequence : "");
