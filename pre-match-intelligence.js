@@ -22,7 +22,7 @@ function seasonBoundsForLeague(leagueCode, now = new Date()) {
 }
 
 function finiteRate(numerator, denominator) {
-  return Number.isFinite(Number(numerator)) && Number(denominator) > 0
+  return numerator != null && Number.isFinite(Number(numerator)) && Number(denominator) > 0
     ? Number((Number(numerator) / Number(denominator)).toFixed(4))
     : null;
 }
@@ -94,24 +94,28 @@ function buildPreMatchMatchupContext(homeProfile, awayProfile, homeName, awayNam
     season: homeProfile?.season || awayProfile?.season || null,
     home: {
       team: String(homeName || ""),
-      sample: Number(homeProfile?.matches || 0),
+      sample: homeOverall.sample,
+      seasonSample: Number(homeProfile?.matches || 0),
       homeSample: Number(homeAway?.matches || 0),
       goalsForAvg: homeOverall.goalsForAvg,
       goalsAgainstAvg: homeOverall.goalsAgainstAvg,
       cleanSheetRate: homeOverall.cleanSheetRate,
       failedToScoreRate: homeOverall.failedToScoreRate,
       overRates: homeOverall.overRates,
+      leagueOverRates: homeProfile?.leagueOverRates || {},
       metricSource: homeOverall.source
     },
     away: {
       team: String(awayName || ""),
-      sample: Number(awayProfile?.matches || 0),
+      sample: awayOverall.sample,
+      seasonSample: Number(awayProfile?.matches || 0),
       awaySample: Number(awayAway?.matches || 0),
       goalsForAvg: awayOverall.goalsForAvg,
       goalsAgainstAvg: awayOverall.goalsAgainstAvg,
       cleanSheetRate: awayOverall.cleanSheetRate,
       failedToScoreRate: awayOverall.failedToScoreRate,
       overRates: awayOverall.overRates,
+      leagueOverRates: awayProfile?.leagueOverRates || {},
       metricSource: awayOverall.source
     },
     expectedGoals: {
