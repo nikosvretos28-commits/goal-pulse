@@ -1418,9 +1418,11 @@ async function schedulePreMatchSeasonCollection(events) {
 }
 
 function getAthensDateKey(now = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit"
-  }).format(now).replace(/-/g, "");
+  }).formatToParts(now);
+  const part = type => parts.find(item => item.type === type)?.value || "";
+  return part("year") + part("month") + part("day");
 }
 let preMatchDailyScanDate = "";
 let preMatchDailyRetryAt = 0;
@@ -3624,6 +3626,8 @@ const server = http.createServer(async (req, res) => {
           try { preMatchSeason = await getPreMatchSeasonSupport(match.leagueCode, match.home, match.away, supportingOverLine); }
           catch (error) { console.warn("Optional pre-match season support failed; AI triggers continue independently:", error.message); }
         }
+        // Historical context can adjust evidence ranking only; independent SOT/xG
+        // trigger qualification below remains unchanged and history cannot create/veto alerts.
         const matchupEvidence = scorePreMatchMatchupContext(preMatchSeason.context);
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) +
           Number(preMatchSeason.support || 0) + Number(matchupEvidence.score || 0) + liveConversionSupport;
