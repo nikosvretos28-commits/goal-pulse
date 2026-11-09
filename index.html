@@ -4318,7 +4318,7 @@ async function reconcileHistoricalAlertSettlements(){
     alert.betMatchFinalScore=String(hs)+'-'+String(as);alert.betScoreScope=scoreScope;
     alert.betSettlementProvider=String(event.__goalMatrixSettlementProvider||'ESPN scoreboard');
     alert.betSettlementFixtureId=String(event.__goalMatrixFixtureId||event.id);
-    alert.betSettlementFixtureDate=goalMatrixHistoryDateKey(alert.createdAt);
+    alert.betSettlementFixtureDate=new Date(Number(alert.createdAt)).toISOString().slice(0,10);
     alert.betSettlementLeague=competition?.name||alert.league||null;
     alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
     alert.evaluationRule='historical_period_final_score';alert.evaluatedAt=Date.now();alert.recordUpdatedAt=alert.evaluatedAt;changed.add(alert);
