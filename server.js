@@ -5,7 +5,7 @@ const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, readExactSotStat } = require("./sot-integrity");
-const { isAiMinuteEligible, isCumulativeSotMinute } = require("./ai-minute-window");
+const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfCumulativeSotMinute } = require("./ai-minute-window");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -3352,7 +3352,15 @@ const server = http.createServer(async (req, res) => {
         const cumulativeSotWindow = isCumulativeSotMinute(aiMinute, statusForEligibility);
         const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
         const cumulativeSotQualifies = combined15SotQualifies;
-        const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure || manAdvantagePressure);
+        // Independent first-half AI trigger: 8+ combined match SOT before minute 35.
+        // The first-half window is evaluated separately so the existing second-half
+        // trigger window and its criteria remain unchanged.
+        const firstHalf8SotWindow = isFirstHalfCumulativeSotMinute(aiMinute, statusForEligibility);
+        const firstHalf8SotQualifies = firstHalf8SotWindow && current.onTarget != null && Number(current.onTarget) >= 8;
+        const isAiGoal = scoreAvailable && (
+          (eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure || manAdvantagePressure)) ||
+          firstHalf8SotQualifies
+        );
         // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
@@ -3373,6 +3381,8 @@ const server = http.createServer(async (req, res) => {
           xGQualifies,
           combined15SotQualifies,
           cumulativeSotQualifies,
+          firstHalf8SotWindow,
+          firstHalf8SotQualifies,
           dualTeamSotPressure,
           manAdvantagePressure,
           redCardsByTeam: current.redCardsByTeam,
@@ -3391,7 +3401,7 @@ const server = http.createServer(async (req, res) => {
           dualTeamSot10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !dualTeamSotPressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute && !firstHalf8SotWindow ? "minute_outside_approved_ai_window" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !firstHalf8SotQualifies && !dualTeamSotPressure && !manAdvantagePressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -3401,12 +3411,13 @@ const server = http.createServer(async (req, res) => {
         else if (isAiGoal) levels.push("AI");
         for (const level of levels) {
           // Final fail-closed guard immediately before any AI push work.
-          // Do not rely only on the earlier candidate calculation: the exact displayed
-          // minute is checked again at dispatch so stale/mismatched clock fields cannot
-          // send an alert after the agreed window.
+          // Recheck the exact displayed minute: first-half alerts are allowed only
+          // through the independent 8+ SOT trigger before 35′; existing second-half
+          // alerts remain limited to 46′–88′.
           const dispatchMinute = parseLiveMinute(getMatchMinute(match));
           const dispatchMinuteAllowed = Number.isFinite(dispatchMinute) &&
-            ((dispatchMinute >= 1 && dispatchMinute <= 40) || (dispatchMinute >= 46 && dispatchMinute <= 88));
+            ((firstHalf8SotQualifies && dispatchMinute >= 1 && dispatchMinute < 35) ||
+             (dispatchMinute >= 46 && dispatchMinute <= 88));
           if (level === "AI" && !dispatchMinuteAllowed) {
             console.warn("[AI push blocked: minute outside protocol window]", JSON.stringify({
               eventId: String(match.eventId),
