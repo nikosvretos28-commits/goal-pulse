@@ -58,12 +58,12 @@ function calculatePowerRankingScore({ teams, trend } = {}) {
 function isPowerRankingMinuteEligible(minute, status = "") {
   if (!Number.isInteger(minute)) return false;
   const period = String(status || "").trim().toLowerCase();
-  if (/\\b(?:finished|full[\\s_-]*time|ended|complete|completed|ft|aet|ht|half[\\s_-]*time|halftime|interval)\\b/.test(period) ||
-      /ολοκληρώθηκε|τελικό\\s*σφύριγμα|λήξη\\s*αγώνα|ανάπαυλα/.test(period)) return false;
-  const explicitlyFirstHalf = /\\b(?:1h|1st[\\s_-]*half|first[\\s_-]*half|first_half)\\b/.test(period) ||
-    /1ο\\s*ημίχρονο|πρώτο\\s*ημίχρονο/.test(period);
-  const explicitlySecondHalf = /\\b(?:2h|2nd[\\s_-]*half|second[\\s_-]*half|second_half)\\b/.test(period) ||
-    /2ο\\s*ημίχρονο|δεύτερο\\s*ημίχρονο/.test(period);
+  if (/\b(?:finished|full[\s_-]*time|ended|complete|completed|ft|aet|ht|half[\s_-]*time|halftime|interval)\b/.test(period) ||
+      /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|ανάπαυλα/.test(period)) return false;
+  const explicitlyFirstHalf = /\b(?:1h|1st[\s_-]*half|first[\s_-]*half|first_half)\b/.test(period) ||
+    /1ο\s*ημίχρονο|πρώτο\s*ημίχρονο/.test(period);
+  const explicitlySecondHalf = /\b(?:2h|2nd[\s_-]*half|second[\s_-]*half|second_half)\b/.test(period) ||
+    /2ο\s*ημίχρονο|δεύτερο\s*ημίχρονο/.test(period);
   if (minute >= 1 && minute <= 35) return !explicitlySecondHalf;
   if (minute >= 46 && minute <= 88) return !explicitlyFirstHalf;
   return false;
