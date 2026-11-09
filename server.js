@@ -8,6 +8,7 @@ const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./so
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
 const { createCompetitionHistoryStore } = require("./competition-history-store");
+const { buildPreMatchMatchupContext, seasonBoundsForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 let Pool = null;
@@ -1074,17 +1075,7 @@ async function ensurePreMatchSeasonDb() {
   return preMatchSeasonDbInit;
 }
 function preMatchSeasonBounds(leagueCode, now = new Date()) {
-  const year = now.getUTCFullYear();
-  const calendarSeason = ["bra.1","arg.1","usa.1","mex.1","aus.1","bra.2","arg.2","arg.3"].includes(leagueCode);
-  if (calendarSeason) return {
-    seasonKey: String(year), start: String(year) + "0101", end: String(year) + "1231"
-  };
-  const startYear = now.getUTCMonth() >= 6 ? year : year - 1;
-  return {
-    seasonKey: String(startYear) + "/" + String(startYear + 1),
-    start: String(startYear) + "0801",
-    end: String(startYear + 1) + "0731"
-  };
+  return seasonBoundsForLeague(leagueCode, now);
 }
 function preMatchScoreValue(value) {
   if (value && typeof value === "object") value = value.value ?? value.displayValue;
@@ -1175,29 +1166,62 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
     }
     const aggregates = new Map();
     const leagueOverCounts = Object.fromEntries(PRE_MATCH_OVER_LINES.map(line => [line, 0]));
+    const emptyStats = () => ({
+      matches: 0, goalsFor: 0, goalsAgainst: 0, cleanSheets: 0, failedToScore: 0,
+      over: Object.fromEntries(PRE_MATCH_OVER_LINES.map(line => [line, 0]))
+    });
     const ensure = (id, name) => {
       const key = preMatchNormalizeTeam(name);
       if (!key) return null;
       if (!aggregates.has(key)) aggregates.set(key, {
-        teamId: String(id), teamName: String(name), matches: 0, goalsFor: 0, goalsAgainst: 0,
-        cleanSheets: 0, failedToScore: 0, homeMatches: 0, awayMatches: 0,
-        over: Object.fromEntries(PRE_MATCH_OVER_LINES.map(line => [line, 0]))
+        teamId: String(id), teamName: String(name), ...emptyStats(),
+        homeMatches: 0, awayMatches: 0,
+        homeAway: { home: emptyStats(), away: emptyStats() },
+        opponents: {}
       });
       return aggregates.get(key);
     };
+    const updateStats = (target, goalsFor, goalsAgainst) => {
+      target.matches++;
+      target.goalsFor += goalsFor;
+      target.goalsAgainst += goalsAgainst;
+      if (goalsAgainst === 0) target.cleanSheets++;
+      if (goalsFor === 0) target.failedToScore++;
+      for (const line of PRE_MATCH_OVER_LINES) if (goalsFor + goalsAgainst > Number(line)) target.over[line]++;
+    };
+    const updateOpponent = (target, opponentName, goalsFor, goalsAgainst) => {
+      const opponentKey = preMatchNormalizeTeam(opponentName);
+      if (!opponentKey) return;
+      if (!target.opponents[opponentKey]) target.opponents[opponentKey] = {
+        teamName: String(opponentName), ...emptyStats(), wins: 0, draws: 0, losses: 0
+      };
+      const item = target.opponents[opponentKey];
+      updateStats(item, goalsFor, goalsAgainst);
+      if (goalsFor > goalsAgainst) item.wins++;
+      else if (goalsFor === goalsAgainst) item.draws++;
+      else item.losses++;
+    };
+    const finalizeStats = stats => ({
+      ...stats,
+      goalsForAvg: stats.matches ? Number((stats.goalsFor / stats.matches).toFixed(3)) : null,
+      goalsAgainstAvg: stats.matches ? Number((stats.goalsAgainst / stats.matches).toFixed(3)) : null,
+      cleanSheetRate: stats.matches ? Number((stats.cleanSheets / stats.matches).toFixed(4)) : null,
+      failedToScoreRate: stats.matches ? Number((stats.failedToScore / stats.matches).toFixed(4)) : null,
+      overRates: Object.fromEntries(Object.entries(stats.over).map(([line, count]) =>
+        [line, stats.matches ? Number((count / stats.matches).toFixed(4)) : null]))
+    });
     for (const match of completed.values()) {
       const total = match.homeGoals + match.awayGoals;
       const h = ensure(match.homeId, match.home), a = ensure(match.awayId, match.away);
       if (!h || !a) continue;
-      h.matches++; h.homeMatches++; h.goalsFor += match.homeGoals; h.goalsAgainst += match.awayGoals;
-      a.matches++; a.awayMatches++; a.goalsFor += match.awayGoals; a.goalsAgainst += match.homeGoals;
-      if (match.awayGoals === 0) h.cleanSheets++;
-      if (match.homeGoals === 0) a.cleanSheets++;
-      if (match.homeGoals === 0) h.failedToScore++;
-      if (match.awayGoals === 0) a.failedToScore++;
-      for (const line of PRE_MATCH_OVER_LINES) {
-        if (total > Number(line)) { h.over[line]++; a.over[line]++; leagueOverCounts[line]++; }
-      }
+      updateStats(h, match.homeGoals, match.awayGoals);
+      updateStats(a, match.awayGoals, match.homeGoals);
+      h.homeMatches++; a.awayMatches++;
+      updateStats(h.homeAway.home, match.homeGoals, match.awayGoals);
+      updateStats(a.homeAway.away, match.awayGoals, match.homeGoals);
+      updateOpponent(h, match.away, match.homeGoals, match.awayGoals);
+      updateOpponent(a, match.home, match.awayGoals, match.homeGoals);
+      for (const line of PRE_MATCH_OVER_LINES) if (total > Number(line)) leagueOverCounts[line]++;
     }
     const leagueOverRates = Object.fromEntries(PRE_MATCH_OVER_LINES.map(line =>
       [line, completed.size ? Number((leagueOverCounts[line] / completed.size).toFixed(4)) : null]
@@ -1207,14 +1231,15 @@ async function collectPreMatchLeagueSeason(leagueCode, options = {}) {
     for (const [teamKey, value] of aggregates) {
       if (!value.matches) continue;
       const profile = {
-        ...value,
-        goalsForAvg: Number((value.goalsFor / value.matches).toFixed(3)),
-        goalsAgainstAvg: Number((value.goalsAgainst / value.matches).toFixed(3)),
-        cleanSheetRate: Number((value.cleanSheets / value.matches).toFixed(4)),
-        failedToScoreRate: Number((value.failedToScore / value.matches).toFixed(4)),
-        overRates: Object.fromEntries(Object.entries(value.over).map(([line, count]) =>
-          [line, Number((count / value.matches).toFixed(4))])),
+        ...finalizeStats(value),
+        homeAway: {
+          home: finalizeStats(value.homeAway.home),
+          away: finalizeStats(value.homeAway.away)
+        },
+        opponents: Object.fromEntries(Object.entries(value.opponents).map(([opponentKey, opponent]) =>
+          [opponentKey, finalizeStats(opponent)])),
         leagueOverRates,
+        profileVersion: 2,
         coverage: "provider-season-range",
         season: bounds.seasonKey,
         seasonSlug: expectedSeasonSlug || null,
@@ -1312,21 +1337,22 @@ async function getPreMatchSeasonProfile(leagueCode, teamName) {
 }
 async function getPreMatchSeasonSupport(leagueCode, homeName, awayName, targetLine) {
   const line = Number(targetLine);
-  const neutral = { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, season: null };
+  const neutral = { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, season: null, context: null };
   if (!Number.isFinite(line)) return neutral;
   const [home, away] = await Promise.all([
     getPreMatchSeasonProfile(leagueCode, homeName), getPreMatchSeasonProfile(leagueCode, awayName)
   ]);
+  const context = buildPreMatchMatchupContext(home, away, homeName, awayName);
   const rateFor = profile => profile?.overRates?.[String(line)] ?? null;
   const hr = rateFor(home), ar = rateFor(away);
-  const usable = [hr, ar].filter(value => Number.isFinite(Number(value)));
-  if (!usable.length) return neutral;
-  // Positive reinforcement only: no negative score, no veto, no independent qualification.
+  // Preserve the existing Over-only support score exactly. New metrics are
+  // captured as transparent context for shadow evaluation, not trigger gates.
   const support = (hr != null && hr >= 0.65 ? 0.5 : 0) + (ar != null && ar >= 0.65 ? 0.5 : 0);
   return {
     support, homeRate: hr, awayRate: ar,
     homeSample: Number(home?.matches || 0), awaySample: Number(away?.matches || 0),
-    season: home?.season || away?.season || null
+    season: home?.season || away?.season || null,
+    context: context && (home || away) ? context : null
   };
 }
 async function schedulePreMatchSeasonCollection(events) {
@@ -1345,7 +1371,13 @@ async function schedulePreMatchSeasonCollection(events) {
   const persisted = new Map();
   if (await ensurePreMatchSeasonDb()) {
     const states = await analyticsPool.query(
-      `SELECT league_code,season_key,status,last_success_at,retry_after
+`SELECT league_code,season_key,status,last_success_at,retry_after,
+              EXISTS (
+                SELECT 1 FROM pre_match_season_profiles p
+                 WHERE p.league_code=pre_match_collection_state.league_code
+                   AND p.season_key=pre_match_collection_state.season_key
+                   AND p.profile->>'profileVersion'='2'
+              ) AS profile_v2
          FROM pre_match_collection_state
         WHERE league_code = ANY($1::text[])`,
       [candidates.map(item => item.code)]
@@ -1363,10 +1395,11 @@ async function schedulePreMatchSeasonCollection(events) {
     const successAt = state?.last_success_at ? new Date(state.last_success_at).getTime() : 0;
     const retryAt = state?.retry_after ? new Date(state.retry_after).getTime() : 0;
     const memoryAt = preMatchSeasonCollectionAt.get(item.key) || 0;
-    const fresh = successAt > 0 && now - successAt < PRE_MATCH_PROFILE_TTL_MS;
+    const fresh = successAt > 0 && now - successAt < PRE_MATCH_PROFILE_TTL_MS && state?.profile_v2 === true;
     const coolingDown = retryAt > now;
+    const collecting = state?.status === "running";
     const memoryFresh = !state && memoryAt > 0 && now - memoryAt < PRE_MATCH_PROFILE_TTL_MS;
-    if (fresh || coolingDown || memoryFresh) { skipped++; continue; }
+    if (fresh || coolingDown || collecting || memoryFresh) { skipped++; continue; }
     due.push(item);
   }
   // Keep provider load bounded: two league jobs at a time, at most three month requests per job.
@@ -1382,6 +1415,71 @@ async function schedulePreMatchSeasonCollection(events) {
     results.push(...batch);
   }
   return { attempted: due.length, skipped, results };
+}
+
+function getAthensDateKey(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(now);
+  const part = type => parts.find(item => item.type === type)?.value || "";
+  return part("year") + part("month") + part("day");
+}
+let preMatchDailyScanDate = "";
+let preMatchDailyRetryAt = 0;
+let preMatchDailyScanRunning = false;
+async function runScheduledPreMatchCollection() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(new Date());
+  const hour = Number(parts.find(part => part.type === "hour")?.value);
+  if (!Number.isFinite(hour) || hour < 6) return { skipped: "before-daily-scan-time" };
+  const date = getAthensDateKey();
+  if (preMatchDailyScanRunning || preMatchScanState.status === "running" || preMatchDailyScanDate === date || Date.now() < preMatchDailyRetryAt) {
+    return { skipped: "already-running-or-run-or-retrying" };
+  }
+  preMatchDailyScanRunning = true;
+  preMatchScanState.status = "running";
+  preMatchScanState.startedAt = new Date().toISOString();
+  preMatchScanState.completedAt = null;
+  preMatchScanState.results = [];
+  preMatchScanState.error = null;
+  try {
+    const response = await fetch("http://127.0.0.1:" + PORT + "/api/scoreboard?date=" + date, {
+      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(90000)
+    });
+    if (!response.ok) throw new Error("Daily scoreboard unavailable: HTTP " + response.status);
+    const scoreboard = await response.json();
+    const events = (scoreboard.feeds || []).flatMap(feed =>
+      (feed.events || []).map(event => ({ ...event, __goalPulseLeagueCode: feed.code || "" }))
+    );
+    const result = await schedulePreMatchSeasonCollection(events);
+    preMatchDailyScanDate = date;
+    preMatchDailyRetryAt = 0;
+    preMatchScanState.status = "complete";
+    preMatchScanState.completedAt = new Date().toISOString();
+    preMatchScanState.results = result.results || [];
+    preMatchScanState.skipped = Number(result.skipped || 0);
+    preMatchScanState.error = result.attempted === 0 && result.skipped === 0
+      ? "No supported league fixtures were found in today's scoreboard."
+      : null;
+    console.log("[Pre-Match] scheduled daily scan completed:", JSON.stringify({
+      date, scheduledFixtures: events.length,
+      supportedLeagues: [...new Set(events.map(event => event.__goalPulseLeagueCode).filter(isPreMatchLeagueCode))].length,
+      attempted: result.attempted, skipped: result.skipped,
+      successful: result.results.filter(item => item.ok).length,
+      failed: result.results.filter(item => !item.ok).length
+    }));
+    return result;
+  } catch (error) {
+    preMatchDailyRetryAt = Date.now() + 15 * 60 * 1000;
+    preMatchScanState.status = "error";
+    preMatchScanState.completedAt = new Date().toISOString();
+    preMatchScanState.error = String(error.message || error).slice(0, 240);
+    console.warn("[Pre-Match] scheduled daily scan failed; will retry:", String(error.message || error).slice(0, 180));
+    throw error;
+  } finally {
+    preMatchDailyScanRunning = false;
+  }
 }
 
 async function pitchGet(apiPath) {
@@ -2415,7 +2513,7 @@ const server = http.createServer(async (req, res) => {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (preMatchScanState.status === "running") return send(res, 202, { ok: true, run: preMatchScanState });
     try {
-      const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const date = getAthensDateKey();
       const base = "http://127.0.0.1:" + PORT;
       const response = await fetch(base + "/api/scoreboard?date=" + date, { signal: AbortSignal.timeout(25000) });
       if (!response.ok) throw new Error("Scoreboard unavailable: " + response.status);
@@ -3528,7 +3626,11 @@ const server = http.createServer(async (req, res) => {
           try { preMatchSeason = await getPreMatchSeasonSupport(match.leagueCode, match.home, match.away, supportingOverLine); }
           catch (error) { console.warn("Optional pre-match season support failed; AI triggers continue independently:", error.message); }
         }
-        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
+        // Historical context can adjust evidence ranking only; independent SOT/xG
+        // trigger qualification below remains unchanged and history cannot create/veto alerts.
+        const matchupEvidence = scorePreMatchMatchupContext(preMatchSeason.context);
+        const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) +
+          Number(preMatchSeason.support || 0) + Number(matchupEvidence.score || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
         // Updated second-half AI protocol window: 46′–84′ for every second-half trigger.
@@ -3778,6 +3880,13 @@ const server = http.createServer(async (req, res) => {
             manAdvantagePressure ? "MAN ADVANTAGE PRESSURE (κόκκινη κάρτα + 4+ SOT, 2+/10′, 1+/5′, 10+/3+ επικίνδυνες επιθέσεις)" : "",
             dirtySheetSupport > 0 ? "Dirty Sheet +" + dirtySheetSupport.toFixed(1) : "",
             historicalOver.support > 0 ? "Ιστορικό Over " + supportingOverLine + " +" + Number(historicalOver.support).toFixed(1) : "",
+            preMatchSeason.context?.home?.goalsForAvg != null ? "Home GF/GA " + preMatchSeason.context.home.goalsForAvg.toFixed(2) + "/" + (preMatchSeason.context.home.goalsAgainstAvg == null ? "—" : preMatchSeason.context.home.goalsAgainstAvg.toFixed(2)) : "",
+            preMatchSeason.context?.away?.goalsForAvg != null ? "Away GF/GA " + preMatchSeason.context.away.goalsForAvg.toFixed(2) + "/" + (preMatchSeason.context.away.goalsAgainstAvg == null ? "—" : preMatchSeason.context.away.goalsAgainstAvg.toFixed(2)) : "",
+            preMatchSeason.context?.home?.cleanSheetRate != null ? "Home clean sheets " + Math.round(preMatchSeason.context.home.cleanSheetRate * 100) + "%" : "",
+            preMatchSeason.context?.away?.cleanSheetRate != null ? "Away clean sheets " + Math.round(preMatchSeason.context.away.cleanSheetRate * 100) + "%" : "",
+            preMatchSeason.context?.expectedGoals?.total != null ? "Season goal estimate " + preMatchSeason.context.expectedGoals.total.toFixed(2) + " (heuristic)" : "",
+            preMatchSeason.context?.headToHead?.available ? "H2H " + preMatchSeason.context.headToHead.sample + " αγώνες" : "",
+            ...matchupEvidence.reasons,
             liveConversionSupport > 0 ? "Αποτελεσματικότητα SOT +" + liveConversionSupport.toFixed(1) : ""
           ].filter(Boolean).join(" · ");
           // Store a price only when the exact active market quote was verified.
@@ -3803,7 +3912,7 @@ const server = http.createServer(async (req, res) => {
             periodAtSignal: oddsPeriod, reason, outcome: "εκκρεμεί", betOutcome: "pending",
             evaluationRule: "end_of_relevant_half",
             ...(currentHomeScore != null && currentAwayScore != null ? { startScore: Number(currentHomeScore) + Number(currentAwayScore), startHomeScore: Number(currentHomeScore), startAwayScore: Number(currentAwayScore) } : {}),
-            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, manAdvantagePressure, redCardTeam: redCardInfo?.team || null, advantagedTeam: redCardInfo?.advantagedTeam || null, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, sotPressure5, sotPressure10, dangerousAttacks5, dangerousAttacks10, corners, attacks, dangerous, ...(totalXG != null ? { xG: totalXG } : {}) }
+            statsAtSignal: { onTarget, onTarget10m, totalOnTarget, manAdvantagePressure, redCardTeam: redCardInfo?.team || null, advantagedTeam: redCardInfo?.advantagedTeam || null, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, sotPressure5, sotPressure10, dangerousAttacks5, dangerousAttacks10, corners, attacks, dangerous, preMatchHistory: preMatchSeason.context || null, ...(totalXG != null ? { xG: totalXG } : {}) }
           }, ["betOutcome", "outcome", "betSettlementLabel", "betFinalScore", "betSettledAt", "evaluatedAt", "evaluationRule"]);
           // Persist every protocol-qualified AI alert independently of push delivery.
           // Push subscriptions are optional; an empty subscriber list must not hide alerts in-app.
@@ -3859,7 +3968,7 @@ const server = http.createServer(async (req, res) => {
                        Array.isArray(dangerousAttacks10) && dangerousAttacks10.some(value => value != null && value >= 10)
                       ? ["dangerous_attacks_pressure"] : [])
                   ],
-                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, xGQualifies, recentSotQualifies, cumulativeSotQualifies, manAdvantagePressure, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, dangerousAttacks5, dangerousAttacks10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, supportingCriteriaScore, evidenceKinds, points }
+                  statsAtSignal: { onTarget, onTarget10m, totalOnTarget, xGQualifies, recentSotQualifies, cumulativeSotQualifies, manAdvantagePressure, manAdvantageSot5, manAdvantageSot10, manAdvantageDanger5, manAdvantageDanger10, dangerousAttacks5, dangerousAttacks10, teamShotProfiles, liveConversionSupport, ...(current.shotsOnTargetInsideBox != null ? { shotsOnTargetInsideBox: current.shotsOnTargetInsideBox } : {}), ...(current.bigChances != null ? { bigChances: current.bigChances } : {}), corners, attacks, dangerous, ...(totalXG != null && Number.isFinite(totalXG) ? { xG: totalXG } : {}), ...(xGDelta != null ? { xGDelta } : {}), dirtySheetSupport, dirtySheetHomeRate: dirtySheet.homeRate, dirtySheetAwayRate: dirtySheet.awayRate, dirtySheetSample: dirtySheet.sample, historicalOverLine: historicalOver.line, historicalOverSupport: historicalOver.support, historicalOverHomeRate: historicalOver.homeRate, historicalOverAwayRate: historicalOver.awayRate, historicalOverHomeSample: historicalOver.homeSample, historicalOverAwaySample: historicalOver.awaySample, preMatchHistory: preMatchSeason.context || null, preMatchHistoryScore: matchupEvidence.score, preMatchHistoryReasons: matchupEvidence.reasons, supportingCriteriaScore, evidenceKinds, points }
                 };
                 await analyticsPool.query(
                   "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING",
@@ -5470,6 +5579,13 @@ setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Goal Pulse listening on " + PORT);
+  // Daily full-coupon Pre-Match preparation at/after 06:00 Greece time.
+  // Per-league persisted freshness prevents duplicate season downloads.
+  const preMatchDailyTimer = setInterval(() => {
+    runScheduledPreMatchCollection().catch(() => {});
+  }, 60 * 1000);
+  preMatchDailyTimer.unref();
+  setTimeout(() => { runScheduledPreMatchCollection().catch(() => {}); }, 8000).unref?.();
   // Run a read-only audit against the same live database path and log the actual result.
   // This avoids changing the Postgres IP allowlist just to perform verification.
   setTimeout(async () => {
