@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
-const { validateRollingSot, readExactSotStat } = require("./sot-integrity");
+const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
@@ -59,6 +59,8 @@ const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || require("node:crypto").ra
 const POWER_GAMES_ADMIN_PIN = process.env.POWER_GAMES_ADMIN_PIN || "";
 const powerGamesAuthAttempts = new Map();
 const pushScanSnapshots = new Map();
+// SOT-based AI candidates require two stable, monotonic provider samples before dispatch.
+const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
 const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
@@ -3337,9 +3339,23 @@ const server = http.createServer(async (req, res) => {
         const cumulativeSotWindow = isCumulativeSotMinute(aiMinute, statusForEligibility);
         const combined20SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 20;
         const cumulativeSotQualifies = combined20SotQualifies;
+        // Every SOT-derived trigger must survive a second provider sample with
+        // non-decreasing per-team cumulative SOT. This is separate from xG,
+        // which remains an independent alternative trigger.
+        const sotSignalQualifies = recentSotQualifies || cumulativeSotQualifies ||
+          firstHalfEightSotQualifies || manAdvantagePressure;
+        const sotConfirmation = confirmSotSignal({
+          stateMap: pushScanSotConfirmations,
+          eventId: id,
+          now,
+          qualifies: sotSignalQualifies,
+          cumulativeByTeam: current.sotByTeam
+        });
+        const confirmedSotSignal = sotConfirmation.confirmed;
         const secondHalfAiQualifies = eligibleMinute &&
-          (recentSotQualifies || xGQualifies || cumulativeSotQualifies || manAdvantagePressure);
-        const isAiGoal = scoreAvailable && (secondHalfAiQualifies || firstHalfEightSotQualifies);
+          (confirmedSotSignal || xGQualifies);
+        const isAiGoal = scoreAvailable && (secondHalfAiQualifies ||
+          (firstHalfEightSotQualifies && confirmedSotSignal));
         // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
@@ -3357,6 +3373,10 @@ const server = http.createServer(async (req, res) => {
           xGHome: teamXGValues[0],
           xGAway: teamXGValues[1],
           recentSotQualifies,
+          sotSignalQualifies,
+          sotSignalConfirmed: confirmedSotSignal,
+          sotSignalConfirmationReason: sotConfirmation.reason,
+          sotProviderRegression: sotConfirmation.regression,
           firstHalfEightSotQualifies,
           xGQualifies,
           combined20SotQualifies,
@@ -3376,7 +3396,7 @@ const server = http.createServer(async (req, res) => {
           dangerousAttacks10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !manAdvantagePressure ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies && !confirmedSotSignal ? "awaiting_sot_confirmation" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !confirmedSotSignal && !xGQualifies && sotSignalQualifies ? sotConfirmation.reason : !confirmedSotSignal && !xGQualifies ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -3619,7 +3639,7 @@ const server = http.createServer(async (req, res) => {
       // Each map value is an array of snapshots; inspect the newest snapshot when pruning stale matches.
       for (const [id, snapshots] of pushScanSnapshots) {
         const latest = Array.isArray(snapshots) && snapshots.length ? snapshots[snapshots.length - 1] : null;
-        if (!latest || now - latest.at > 15 * 60 * 1000) { pushScanSnapshots.delete(id); pushScanRedCardSince.delete(id); }
+        if (!latest || now - latest.at > 15 * 60 * 1000) { pushScanSnapshots.delete(id); pushScanSotConfirmations.delete(id); pushScanRedCardSince.delete(id); }
       }
       const liveMatches = Number(metrics.totalLive || 0);
       const statsMatches = (metrics.matches || []).filter(match => match.statsAvailable).length;

@@ -48,3 +48,54 @@ test("exact SOT parser rejects qualified labels and total shots", () => {
   assert.equal(readExactSotStat(rows, "home"), null);
   assert.equal(readExactSotStat(rows, "away"), null);
 });
+
+const { confirmSotSignal } = require("./sot-integrity");
+test("does not confirm an SOT spike that the provider reverses on the next sample", () => {
+  const stateMap = new Map();
+  const first = confirmSotSignal({stateMap,eventId:"match-1",now:100000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]});
+  const corrected = confirmSotSignal({stateMap,eventId:"match-1",now:160000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:0}]});
+  assert.equal(first.confirmed,false);
+  assert.equal(first.reason,"awaiting_second_sot_sample");
+  assert.equal(corrected.confirmed,false);
+  assert.equal(corrected.regression,true);
+  assert.equal(corrected.reason,"provider_cumulative_sot_regression");
+});
+test("confirms a qualifying SOT signal only after a stable second sample", () => {
+  const stateMap = new Map();
+  const first = confirmSotSignal({stateMap,eventId:"match-2",now:100000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]});
+  const second = confirmSotSignal({stateMap,eventId:"match-2",now:160000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:7}]});
+  assert.equal(first.confirmed,false);
+  assert.equal(second.confirmed,true);
+  assert.equal(second.reason,"sot_signal_confirmed_by_second_sample");
+});
+test("rejects team-side decreases even when the combined SOT total is unchanged", () => {
+  const stateMap = new Map();
+  confirmSotSignal({stateMap,eventId:"match-3",now:100000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]});
+  const second = confirmSotSignal({stateMap,eventId:"match-3",now:160000,qualifies:true,cumulativeByTeam:[{team:"home",value:3},{team:"away",value:5}]});
+  assert.equal(second.confirmed,false);
+  assert.equal(second.regression,true);
+});
+test("does not confirm when either team's cumulative SOT is missing", () => {
+  const stateMap = new Map();
+  const result = confirmSotSignal({stateMap,eventId:"match-4",now:100000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:null}]});
+  assert.equal(result.confirmed,false);
+  assert.equal(result.reason,"complete_team_sot_unavailable");
+});
+test("a non-qualifying scan clears a pending SOT confirmation", () => {
+  const stateMap = new Map();
+  confirmSotSignal({stateMap,eventId:"match-5",now:100000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]});
+  const result = confirmSotSignal({stateMap,eventId:"match-5",now:160000,qualifies:false,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]});
+  assert.equal(result.confirmed,false);
+  assert.equal(result.reason,"sot_signal_not_qualifying");
+  assert.equal(stateMap.has("match-5"),false);
+});
+
+test("detects an 8-to-2 provider correction even after the trigger stops qualifying", () => {
+  const stateMap = new Map();
+  confirmSotSignal({stateMap,eventId:"match-6",now:100000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]});
+  const corrected = confirmSotSignal({stateMap,eventId:"match-6",now:160000,qualifies:false,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:0}]});
+  assert.equal(corrected.confirmed,false);
+  assert.equal(corrected.regression,true);
+  assert.equal(corrected.reason,"provider_cumulative_sot_regression");
+  assert.equal(stateMap.has("match-6"),false);
+});
