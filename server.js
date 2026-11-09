@@ -1941,7 +1941,7 @@ const server = http.createServer(async (req, res) => {
       const records = result.rows.map(row => {
         const p = row.payload || {};
         const rawMinute = p.minuteNumber !== null && p.minuteNumber !== undefined && String(p.minuteNumber).trim() !== ""
-          ? p.minuteNumber : String(p.minute || "").replace(/[^0-9]/g, "");
+          ? p.minuteNumber : String(p.minute || "").match(/[0-9]{1,3}/)?.[0];
         const minute = Number(rawMinute);
         const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : null;
         const stats = p.statsAtSignal || {};
