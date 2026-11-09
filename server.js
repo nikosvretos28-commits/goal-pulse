@@ -3745,7 +3745,7 @@ const server = http.createServer(async (req, res) => {
       const parsed = new Date(Date.UTC(year, month - 1, day));
       return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
     };
-    if (!isHistoryLeagueSupported(league, SCOREBOARD_LEAGUES)) return send(res, 400, { error: "Unsupported league", matches: [] });
+    if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
     if (!validDate(startRaw) || !validDate(endRaw)) return send(res, 400, { error: "start and end must be YYYYMMDD", matches: [] });
     const startDate = new Date(Date.UTC(Number(startRaw.slice(0,4)),Number(startRaw.slice(4,6))-1,Number(startRaw.slice(6,8))));
     const endDate = new Date(Date.UTC(Number(endRaw.slice(0,4)),Number(endRaw.slice(4,6))-1,Number(endRaw.slice(6,8))));
@@ -3812,7 +3812,7 @@ const server = http.createServer(async (req, res) => {
     const league = String(url.searchParams.get("league") || "");
     const seasonRaw = Number(url.searchParams.get("season") || new Date().getUTCFullYear());
     const season = Math.round(seasonRaw);
-    if (!SCOREBOARD_LEAGUES.includes(league)) return send(res, 400, { error: "Unsupported league", matches: [] });
+    if (!isHistoryLeagueSupported(league, SCOREBOARD_LEAGUES)) return send(res, 400, { error: "Unsupported league", matches: [] });
     if (!Number.isInteger(season) || season < 2000 || season > new Date().getUTCFullYear() + 1) return send(res, 400, { error: "Invalid season", matches: [] });
     const historyKey = "competition-history:" + league + ":" + season;
     try {
