@@ -2875,7 +2875,6 @@ const server = http.createServer(async (req, res) => {
                 updated_at = NOW()
               WHERE created_at < NOW() - INTERVAL '48 hours'
                 AND COALESCE(payload->>'level', 'AI') IN ('AI', 'VIP')
-                AND lower(trim(COALESCE(payload->>'outcome', ''))) IN ('', 'εκκρεμεί', 'pending', 'σε εκκρεμότητα', 'εκκρεμές')
                 AND lower(trim(COALESCE(payload->>'betOutcome', ''))) IN ('', 'pending', 'εκκρεμεί', 'σε εκκρεμότητα')
               RETURNING alert_id`
           );
