@@ -8,6 +8,7 @@ const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./so
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible } = require("./power-ranking-trigger");
+const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -63,7 +64,7 @@ const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || require("node:crypto").ra
 const POWER_GAMES_ADMIN_PIN = process.env.POWER_GAMES_ADMIN_PIN || "";
 const powerGamesAuthAttempts = new Map();
 const pushScanSnapshots = new Map();
-// SOT-based AI candidates require two stable, monotonic provider samples before dispatch.
+// Each SOT-based AI trigger keeps its own two-sample confirmation state.
 const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
 const historicalTeamResultCache = new Map();
@@ -2983,15 +2984,15 @@ const server = http.createServer(async (req, res) => {
       let checked = 0, sent = 0, candidates = 0, powerRankingAlerts = 0;
       let strongSignals = 0, firstHalfOddsChecks = 0, secondHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const aiSignalDiagnostics = [];
-      // Enforce a persistent maximum of four AI alerts per match per half.
-      // Seed counts from the alert history so restarts do not reset the limit.
+      // Enforce the existing maximum of four alerts separately for each AI trigger per match/half.
+      // A different trigger never consumes this trigger's quota; counts survive restarts.
       const alertCountsByMatchHalf = new Map();
       try {
         if (await ensureAlertHistoryDb()) {
           const countRows = await analyticsPool.query(
-            "SELECT event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END AS alert_half, COUNT(*)::int AS alert_count FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND COALESCE(payload->>'alertType','') <> 'power_ranking_signal' AND created_at > NOW() - INTERVAL '36 hours' GROUP BY event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END"
+            "SELECT event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END AS alert_half, trigger_ids.trigger_id, COUNT(*)::int AS alert_count FROM alert_history CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS trigger_ids(trigger_id) WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND COALESCE(payload->>'alertType','') <> 'power_ranking_signal' AND created_at > NOW() - INTERVAL '36 hours' GROUP BY event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END, trigger_ids.trigger_id"
           );
-          for (const row of countRows.rows) alertCountsByMatchHalf.set(String(row.event_id) + ":" + row.alert_half, Number(row.alert_count) || 0);
+          for (const row of countRows.rows) alertCountsByMatchHalf.set(String(row.event_id) + ":" + row.alert_half + ":" + String(row.trigger_id), Number(row.alert_count) || 0);
         }
       } catch (countError) {
         console.warn("AI per-half alert counts could not be loaded; in-memory cap remains active:", countError.message);
@@ -3416,23 +3417,42 @@ const server = http.createServer(async (req, res) => {
         // Every SOT-derived trigger must survive a second provider sample with
         // non-decreasing per-team cumulative SOT. This is separate from xG,
         // which remains an independent alternative trigger.
-        const sotSignalQualifies = recentSotQualifies || cumulativeSotQualifies ||
-          firstHalfEightSotQualifies || manAdvantagePressure;
-        const sotConfirmation = confirmSotSignal({
-          stateMap: pushScanSotConfirmations,
-          eventId: id,
-          now,
-          qualifies: sotSignalQualifies,
-          cumulativeByTeam: current.sotByTeam
+        // Confirm each SOT trigger against its own state. A sample qualifying one
+        // trigger can never confirm, reset, or suppress another trigger.
+        const sotTriggerConditions = [
+          ["recent_sot_pressure", recentSotQualifies && (eligibleMinute || firstHalfSotWindow)],
+          ["cumulative_20_sot", cumulativeSotQualifies],
+          ["first_half_8_sot", firstHalfEightSotQualifies],
+          ["man_advantage_pressure", eligibleMinute && manAdvantagePressure]
+        ];
+        const confirmedSotTriggerIds = [];
+        const sotConfirmationReasons = {};
+        for (const [triggerId, triggerQualifies] of sotTriggerConditions) {
+          const confirmation = confirmSotSignal({
+            stateMap: pushScanSotConfirmations,
+            eventId: sotTriggerConfirmationKey(id, triggerId),
+            now,
+            qualifies: Boolean(triggerQualifies),
+            cumulativeByTeam: current.sotByTeam
+          });
+          sotConfirmationReasons[triggerId] = confirmation.reason;
+          if (confirmation.confirmed) confirmedSotTriggerIds.push(triggerId);
+        }
+        const sotSignalQualifies = sotTriggerConditions.some(([, qualifies]) => qualifies);
+        const confirmedSotSignal = confirmedSotTriggerIds.length > 0;
+        const qualifiedAiTriggers = buildIndependentAiTriggers({
+          eligibleMinute,
+          firstHalfSotWindow,
+          recentSotQualifies,
+          cumulativeSotQualifies,
+          firstHalfEightSotQualifies,
+          manAdvantagePressure,
+          xGQualifies,
+          confirmedSotTriggerIds
         });
-        const confirmedSotSignal = sotConfirmation.confirmed;
-        const secondHalfAiQualifies = eligibleMinute &&
-          (confirmedSotSignal || xGQualifies);
-        // First-half rolling SOT and 8+ cumulative SOT are SOT-only paths.
-        // xG and second-half-only criteria must not leak into the first half.
-        const firstHalfSotAiQualifies = (firstHalfRecentSotQualifies || firstHalfEightSotQualifies) &&
-          confirmedSotSignal;
-        const isAiGoal = scoreAvailable && (secondHalfAiQualifies || firstHalfSotAiQualifies);
+        const secondHalfAiQualifies = eligibleMinute && qualifiedAiTriggers.some(trigger => trigger.id !== "first_half_8_sot");
+        const firstHalfSotAiQualifies = firstHalfSotWindow && qualifiedAiTriggers.some(trigger => trigger.id === "recent_sot_pressure" || trigger.id === "first_half_8_sot");
+        const isAiGoal = scoreAvailable && qualifiedAiTriggers.length > 0;
         // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || firstHalfSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
@@ -3452,7 +3472,7 @@ const server = http.createServer(async (req, res) => {
           recentSotQualifies,
           sotSignalQualifies,
           sotSignalConfirmed: confirmedSotSignal,
-          sotSignalConfirmationReason: sotConfirmation.reason,
+          sotSignalConfirmationReason: sotConfirmationReasons,
           sotProviderRegression: sotConfirmation.regression,
           firstHalfSotWindow,
           firstHalfRecentSotQualifies,
@@ -3475,15 +3495,15 @@ const server = http.createServer(async (req, res) => {
           dangerousAttacks10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : (firstHalfRecentSotQualifies || firstHalfEightSotQualifies) && !confirmedSotSignal ? "awaiting_sot_confirmation" : firstHalfRecentSotQualifies ? "qualified_first_half_recent_sot" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute && !firstHalfSotWindow ? "minute_outside_approved_ai_window" : !confirmedSotSignal && !xGQualifies && sotSignalQualifies ? sotConfirmation.reason : !confirmedSotSignal && !xGQualifies ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
+          qualifiedTriggerIds: qualifiedAiTriggers.map(trigger => trigger.id),
+          rejection: !scoreAvailable ? "score_missing" : qualifiedAiTriggers.length ? "qualified_independent_triggers" : sotSignalQualifies && !confirmedSotSignal ? "awaiting_independent_sot_confirmation" : !eligibleMinute && !firstHalfSotWindow ? "minute_outside_approved_ai_window" : "no_independent_trigger_qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
-        const levels = [];
+        const levels = qualifiedAiTriggers.map(trigger => ({ level: "AI", triggerId: trigger.id }));
         if (isAiGoal) strongSignals++;
-        // Send one alert only: VIP when the evidence is exceptionally strong, otherwise AI.
-        if (isVip) levels.push("VIP");
-        else if (isAiGoal) levels.push("AI");
-        for (const level of levels) {
+        // Dispatch each qualifying AI trigger independently; no trigger shares another's cap or cooldown.
+        for (const { level, triggerId } of levels) {
+          try {
           // Final fail-closed guard immediately before any AI push work.
           // Do not rely only on the earlier candidate calculation: the exact displayed
           // minute is checked again at dispatch so stale/mismatched clock fields cannot
@@ -3561,22 +3581,21 @@ const server = http.createServer(async (req, res) => {
             Number.isFinite(Number(verifiedOdds.line)) &&
             Math.abs(Number(verifiedOdds.line) - targetOverLine) <= 0.001;
           if (hasOddsQuote && !validOddsQuote) {
-            // Reject a supplied but invalid or mismatched quote. A missing quote does not
-            // suppress a protocol-qualified alert; the notification is explicitly labelled
-            // "χωρίς επιβεβαιωμένη απόδοση" and no odds are fabricated.
-            console.info("AI alert quote rejected: invalid or mismatched market", JSON.stringify({
-              eventId: id, match: (match.home || "") + " – " + (match.away || ""),
+            // Odds are display context, never a trigger gate. Discard only the bad quote;
+            // keep this independently qualified AI trigger eligible for dispatch.
+            console.info("AI alert quote discarded without suppressing trigger", JSON.stringify({
+              eventId: id, triggerId, match: (match.home || "") + " – " + (match.away || ""),
               period: oddsPeriod, targetLine: targetOverLine,
               verifiedPrice: verifiedOdds?.price ?? null,
               reason: "invalid_or_mismatched_market"
             }));
-            continue;
+            verifiedOdds = null;
           }
-          const cooldownKey = id + ":" + level;
+          const cooldownKey = id + ":" + level + ":" + triggerId;
           const alertHalf = oddsPeriod === "second_half" ? "second_half" : "first_half";
-          const perHalfCountKey = id + ":" + alertHalf;
+          const perHalfCountKey = id + ":" + alertHalf + ":" + triggerId;
           if ((alertCountsByMatchHalf.get(perHalfCountKey) || 0) >= 4) {
-            console.info("AI alert skipped: per-half limit reached", JSON.stringify({ eventId: id, half: alertHalf, limit: 4 }));
+            console.info("AI trigger alert skipped: its own per-half limit reached", JSON.stringify({ eventId: id, triggerId, half: alertHalf, limit: 4 }));
             continue;
           }
           const lastAlert = pushScanLastAlert.get(cooldownKey);
@@ -3589,6 +3608,7 @@ const server = http.createServer(async (req, res) => {
             if (onTargetSinceLast < 1 && cornersSinceLast < 2 && xGSinceLast < 0.2 && !oddsImproved) continue;
           }
           const reason = [
+            triggerId,
             onTarget ? onTarget + " νέα σουτ στην εστία στο 5λεπτο" : "",
             onTarget10m >= 6 ? onTarget10m + " σουτ στην εστία στα τελευταία 10′" : "",
             corners ? corners + " νέα κόρνερ" : "",
@@ -3616,9 +3636,9 @@ const server = http.createServer(async (req, res) => {
             : " (χωρίς επιβεβαιωμένη απόδοση)";
           const activatedSotRule = onTarget >= 3 ? "SOT 3+/5′" : onTarget10m >= 6 ? "SOT 6+/10′" : "SOT signal";
           const alertBody = minutePrefix + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + ", " + marketLabel + overLine + " · " + String(match.country || match.countryName || match.league || match.competition || "Live");
-          const volatileAlertId = "push:" + id + ":" + level + ":" + now;
+          const volatileAlertId = "push:" + id + ":" + level + ":" + triggerId + ":" + now;
           saveVolatileRecord(volatileAlertHistory, volatileAlertId, {
-            alertId: volatileAlertId, source: "server-push", eventId: id, level, createdAt: now,
+            alertId: volatileAlertId, source: "server-push", eventId: id, level, alertType: triggerId, triggerIds: [triggerId], createdAt: now,
             home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
             league: match.league || match.competition || "", country: match.country || match.countryName || null, minute: formatPushMinute(match),
             market: "Over " + overLine, odds: hasVerifiedOdds ? verifiedOdds.price : null,
@@ -3643,7 +3663,7 @@ const server = http.createServer(async (req, res) => {
             // This record is also the source of truth for later outcome evaluation.
             try {
               if (await ensureAlertHistoryDb()) {
-                const alertId = "push:" + id + ":" + level + ":" + now;
+                const alertId = "push:" + id + ":" + level + ":" + triggerId + ":" + now;
                 const scoreValue = value => {
                   const n = Number(value);
                   return value !== null && value !== undefined && value !== "" && Number.isFinite(n) ? n : null;
@@ -3671,17 +3691,12 @@ const server = http.createServer(async (req, res) => {
                   market: "Over " + overLine,
                   odds: hasVerifiedOdds ? verifiedOdds.price : null,
                   bookmaker: hasVerifiedOdds ? verifiedOdds.bookmaker : null,
-                  ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null, alertType: "goal_market_signal" }),
+                  alertType: triggerId,
+                  ...(hasVerifiedOdds ? { oddsVerifiedAt: new Date(now).toISOString() } : { oddsVerifiedAt: null }),
                   periodAtSignal: halfTime ? "halftime" : secondHalf ? "second_half" : "first_half",
                   reason, outcome: "εκκρεμεί", evaluationRule: "end_of_relevant_half",
                   ...(homeScore !== null && awayScore !== null ? { startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore } : {}),
-                  triggerIds: [
-                    ...(recentSotQualifies ? ["recent_sot_pressure"] : []),
-                    ...(xGQualifies ? ["xg_threshold"] : []),
-                    ...(cumulativeSotQualifies ? ["cumulative_20_sot"] : []),
-                    ...(firstHalfEightSotQualifies ? ["first_half_8_sot"] : []),
-                    ...(manAdvantagePressure ? ["man_advantage_pressure"] : [])
-                  ],
+                  triggerIds: [triggerId],
                   supportSignalIds: [
                     ...(Array.isArray(dangerousAttacks5) && dangerousAttacks5.some(value => value != null && value >= 3) ||
                        Array.isArray(dangerousAttacks10) && dangerousAttacks10.some(value => value != null && value >= 10)
@@ -3705,7 +3720,7 @@ const server = http.createServer(async (req, res) => {
             const pushResult = await sendPushToSubscribers({
               title: alertTitle,
               body: alertBody.slice(0, 240),
-              tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id,
+              tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id + "-" + triggerId,
               url: "/"
             });
             sent += Number(pushResult?.sent || 0);
@@ -3713,6 +3728,10 @@ const server = http.createServer(async (req, res) => {
             console.warn("AI alert push delivery failed; in-app alert remains saved:", pushError.message);
           }
           candidates++;
+          } catch (triggerDispatchError) {
+            console.error("Independent AI trigger dispatch failed:", JSON.stringify({ eventId: id, triggerId, error: String(triggerDispatchError.message || triggerDispatchError).slice(0, 180) }));
+            continue;
+          }
         }
       }
       // Each map value is an array of snapshots; inspect the newest snapshot when pruning stale matches.
