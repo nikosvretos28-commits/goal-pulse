@@ -2220,6 +2220,7 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
  <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
+ <button type="button" class="gp-section-button" data-gp-toggle="mieAlertLab">🔬 MIE ALERT LAB <span class="gp-button-count">ΕΛΕΓΧΟΣ</span></button>
  <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
@@ -2344,6 +2345,12 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
   <div id="highActivityAnalystPanel" aria-live="polite"><p>Φόρτωση ξεχωριστού ιστορικού…</p></div>
  </div>
  <p class="top-ai-alert-privacy">Ο αναλυτής δεν αλλάζει αυτόματα τα live πρωτόκολλα. Προτείνει δοκιμές μόνο όταν υπάρχει επαρκές πραγματικό δείγμα· δεν επινοεί ποσοστά ή αποτελέσματα.</p>
+</section>
+
+<section class="top-ai-alerts protocol-analyst-panel" id="mieAlertLab" hidden aria-labelledby="mieAlertLabTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="mieAlertLabTitle">🔬 MIE · ALERT PERFORMANCE ANALYZER</h2><p>Ιδιωτικός, read-only έλεγχος επαληθευμένων AI alerts των τελευταίων 180 ημερών.</p></div><button type="button" class="login" id="refreshMieAlertLab">↻ Ανανέωση</button></div>
+ <div id="mieAlertLabContent" aria-live="polite"><p>Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS με το προσωπικό PIN.</p></div>
+ <p class="top-ai-alert-privacy">Μόνο επαληθευμένα settlements. Δεν υπολογίζεται ROI χωρίς καταγεγραμμένο stake, ούτε Brier/Log Loss χωρίς αποθηκευμένη πιθανότητα κατά την έκδοση. Καμία αυτόματη αλλαγή πρωτοκόλλου.</p>
 </section>
 
 <section class="top-ai-alerts gp-power-panel" id="powerGames" hidden aria-labelledby="powerGamesTitle">
@@ -4992,6 +4999,63 @@ async function loadProtocolAnalyst(){
   root.innerHTML=dailyCard+triggerEvaluationCard+'<h3>📊 ΕΡΕΥΝΑ ΠΡΩΤΟΚΟΛΛΟΥ · 180 ΗΜΕΡΕΣ</h3><div class="protocol-analyst-summary"><div><small>ΠΡΑΓΜΑΤΙΚΑ SETTLED AI ALERTS</small><strong>'+escapeProtocolText(sample.settled||0)+'</strong></div><div><small>ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ</small><strong>'+(sample.successRate==null?'—':escapeProtocolText(sample.successRate)+'%')+'</strong></div><div><small>ΠΑΡΑΘΥΡΟ</small><strong>180 ημέρες</strong></div></div><h3>Προτάσεις βελτίωσης</h3>'+(recommendations.length?'<div class="protocol-analyst-recommendations">'+recommendations.map(item=>'<article class="protocol-analyst-recommendation"><strong>'+escapeProtocolText(item.title)+'</strong><p>'+escapeProtocolText(item.detail)+'</p></article>').join('')+'</div>':'<p>Δεν υπάρχουν ακόμη προτάσεις.</p>')+'<details><summary>Ανάλυση ανά απόδοση</summary>'+rows(report.byOdds||[])+'</details><details><summary>Ανάλυση ανά λεπτό αγώνα</summary>'+rows(report.byMinute||[])+'</details><details><summary>Ανάλυση ανά ημίχρονο</summary>'+rows(report.byPeriod||[])+'</details><details><summary>Ανάλυση ανά ένταση τελικών</summary>'+rows(report.byShots||[])+'</details><details><summary>Ανάλυση ανά σουτ στην εστία</summary>'+rows(report.byOnTarget||[])+'</details><details><summary>Ανάλυση ανά μεταβολή xG</summary>'+rows(report.byXG||[])+'</details><details><summary>Ιστορικό ομάδων που δέχονται γκολ (Dirty Sheet)</summary>'+rows(report.byDirtySheet||[])+'</details><p class="subtle">Ενημερώθηκε: '+escapeProtocolText(report.generatedAt?new Date(report.generatedAt).toLocaleString('el-GR'):'—')+' · Alerts χωρίς στατιστικά σήματος: '+escapeProtocolText(quality.alertsMissingSignalStats||0)+'.</p>';
  }catch(error){root.innerHTML='<p>Η ανάλυση δεν είναι διαθέσιμη αυτή τη στιγμή. '+escapeProtocolText(error.message||error)+'</p>';}
 }
+
+function mieOddsBand(odds){
+ if(odds==null||!Number.isFinite(Number(odds)))return 'missing';
+ const n=Number(odds);
+ return n<1.5?'1.01–1.49':n<1.8?'1.50–1.79':n<2.1?'1.80–2.09':n<2.5?'2.10–2.49':'2.50+';
+}
+function mieWilson(wins,total){
+ if(!total)return null;
+ const z=1.96,p=wins/total,den=1+z*z/total;
+ const center=(p+z*z/(2*total))/den;
+ const margin=z*Math.sqrt((p*(1-p)+z*z/(4*total))/total)/den;
+ return [Math.max(0,(center-margin)*100),Math.min(1,(center+margin))*100];
+}
+async function loadMieAlertPerformance(){
+ const root=document.getElementById('mieAlertLabContent');if(!root)return;
+ if(!privateAiAdminPin){root.innerHTML='<p>Η πρόσβαση είναι ιδιωτική. Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS με το προσωπικό PIN.</p>';return;}
+ root.innerHTML='<p>Ανάκτηση επαληθευμένων alerts από το ιστορικό…</p>';
+ try{
+  const response=await fetch(ANALYTICS_API+'/api/protocol-analyst/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin}),cache:'no-store',signal:AbortSignal.timeout(20000)});
+  const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));
+  const records=Array.isArray(data.records)?data.records:[];
+  const render=()=>{
+   const windowValue=document.getElementById('mieMinuteWindow')?.value||'75-88';
+   const oddsValue=document.getElementById('mieOddsFilter')?.value||'all';
+   const filtered=records.filter(row=>{
+    if(windowValue==='75-88'&&(row.minute<75||row.minute>88))return false;
+    if(windowValue==='60-74'&&(row.minute<60||row.minute>74))return false;
+    if(oddsValue!=='all'&&mieOddsBand(row.odds)!==oddsValue)return false;
+    return true;
+   });
+   const wins=filtered.filter(row=>row.outcome==='won').length,losses=filtered.length-wins,rate=filtered.length?wins/filtered.length*100:null,ci=mieWilson(wins,filtered.length);
+   const buckets=['1.01–1.49','1.50–1.79','1.80–2.09','2.10–2.49','2.50+','missing'];
+   const bucketRows=buckets.map(label=>{
+    const group=filtered.filter(row=>mieOddsBand(row.odds)===label),w=group.filter(row=>row.outcome==='won').length,interval=mieWilson(w,group.length);
+    return {label,n:group.length,w,l:group.length-w,rate:group.length?(w/group.length*100):null,ci:interval};
+   });
+   const stat=(label,value)=>'<div class="protocol-analyst-stat"><small>'+label+'</small><span>'+value+'</span></div>';
+   const bucketHtml=bucketRows.map(item=>'<div class="protocol-analyst-stat"><strong>'+item.label+'</strong><span>'+(item.rate==null?'—':item.rate.toFixed(1)+'%')+'</span><small>'+item.n+' alerts · '+item.w+' νίκες / '+item.l+' ήττες'+(item.ci?' · 95% CI '+item.ci[0].toFixed(1)+'–'+item.ci[1].toFixed(1)+'%':'')+'</small></div>').join('');
+   const tableRows=filtered.map(row=>{
+    const teams=(row.teams||[]).filter(Boolean).map(escapeProtocolText);
+    const match=teams.length?teams.join(' – '):'Άγνωστος αγώνας';
+    const trigger=(row.triggerIds||[]).map(escapeProtocolText).join(', ')||'Δεν καταγράφηκε';
+    const stats=row.statsAtSignal||{};
+    const sot=stats.onTarget==null?'—':escapeProtocolText(stats.onTarget);
+    const sot10=stats.onTarget10m==null?'—':escapeProtocolText(stats.onTarget10m);
+    const xg=stats.xGDelta==null?'—':escapeProtocolText(stats.xGDelta);
+    return '<tr><td>'+escapeProtocolText(new Date(row.createdAt).toLocaleString('el-GR'))+'</td><td>'+match+'<small>'+escapeProtocolText(row.league||'')+'</small></td><td>'+escapeProtocolText(row.minute)+"′</td><td>"+(row.odds==null?'—':Number(row.odds).toFixed(2))+'</td><td>'+trigger+'</td><td>'+escapeProtocolText(row.startScore||'—')+' / '+escapeProtocolText(row.finalScore||'—')+'</td><td>'+sot+' / '+sot10+' / '+xg+'</td><td><strong>'+ (row.outcome==='won'?'ΝΙΚΗ':'ΗΤΤΑ') +'</strong></td></tr>';
+   }).join('');
+   root.innerHTML='<div class="notification-optin-row" style="margin:12px 0"><label for="mieMinuteWindow">Χρονικό παράθυρο</label><select id="mieMinuteWindow"><option value="75-88" '+(windowValue==='75-88'?'selected':'')+'>75′–88′</option><option value="60-74" '+(windowValue==='60-74'?'selected':'')+'>60′–74′</option><option value="46-88" '+(windowValue==='46-88'?'selected':'')+'>46′–88′</option></select><label for="mieOddsFilter">Απόδοση</label><select id="mieOddsFilter"><option value="all" '+(oddsValue==='all'?'selected':'')+'>Όλες</option>'+buckets.map(x=>'<option value="'+x+'" '+(oddsValue===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="protocol-analyst-summary">'+stat('ΕΠΑΛΗΘΕΥΜΕΝΑ ALERTS',filtered.length)+stat('ΝΙΚΕΣ / ΗΤΤΕΣ',wins+' / '+losses)+stat('ΠΟΣΟΣΤΟ ΕΠΙΤΥΧΙΑΣ',rate==null?'—':rate.toFixed(1)+'%')+stat('95% ΔΙΑΣΤΗΜΑ ΕΜΠΙΣΤΟΣΥΝΗΣ',ci?ci[0].toFixed(1)+'–'+ci[1].toFixed(1)+'%':'—')+'</div><h3>ΑΝΑΛΥΣΗ ΑΝΑ ΑΠΟΔΟΣΗ</h3><div class="protocol-analyst-grid">'+bucketHtml+'</div><h3>ΑΝΑΛΥΤΙΚΟ ΙΣΤΟΡΙΚΟ ALERTS · '+filtered.length+'</h3><div style="overflow-x:auto"><table class="data-table" style="width:100%;min-width:920px"><thead><tr><th>ΗΜΕΡΟΜΗΝΙΑ</th><th>ΑΓΩΝΑΣ / ΔΙΟΡΓΑΝΩΣΗ</th><th>ΛΕΠΤΟ</th><th>ODDS</th><th>TRIGGER IDS</th><th>ΣΚΟΡ ΕΚΚΙΝΗΣΗΣ / ΤΕΛΙΚΟ</th><th>SOT / SOT 10′ / ΔxG</th><th>ΑΠΟΤΕΛΕΣΜΑ</th></tr></thead><tbody>'+(tableRows||'<tr><td colspan="8">Δεν βρέθηκαν alerts με αυτά τα φίλτρα.</td></tr>')+'</tbody></table></div><p class="subtle">Βάση: '+records.length+' επαληθευμένα AI alerts 2ου ημιχρόνου (46′–88′) από τις τελευταίες 180 ημέρες. Το 95% CI είναι Wilson. Οι ομάδες αποδόσεων έχουν προκαθοριστεί και οι μικρές ομάδες εμφανίζονται με το πραγματικό n. Η απόδοση 75′–88′ μπορεί να συγκριθεί απευθείας με το αρχικό δείγμα των 31 μόνο εφόσον το ίδιο φίλτρο και τα ίδια κριτήρια διακανονισμού αναπαράγουν n=31. Δεν υπάρχει υπολογισμός ROI ή calibration χωρίς stake / αποθηκευμένες πιθανότητες.</p>';
+   root.querySelector('#mieMinuteWindow')?.addEventListener('change',render);
+   root.querySelector('#mieOddsFilter')?.addEventListener('change',render);
+  };
+  render();
+ }catch(error){root.innerHTML='<p>Ο αναλυτής δεν μπόρεσε να φορτώσει τα δεδομένα. '+escapeProtocolText(error.message||error)+'</p>';}
+}
+document.getElementById('refreshMieAlertLab')?.addEventListener('click',loadMieAlertPerformance);
+
 document.getElementById('refreshProtocolAnalyst')?.addEventListener('click',loadProtocolAnalyst);
 loadProtocolAnalyst();
 setInterval(loadProtocolAnalyst,60*60*1000);
@@ -5056,6 +5120,7 @@ loadHighActivityHistory();
    const count=button.querySelector('.gp-button-count');if(count&&['trends','topTrends','matrixAnalytics'].includes(key))count.textContent=open?'ΚΛΕΙΣΙΜΟ':'ΑΝΟΙΓΜΑ';
    if(open){
     panel.scrollIntoView({behavior:'smooth',block:'start'});
+    if(key==='mieAlertLab'){void loadMieAlertPerformance();}
     if(key==='matrixAnalytics'){
      void loadHighActivityHistory().then(()=>reconcileHistoricalHighActivityObservations()).then(()=>{renderMatrixAnalytics();});
      void loadPersistentAlertHistory().then(()=>reconcileHistoricalAlertSettlements()).then(()=>{renderMatrixAnalytics();});
