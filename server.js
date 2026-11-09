@@ -3772,6 +3772,7 @@ const server = http.createServer(async (req, res) => {
         const latest = Array.isArray(snapshots) && snapshots.length ? snapshots[snapshots.length - 1] : null;
         if (!latest || now - latest.at > 15 * 60 * 1000) {
           pushScanSnapshots.delete(id);
+          pushScanSotConfirmations.delete(String(id));
           for (const confirmationKey of pushScanSotConfirmations.keys()) {
             if (confirmationKey.startsWith(String(id) + "::")) pushScanSotConfirmations.delete(confirmationKey);
           }
