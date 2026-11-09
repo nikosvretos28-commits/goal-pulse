@@ -6,6 +6,7 @@ const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
+const { createLimiter, fetchCompetitionHistoryWindow } = require("./competition-history");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -41,6 +42,8 @@ function extractFixtureArray(body) {
   }
   return [];
 }
+
+const competitionHistoryLimiter = createLimiter(4);
 
 const ESPN_HEADERS = {
   "Accept": "application/json, text/plain, */*",
@@ -3864,21 +3867,15 @@ const server = http.createServer(async (req, res) => {
         const range = compactDate(window.start) + "-" + compactDate(window.end);
         const endpoint = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range;
         const fallbackEndpoint = "https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range;
-        let response = await fetch(endpoint, {
+        // Bound concurrent history requests across all leagues and retry the
+        // alternate ESPN hostname even when the primary request times out or
+        // fails at the network layer.
+        return competitionHistoryLimiter(() => fetchCompetitionHistoryWindow({
+          endpoint,
+          fallbackEndpoint,
           headers: ESPN_HEADERS,
-          signal: AbortSignal.timeout(15000)
-        });
-        // ESPN sometimes blocks or throttles one hostname from a hosting region.
-        // Retry the same bounded month on its equivalent web API hostname.
-        if (response.status === 403 || response.status === 429 || response.status >= 500) {
-          response = await fetch(fallbackEndpoint, {
-            headers: ESPN_HEADERS,
-            signal: AbortSignal.timeout(15000)
-          });
-        }
-        if (!response.ok) throw new Error("Competition history provider unavailable (HTTP " + response.status + ")");
-        const body = await response.json();
-        return Array.isArray(body.events) ? body.events : [];
+          timeoutMs: 15000
+        }));
       }));
       const successfulWindows = windowResults.filter(result => result.status === "fulfilled");
       if (!successfulWindows.length) throw new Error("No competition history windows available");
@@ -3902,7 +3899,7 @@ const server = http.createServer(async (req, res) => {
           away: { name: away.team && (away.team.displayName || away.team.name) || "Away", score: Number.isFinite(as) ? as : null }
         };
       }).filter(match => match.state === "post" && match.home.score !== null && match.away.score !== null && match.home.name !== "Home" && match.away.name !== "Away");
-      const result = { league, season, seasonStart: start.toISOString().slice(0,10), seasonEnd: end.toISOString().slice(0,10), matches, fetchedAt: new Date().toISOString() };
+      const result = { league, season, seasonStart: start.toISOString().slice(0,10), seasonEnd: end.toISOString().slice(0,10), matches, fetchedAt: new Date().toISOString(), partial: successfulWindows.length < windows.length, successfulWindows: successfulWindows.length, totalWindows: windows.length };
       cache.set(historyKey, { at: Date.now(), body: result });
       return send(res, 200, result);
     } catch (error) {
@@ -3918,6 +3915,7 @@ const server = http.createServer(async (req, res) => {
           staleSince: new Date(lastKnownHistory.at).toISOString()
         });
       }
+      console.error("[GoalMatrix competition history] ESPN season fetch failed:", league, season, error.message || "unknown provider error");
       return send(res, 502, { error: "Competition season request failed", matches: [] });
     }
   }
