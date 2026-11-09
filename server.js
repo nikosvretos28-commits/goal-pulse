@@ -3973,6 +3973,9 @@ const server = http.createServer(async (req, res) => {
           if (matches.length) {
             const result = { league, season, seasonStart: "", seasonEnd: "", matches, fetchedAt: new Date().toISOString(), source: "PitchAPI" };
             cache.set(historyKey, { at: Date.now(), body: result });
+            await competitionHistoryStore.save(league, season, result).catch(storeError => {
+              console.warn("[GoalMatrix competition history] persistent cache write failed:", league, season, storeError.message || storeError);
+            });
             return send(res, 200, result);
           }
         }
