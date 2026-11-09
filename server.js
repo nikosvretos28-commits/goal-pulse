@@ -3372,7 +3372,7 @@ const server = http.createServer(async (req, res) => {
           if (previousPowerRankingAlerts > 0 && powerRankingAboveThreshold) pushScanPowerRankingAlerts.add(id);
         }
         if (!powerRankingAboveThreshold) pushScanPowerRankingAlerts.delete(id);
-        const powerRankingCrossedUp = powerRankingAboveThreshold && scoreAvailable && !pushScanPowerRankingAlerts.has(id);
+        const powerRankingCrossedUp = powerRankingAboveThreshold && scoreAvailable && powerRankingEligible && !pushScanPowerRankingAlerts.has(id);
         if (powerRankingCrossedUp) {
           pushScanPowerRankingAlerts.add(id);
           if (powerRankingEligible) {
