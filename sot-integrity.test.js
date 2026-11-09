@@ -89,3 +89,13 @@ test("a non-qualifying scan clears a pending SOT confirmation", () => {
   assert.equal(result.reason,"sot_signal_not_qualifying");
   assert.equal(stateMap.has("match-5"),false);
 });
+
+test("detects an 8-to-2 provider correction even after the trigger stops qualifying", () => {
+  const stateMap = new Map();
+  confirmSotSignal({stateMap,eventId:"match-6",now:100000,qualifies:true,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:6}]});
+  const corrected = confirmSotSignal({stateMap,eventId:"match-6",now:160000,qualifies:false,cumulativeByTeam:[{team:"home",value:2},{team:"away",value:0}]});
+  assert.equal(corrected.confirmed,false);
+  assert.equal(corrected.regression,true);
+  assert.equal(corrected.reason,"provider_cumulative_sot_regression");
+  assert.equal(stateMap.has("match-6"),false);
+});
