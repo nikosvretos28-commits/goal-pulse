@@ -3396,7 +3396,7 @@ const server = http.createServer(async (req, res) => {
           dangerousAttacks10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !manAdvantagePressure ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies && !confirmedSotSignal ? "awaiting_sot_confirmation" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !confirmedSotSignal && !xGQualifies && sotSignalQualifies ? sotConfirmation.reason : !confirmedSotSignal && !xGQualifies ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
