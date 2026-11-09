@@ -3383,19 +3383,27 @@ const server = http.createServer(async (req, res) => {
         // Historical Dirty Sheet = percentage of recent completed matches in which a team conceded at least one goal.
         // Only fetch history for live-pressure candidates; unavailable history contributes zero, not invented data.
         const livePressureCandidate = scoreAvailable && ((recentGoalEvidence && basePoints + liveConversionSupport >= 5.5) || (sustainedGoalEvidence && baseSustainedPoints + liveConversionSupport >= 8));
-        const dirtySheet = livePressureCandidate ? await getDirtySheetSupport(match.leagueCode, match.home, match.away) : { support: 0, homeRate: null, awayRate: null, sample: 0 };
+        let dirtySheet = { support: 0, homeRate: null, awayRate: null, sample: 0 };
+        if (livePressureCandidate) {
+          try { dirtySheet = await getDirtySheetSupport(match.leagueCode, match.home, match.away); }
+          catch (error) { console.warn("Optional Dirty Sheet support failed; AI triggers continue independently:", error.message); }
+        }
         const dirtySheetSupport = Number(dirtySheet.support || 0);
         // Evaluate the exact Over line implied by the live score; one team's recent
         // league Over record can add support, but never blocks or triggers an alert.
         const liveGoalsForLine = Number(match.homeScore) + Number(match.awayScore);
         const supportingOverLine = Number.isFinite(liveGoalsForLine) ? Number((liveGoalsForLine + 0.5).toFixed(1)) : null;
-        const historicalOver = livePressureCandidate && supportingOverLine != null
-          ? await getHistoricalOverSupport(match.leagueCode, match.home, match.away, supportingOverLine)
-          : { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: supportingOverLine };
+        let historicalOver = { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, line: supportingOverLine };
+        if (livePressureCandidate && supportingOverLine != null) {
+          try { historicalOver = await getHistoricalOverSupport(match.leagueCode, match.home, match.away, supportingOverLine); }
+          catch (error) { console.warn("Optional historical Over support failed; AI triggers continue independently:", error.message); }
+        }
         // Historical and conversion signals remain supporting context only.
-        const preMatchSeason = livePressureCandidate && supportingOverLine != null
-          ? await getPreMatchSeasonSupport(match.leagueCode, match.home, match.away, supportingOverLine)
-          : { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, season: null };
+        let preMatchSeason = { support: 0, homeRate: null, awayRate: null, homeSample: 0, awaySample: 0, season: null };
+        if (livePressureCandidate && supportingOverLine != null) {
+          try { preMatchSeason = await getPreMatchSeasonSupport(match.leagueCode, match.home, match.away, supportingOverLine); }
+          catch (error) { console.warn("Optional pre-match season support failed; AI triggers continue independently:", error.message); }
+        }
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
@@ -3429,16 +3437,22 @@ const server = http.createServer(async (req, res) => {
         const sotConfirmationReasons = {};
         const sotConfirmationRegressions = {};
         for (const [triggerId, triggerQualifies] of sotTriggerConditions) {
-          const confirmation = confirmSotSignal({
-            stateMap: pushScanSotConfirmations,
-            eventId: sotTriggerConfirmationKey(id, triggerId),
-            now,
-            qualifies: Boolean(triggerQualifies),
-            cumulativeByTeam: current.sotByTeam
-          });
-          sotConfirmationReasons[triggerId] = confirmation.reason;
-          sotConfirmationRegressions[triggerId] = confirmation.regression;
-          if (confirmation.confirmed) confirmedSotTriggerIds.push(triggerId);
+          try {
+            const confirmation = confirmSotSignal({
+              stateMap: pushScanSotConfirmations,
+              eventId: sotTriggerConfirmationKey(id, triggerId),
+              now,
+              qualifies: Boolean(triggerQualifies),
+              cumulativeByTeam: current.sotByTeam
+            });
+            sotConfirmationReasons[triggerId] = confirmation.reason;
+            sotConfirmationRegressions[triggerId] = confirmation.regression;
+            if (confirmation.confirmed) confirmedSotTriggerIds.push(triggerId);
+          } catch (error) {
+            sotConfirmationReasons[triggerId] = "trigger_confirmation_error";
+            sotConfirmationRegressions[triggerId] = false;
+            console.error("SOT confirmation failed for one trigger only:", JSON.stringify({ eventId: id, triggerId, error: String(error.message || error).slice(0, 160) }));
+          }
         }
         const sotSignalQualifies = sotTriggerConditions.some(([, qualifies]) => qualifies);
         const confirmedSotSignal = confirmedSotTriggerIds.length > 0;
