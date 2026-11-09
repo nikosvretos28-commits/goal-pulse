@@ -97,7 +97,8 @@ test("detects an 8-to-2 provider correction even after the trigger stops qualify
   assert.equal(corrected.confirmed,false);
   assert.equal(corrected.regression,true);
   assert.equal(corrected.reason,"provider_cumulative_sot_regression");
-  assert.equal(stateMap.has("match-6"),false);
+  assert.equal(stateMap.has("match-6"),true);
+  assert.equal(stateMap.get("match-6").quarantinedUntil,160000 + 11 * 60 * 1000);
 });
 
 test("quarantines a fixture for the full rolling window after a provider SOT correction", () => {
