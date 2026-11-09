@@ -1379,7 +1379,7 @@ async function schedulePreMatchSeasonCollection(events) {
                    AND p.profile->>'profileVersion'='2'
               ) AS profile_v2
          FROM pre_match_collection_state
-        WHERE league_code = ANY($1::text[])`
+        WHERE league_code = ANY($1::text[])`,
       [candidates.map(item => item.code)]
     ).catch(error => {
       console.warn("[Pre-Match] collection state read failed:", error.message);
