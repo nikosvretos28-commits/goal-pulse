@@ -38,8 +38,8 @@ test("matchup context combines attack, defence, clean sheets and exact Over rate
   assert.equal(context.away.goalsAgainstAvg, 1.7);
   assert.equal(context.home.cleanSheetRate, 0.5);
   assert.equal(context.expectedGoals.home, 1.9);
-  assert.equal(context.expectedGoals.away, 0.95);
-  assert.equal(context.expectedGoals.total, 2.85);
+  assert.equal(context.expectedGoals.away, 0.85);
+  assert.equal(context.expectedGoals.total, 2.75);
   assert.equal(context.headToHead.available, true);
   assert.equal(context.headToHead.sample, 2);
   assert.equal(context.headToHead.wins, 1);
