@@ -2821,7 +2821,47 @@ const server = http.createServer(async (req, res) => {
             const statusText = String(live.statusText || live.status || "").toLowerCase();
             const homeScore = Number(live.homeScore), awayScore = Number(live.awayScore);
             const hasFullScore = live.homeScore != null && live.awayScore != null && Number.isFinite(homeScore) && Number.isFinite(awayScore);
-            const startScore = Number(alert.startScore);
+            let startScore = Number(alert.startScore);
+            if (!Number.isFinite(startScore) && alert.startHomeScore != null && alert.startAwayScore != null &&
+                Number.isFinite(Number(alert.startHomeScore)) && Number.isFinite(Number(alert.startAwayScore))) {
+              startScore = Number(alert.startHomeScore) + Number(alert.startAwayScore);
+            }
+            if (!Number.isFinite(startScore) && alert.alertType === "power_ranking_signal" &&
+                /goal|γκολ/i.test(String(alert.market || "")) && (firstHalf || secondHalf)) {
+              // Recover legacy "next goal" Power Ranking rows only when every settled
+              // sibling for this exact fixture and half agrees on the same Over market,
+              // outcome, final score and verified provider fixture. Otherwise leave pending.
+              try {
+                const siblingResult = await analyticsPool.query(
+                  "SELECT payload FROM alert_history WHERE event_id=$1 AND alert_id<>$2 AND payload->>'source'='server-push' AND payload->>'home'=$3 AND payload->>'away'=$4 AND payload->>'periodAtSignal'=$5 AND payload->>'market' ILIKE 'Over %' AND payload->>'market' NOT ILIKE '%corner%' AND payload->>'market' NOT ILIKE '%ασιατ%' AND payload->>'betOutcome' IN ('won','lost','push') AND payload->>'betFinalScore' IS NOT NULL AND payload->>'betSettlementProvider' IS NOT NULL AND payload->>'betSettlementFixtureId' IS NOT NULL AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC",
+                  [String(row.event_id || alert.eventId || ""), String(row.alert_id), String(alertHome), String(alertAway), firstHalf ? "first_half" : "second_half"]
+                );
+                const siblings = siblingResult.rows.map(item => item.payload || {}).filter(item => Number.isFinite(parseOverLine(item.market)));
+                const signatures = new Set(siblings.map(item => JSON.stringify([
+                  String(item.market || "").trim().toLowerCase(), item.betOutcome, item.betFinalScore,
+                  item.betScoreScope, item.betSettlementProvider, item.betSettlementFixtureId,
+                  item.betSettlementFixtureDate || null
+                ])));
+                if (siblings.length > 0 && signatures.size === 1) {
+                  const sibling = siblings[0];
+                  alert.betOutcome = sibling.betOutcome;
+                  alert.betSettlementLabel = sibling.betSettlementLabel || (sibling.betOutcome === "won" ? "Κερδισμένο" : sibling.betOutcome === "lost" ? "Χαμένο" : "Επιστροφή");
+                  alert.outcome = sibling.outcome || (sibling.betOutcome === "won" ? "Επιβεβαιώθηκε · επιτεύχθηκε ο στόχος γκολ" : sibling.betOutcome === "lost" ? "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ" : "Επιστροφή · ισοπαλία στη γραμμή Over");
+                  for (const field of ["betFinalScore","betMatchFinalScore","betScoreScope","betSettlementProvider","betSettlementFixtureId","betSettlementFixtureDate","betSettlementLeague","betScoreSource","betHalfTimeScore"]) {
+                    if (sibling[field] != null) alert[field] = sibling[field];
+                  }
+                  alert.betSettledAt = now;
+                  alert.evaluatedAt = now;
+                  alert.evaluationRule = "legacy_power_ranking_sibling_reconciliation";
+                  alert.betSettlementReason = "Unanimous settlement inherited from settled Over alerts for the same fixture and half";
+                  await analyticsPool.query("UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1", [row.alert_id, JSON.stringify(alert)]);
+                  console.info("[settlement] Legacy Power Ranking alert reconciled from unanimous siblings:", JSON.stringify({ alertId: row.alert_id, eventId: alert.eventId || row.event_id || null, outcome: alert.betOutcome, score: alert.betFinalScore, siblingCount: siblings.length }));
+                  continue;
+                }
+              } catch (siblingError) {
+                console.warn("[settlement] Legacy Power Ranking sibling reconciliation skipped:", JSON.stringify({ alertId: row.alert_id, error: siblingError.message }));
+              }
+            }
             if (!Number.isFinite(startScore) || (!firstHalf && !secondHalf)) continue;
             const settlement = getPeriodSettlementScore({ period: firstHalf ? "first_half" : "second_half",
               status: live.status, statusText, minute: live.minute, homeScore: live.homeScore, awayScore: live.awayScore,
