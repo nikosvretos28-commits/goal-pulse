@@ -1,7 +1,7 @@
 "use strict";
 
 function isAiMinuteEligible(minute, status = "") {
-  if (!Number.isInteger(minute) || minute < 46 || minute > 88) return false;
+  if (!Number.isInteger(minute) || minute < 46 || minute > 84) return false;
   const period = String(status || "").trim().toLowerCase();
   // Completed fixtures must never qualify, even if a provider leaves a stale minute.
   if (/\b(?:finished|full\s*time|ended|complete|completed|ft|aet)\b/.test(period) ||

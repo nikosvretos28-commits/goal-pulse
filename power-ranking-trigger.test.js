@@ -50,9 +50,10 @@ test("Power Ranking first-half window is 1–35 inclusive", () => {
   assert.equal(isPowerRankingMinuteEligible(35, "first_half"), true);
 });
 
-test("Power Ranking second-half window is 46–88 inclusive", () => {
+test("Power Ranking second-half window is 46–84 inclusive", () => {
   assert.equal(isPowerRankingMinuteEligible(46, "2nd half"), true);
-  assert.equal(isPowerRankingMinuteEligible(88, "live"), true);
+  assert.equal(isPowerRankingMinuteEligible(84, "live"), true);
+  for (const minute of [85, 86, 87, 88]) assert.equal(isPowerRankingMinuteEligible(minute, "live"), false);
   assert.equal(isPowerRankingMinuteEligible(45, "2nd half"), false);
   assert.equal(isPowerRankingMinuteEligible(89, "2nd half"), false);
   assert.equal(isPowerRankingMinuteEligible(60, "1st half"), false);
