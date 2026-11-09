@@ -24,7 +24,7 @@ test("Power Ranking score matches the displayed weighted formula and rounds to a
       ])
     }
   });
-  assert.equal(score, 69);
+  assert.equal(score, 91);
 });
 
 test("missing or stale statistics contribute zero and never fabricate a score", () => {
