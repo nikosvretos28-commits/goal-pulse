@@ -3707,7 +3707,7 @@ const server = http.createServer(async (req, res) => {
       // Each map value is an array of snapshots; inspect the newest snapshot when pruning stale matches.
       for (const [id, snapshots] of pushScanSnapshots) {
         const latest = Array.isArray(snapshots) && snapshots.length ? snapshots[snapshots.length - 1] : null;
-        if (!latest || now - latest.at > 15 * 60 * 1000) { pushScanSnapshots.delete(id); pushScanSotConfirmations.delete(id); pushScanRedCardSince.delete(id); }
+        if (!latest || now - latest.at > 15 * 60 * 1000) { pushScanSnapshots.delete(id); pushScanSotConfirmations.delete(id); pushScanRedCardSince.delete(id); pushScanPowerRankingAlerts.delete(id); }
       }
       const liveMatches = Number(metrics.totalLive || 0);
       const statsMatches = (metrics.matches || []).filter(match => match.statsAvailable).length;
