@@ -1956,10 +1956,10 @@ const server = http.createServer(async (req, res) => {
           odds: Number.isFinite(odds) && odds > 1 ? odds : null,
           triggerIds: Array.isArray(p.triggerIds) ? [...new Set(p.triggerIds.map(String))] : [],
           supportSignalIds: Array.isArray(p.supportSignalIds) ? [...new Set(p.supportSignalIds.map(String))] : [],
-          market: p.market || null, startScore: p.startScore ?? null, finalScore: p.betFinalScore || null,
+          market: p.market || null, startScore: p.startScore ?? null, startScoreline: (p.startHomeScore ?? p.scoreAtSignal?.home) != null && (p.startAwayScore ?? p.scoreAtSignal?.away) != null ? `${p.startHomeScore ?? p.scoreAtSignal.home}-${p.startAwayScore ?? p.scoreAtSignal.away}` : null, finalScore: p.betFinalScore || null,
           halfTimeScore: p.betHalfTimeScore || null, outcome: p.betOutcome, scoreScope: p.betScoreScope,
           settlementProvider: p.betSettlementProvider, verifiedScore,
-          statsAtSignal: { onTarget: stats.onTarget ?? null, onTarget10m: stats.onTarget10m ?? null, xGDelta: stats.xGDelta ?? null }
+          statsAtSignal: { onTarget: stats.onTarget ?? null, onTarget10m: stats.onTarget10m ?? null, totalOnTarget: stats.totalOnTarget ?? null, xGDelta: stats.xGDelta ?? null }
         };
       }).filter(row => row.verifiedScore && row.period === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88);
       return send(res, 200, {
