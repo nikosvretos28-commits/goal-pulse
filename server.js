@@ -3902,6 +3902,18 @@ const server = http.createServer(async (req, res) => {
       cache.set(historyKey, { at: Date.now(), body: result });
       return send(res, 200, result);
     } catch (error) {
+      // If both ESPN hostnames are unavailable, preserve the last verified season
+      // results instead of replacing a previously usable history view with an
+      // empty 502 response. This is read-only fallback data; no records are changed.
+      const lastKnownHistory = cache.get(historyKey);
+      if (lastKnownHistory && lastKnownHistory.body && Array.isArray(lastKnownHistory.body.matches)) {
+        console.warn("Competition history serving stale verified cache:", league, season, error.message || "provider unavailable");
+        return send(res, 200, {
+          ...lastKnownHistory.body,
+          stale: true,
+          staleSince: new Date(lastKnownHistory.at).toISOString()
+        });
+      }
       return send(res, 502, { error: "Competition season request failed", matches: [] });
     }
   }
