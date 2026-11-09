@@ -2990,7 +2990,7 @@ const server = http.createServer(async (req, res) => {
       try {
         if (await ensureAlertHistoryDb()) {
           const countRows = await analyticsPool.query(
-            "SELECT event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END AS alert_half, trigger_ids.trigger_id, COUNT(*)::int AS alert_count FROM alert_history CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS trigger_ids(trigger_id) WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND COALESCE(payload->>'alertType','') <> 'power_ranking_signal' AND created_at > NOW() - INTERVAL '36 hours' GROUP BY event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END, trigger_ids.trigger_id"
+            "SELECT event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END AS alert_half, trigger_ids.trigger_id, COUNT(*)::int AS alert_count FROM alert_history CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS trigger_ids(trigger_id) WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND COALESCE(payload->>'alertType','') = trigger_ids.trigger_id AND COALESCE(payload->>'alertType','') <> 'power_ranking_signal' AND created_at > NOW() - INTERVAL '36 hours' GROUP BY event_id, CASE WHEN payload->>'periodAtSignal' IN ('second_half','halftime') THEN 'second_half' ELSE 'first_half' END, trigger_ids.trigger_id"
           );
           for (const row of countRows.rows) alertCountsByMatchHalf.set(String(row.event_id) + ":" + row.alert_half + ":" + String(row.trigger_id), Number(row.alert_count) || 0);
         }
@@ -3501,7 +3501,7 @@ const server = http.createServer(async (req, res) => {
           rejection: !scoreAvailable ? "score_missing" : qualifiedAiTriggers.length ? "qualified_independent_triggers" : sotSignalQualifies && !confirmedSotSignal ? "awaiting_independent_sot_confirmation" : !eligibleMinute && !firstHalfSotWindow ? "minute_outside_approved_ai_window" : "no_independent_trigger_qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
-        const levels = qualifiedAiTriggers.map(trigger => ({ level: "AI", triggerId: trigger.id }));
+        const levels = isAiGoal ? qualifiedAiTriggers.map(trigger => ({ level: "AI", triggerId: trigger.id })) : [];
         if (isAiGoal) strongSignals++;
         // Dispatch each qualifying AI trigger independently; no trigger shares another's cap or cooldown.
         for (const { level, triggerId } of levels) {
