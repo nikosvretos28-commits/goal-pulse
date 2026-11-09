@@ -5,7 +5,7 @@ const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, readExactSotStat } = require("./sot-integrity");
-const { isAiMinuteEligible, isCumulativeSotMinute } = require("./ai-minute-window");
+const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -3344,15 +3344,19 @@ const server = http.createServer(async (req, res) => {
         const supportingCriteriaScore = dirtySheetSupport + Number(historicalOver.support || 0) + Number(preMatchSeason.support || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
-        // Approved AI protocol: second half only, minutes 46–88; 3+ SOT/5m OR 6+ SOT/10m,
-        // OR one team's xG >= 3.00 and the other's >= 2.00.
-        // Additional cumulative trigger: 15+ combined match SOT, only during minutes 46–69.
+        // Existing second-half AI protocol remains unchanged (46′–88′).
+        // Independent first-half exception: 8+ combined match SOT by minute 34.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = isAiMinuteEligible(aiMinute, statusForEligibility);
+        const firstHalfEightSotWindow = isFirstHalfEightSotMinute(aiMinute, statusForEligibility);
+        const firstHalfEightSotQualifies = firstHalfEightSotWindow &&
+          current.onTarget != null && Number(current.onTarget) >= 8;
         const cumulativeSotWindow = isCumulativeSotMinute(aiMinute, statusForEligibility);
         const combined15SotQualifies = cumulativeSotWindow && current.onTarget != null && Number(current.onTarget) >= 15;
         const cumulativeSotQualifies = combined15SotQualifies;
-        const isAiGoal = scoreAvailable && eligibleMinute && (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure || manAdvantagePressure);
+        const secondHalfAiQualifies = eligibleMinute &&
+          (recentSotQualifies || xGQualifies || cumulativeSotQualifies || dualTeamSotPressure || manAdvantagePressure);
+        const isAiGoal = scoreAvailable && (secondHalfAiQualifies || firstHalfEightSotQualifies);
         // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
         if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
@@ -3370,6 +3374,7 @@ const server = http.createServer(async (req, res) => {
           xGHome: teamXGValues[0],
           xGAway: teamXGValues[1],
           recentSotQualifies,
+          firstHalfEightSotQualifies,
           xGQualifies,
           combined15SotQualifies,
           cumulativeSotQualifies,
@@ -3391,7 +3396,7 @@ const server = http.createServer(async (req, res) => {
           dualTeamSot10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !dualTeamSotPressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !recentSotQualifies && !xGQualifies && !cumulativeSotQualifies && !dualTeamSotPressure && !manAdvantagePressure ? "no_approved_sot_xg_or_dual_team_sot_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
@@ -3596,6 +3601,7 @@ const server = http.createServer(async (req, res) => {
                     ...(recentSotQualifies ? ["recent_sot_pressure"] : []),
                     ...(xGQualifies ? ["xg_threshold"] : []),
                     ...(cumulativeSotQualifies ? ["cumulative_15_sot"] : []),
+                    ...(firstHalfEightSotQualifies ? ["first_half_8_sot"] : []),
                     ...(dualTeamSotPressure ? ["dual_team_sot_pressure"] : []),
                     ...(manAdvantagePressure ? ["man_advantage_pressure"] : [])
                   ],
