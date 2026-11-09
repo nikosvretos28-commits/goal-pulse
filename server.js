@@ -3313,7 +3313,7 @@ const server = http.createServer(async (req, res) => {
                 home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
                 league: match.league || match.competition || "", country: match.country || match.countryName || null,
                 minute: rawMinute, minuteNumber: powerRankingMinute,
-                market: "Goal after Power Ranking 59+", alertType: "power_ranking_signal",
+                market: periodAtSignal === "first_half" ? "1ο ημίχρονο · επόμενο γκολ" : "2ο ημίχρονο · επόμενο γκολ", alertType: "power_ranking_signal",
                 odds: null, oddsVerifiedAt: null, periodAtSignal, reason: "Power Ranking " + powerRankingScore + "/100 · όριο 59+",
                 outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
                 startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore,
