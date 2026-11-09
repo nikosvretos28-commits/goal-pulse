@@ -2224,7 +2224,6 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
  <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
- <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst" id="highActivityHistoryToggle">📊 ΙΣΤΟΡΙΚΟ HI ACTIVITY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button gp-prematch-button" id="preMatchToggle" aria-controls="preMatchPanel" aria-expanded="false">PRE MATCH</button>
 </div>
 
@@ -2339,11 +2338,6 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
 <section class="top-ai-alerts protocol-analyst-panel" id="protocolAnalyst" hidden aria-labelledby="protocolAnalystTitle">
  <div class="top-ai-alerts-head"><div><h2 id="protocolAnalystTitle">🧠 AI PROTOCOL ANALYST</h2><p>Αξιολόγηση πραγματικών, διακανονισμένων AI alerts και τεκμηριωμένες προτάσεις βελτίωσης.</p></div><button type="button" class="login" id="refreshProtocolAnalyst">↻ Ανανέωση</button></div>
  <div id="protocolAnalystPanel" aria-live="polite"><p>Φόρτωση ανάλυσης πρωτοκόλλων…</p></div>
- <div class="gp-high-activity-analyst" style="margin:0 18px 18px;padding:16px;border:1px solid rgba(85,199,232,.22);border-radius:14px;background:rgba(7,22,34,.52)">
-  <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><h3 style="margin:0">⚡ HI ACTIVITY · ΞΕΧΩΡΙΣΤΟ ΙΣΤΟΡΙΚΟ & AI ANALYST</h3><button type="button" class="login" id="refreshHighActivityAnalyst">↻ Ανανέωση</button></div>
-  <p class="subtle" style="margin:8px 0 12px">Διακανονισμός ανά ημίχρονο: για ένδειξη 1ου ημιχρόνου μετρά νέο γκολ μετά την ένδειξη μέχρι τη λήξη του 1ου ημιχρόνου· για ένδειξη 2ου ημιχρόνου μετρά νέο γκολ μετά την ένδειξη μέχρι τη λήξη του αγώνα. Κάθε ένδειξη αξιολογείται ξεχωριστά, ακόμη κι αν ο αγώνας φύγει από τη λίστα HI ACTIVITY.</p>
-  <div id="highActivityAnalystPanel" aria-live="polite"><p>Φόρτωση ξεχωριστού ιστορικού…</p></div>
- </div>
  <p class="top-ai-alert-privacy">Ο αναλυτής δεν αλλάζει αυτόματα τα live πρωτόκολλα. Προτείνει δοκιμές μόνο όταν υπάρχει επαρκές πραγματικό δείγμα· δεν επινοεί ποσοστά ή αποτελέσματα.</p>
 </section>
 
@@ -3564,8 +3558,6 @@ async function loadHighActivityHistory(){
  })();
  return highActivityHistoryLoadPromise;
 }
-document.getElementById('refreshHighActivityAnalyst')?.addEventListener('click',async()=>{await loadHighActivityHistory();await reconcileHistoricalHighActivityObservations();});
-document.getElementById('highActivityAnalystPanel')?.addEventListener('click',event=>{const button=event.target.closest('[data-ha-period]');if(!button)return;highActivityHistoryPeriod=button.dataset.haPeriod||'all';renderHighActivityAnalyst();});
 const highActivityScoreboardCache=new Map();
 let highActivityHistoricalSettlementPromise=null;
 async function reconcileHistoricalHighActivityObservations(){
@@ -5147,8 +5139,6 @@ loadHighActivityHistory();
   const badge=document.getElementById('gpVipHistoryCount');if(badge)badge.textContent='VIP';
   showSignalHistory();results?.scrollIntoView({behavior:'smooth',block:'start'});
  });
- const highActivityHistoryToggle=document.getElementById('highActivityHistoryToggle');
- highActivityHistoryToggle?.addEventListener('click',()=>{const panel=document.getElementById('protocolAnalyst');if(panel?.hidden){panel.hidden=false;document.querySelector('[data-gp-toggle="protocolAnalyst"]')?.setAttribute('aria-expanded','true');}loadHighActivityHistory();document.getElementById('highActivityAnalystPanel')?.scrollIntoView({behavior:'smooth',block:'start'});});
  const historyButton=document.getElementById('toggleHistoryPanel');
  historyButton?.addEventListener('click',()=>{
   vipHistoryOnly=false;
