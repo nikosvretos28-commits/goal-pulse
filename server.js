@@ -7,6 +7,7 @@ const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtu
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
+const { createCompetitionHistoryStore } = require("./competition-history-store");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible } = require("./power-ranking-trigger");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 let Pool = null;
@@ -637,6 +638,7 @@ const analyticsPool = resolvedDatabaseUrl && Pool ? new Pool({
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000
 }) : null;
+const competitionHistoryStore = createCompetitionHistoryStore({ pool: analyticsPool });
 // Dedicated pool prevents shared analytics traffic from starving HI Activity history.
 const highActivityHistoryPool = resolvedDatabaseUrl && Pool ? new Pool({
   connectionString: resolvedDatabaseUrl,
@@ -4037,19 +4039,38 @@ const server = http.createServer(async (req, res) => {
       }).filter(match => match.state === "post" && match.home.score !== null && match.away.score !== null && match.home.name !== "Home" && match.away.name !== "Away");
       const result = { league, season, seasonStart: start.toISOString().slice(0,10), seasonEnd: end.toISOString().slice(0,10), matches, fetchedAt: new Date().toISOString(), partial: successfulWindows.length < windows.length, successfulWindows: successfulWindows.length, totalWindows: windows.length };
       cache.set(historyKey, { at: Date.now(), body: result });
+      // Persist only non-empty verified history. Database failures never turn a
+      // successful provider response into an API failure.
+      await competitionHistoryStore.save(league, season, result).catch(storeError => {
+        console.warn("[GoalMatrix competition history] persistent cache write failed:", league, season, storeError.message || storeError);
+      });
       return send(res, 200, result);
     } catch (error) {
-      // If both ESPN hostnames are unavailable, preserve the last verified season
-      // results instead of replacing a previously usable history view with an
-      // empty 502 response. This is read-only fallback data; no records are changed.
+      // Prefer the in-process verified cache, then recover the last verified
+      // season from PostgreSQL so a restart does not erase the fallback.
       const lastKnownHistory = cache.get(historyKey);
       if (lastKnownHistory && lastKnownHistory.body && Array.isArray(lastKnownHistory.body.matches)) {
-        console.warn("Competition history serving stale verified cache:", league, season, error.message || "provider unavailable");
+        console.warn("Competition history serving stale in-memory cache:", league, season, error.message || "provider unavailable");
         return send(res, 200, {
           ...lastKnownHistory.body,
           stale: true,
-          staleSince: new Date(lastKnownHistory.at).toISOString()
+          staleSince: new Date(lastKnownHistory.at).toISOString(),
+          staleSource: "memory"
         });
+      }
+      try {
+        const persistedHistory = await competitionHistoryStore.load(league, season);
+        if (persistedHistory && persistedHistory.body && Array.isArray(persistedHistory.body.matches)) {
+          console.warn("Competition history serving stale PostgreSQL cache:", league, season, error.message || "provider unavailable");
+          return send(res, 200, {
+            ...persistedHistory.body,
+            stale: true,
+            staleSince: persistedHistory.fetchedAt,
+            staleSource: "postgres"
+          });
+        }
+      } catch (storeError) {
+        console.error("[GoalMatrix competition history] persistent cache read failed:", league, season, storeError.message || storeError);
       }
       console.error("[GoalMatrix competition history] ESPN season fetch failed:", league, season, error.message || "unknown provider error");
       return send(res, 502, { error: "Competition season request failed", matches: [] });
