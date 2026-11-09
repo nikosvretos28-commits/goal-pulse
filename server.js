@@ -3752,7 +3752,7 @@ const server = http.createServer(async (req, res) => {
     const days = Math.round((endDate-startDate)/86400000);
     if (days < 0 || days > 31) return send(res, 400, { error: "Date range must be within 32 days", matches: [] });
     try {
-      const pitchLeague = await findPitchLeague(league);
+      const pitchLeague = process.env.PITCH_API_KEY ? await findPitchLeague(league) : null;
       if (pitchLeague && pitchLeague.id) {
         const seasonYear = Number(startRaw.slice(0,4));
         const pitchSeason = pitchSeasonForCode(league, seasonYear, pitchLeague.seasons);
@@ -3816,7 +3816,7 @@ const server = http.createServer(async (req, res) => {
     if (!Number.isInteger(season) || season < 2000 || season > new Date().getUTCFullYear() + 1) return send(res, 400, { error: "Invalid season", matches: [] });
     const historyKey = "competition-history:" + league + ":" + season;
     try {
-      const pitchLeague = await findPitchLeague(league);
+      const pitchLeague = process.env.PITCH_API_KEY ? await findPitchLeague(league) : null;
       if (pitchLeague && pitchLeague.id) {
         const pitchSeason = pitchSeasonForCode(league, season, pitchLeague.seasons);
         const pitchData = await pitchGet("/v1/leagues/" + encodeURIComponent(pitchLeague.id) + "/matches?season=" + encodeURIComponent(pitchSeason) + "&status=all");
