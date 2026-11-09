@@ -7,6 +7,7 @@ const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtu
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
+const { calculatePowerRankingScore, isPowerRankingMinuteEligible } = require("./power-ranking-trigger");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -67,6 +68,8 @@ const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
 const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
+// Stable one-per-fixture deduplication for the independent Power Ranking AI trigger.
+const pushScanPowerRankingAlerts = new Set();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
 const volatileAlertHistory = new Map();
 const volatileHighActivityHistory = new Map();
@@ -245,6 +248,9 @@ async function runProtocolAnalyst() {
         minuteBand: !Number.isFinite(minute) ? "Άγνωστο λεπτό"
           : phase === "first_half" ? (minute < 30 ? "1′–29′" : "30′–40′")
           : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–88′"),
+        powerRankingMinuteBand: !Number.isFinite(minute) ? "Άγνωστο λεπτό"
+          : phase === "first_half" ? (minute < 30 ? "1′–29′" : "30′–35′")
+          : (minute < 60 ? "46′–59′" : minute < 75 ? "60′–74′" : "75′–88′"),
         league: String(p.league || "Άγνωστη διοργάνωση"),
         outcome,
         createdAt: row.created_at
@@ -259,7 +265,8 @@ async function runProtocolAnalyst() {
       { id: "recent_sot_pressure", label: "Πρόσφατη πίεση SOT", detail: "3+ SOT / 5′ ή 6+ SOT / 10′" },
       { id: "cumulative_20_sot", label: "20+ συνολικά SOT", detail: "Συνολικά SOT πριν από το 75′" },
       { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.50 xG και η άλλη ≥2.50 xG" },
-      { id: "man_advantage_pressure", label: "Man Advantage", detail: "Πρόσφατη κόκκινη κάρτα και πίεση της αριθμητικά υπερέχουσας ομάδας" }
+      { id: "man_advantage_pressure", label: "Man Advantage", detail: "Πρόσφατη κόκκινη κάρτα και πίεση της αριθμητικά υπερέχουσας ομάδας" },
+      { id: "power_ranking_59", label: "Power Ranking 59+", detail: "Βαθμολογία ≥59/100 · 1ο ημίχρονο 1′–35′, 2ο ημίχρονο 46′–88′" }
     ];
     const summarizeTriggerRows = rows => {
       const wins = rows.filter(row => row.outcome === "won").length;
@@ -287,11 +294,16 @@ async function runProtocolAnalyst() {
       })).sort((a,b) => b.activated - a.activated);
     };
     const triggerPerformance = triggerDefinitions.map(definition => {
-      const rows = instrumentedTriggerRows.filter(row => row.triggerIds.includes(definition.id));
+      const rows = definition.id === "power_ranking_59"
+        ? triggerHistoryRows.filter(row => row.triggerIds.includes(definition.id) && (
+            (row.phase === "first_half" && Number.isInteger(row.minute) && row.minute >= 1 && row.minute <= 35) ||
+            (row.phase === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88)
+          ))
+        : instrumentedTriggerRows.filter(row => row.triggerIds.includes(definition.id));
       return {
         ...definition,
         ...summarizeTriggerRows(rows),
-        byMinute: groupTriggerRows(rows, "minuteBand"),
+        byMinute: groupTriggerRows(rows, definition.id === "power_ranking_59" ? "powerRankingMinuteBand" : "minuteBand"),
         byLeague: groupTriggerRows(rows, "league")
       };
     });
@@ -2968,7 +2980,7 @@ const server = http.createServer(async (req, res) => {
           console.error("Asian bet history auto-settlement failed:", settlementError.message);
         }
       }
-      let checked = 0, sent = 0, candidates = 0;
+      let checked = 0, sent = 0, candidates = 0, powerRankingAlerts = 0;
       let strongSignals = 0, firstHalfOddsChecks = 0, secondHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const aiSignalDiagnostics = [];
       // Enforce a persistent maximum of four AI alerts per match per half.
@@ -3283,6 +3295,59 @@ const server = http.createServer(async (req, res) => {
         const dangerousAvailable = current.dangerous != null && previous?.dangerous != null;
         const attacksAvailable = current.attacks != null && previous?.attacks != null;
         const scoreAvailable = match.homeScore != null && match.awayScore != null && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore));
+        // Independent AI trigger: use the exact weighted score displayed in the live Power Ranking.
+        // It shares the approved AI time windows but does not depend on the existing SOT/xG triggers,
+        // odds lookup, per-half alert cap, or their cooldowns.
+        const powerRankingMinute = minuteForEligibility;
+        const powerRankingEligible = isPowerRankingMinuteEligible(powerRankingMinute, statusForEligibility);
+        const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
+        if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && !pushScanPowerRankingAlerts.has(id)) {
+          const alertId = "push:" + id + ":AI:power-ranking-59";
+          try {
+            if (await ensureAlertHistoryDb()) {
+              const periodAtSignal = powerRankingMinute <= 35 ? "first_half" : "second_half";
+              const homeScore = Number(match.homeScore), awayScore = Number(match.awayScore);
+              const rawMinute = String(formatPushMinute(match));
+              const alertRecord = {
+                alertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
+                home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
+                league: match.league || match.competition || "", country: match.country || match.countryName || null,
+                minute: rawMinute, minuteNumber: powerRankingMinute,
+                market: "Goal after Power Ranking 59+", alertType: "power_ranking_signal",
+                odds: null, oddsVerifiedAt: null, periodAtSignal, reason: "Power Ranking " + powerRankingScore + "/100 · όριο 59+",
+                outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
+                startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore,
+                triggerIds: ["power_ranking_59"], supportSignalIds: [],
+                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–88′" }
+              };
+              const saved = await analyticsPool.query(
+                "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
+                [alertId, id, now, JSON.stringify(alertRecord)]
+              );
+              // The stable primary key makes the one-alert-per-match rule survive process restarts.
+              pushScanPowerRankingAlerts.add(id);
+              if (saved.rows.length) {
+                powerRankingAlerts++;
+                candidates++;
+                try {
+                  const pushResult = await sendPushToSubscribers({
+                    title: "GoalMatrix · AI ALERT",
+                    body: "🏆 POWER RANKING " + powerRankingScore + "/100 · " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · " + rawMinute,
+                    tag: "goal-pulse-bg-ai-power-ranking-" + id, url: "/"
+                  });
+                  sent += Number(pushResult?.sent || 0);
+                } catch (pushError) {
+                  console.warn("Power Ranking AI push delivery failed; in-app alert remains saved:", pushError.message);
+                }
+                console.info("Power Ranking 59+ AI alert saved:", JSON.stringify({ eventId: id, minute: powerRankingMinute, period: periodAtSignal, score: powerRankingScore, alertId }));
+              }
+            } else {
+              console.error("Power Ranking 59+ alert skipped: persistent history unavailable; one-per-match deduplication cannot be guaranteed", id);
+            }
+          } catch (powerRankingError) {
+            console.error("Power Ranking 59+ AI alert failed:", powerRankingError.message);
+          }
+        }
         const recentGoalEvidence = dangerousAvailable
           ? onTarget >= 1 && evidenceKinds >= 2 && dangerous >= 3
           : attacksAvailable && onTarget >= 1 && attacks >= 5;
@@ -3654,7 +3719,7 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const liveMatchSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, secondHalfEligible, strongSignals, aiSignalDiagnostics, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), powerRankingAlerts, scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, secondHalfEligible, strongSignals, aiSignalDiagnostics, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
