@@ -1431,7 +1431,7 @@ async function runScheduledPreMatchCollection() {
   const hour = Number(parts.find(part => part.type === "hour")?.value);
   if (!Number.isFinite(hour) || hour < 6) return { skipped: "before-daily-scan-time" };
   const date = getAthensDateKey();
-  if (preMatchDailyScanRunning || preMatchDailyScanDate === date || Date.now() < preMatchDailyRetryAt) {
+  if (preMatchDailyScanRunning || preMatchScanState.status === "running" || preMatchDailyScanDate === date || Date.now() < preMatchDailyRetryAt) {
     return { skipped: "already-running-or-run-or-retrying" };
   }
   preMatchDailyScanRunning = true;
@@ -3873,6 +3873,10 @@ const server = http.createServer(async (req, res) => {
             manAdvantagePressure ? "MAN ADVANTAGE PRESSURE (κόκκινη κάρτα + 4+ SOT, 2+/10′, 1+/5′, 10+/3+ επικίνδυνες επιθέσεις)" : "",
             dirtySheetSupport > 0 ? "Dirty Sheet +" + dirtySheetSupport.toFixed(1) : "",
             historicalOver.support > 0 ? "Ιστορικό Over " + supportingOverLine + " +" + Number(historicalOver.support).toFixed(1) : "",
+            preMatchSeason.context?.home?.goalsForAvg != null ? "Home GF/GA " + preMatchSeason.context.home.goalsForAvg.toFixed(2) + "/" + (preMatchSeason.context.home.goalsAgainstAvg == null ? "—" : preMatchSeason.context.home.goalsAgainstAvg.toFixed(2)) : "",
+            preMatchSeason.context?.away?.goalsForAvg != null ? "Away GF/GA " + preMatchSeason.context.away.goalsForAvg.toFixed(2) + "/" + (preMatchSeason.context.away.goalsAgainstAvg == null ? "—" : preMatchSeason.context.away.goalsAgainstAvg.toFixed(2)) : "",
+            preMatchSeason.context?.home?.cleanSheetRate != null ? "Home clean sheets " + Math.round(preMatchSeason.context.home.cleanSheetRate * 100) + "%" : "",
+            preMatchSeason.context?.away?.cleanSheetRate != null ? "Away clean sheets " + Math.round(preMatchSeason.context.away.cleanSheetRate * 100) + "%" : "",
             preMatchSeason.context?.expectedGoals?.total != null ? "Season goal estimate " + preMatchSeason.context.expectedGoals.total.toFixed(2) + " (heuristic)" : "",
             preMatchSeason.context?.headToHead?.available ? "H2H " + preMatchSeason.context.headToHead.sample + " αγώνες" : "",
             liveConversionSupport > 0 ? "Αποτελεσματικότητα SOT +" + liveConversionSupport.toFixed(1) : ""
