@@ -5029,7 +5029,7 @@ async function loadMieAlertPerformance(){
     if(windowValue==='75-88'&&(row.minute<75||row.minute>88))return false;
     if(windowValue==='60-74'&&(row.minute<60||row.minute>74))return false;
     if(oddsValue!=='all'&&mieOddsBand(row.odds)!==oddsValue)return false;
-    const dateKey=new Date(row.createdAt).toISOString().slice(0,10);
+    const dateKey=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Athens',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(row.createdAt));
     if(fromValue&&dateKey<fromValue)return false;
     if(toValue&&dateKey>toValue)return false;
     return true;
