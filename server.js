@@ -3427,6 +3427,7 @@ const server = http.createServer(async (req, res) => {
         ];
         const confirmedSotTriggerIds = [];
         const sotConfirmationReasons = {};
+        const sotConfirmationRegressions = {};
         for (const [triggerId, triggerQualifies] of sotTriggerConditions) {
           const confirmation = confirmSotSignal({
             stateMap: pushScanSotConfirmations,
@@ -3436,6 +3437,7 @@ const server = http.createServer(async (req, res) => {
             cumulativeByTeam: current.sotByTeam
           });
           sotConfirmationReasons[triggerId] = confirmation.reason;
+          sotConfirmationRegressions[triggerId] = confirmation.regression;
           if (confirmation.confirmed) confirmedSotTriggerIds.push(triggerId);
         }
         const sotSignalQualifies = sotTriggerConditions.some(([, qualifies]) => qualifies);
@@ -3473,7 +3475,7 @@ const server = http.createServer(async (req, res) => {
           sotSignalQualifies,
           sotSignalConfirmed: confirmedSotSignal,
           sotSignalConfirmationReason: sotConfirmationReasons,
-          sotProviderRegression: sotConfirmation.regression,
+          sotProviderRegression: sotConfirmationRegressions,
           firstHalfSotWindow,
           firstHalfRecentSotQualifies,
           firstHalfEightSotQualifies,
