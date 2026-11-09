@@ -134,4 +134,53 @@ function buildPreMatchMatchupContext(homeProfile, awayProfile, homeName, awayNam
   };
 }
 
-module.exports = { normalizeTeamKey, seasonBoundsForLeague, buildPreMatchMatchupContext };
+
+function scorePreMatchMatchupContext(context) {
+  const reasons = [];
+  let raw = 0;
+  const add = (condition, points, label) => {
+    if (condition) { raw += points; reasons.push(label); }
+  };
+  const expectedTotal = Number(context?.expectedGoals?.total);
+  if (context?.expectedGoals?.total != null && Number.isFinite(expectedTotal)) {
+    add(expectedTotal >= 3.25, 0.75, "Season expected goals high (+0.75)");
+    add(expectedTotal >= 2.75 && expectedTotal < 3.25, 0.5, "Season expected goals positive (+0.5)");
+    add(expectedTotal <= 1.75, -0.75, "Season expected goals low (-0.75)");
+    add(expectedTotal > 1.75 && expectedTotal <= 2.1, -0.5, "Season expected goals cautious (-0.5)");
+  }
+  const home = context?.home || {};
+  const away = context?.away || {};
+  const usableOver25 = [home, away].filter(team => Number(team.sample || 0) >= 5 && team.overRates?.["2.5"] != null);
+  if (usableOver25.length) {
+    const rate = usableOver25.reduce((sum, team) => sum + Number(team.overRates["2.5"]), 0) / usableOver25.length;
+    add(rate >= 0.65, 0.4, "Season Over 2.5 frequency strong (+0.4)");
+    add(rate <= 0.35, -0.4, "Season Over 2.5 frequency low (-0.4)");
+  }
+  const usableOver35 = [home, away].filter(team => Number(team.sample || 0) >= 5 && team.overRates?.["3.5"] != null);
+  if (usableOver35.length) {
+    const rate = usableOver35.reduce((sum, team) => sum + Number(team.overRates["3.5"]), 0) / usableOver35.length;
+    add(rate >= 0.55, 0.3, "Season Over 3.5 frequency strong (+0.3)");
+    add(rate <= 0.2, -0.3, "Season Over 3.5 frequency low (-0.3)");
+  }
+  const defensiveRates = [home.cleanSheetRate, away.cleanSheetRate].filter(value => value != null && Number.isFinite(Number(value)));
+  if (defensiveRates.length === 2) {
+    const rate = defensiveRates.reduce((sum, value) => sum + Number(value), 0) / 2;
+    add(rate >= 0.45, -0.35, "Both teams' clean-sheet rates strong (-0.35)");
+    add(rate <= 0.15, 0.25, "Both teams' clean-sheet rates low (+0.25)");
+  }
+  const failedRates = [home.failedToScoreRate, away.failedToScoreRate].filter(value => value != null && Number.isFinite(Number(value)));
+  if (failedRates.length === 2) {
+    const rate = failedRates.reduce((sum, value) => sum + Number(value), 0) / 2;
+    add(rate >= 0.35, -0.35, "Both teams' failed-to-score rates high (-0.35)");
+    add(rate <= 0.1, 0.2, "Both teams' failed-to-score rates low (+0.2)");
+  }
+  const h2h = context?.headToHead;
+  if (h2h?.available && Number(h2h.sample) >= 3 && h2h.avgTotalGoals != null) {
+    add(Number(h2h.avgTotalGoals) >= 3, 0.3, "Head-to-head goal average high (+0.3)");
+    add(Number(h2h.avgTotalGoals) <= 1.5, -0.3, "Head-to-head goal average low (-0.3)");
+  }
+  const score = Math.max(-1.5, Math.min(1.5, Number(raw.toFixed(2))));
+  return { score, rawScore: Number(raw.toFixed(2)), reasons, cap: 1.5 };
+}
+
+module.exports = { normalizeTeamKey, seasonBoundsForLeague, buildPreMatchMatchupContext, scorePreMatchMatchupContext };
