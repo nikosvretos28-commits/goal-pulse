@@ -5,7 +5,7 @@ const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
-const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
+const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible } = require("./power-ranking-trigger");
 let Pool = null;
@@ -3402,6 +3402,11 @@ const server = http.createServer(async (req, res) => {
         // Independent first-half exception: 8+ combined match SOT by minute 34.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = isAiMinuteEligible(aiMinute, statusForEligibility);
+        const firstHalfSotWindow = isFirstHalfSotMinute(aiMinute, statusForEligibility);
+        // The 3+ SOT / 5m and 6+ SOT / 10m triggers are independent OR conditions
+        // in both halves. Previously the shared rolling signal was calculated but
+        // the first-half decision path admitted only the separate 8+ cumulative trigger.
+        const firstHalfRecentSotQualifies = firstHalfSotWindow && recentSotQualifies;
         const firstHalfEightSotWindow = isFirstHalfEightSotMinute(aiMinute, statusForEligibility);
         const firstHalfEightSotQualifies = firstHalfEightSotWindow &&
           current.onTarget != null && Number(current.onTarget) >= 8;
@@ -3423,11 +3428,14 @@ const server = http.createServer(async (req, res) => {
         const confirmedSotSignal = sotConfirmation.confirmed;
         const secondHalfAiQualifies = eligibleMinute &&
           (confirmedSotSignal || xGQualifies);
-        const isAiGoal = scoreAvailable && (secondHalfAiQualifies ||
-          (firstHalfEightSotQualifies && confirmedSotSignal));
+        // First-half rolling SOT and 8+ cumulative SOT are SOT-only paths.
+        // xG and second-half-only criteria must not leak into the first half.
+        const firstHalfSotAiQualifies = (firstHalfRecentSotQualifies || firstHalfEightSotQualifies) &&
+          confirmedSotSignal;
+        const isAiGoal = scoreAvailable && (secondHalfAiQualifies || firstHalfSotAiQualifies);
         // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
-        if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
+        if (eligibleMinute || firstHalfSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
           away: String(match.away || ""),
           minute: Number.isFinite(aiMinute) ? aiMinute : null,
@@ -3446,6 +3454,8 @@ const server = http.createServer(async (req, res) => {
           sotSignalConfirmed: confirmedSotSignal,
           sotSignalConfirmationReason: sotConfirmation.reason,
           sotProviderRegression: sotConfirmation.regression,
+          firstHalfSotWindow,
+          firstHalfRecentSotQualifies,
           firstHalfEightSotQualifies,
           xGQualifies,
           combined20SotQualifies,
@@ -3465,7 +3475,7 @@ const server = http.createServer(async (req, res) => {
           dangerousAttacks10,
           eligibleMinute,
           qualifies: isAiGoal,
-          rejection: !scoreAvailable ? "score_missing" : firstHalfEightSotQualifies && !confirmedSotSignal ? "awaiting_sot_confirmation" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute ? "minute_outside_second_half_46_88" : !confirmedSotSignal && !xGQualifies && sotSignalQualifies ? sotConfirmation.reason : !confirmedSotSignal && !xGQualifies ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
+          rejection: !scoreAvailable ? "score_missing" : (firstHalfRecentSotQualifies || firstHalfEightSotQualifies) && !confirmedSotSignal ? "awaiting_sot_confirmation" : firstHalfRecentSotQualifies ? "qualified_first_half_recent_sot" : firstHalfEightSotQualifies ? "qualified_first_half_8_sot" : !eligibleMinute && !firstHalfSotWindow ? "minute_outside_approved_ai_window" : !confirmedSotSignal && !xGQualifies && sotSignalQualifies ? sotConfirmation.reason : !confirmedSotSignal && !xGQualifies ? "no_approved_sot_xg_or_man_advantage_signal" : "qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = [];
