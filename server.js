@@ -2638,8 +2638,41 @@ const server = http.createServer(async (req, res) => {
           );
           if (repairedHalftime.rowCount) console.warn("Goal Pulse history repaired: reopened halftime alerts misgraded against first-half score", JSON.stringify({ repaired: repairedHalftime.rowCount }));
           const pending = await analyticsPool.query(
-            "SELECT alert_id,payload,created_at FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','pending','εκκρεμεί','σε εκκρεμότητα') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND ((payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') OR (NULLIF(trim(payload->>'market'),'') IS NULL AND payload->>'source'='server-push' AND payload->>'startScore' IS NOT NULL AND ((NULLIF(trim(payload->>'home'),'') IS NOT NULL AND NULLIF(trim(payload->>'away'),'') IS NOT NULL) OR (jsonb_typeof(payload->'teams')='array' AND jsonb_array_length(payload->'teams') >= 2)))) AND COALESCE(payload->>'market','') NOT ILIKE '%ασιατ%' AND COALESCE(payload->>'market','') NOT ILIKE '%asian%' AND COALESCE(payload->>'market','') NOT ILIKE '%corner%' AND COALESCE(payload->>'market','') NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
+            "SELECT alert_id,payload,created_at FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','pending','εκκρεμεί','σε εκκρεμότητα') AND upper(trim(COALESCE(payload->>'level','AI'))) IN ('AI','VIP') AND ((payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') OR (NULLIF(trim(payload->>'market'),'') IS NULL AND payload->>'source'='server-push' AND payload->>'startScore' IS NOT NULL AND ((NULLIF(trim(payload->>'home'),'') IS NOT NULL AND NULLIF(trim(payload->>'away'),'') IS NOT NULL) OR (jsonb_typeof(payload->'teams')='array' AND jsonb_array_length(payload->'teams') >= 2)))) AND COALESCE(payload->>'market','') NOT ILIKE '%ασιατ%' AND COALESCE(payload->>'market','') NOT ILIKE '%asian%' AND COALESCE(payload->>'market','') NOT ILIKE '%corner%' AND COALESCE(payload->>'market','') NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
           );
+          // Run the 48-hour unverified closure before provider reconciliation. The
+          // previous placement was after potentially slow per-team network lookups,
+          // allowing stale records to remain pending when a reconciliation pass ran long.
+          const staleUnverified = await analyticsPool.query(
+            `UPDATE alert_history
+                SET payload = payload || jsonb_build_object(
+                  'betOutcome', 'void',
+                  'outcome', 'Μη επαληθεύτηκε · έκλεισε χωρίς αξιόπιστο σκορ',
+                  'betSettlementLabel', 'Μη επαληθευμένο · ακυρώθηκε',
+                  'betSettlementReason', 'Δεν βρέθηκε επαληθεύσιμο σκορ από πάροχο εντός 48 ωρών',
+                  'betSettledAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+                  'evaluatedAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+                  'evaluationRule', 'unverified_after_48h'
+                ),
+                updated_at = NOW()
+              WHERE created_at < NOW() - INTERVAL '48 hours'
+                AND upper(trim(COALESCE(payload->>'level','AI'))) IN ('AI','VIP')
+                AND lower(trim(COALESCE(payload->>'outcome',''))) IN ('', 'εκκρεμεί', 'pending', 'σε εκκρεμότητα', 'εκκρεμές')
+                AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('', 'pending', 'εκκρεμεί', 'σε εκκρεμότητα')
+                AND ((payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%')
+                  OR (NULLIF(trim(payload->>'market'),'') IS NULL AND payload->>'source'='server-push' AND payload->>'startScore' IS NOT NULL
+                    AND ((NULLIF(trim(payload->>'home'),'') IS NOT NULL AND NULLIF(trim(payload->>'away'),'') IS NOT NULL)
+                      OR (jsonb_typeof(payload->'teams')='array' AND jsonb_array_length(payload->'teams') >= 2)))
+                )
+                AND COALESCE(payload->>'market','') NOT ILIKE '%ασιατ%'
+                AND COALESCE(payload->>'market','') NOT ILIKE '%asian%'
+                AND COALESCE(payload->>'market','') NOT ILIKE '%corner%'
+                AND COALESCE(payload->>'market','') NOT ILIKE '%κόρνερ%'
+              RETURNING alert_id`
+          );
+          if (staleUnverified.rowCount) {
+            console.warn("[settlement] Closed stale alerts as unverified voids:", JSON.stringify({ count: staleUnverified.rowCount, ageHours: 48 }));
+          }
           // Fetch historical scoreboard dates only when unresolved alerts actually need them.
           // This extends reconciliation beyond the previous fixed 2-day window without
           // requesting every past date on every scan.
@@ -2858,30 +2891,7 @@ const server = http.createServer(async (req, res) => {
               rule: alert.evaluationRule
             }));
           }
-          // Never leave an old alert pending forever. After 48 hours, if the
-          // completed fixture/period still has no verifiable provider score,
-          // close it as void (unverified), never as a win or loss.
-          const staleUnverified = await analyticsPool.query(
-            `UPDATE alert_history
-                SET payload = payload || jsonb_build_object(
-                  'betOutcome', 'void',
-                  'outcome', 'Μη επαληθεύτηκε · έκλεισε χωρίς αξιόπιστο σκορ',
-                  'betSettlementLabel', 'Μη επαληθευμένο · ακυρώθηκε',
-                  'betSettlementReason', 'Δεν βρέθηκε επαληθεύσιμο σκορ από πάροχο εντός 48 ωρών',
-                  'betSettledAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
-                  'evaluatedAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
-                  'evaluationRule', 'unverified_after_48h'
-                ),
-                updated_at = NOW()
-              WHERE created_at < NOW() - INTERVAL '48 hours'
-                AND COALESCE(payload->>'level', 'AI') IN ('AI', 'VIP')
-                AND lower(trim(COALESCE(payload->>'outcome', ''))) IN ('', 'εκκρεμεί', 'pending', 'σε εκκρεμότητα', 'εκκρεμές')
-                AND lower(trim(COALESCE(payload->>'betOutcome', ''))) IN ('', 'pending', 'εκκρεμεί', 'σε εκκρεμότητα')
-              RETURNING alert_id`
-          );
-          if (staleUnverified.rowCount) {
-            console.warn("[settlement] Closed stale alerts as unverified voids:", JSON.stringify({ count: staleUnverified.rowCount, ageHours: 48 }));
-          }
+
         } catch (evaluationError) {
           console.error("AI alert halftime outcome evaluation failed:", evaluationError.message);
         }
