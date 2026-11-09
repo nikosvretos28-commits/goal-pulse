@@ -3435,7 +3435,7 @@ const server = http.createServer(async (req, res) => {
         const isAiGoal = scoreAvailable && (secondHalfAiQualifies || firstHalfSotAiQualifies);
         // Keep the first 16 general samples, but never omit an eligible 46′–88′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
-        if (eligibleMinute || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
+        if (eligibleMinute || firstHalfSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
           away: String(match.away || ""),
           minute: Number.isFinite(aiMinute) ? aiMinute : null,
