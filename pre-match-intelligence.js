@@ -56,20 +56,25 @@ function findHeadToHead(homeProfile, awayProfile, homeName, awayName) {
   const awayKey = normalizeTeamKey(homeName);
   const direct = homeProfile?.opponents?.[homeKey];
   const reverse = awayProfile?.opponents?.[awayKey];
+  if (!direct && !reverse) return { available: false, sample: 0 };
   const item = direct || reverse;
-  if (!item || Number(item.matches || 0) < 1) return { available: false, sample: 0 };
+  if (Number(item.matches || 0) < 1) return { available: false, sample: 0 };
   const matches = Number(item.matches || 0);
+  const goalsFor = Number(reverse && !direct ? item.goalsAgainst || 0 : item.goalsFor || 0);
+  const goalsAgainst = Number(reverse && !direct ? item.goalsFor || 0 : item.goalsAgainst || 0);
+  const wins = Number(reverse && !direct ? item.losses || 0 : item.wins || 0);
+  const losses = Number(reverse && !direct ? item.wins || 0 : item.losses || 0);
   return {
     available: true,
     sample: matches,
-    wins: Number(item.wins || 0),
+    wins,
     draws: Number(item.draws || 0),
-    losses: Number(item.losses || 0),
-    goalsFor: Number(item.goalsFor || 0),
-    goalsAgainst: Number(item.goalsAgainst || 0),
-    goalsForAvg: finiteRate(item.goalsFor, matches),
-    goalsAgainstAvg: finiteRate(item.goalsAgainst, matches),
-    avgTotalGoals: finiteRate(Number(item.goalsFor || 0) + Number(item.goalsAgainst || 0), matches),
+    losses,
+    goalsFor,
+    goalsAgainst,
+    goalsForAvg: finiteRate(goalsFor, matches),
+    goalsAgainstAvg: finiteRate(goalsAgainst, matches),
+    avgTotalGoals: finiteRate(goalsFor + goalsAgainst, matches),
     overRates: item.overRates || Object.fromEntries(Object.entries(item.over || {}).map(([line, count]) => [line, finiteRate(count, matches)])),
     source: "current-season league results"
   };
