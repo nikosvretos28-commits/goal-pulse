@@ -8,7 +8,7 @@ const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./so
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
 const { createCompetitionHistoryStore } = require("./competition-history-store");
-const { buildPreMatchMatchupContext, seasonBoundsForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
+const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 let Pool = null;
@@ -1362,9 +1362,9 @@ async function schedulePreMatchSeasonCollection(events) {
     const leagueEvents = events.filter(event => String(event.__goalPulseLeagueCode || "") === code);
     const seasonEvent = leagueEvents.find(event => event.season?.slug || event.season?.year) || leagueEvents[0];
     const bounds = preMatchSeasonBounds(code);
+    const seasonFilter = seasonEventFilterForLeague(code, seasonEvent);
     return {
-      code, seasonSlug: String(seasonEvent?.season?.slug || ""),
-      seasonYear: Number(seasonEvent?.season?.year || bounds.start.slice(0,4)),
+      code, ...seasonFilter,
       seasonKey: bounds.seasonKey, key: code + "|" + bounds.seasonKey
     };
   });
