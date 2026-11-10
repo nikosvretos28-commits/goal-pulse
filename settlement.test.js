@@ -96,3 +96,12 @@ test('SportScore fixture identity prefers provider IDs and never fabricates an i
   assert.equal(getProviderFixtureId({ id: 123, slug: 'alpha-beta' }), '123');
   assert.equal(getProviderFixtureId({}), '');
 });
+
+test('valid Over markets can be settled without a saved start score', () => {
+  const { canSettleOverWithoutStartScore } = require('./settlement');
+  assert.equal(canSettleOverWithoutStartScore('Over 0.5'), true);
+  assert.equal(canSettleOverWithoutStartScore('Over 2,5'), true);
+  assert.equal(canSettleOverWithoutStartScore('Over 2.5 corners'), false);
+  assert.equal(canSettleOverWithoutStartScore('Under 2.5'), false);
+  assert.equal(canSettleOverWithoutStartScore('Over'), false);
+});
