@@ -51,7 +51,7 @@ function gradeOverMarket(totalGoals, line) {
 
 function canSettleOverWithoutStartScore(market) {
   const text = String(market || '');
-  return /\\bover\\b/i.test(text) && !/corner|κόρνερ/i.test(text) && parseOverLine(text) !== null;
+  return /\bover\b/i.test(text) && !/corner|κόρνερ/i.test(text) && parseOverLine(text) !== null;
 }
 
 function getProviderFixtureId(match = {}) {
