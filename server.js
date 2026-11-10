@@ -2765,7 +2765,7 @@ const server = http.createServer(async (req, res) => {
           );
           if (repairedHalftime.rowCount) console.warn("Goal Pulse history repaired: reopened halftime alerts misgraded against first-half score", JSON.stringify({ repaired: repairedHalftime.rowCount }));
           const pending = await analyticsPool.query(
-            "SELECT alert_id,payload,created_at FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','pending','εκκρεμεί','σε εκκρεμότητα') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND ((payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') OR (NULLIF(trim(payload->>'market'),'') IS NULL AND payload->>'source'='server-push' AND payload->>'startScore' IS NOT NULL AND ((NULLIF(trim(payload->>'home'),'') IS NOT NULL AND NULLIF(trim(payload->>'away'),'') IS NOT NULL) OR (jsonb_typeof(payload->'teams')='array' AND jsonb_array_length(payload->'teams') >= 2)))) AND COALESCE(payload->>'market','') NOT ILIKE '%ασιατ%' AND COALESCE(payload->>'market','') NOT ILIKE '%asian%' AND COALESCE(payload->>'market','') NOT ILIKE '%corner%' AND COALESCE(payload->>'market','') NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
+            "SELECT alert_id,payload,created_at FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND ((payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') OR (NULLIF(trim(payload->>'market'),'') IS NULL AND payload->>'source'='server-push' AND payload->>'startScore' IS NOT NULL AND ((NULLIF(trim(payload->>'home'),'') IS NOT NULL AND NULLIF(trim(payload->>'away'),'') IS NOT NULL) OR (jsonb_typeof(payload->'teams')='array' AND jsonb_array_length(payload->'teams') >= 2)))) AND COALESCE(payload->>'market','') NOT ILIKE '%ασιατ%' AND COALESCE(payload->>'market','') NOT ILIKE '%asian%' AND COALESCE(payload->>'market','') NOT ILIKE '%corner%' AND COALESCE(payload->>'market','') NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
           );
           // Fetch historical scoreboard dates only when unresolved alerts actually need them.
           // This extends reconciliation beyond the previous fixed 2-day window without
@@ -2920,7 +2920,16 @@ const server = http.createServer(async (req, res) => {
             if (secondHalf && completed) live = completed;
             else if (firstHalf && completed && completed.homeHtScore != null && completed.awayHtScore != null) live = completed;
             if (/κόρνερ|corner/i.test(String(alert.market || ""))) continue;
-            if (!live) continue;
+            if (!live) {
+              console.warn("[settlement] Pending alert not matched to a verifiable period score:", JSON.stringify({
+                alertId: row.alert_id, eventId: alert.eventId || row.event_id || null,
+                home: alertHome || null, away: alertAway || null, league: alert.league || null,
+                alertDate, period: firstHalf ? "first_half" : secondHalf ? "second_half" : explicitPeriod || null,
+                completedFixtureMatched: Boolean(completed),
+                missingHalfTimeScore: Boolean(firstHalf && completed && (completed.homeHtScore == null || completed.awayHtScore == null))
+              }));
+              continue;
+            }
             const statusText = String(live.statusText || live.status || "").toLowerCase();
             const homeScore = Number(live.homeScore), awayScore = Number(live.awayScore);
             const hasFullScore = live.homeScore != null && live.awayScore != null && Number.isFinite(homeScore) && Number.isFinite(awayScore);
@@ -2989,23 +2998,30 @@ const server = http.createServer(async (req, res) => {
             } else betOutcome = outcomeScore > startScore ? "won" : "lost";
             if (!betOutcome) continue;
             const won = betOutcome === "won", isPush = betOutcome === "push";
+            // Alert evaluation and the user's Bet result are independent fields.
+            // Reconcile a pending evaluation even when the Bet was already settled manually,
+            // but never overwrite that existing Bet outcome or its settlement evidence.
             alert.outcome = won ? "Επιβεβαιώθηκε · επιτεύχθηκε ο στόχος γκολ" :
               isPush ? "Επιστροφή · ισοπαλία στη γραμμή Over" : "Δεν επιβεβαιώθηκε · δεν επιτεύχθηκε ο στόχος γκολ";
-            alert.betOutcome = betOutcome;
-            alert.betSettlementLabel = won ? "Κερδισμένο" : isPush ? "Επιστροφή" : "Χαμένο";
-            alert.betFinalScore = settlement.home + "-" + settlement.away;
-            if (hasFullScore) alert.betMatchFinalScore = homeScore + "-" + awayScore;
-            if (live.homeHtScore != null && live.awayHtScore != null &&
-                Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore))) {
-              alert.betHalfTimeScore = Number(live.homeHtScore) + "-" + Number(live.awayHtScore);
+            const existingBetOutcome = String(alert.betOutcome || "").trim().toLowerCase();
+            const betAlreadySettled = ["won", "lost", "void", "push"].includes(existingBetOutcome);
+            if (!betAlreadySettled) {
+              alert.betOutcome = betOutcome;
+              alert.betSettlementLabel = won ? "Κερδισμένο" : isPush ? "Επιστροφή" : "Χαμένο";
+              alert.betFinalScore = settlement.home + "-" + settlement.away;
+              if (hasFullScore) alert.betMatchFinalScore = homeScore + "-" + awayScore;
+              if (live.homeHtScore != null && live.awayHtScore != null &&
+                  Number.isFinite(Number(live.homeHtScore)) && Number.isFinite(Number(live.awayHtScore))) {
+                alert.betHalfTimeScore = Number(live.homeHtScore) + "-" + Number(live.awayHtScore);
+              }
+              alert.betScoreScope = settlement.scope;
+              alert.betSettlementProvider = String(live.settlementProvider);
+              alert.betSettlementFixtureId = String(live.settlementFixtureId);
+              alert.betSettlementFixtureDate = live.settlementFixtureDate || alertDate;
+              alert.betSettlementLeague = live.settlementLeague || alert.league || null;
+              alert.betScoreSource = firstHalf ? "period_1_linescore" : "confirmed_full_time_score";
+              alert.betSettledAt = now;
             }
-            alert.betScoreScope = settlement.scope;
-            alert.betSettlementProvider = String(live.settlementProvider);
-            alert.betSettlementFixtureId = String(live.settlementFixtureId);
-            alert.betSettlementFixtureDate = live.settlementFixtureDate || alertDate;
-            alert.betSettlementLeague = live.settlementLeague || alert.league || null;
-            alert.betScoreSource = firstHalf ? "period_1_linescore" : "confirmed_full_time_score";
-            alert.betSettledAt = now;
             alert.evaluatedAt = now;
             alert.evaluationRule = firstHalf ? "end_of_first_half_score" : "end_of_match_score";
             await analyticsPool.query(
