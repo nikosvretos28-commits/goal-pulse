@@ -26,7 +26,7 @@ function seasonEventFilterForLeague(leagueCode, seasonEvent, now = new Date()) {
   // Calendar-year competitions can contain multiple tournament slugs in one
   // year. Use the league's canonical calendar year instead of the current
   // scoreboard event's possibly stale/tournament-specific season metadata.
-  const calendarSeason = /^\\d{4}$/.test(bounds.seasonKey);
+  const calendarSeason = /^\d{4}$/.test(bounds.seasonKey);
   return {
     seasonSlug: calendarSeason ? "" : String(seasonEvent?.season?.slug || ""),
     seasonYear: calendarSeason
