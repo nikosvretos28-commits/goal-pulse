@@ -49,6 +49,11 @@ function gradeOverMarket(totalGoals, line) {
   return total > target ? 'won' : 'lost';
 }
 
+function canSettleOverWithoutStartScore(market) {
+  const text = String(market || '');
+  return /\\bover\\b/i.test(text) && !/corner|κόρνερ/i.test(text) && parseOverLine(text) !== null;
+}
+
 function getProviderFixtureId(match = {}) {
   for (const key of ['id', 'fixture_id', 'fixtureId', 'event_id', 'eventId', 'slug', 'match_slug', 'matchSlug']) {
     const value = match[key];
@@ -117,6 +122,7 @@ module.exports = {
   getPeriodSettlementScore,
   parseOverLine,
   gradeOverMarket,
+  canSettleOverWithoutStartScore,
   normalizeFixtureName,
   getProviderFixtureId,
   findUniqueCompletedFixture
