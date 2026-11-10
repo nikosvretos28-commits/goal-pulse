@@ -2897,17 +2897,39 @@ const server = http.createServer(async (req, res) => {
                   const cacheTtl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
                   if (!cached || Date.now() - cached.at > cacheTtl) {
                     try {
-                      const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
-                      const body = historicalResponse.ok ? await historicalResponse.json() : {};
-                      // Use the shared provider extractor: SportScore may wrap fixtures under
-                      // data/results/items or one nested collection, not only matches/data/fixtures.
-                      const matches = historicalResponse.ok ? extractFixtureArray(body) : [];
+                      let historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+                      let body = historicalResponse.ok ? await historicalResponse.json() : {};
+                      // Some SportScore team-filter requests return HTTP 200 with an empty
+                      // matches array even though the date's finished-fixture feed contains
+                      // the match. Fall back once per date to that complete feed, then apply
+                      // the same strict team/date/league matching below.
+                      let matches = historicalResponse.ok ? extractFixtureArray(body) : [];
+                      if (!matches.length) {
+                        const allKey = lookupDate + "|__all_finished__";
+                        let allCached = historicalTeamResultCache.get(allKey);
+                        if (!allCached || Date.now() - allCached.at > 15 * 60 * 1000) {
+                          const allResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+                          const allBody = allResponse.ok ? await allResponse.json() : {};
+                          const allMatches = allResponse.ok ? extractFixtureArray(allBody) : [];
+                          allCached = { at: Date.now(), matches: allMatches, httpStatus: allResponse.status,
+                            rootKeys: allBody && typeof allBody === "object" ? Object.keys(allBody).slice(0, 20) : [] };
+                          historicalTeamResultCache.set(allKey, allCached);
+                        }
+                        if (allCached.matches.length) {
+                          matches = allCached.matches;
+                          console.info("[settlement] SportScore used date-wide finished-fixture fallback:", JSON.stringify({
+                            date: lookupDate, teamSlug: slug, fixtures: matches.length, httpStatus: allCached.httpStatus
+                          }));
+                        } else {
+                          console.warn("[settlement] SportScore historical lookup and date-wide fallback returned no fixtures:", JSON.stringify({
+                            date: lookupDate, teamSlug: slug, teamHttpStatus: historicalResponse.status,
+                            teamRootKeys: body && typeof body === "object" ? Object.keys(body).slice(0, 20) : [],
+                            fallbackHttpStatus: allCached.httpStatus, fallbackRootKeys: allCached.rootKeys
+                          }));
+                        }
+                      }
                       cached = { at: Date.now(), matches, httpStatus: historicalResponse.status,
                         rootKeys: body && typeof body === "object" ? Object.keys(body).slice(0, 20) : [] };
-                      if (!matches.length) console.warn("[settlement] SportScore historical lookup returned no fixtures:", JSON.stringify({
-                        date: lookupDate, teamSlug: slug, httpStatus: historicalResponse.status,
-                        rootKeys: cached.rootKeys
-                      }));
                       historicalTeamResultCache.set(key, cached);
                       if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
                     } catch (lookupError) {
