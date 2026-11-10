@@ -3,7 +3,7 @@ const webpush = require("web-push");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
-const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
+const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
@@ -2965,7 +2965,7 @@ const server = http.createServer(async (req, res) => {
                 console.warn("[settlement] Legacy Power Ranking sibling reconciliation skipped:", JSON.stringify({ alertId: row.alert_id, error: siblingError.message }));
               }
             }
-            if (!Number.isFinite(startScore) || (!firstHalf && !secondHalf)) continue;
+            if ((!Number.isFinite(startScore) && !canSettleOverWithoutStartScore(alert.market)) || (!firstHalf && !secondHalf)) continue;
             const settlement = getPeriodSettlementScore({ period: firstHalf ? "first_half" : "second_half",
               status: live.status, statusText, minute: live.minute, homeScore: live.homeScore, awayScore: live.awayScore,
               homeHtScore: live.homeHtScore, awayHtScore: live.awayHtScore });
