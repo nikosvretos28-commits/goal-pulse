@@ -7,7 +7,7 @@ function normalizeTeamKey(value) {
 
 function seasonBoundsForLeague(leagueCode, now = new Date()) {
   const year = now.getUTCFullYear();
-  const calendarSeason = ["bra.1", "arg.1", "usa.1", "mex.1", "aus.1", "bra.2", "arg.2", "arg.3"].includes(String(leagueCode || ""));
+  const calendarSeason = ["bra.1", "arg.1", "usa.1", "mex.1", "mex.w.1", "aus.1", "bra.2", "arg.2", "arg.3"].includes(String(leagueCode || ""));
   if (calendarSeason) {
     return { seasonKey: String(year), start: String(year) + "0101", end: String(year) + "1231" };
   }
