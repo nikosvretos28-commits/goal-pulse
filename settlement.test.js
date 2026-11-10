@@ -73,6 +73,19 @@ test('normalizes common club prefixes', () => {
   }).id, 'x');
 });
 
+test('fixture fallback accepts a league-label mismatch only when teams and date identify one fixture', () => {
+  const candidates = [
+    { id: 'unique', date: '2026-11-07', home: 'Alpha FC', away: 'Beta SC', league: 'Premier Division' }
+  ];
+  assert.equal(findUniqueCompletedFixture(candidates, {
+    home: 'Alpha', away: 'Beta', league: 'Premier League', date: '2026-11-07'
+  }).id, 'unique');
+  candidates.push({ id: 'ambiguous', date: '2026-11-07', home: 'Alpha', away: 'Beta', league: 'Cup' });
+  assert.equal(findUniqueCompletedFixture(candidates, {
+    home: 'Alpha', away: 'Beta', league: 'Premier League', date: '2026-11-07'
+  }), null);
+});
+
 test('fixture ID match is still checked against the team identity', () => {
   const candidates = [{ id: '123', date: '2026-11-07', home: 'Alpha', away: 'Beta', league: 'League' }];
   assert.equal(findUniqueCompletedFixture(candidates, {
