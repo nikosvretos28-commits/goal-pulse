@@ -31,27 +31,30 @@ async function fetchCompetitionHistoryWindow({
   timeoutMs = 15000,
   fetchImpl = fetch
 }) {
-  let lastError = new Error("Competition history provider unavailable");
   const urls = [endpoint, fallbackEndpoint].filter(Boolean);
+  const failures = [];
   for (let index = 0; index < urls.length; index += 1) {
+    const url = urls[index];
+    const hostRole = index === 0 ? "primary" : "fallback";
     try {
-      const response = await fetchImpl(urls[index], {
+      const response = await fetchImpl(url, {
         headers,
         signal: AbortSignal.timeout(timeoutMs)
       });
       if (!response.ok) {
-        lastError = new Error("Competition history provider unavailable (HTTP " + response.status + ")");
-        // A malformed request will fail identically on the alternate hostname.
-        if (response.status === 400) break;
+        failures.push(hostRole + " HTTP " + response.status + " (" + url + ")");
+        // A 400 can be host-specific (routing/edge validation). Try the
+        // alternate ESPN hostname before declaring the entire window failed.
         continue;
       }
       const body = await response.json();
       return Array.isArray(body?.events) ? body.events : [];
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(hostRole + " network/timeout error (" + url + "): " + message);
     }
   }
-  throw lastError;
+  throw new Error("Competition history provider failed: " + failures.join("; "));
 }
 
 module.exports = { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow };

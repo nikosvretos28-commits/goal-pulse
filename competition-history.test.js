@@ -53,6 +53,33 @@ test("history window reports the provider error when both hosts fail", async () 
   );
 });
 
+test("history window retries the fallback hostname after HTTP 400", async () => {
+  const calls = [];
+  const result = await fetchCompetitionHistoryWindow({
+    endpoint: "https://primary.example/scoreboard",
+    fallbackEndpoint: "https://fallback.example/scoreboard",
+    fetchImpl: async url => {
+      calls.push(url);
+      return url.includes("primary")
+        ? { ok: false, status: 400 }
+        : { ok: true, json: async () => ({ events: [{ id: "fallback-after-400" }] }) };
+    }
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(result[0].id, "fallback-after-400");
+});
+
+test("history window preserves both host errors for diagnosis", async () => {
+  await assert.rejects(
+    fetchCompetitionHistoryWindow({
+      endpoint: "https://primary.example/scoreboard",
+      fallbackEndpoint: "https://fallback.example/scoreboard",
+      fetchImpl: async url => ({ ok: false, status: url.includes("primary") ? 400 : 503 })
+    }),
+    error => /primary HTTP 400/.test(error.message) && /fallback HTTP 503/.test(error.message)
+  );
+});
+
 test("history request limiter never exceeds its configured concurrency", async () => {
   const limit = createLimiter(2);
   let active = 0;
