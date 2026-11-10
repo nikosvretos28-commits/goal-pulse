@@ -2856,7 +2856,10 @@ const server = http.createServer(async (req, res) => {
             let completed = matchedCompletedFixture?.result || null;
             // The public day endpoint caps finished fixtures at 200. For a specific
             // unresolved alert, query SportScore by team so busy dates cannot hide its result.
-            if (!completed && alertHome && alertAway && row.created_at) {
+            // Also query SportScore when ESPN found the fixture but omitted half-time linescores:
+            // a final score alone must never block a provider that can verify the requested half.
+            const completedHasHalfTime = completed?.homeHtScore != null && completed?.awayHtScore != null;
+            if ((!completed || (firstHalf && !completedHasHalfTime)) && alertHome && alertAway && row.created_at) {
               const alertDate = new Date(row.created_at).toISOString().slice(0, 10);
               const teamSlug = value => normalizeTeam(value).replace(/\s+/g, "-");
               const parseScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
@@ -2913,7 +2916,15 @@ const server = http.createServer(async (req, res) => {
                   const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
                     home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
                   });
-                  if (exactMatch) { completed = exactMatch.result; break lookupLoop; }
+                  if (exactMatch) {
+                    const sportScoreHasHalfTime = exactMatch.result.homeHtScore != null && exactMatch.result.awayHtScore != null;
+                    // Prefer a provider result with verified HT score for first-half markets.
+                    // Otherwise retain an existing ESPN fixture match for second-half/final-score use.
+                    if (!firstHalf || sportScoreHasHalfTime || !completed) {
+                      completed = exactMatch.result;
+                      if (!firstHalf || sportScoreHasHalfTime) break lookupLoop;
+                    }
+                  }
                 }
               }
             }
