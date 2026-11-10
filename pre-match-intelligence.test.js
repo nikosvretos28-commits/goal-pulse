@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normalizeTeamKey, seasonBoundsForLeague, buildPreMatchMatchupContext, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
+const { normalizeTeamKey, seasonBoundsForLeague, seasonEventFilterForLeague, buildPreMatchMatchupContext, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 
 test("European season keeps July in the season that began the previous August", () => {
   const july = seasonBoundsForLeague("eng.1", new Date("2026-07-15T12:00:00.000Z"));
@@ -22,6 +22,22 @@ test("Mexican women's league uses calendar-year seasons", () => {
   assert.equal(result.seasonKey, "2026");
   assert.equal(result.start, "20260101");
   assert.equal(result.end, "20261231");
+});
+
+test("calendar-year league ignores stale tournament season metadata", () => {
+  const result = seasonEventFilterForLeague("mex.w.1", {
+    season: { slug: "2025-apertura", year: 2025 }
+  }, new Date("2026-11-10T12:00:00.000Z"));
+  assert.equal(result.seasonSlug, "");
+  assert.equal(result.seasonYear, 2026);
+});
+
+test("split-year league preserves provider season metadata", () => {
+  const result = seasonEventFilterForLeague("eng.1", {
+    season: { slug: "2026-2027", year: 2026 }
+  }, new Date("2026-11-10T12:00:00.000Z"));
+  assert.equal(result.seasonSlug, "2026-2027");
+  assert.equal(result.seasonYear, 2026);
 });
 
 test("team normalization handles accents and punctuation", () => {
