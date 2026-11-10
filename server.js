@@ -2870,8 +2870,14 @@ const server = http.createServer(async (req, res) => {
                 const homeFinal = parseScore(match.home_score ?? match.homeScore ?? match.scores?.home ?? match.score?.home);
                 const awayFinal = parseScore(match.away_score ?? match.awayScore ?? match.scores?.away ?? match.score?.away);
                 if (homeFinal == null || awayFinal == null) return null;
-                const homeHt = parseScore(match.home_ht_score ?? match.homeHtScore ?? match.half_time_score?.home);
-                const awayHt = parseScore(match.away_ht_score ?? match.awayHtScore ?? match.half_time_score?.away);
+                const homeHt = parseScore(match.home_ht_score ?? match.homeHtScore ??
+                  match.half_time_score?.home ?? match.halfTimeScore?.home ??
+                  match.scores?.half_time?.home ?? match.scores?.halftime?.home ??
+                  match.period_scores?.first_half?.home ?? match.periods?.first_half?.home);
+                const awayHt = parseScore(match.away_ht_score ?? match.awayHtScore ??
+                  match.half_time_score?.away ?? match.halfTimeScore?.away ??
+                  match.scores?.half_time?.away ?? match.scores?.halftime?.away ??
+                  match.period_scores?.first_half?.away ?? match.periods?.first_half?.away);
                 const leagueName = String(match.league?.name || match.league_name || match.competition?.name || match.competition_name || match.tournament?.name || "");
                 const fixtureDate = String(match.date || match.match_date || match.fixture_date || alertDate).slice(0, 10);
                 return { status: "post", statusText: "finished", homeScore: homeFinal, awayScore: awayFinal,
@@ -2893,8 +2899,15 @@ const server = http.createServer(async (req, res) => {
                     try {
                       const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
                       const body = historicalResponse.ok ? await historicalResponse.json() : {};
-                      const matches = Array.isArray(body.matches) ? body.matches : Array.isArray(body.data) ? body.data : Array.isArray(body.fixtures) ? body.fixtures : [];
-                      cached = { at: Date.now(), matches };
+                      // Use the shared provider extractor: SportScore may wrap fixtures under
+                      // data/results/items or one nested collection, not only matches/data/fixtures.
+                      const matches = historicalResponse.ok ? extractFixtureArray(body) : [];
+                      cached = { at: Date.now(), matches, httpStatus: historicalResponse.status,
+                        rootKeys: body && typeof body === "object" ? Object.keys(body).slice(0, 20) : [] };
+                      if (!matches.length) console.warn("[settlement] SportScore historical lookup returned no fixtures:", JSON.stringify({
+                        date: lookupDate, teamSlug: slug, httpStatus: historicalResponse.status,
+                        rootKeys: cached.rootKeys
+                      }));
                       historicalTeamResultCache.set(key, cached);
                       if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
                     } catch (lookupError) {
