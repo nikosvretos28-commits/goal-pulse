@@ -17,6 +17,13 @@ test("calendar-year leagues retain calendar season keys", () => {
   assert.equal(result.start, "20260101");
 });
 
+test("Mexican women's league uses calendar-year seasons", () => {
+  const result = seasonBoundsForLeague("mex.w.1", new Date("2026-11-10T12:00:00.000Z"));
+  assert.equal(result.seasonKey, "2026");
+  assert.equal(result.start, "20260101");
+  assert.equal(result.end, "20261231");
+});
+
 test("team normalization handles accents and punctuation", () => {
   assert.equal(normalizeTeamKey("Atlético-Madrid"), "atletico madrid");
 });
