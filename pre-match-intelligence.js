@@ -21,6 +21,20 @@ function seasonBoundsForLeague(leagueCode, now = new Date()) {
   };
 }
 
+function seasonEventFilterForLeague(leagueCode, seasonEvent, now = new Date()) {
+  const bounds = seasonBoundsForLeague(leagueCode, now);
+  // Calendar-year competitions can contain multiple tournament slugs in one
+  // year. Use the league's canonical calendar year instead of the current
+  // scoreboard event's possibly stale/tournament-specific season metadata.
+  const calendarSeason = /^\\d{4}$/.test(bounds.seasonKey);
+  return {
+    seasonSlug: calendarSeason ? "" : String(seasonEvent?.season?.slug || ""),
+    seasonYear: calendarSeason
+      ? Number(bounds.start.slice(0, 4))
+      : Number(seasonEvent?.season?.year || bounds.start.slice(0, 4))
+  };
+}
+
 function finiteRate(numerator, denominator) {
   return numerator != null && Number.isFinite(Number(numerator)) && Number(denominator) > 0
     ? Number((Number(numerator) / Number(denominator)).toFixed(4))
@@ -183,4 +197,4 @@ function scorePreMatchMatchupContext(context) {
   return { score, rawScore: Number(raw.toFixed(2)), reasons, cap: 1.5 };
 }
 
-module.exports = { normalizeTeamKey, seasonBoundsForLeague, buildPreMatchMatchupContext, scorePreMatchMatchupContext };
+module.exports = { normalizeTeamKey, seasonBoundsForLeague, seasonEventFilterForLeague, buildPreMatchMatchupContext, scorePreMatchMatchupContext };
