@@ -4291,7 +4291,14 @@ const server = http.createServer(async (req, res) => {
         }));
       }));
       const successfulWindows = windowResults.filter(result => result.status === "fulfilled");
-      if (!successfulWindows.length) throw new Error("No competition history windows available");
+      const failedWindows = windowResults
+        .map((result, index) => result.status === "rejected"
+          ? { range: compactDate(windows[index].start) + "-" + compactDate(windows[index].end), error: String(result.reason && result.reason.message || result.reason || "unknown provider error") }
+          : null)
+        .filter(Boolean);
+      if (!successfulWindows.length) {
+        throw new Error("No competition history windows available; " + failedWindows.map(item => item.range + ": " + item.error).join(" | "));
+      }
       const events = successfulWindows.flatMap(result => result.value);
       const uniqueEvents = new Map(events.map(event => [String(event.id || event.date + ":" + event.name), event]));
       const matches = [...uniqueEvents.values()].map(event => {
