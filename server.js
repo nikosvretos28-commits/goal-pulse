@@ -2894,6 +2894,25 @@ const server = http.createServer(async (req, res) => {
                       const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
                       const body = historicalResponse.ok ? await historicalResponse.json() : {};
                       const matches = Array.isArray(body.matches) ? body.matches : Array.isArray(body.data) ? body.data : Array.isArray(body.fixtures) ? body.fixtures : [];
+                      // Temporary, privacy-safe diagnostics: identify why the finished-fixture
+                      // endpoint is not supplying a verifiable half-time score. Never log full payloads.
+                      const sample = matches.slice(0, 3).map(match => ({
+                        home: match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || null,
+                        away: match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || null,
+                        keys: Object.keys(match || {}).slice(0, 50),
+                        ht: {
+                          home_ht_score: match.home_ht_score ?? null,
+                          away_ht_score: match.away_ht_score ?? null,
+                          homeHtScore: match.homeHtScore ?? null,
+                          awayHtScore: match.awayHtScore ?? null,
+                          half_time_score: match.half_time_score ?? null
+                        }
+                      }));
+                      console.warn("[settlement] SportScore HT lookup response:", JSON.stringify({
+                        date: lookupDate, team: teamName, slug, httpStatus: historicalResponse.status,
+                        ok: historicalResponse.ok, rootKeys: Object.keys(body || {}).slice(0, 30),
+                        fixtureCount: matches.length, sample
+                      }));
                       cached = { at: Date.now(), matches };
                       historicalTeamResultCache.set(key, cached);
                       if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
