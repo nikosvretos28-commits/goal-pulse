@@ -2888,54 +2888,94 @@ const server = http.createServer(async (req, res) => {
               const alertDateCandidates = [alertDate, ...[-1, 1].map(offset =>
                 new Date(Date.parse(alertDate + "T00:00:00Z") + offset * 86400000).toISOString().slice(0, 10)
               )];
+              const mapSportScoreCandidates = matches => matches.map(match => {
+                const result = toCompleted(match);
+                if (!result) return null;
+                const matchHome = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || "").trim();
+                const matchAway = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
+                return { id: result.settlementFixtureId, date: result.settlementFixtureDate, league: result.settlementLeague,
+                  home: matchHome, away: matchAway, result, raw: match };
+              }).filter(Boolean);
               lookupLoop: for (const lookupDate of alertDateCandidates) {
-                for (const teamName of [alertHome, alertAway]) {
-                  const slug = teamSlug(teamName);
-                  if (!slug) continue;
-                  const key = lookupDate + "|" + slug;
-                  let cached = historicalTeamResultCache.get(key);
-                  const cacheTtl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
-                  if (!cached || Date.now() - cached.at > cacheTtl) {
-                    try {
-                      const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
-                      const body = historicalResponse.ok ? await historicalResponse.json() : {};
-                      // Use the shared provider extractor: SportScore may wrap fixtures under
-                      // data/results/items or one nested collection, not only matches/data/fixtures.
-                      const matches = historicalResponse.ok ? extractFixtureArray(body) : [];
-                      cached = { at: Date.now(), matches, httpStatus: historicalResponse.status,
-                        rootKeys: body && typeof body === "object" ? Object.keys(body).slice(0, 20) : [] };
-                      if (!matches.length) console.warn("[settlement] SportScore historical lookup returned no fixtures:", JSON.stringify({
-                        date: lookupDate, teamSlug: slug, httpStatus: historicalResponse.status,
-                        rootKeys: cached.rootKeys
-                      }));
-                      historicalTeamResultCache.set(key, cached);
-                      if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
-                    } catch (lookupError) {
-                      cached = { at: Date.now(), matches: [] };
-                      historicalTeamResultCache.set(key, cached);
-                    }
+                // The documented SportScore fixtures endpoint returns every finished
+                // fixture for a UTC date when no team filter is supplied. Use that
+                // complete day list first: locally generated team slugs can be invalid
+                // for provider teams and were repeatedly returning count=0.
+                const dateKey = lookupDate + "|__all__";
+                let dateCached = historicalTeamResultCache.get(dateKey);
+                const dateCacheTtl = dateCached?.matches?.length ? 15 * 60 * 1000 : 2 *  60 * 1000;
+                if (!dateCached || Date.now() - dateCached.at > dateCacheTtl) {
+                  try {
+                    const dateResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
+                      encodeURIComponent(lookupDate) + "&status=finished&limit=200&src=goalmatrix", {
+                        headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000)
+                      });
+                    const dateBody = dateResponse.ok ? await dateResponse.json() : {};
+                    const matches = dateResponse.ok ? extractFixtureArray(dateBody) : [];
+                    dateCached = { at: Date.now(), matches, httpStatus: dateResponse.status,
+                      rootKeys: dateBody && typeof dateBody === "object" ? Object.keys(dateBody).slice(0, 20) : [],
+                      count: Number.isFinite(Number(dateBody?.count)) ? Number(dateBody.count) : null };
+                    if (!matches.length) console.warn("[settlement] SportScore date-wide lookup returned no fixtures:", JSON.stringify({
+                      date: lookupDate, httpStatus: dateResponse.status, count: dateCached.count, rootKeys: dateCached.rootKeys
+                    }));
+                    historicalTeamResultCache.set(dateKey, dateCached);
+                    if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
+                  } catch (dateLookupError) {
+                    dateCached = { at: Date.now(), matches: [] };
+                    historicalTeamResultCache.set(dateKey, dateCached);
+                    console.warn("[settlement] SportScore date-wide lookup failed:", JSON.stringify({
+                      date: lookupDate, error: dateLookupError.message
+                    }));
                   }
-                  const candidates = cached.matches.map(match => {
-                    const result = toCompleted(match);
-                    if (!result) return null;
-                    const matchHome = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || "").trim();
-                    const matchAway = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
-                    return { id: result.settlementFixtureId, date: result.settlementFixtureDate, league: result.settlementLeague,
-                      home: matchHome, away: matchAway, result, raw: match };
-                  }).filter(Boolean);
-                  const uniqueCandidates = [...new Map(candidates.map(candidate => [
-                    candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.raw), candidate
-                  ])).values()];
-                  const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
-                    home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
-                  });
-                  if (exactMatch) {
-                    const sportScoreHasHalfTime = exactMatch.result.homeHtScore != null && exactMatch.result.awayHtScore != null;
-                    // Prefer a provider result with verified HT score for first-half markets.
-                    // Otherwise retain an existing ESPN fixture match for second-half/final-score use.
-                    if (!firstHalf || sportScoreHasHalfTime || !completed) {
-                      completed = exactMatch.result;
-                      if (!firstHalf || sportScoreHasHalfTime) break lookupLoop;
+                }
+                const dateCandidates = mapSportScoreCandidates(dateCached.matches);
+                const dateExactMatch = findUniqueCompletedFixture(dateCandidates, {
+                  home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
+                });
+                if (dateExactMatch) {
+                  const hasHalfTime = dateExactMatch.result.homeHtScore != null && dateExactMatch.result.awayHtScore != null;
+                  if (!firstHalf || hasHalfTime || !completed) completed = dateExactMatch.result;
+                  if (!firstHalf || hasHalfTime) break lookupLoop;
+                }
+
+                // Keep the original team-filtered lookup as a fallback for dates
+                // whose all-fixtures response is capped or incomplete.
+                if (!dateExactMatch || (firstHalf && dateExactMatch.result.homeHtScore == null)) {
+                  for (const teamName of [alertHome, alertAway]) {
+                    const slug = teamSlug(teamName);
+                    if (!slug) continue;
+                    const key = lookupDate + "|" + slug;
+                    let cached = historicalTeamResultCache.get(key);
+                    const cacheTtl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
+                    if (!cached || Date.now() - cached.at > cacheTtl) {
+                      try {
+                        const historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
+                          encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) +
+                          "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+                        const body = historicalResponse.ok ? await historicalResponse.json() : {};
+                        const matches = historicalResponse.ok ? extractFixtureArray(body) : [];
+                        cached = { at: Date.now(), matches, httpStatus: historicalResponse.status,
+                          rootKeys: body && typeof body === "object" ? Object.keys(body).slice(0, 20) : [] };
+                        if (!matches.length) console.warn("[settlement] SportScore team-filtered fallback returned no fixtures:", JSON.stringify({
+                          date: lookupDate, teamSlug: slug, httpStatus: historicalResponse.status, rootKeys: cached.rootKeys
+                        }));
+                        historicalTeamResultCache.set(key, cached);
+                        if (historicalTeamResultCache.size > 1000) historicalTeamResultCache.delete(historicalTeamResultCache.keys().next().value);
+                      } catch (lookupError) {
+                        cached = { at: Date.now(), matches: [] };
+                        historicalTeamResultCache.set(key, cached);
+                      }
+                    }
+                    const candidates = mapSportScoreCandidates(cached.matches);
+                    const exactMatch = findUniqueCompletedFixture(candidates, {
+                      home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
+                    });
+                    if (exactMatch) {
+                      const sportScoreHasHalfTime = exactMatch.result.homeHtScore != null && exactMatch.result.awayHtScore != null;
+                      if (!firstHalf || sportScoreHasHalfTime || !completed) {
+                        completed = exactMatch.result;
+                        if (!firstHalf || sportScoreHasHalfTime) break lookupLoop;
+                      }
                     }
                   }
                 }
