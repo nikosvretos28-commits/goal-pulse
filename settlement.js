@@ -114,7 +114,18 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
   }
   if (!date) return null;
   const exact = rows.filter(identityMatches);
-  return exact.length === 1 ? exact[0] : null;
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1 || !league) return null;
+  // Provider league labels can differ while the exact ordered teams and date still
+  // identify one fixture. Allow that fallback only when it is globally unambiguous.
+  const sameTeamsAndDate = rows.filter(candidate => {
+    if (normalizeFixtureName(candidate.home) !== home || normalizeFixtureName(candidate.away) !== away) return false;
+    const candidateDate = String(candidate.date || '').slice(0, 10);
+    if (!candidateDate) return false;
+    const distance = calendarDayDistance(date, candidateDate);
+    return distance !== null && distance <= dateToleranceDays;
+  });
+  return sameTeamsAndDate.length === 1 ? sameTeamsAndDate[0] : null;
 }
 
 module.exports = {
