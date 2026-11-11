@@ -2312,6 +2312,179 @@ button,input{font-size:inherit}
 }
 </style>
 
+
+<style id="goalmatrix-signature-visual-pass">
+/* GoalMatrix signature visual pass — CSS only. Preserve all markup, assets and behavior. */
+:root{
+  --gm-ink:#06121e;
+  --gm-surface:#0c2030;
+  --gm-surface-raised:#10283a;
+  --gm-edge:rgba(105,174,196,.22);
+  --gm-edge-strong:rgba(105,174,196,.36);
+  --gm-mint:#55e2b0;
+  --gm-aqua:#70d8ed;
+  --gm-copy:#f3f8fb;
+  --gm-secondary:#afc2ce;
+}
+body{
+  color:var(--gm-copy);
+  background:
+    radial-gradient(ellipse at 8% 2%,rgba(60,151,163,.12),transparent 34rem),
+    radial-gradient(ellipse at 92% 12%,rgba(56,190,145,.075),transparent 32rem),
+    linear-gradient(180deg,#071522 0%,#050e18 100%);
+}
+.wrap{max-width:1460px}
+header{
+  min-height:82px;
+  border-bottom:1px solid var(--gm-edge);
+  background:linear-gradient(100deg,rgba(5,15,25,.94),rgba(10,29,43,.88));
+  backdrop-filter:blur(14px);
+}
+.brand-tagline{color:#a9bfcc}
+.live-badge{
+  border-color:rgba(85,226,176,.34);
+  background:rgba(22,74,57,.48);
+  box-shadow:0 0 22px rgba(85,226,176,.07),inset 0 1px rgba(255,255,255,.04);
+}
+.gp-section-buttons{
+  gap:9px;
+  margin-top:17px;
+  margin-bottom:20px;
+}
+#gpSectionButtons>.gp-section-button{
+  min-height:44px;
+  padding:10px 12px;
+  border:1px solid var(--gm-edge);
+  border-radius:12px;
+  background:linear-gradient(145deg,rgba(17,43,61,.96),rgba(8,25,39,.98));
+  box-shadow:0 5px 16px rgba(0,0,0,.16),inset 0 1px rgba(255,255,255,.035);
+  color:#eaf4f8;
+  letter-spacing:.025em;
+  transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease;
+}
+#gpSectionButtons>.gp-section-button:hover,
+#gpSectionButtons>.gp-section-button[aria-expanded="true"]{
+  transform:translateY(-1px);
+  border-color:rgba(85,226,176,.52);
+  background:linear-gradient(145deg,rgba(19,63,60,.96),rgba(12,37,52,.98));
+  box-shadow:0 8px 20px rgba(0,0,0,.2),0 0 18px rgba(85,226,176,.055);
+}
+#gpSectionButtons .gp-button-count{
+  border:1px solid rgba(112,216,237,.13);
+  border-radius:7px;
+  background:rgba(112,216,237,.09);
+  color:#a9e9f2;
+  font-variant-numeric:tabular-nums;
+}
+.scoreboard-top,.panel,.side-live,.gp-trend-panel,.gp-power-panel,.protocol-analyst-panel,.gp-live-ranking{
+  border-color:var(--gm-edge);
+  box-shadow:0 12px 32px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.018);
+}
+.scoreboard-top{
+  border-radius:18px;
+  background:linear-gradient(145deg,rgba(14,35,51,.98),rgba(7,21,33,.99));
+}
+.scoreboard-title{
+  padding:19px 21px;
+  background:linear-gradient(100deg,rgba(112,216,237,.055),transparent 70%);
+  border-bottom-color:var(--gm-edge);
+}
+.scoreboard-title h1{letter-spacing:-1.2px}
+.top-live-head{background:rgba(17,43,61,.76);border-bottom-color:var(--gm-edge)}
+.panel,.side-live{
+  border-radius:17px;
+  background:linear-gradient(150deg,rgba(14,35,52,.98),rgba(7,20,32,.99));
+}
+.panel-head{
+  padding:16px 18px;
+  background:linear-gradient(100deg,rgba(112,216,237,.055),transparent 75%);
+  border-bottom-color:rgba(105,174,196,.15);
+}
+.panel-head h2,.pressure-head h3{color:#eff8fb;letter-spacing:-.02em}
+.match{
+  border-color:rgba(105,174,196,.2);
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(15,39,56,.98),rgba(8,24,37,.99));
+  box-shadow:0 4px 14px rgba(0,0,0,.12),inset 0 1px rgba(255,255,255,.018);
+}
+.match:hover{
+  border-color:rgba(85,226,176,.4);
+  box-shadow:0 9px 22px rgba(0,0,0,.2);
+}
+.match-meta{color:#a9bfcc}
+.match-score{color:var(--gm-mint);font-variant-numeric:tabular-nums}
+.stats{gap:7px}
+.stats .stat,.stat{
+  border:1px solid rgba(112,216,237,.1);
+  border-radius:8px;
+  background:rgba(112,216,237,.055);
+  color:#b9ccd6;
+  line-height:1.45;
+}
+.stats .stat b,.stat b{color:#f0f7fa;font-variant-numeric:tabular-nums}
+.filter,.date-label,.search,.mini-btn{
+  border-color:var(--gm-edge);
+  background:rgba(12,32,48,.88);
+  color:#e5f0f5;
+}
+.filter{min-height:39px}
+.filter.active,.filter:hover{
+  border-color:rgba(85,226,176,.62);
+  background:rgba(25,87,67,.78);
+  color:#d8ffef;
+}
+.search::placeholder{color:#8fa8b7}
+.search:focus,.date-label:focus-within{
+  border-color:rgba(112,216,237,.62);
+  box-shadow:0 0 0 3px rgba(112,216,237,.09);
+}
+.mini-btn{border-radius:9px}
+.gp-trend-card,.top-ai-alert-card,.activity-alert-row,.gp-ranking-row,.gp-ranking-history-card{
+  border-color:var(--gm-edge);
+  border-radius:13px;
+  box-shadow:0 5px 16px rgba(0,0,0,.13);
+}
+.top-ai-alert-card{background:linear-gradient(145deg,#10283a,#091b2a)}
+.top-ai-alert-card:hover{border-color:rgba(85,226,176,.45)}
+.gp-ranking-row{background:linear-gradient(145deg,#10283a,#091b2a)}
+.gp-ranking-score strong{color:#a9ebd1}
+.feature{
+  border-color:var(--gm-edge);
+  border-radius:14px;
+  background:linear-gradient(145deg,rgba(14,37,54,.96),rgba(7,21,33,.98));
+}
+.feature:hover{border-color:var(--gm-edge-strong)}
+table{border-color:var(--gm-edge)}
+th{background:rgba(112,216,237,.055)}
+td,th{border-color:rgba(105,174,196,.14)}
+.analysis-box{
+  border-color:var(--gm-edge-strong);
+  border-radius:18px;
+  background:linear-gradient(150deg,#10283a,#081a29);
+  box-shadow:0 24px 70px rgba(0,0,0,.48);
+}
+.disclaimer{color:#9db2bf}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--gm-aqua);
+  outline-offset:3px;
+}
+@media(max-width:760px){
+  header{min-height:70px}
+  .gp-section-buttons{gap:7px;margin:12px 0 15px}
+  #gpSectionButtons>.gp-section-button{min-height:43px;padding:9px 9px;font-size:10px}
+  .scoreboard-top,.panel,.side-live{border-radius:14px}
+  .scoreboard-title{padding:15px 14px}
+  .panel-head{padding:14px}
+  .match{border-radius:12px}
+  .stats{gap:5px}
+  .stats .stat{padding:5px 6px;font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+  #gpSectionButtons>.gp-section-button{transition:none!important}
+  #gpSectionButtons>.gp-section-button:hover{transform:none}
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
