@@ -28,7 +28,15 @@ function minuteBand(minute) {
 function normalizeRecord(record) {
   const stats = record && record.statsAtSignal && typeof record.statsAtSignal === "object" ? record.statsAtSignal : {};
   const outcome = String(record?.outcome || record?.betOutcome || "").toLowerCase();
-  const verified = record?.verifiedScore === true && ["won", "lost"].includes(outcome);
+  const verified = record?.verifiedScore === true
+    && ["won", "lost"].includes(outcome)
+    && Boolean(String(record?.settlementProvider || "").trim())
+    && ["first_half", "full_time"].includes(record?.scoreScope)
+    && /^\\d+[-:]\\d+$/.test(String(record?.finalScore || "").trim())
+    && record?.period === "second_half"
+    && Number.isInteger(finite(record?.minute))
+    && finite(record?.minute) >= 46
+    && finite(record?.minute) <= 88;
   const minute = finite(record?.minute);
   const sot = Object.fromEntries(SOT_FIELDS.map(key => [key, finite(stats[key])]));
   const xg = { xG: finite(stats.xG), xGDelta: finite(stats.xGDelta) };
