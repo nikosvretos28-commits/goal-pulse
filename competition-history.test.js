@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
+const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow, formatEspnMonth } = require("./competition-history");
 
 test("history endpoint only accepts ESPN-backed competition codes", () => {
   const supported = ["eng.1", "gre.1"];
@@ -94,4 +94,10 @@ test("history request limiter never exceeds its configured concurrency", async (
   const result = await Promise.all(tasks);
   assert.equal(peak, 2);
   assert.deepEqual(result, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+test("ESPN history month selector uses YYYYMM in UTC", () => {
+  assert.equal(formatEspnMonth(new Date("2026-08-01T00:00:00.000Z")), "202608");
+  assert.equal(formatEspnMonth(new Date("2027-01-31T23:59:59.000Z")), "202701");
+  assert.throws(() => formatEspnMonth("not-a-date"), /valid date/);
 });

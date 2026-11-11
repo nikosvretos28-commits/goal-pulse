@@ -6,7 +6,7 @@ const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
-const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow } = require("./competition-history");
+const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow, formatEspnMonth } = require("./competition-history");
 const { createCompetitionHistoryStore } = require("./competition-history-store");
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
@@ -4599,9 +4599,11 @@ const server = http.createServer(async (req, res) => {
       // Fetch month windows concurrently and tolerate isolated provider failures.
       // A single bad month must not erase every completed result for the season.
       const windowResults = await Promise.allSettled(windows.map(async window => {
-        const range = compactDate(window.start) + "-" + compactDate(window.end);
-        const endpoint = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range;
-        const fallbackEndpoint = "https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?limit=1000&dates=" + range;
+        // ESPN scoreboard season-month selectors use YYYYMM. Date-range
+        // selectors (YYYYMMDD-YYYYMMDD) are rejected with HTTP 400 by ESPN.
+        const month = formatEspnMonth(window.start);
+        const endpoint = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + month + "&limit=500";
+        const fallbackEndpoint = "https://site.web.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + month + "&limit=500";
         // Bound concurrent history requests across all leagues and retry the
         // alternate ESPN hostname even when the primary request times out or
         // fails at the network layer.
