@@ -26,6 +26,18 @@ test("only explicitly verified wins and losses enter analyst comparisons", () =>
   assert.equal(report.analysts.sotDataIntegrity.fields.includes("shots"), false);
 });
 
+test("Power Ranking alerts are excluded from Elite AI comparisons", () => {
+  const report = buildEliteTeamReport([
+    { ...verified(), outcome: "won", alertId: "regular", triggerIds: ["sot_recent"] },
+    { ...verified(), outcome: "won", alertId: "pr-type", alertType: "power_ranking_signal", triggerIds: ["sot_recent"] },
+    { ...verified(), outcome: "lost", alertId: "pr-trigger", triggerIds: ["power_ranking_autonomous_65"] }
+  ]);
+  assert.equal(report.coverage.suppliedRecords, 3);
+  assert.equal(report.coverage.verifiedWinLoss, 1);
+  assert.equal(report.outcomeSummary.wins, 1);
+  assert.deepEqual(Object.keys(report.analysts.triggerPerformance.byTrigger), ["sot_recent"]);
+});
+
 test("zero SOT is valid and generic shots never become SOT", () => {
   const r = normalizeRecord({ ...verified(), outcome: "won", statsAtSignal: { onTarget: 0, shots: 14, shotsOffTarget: 8 } });
   assert.equal(r.sot.onTarget, 0);
