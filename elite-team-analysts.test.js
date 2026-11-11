@@ -4,12 +4,18 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { buildEliteTeamReport, normalizeRecord, minuteBand } = require("./elite-team-analysts");
 
+const verified = (overrides = {}) => ({
+  verifiedScore: true, settlementProvider: "trusted-provider",
+  scoreScope: "full_time", finalScore: "2-1",
+  period: "second_half", minute: 62, ...overrides
+});
+
 test("only explicitly verified wins and losses enter analyst comparisons", () => {
   const report = buildEliteTeamReport([
-    { alertId: "w", verifiedScore: true, outcome: "won", minute: 62, triggerIds: ["sot_recent"], statsAtSignal: { onTarget: 0, shots: 99 }, league: "L1" },
-    { alertId: "l", verifiedScore: true, outcome: "lost", minute: 80, triggerIds: ["sot_recent"], statsAtSignal: { totalOnTarget: 3 }, league: "L1" },
-    { alertId: "p", verifiedScore: false, outcome: "won", minute: 55, triggerIds: ["sot_recent"] },
-    { alertId: "x", verifiedScore: true, outcome: "pending" }
+    { ...verified(), alertId: "w", outcome: "won", triggerIds: ["sot_recent"], statsAtSignal: { onTarget: 0, shots: 99 }, league: "L1" },
+    { ...verified({ minute: 80 }), alertId: "l", outcome: "lost", triggerIds: ["sot_recent"], statsAtSignal: { totalOnTarget: 3 }, league: "L1" },
+    { ...verified({ verifiedScore: false, minute: 55 }), alertId: "p", outcome: "won", triggerIds: ["sot_recent"] },
+    { ...verified(), alertId: "x", outcome: "pending" }
   ]);
   assert.equal(report.coverage.suppliedRecords, 4);
   assert.equal(report.coverage.verifiedWinLoss, 2);
@@ -21,7 +27,7 @@ test("only explicitly verified wins and losses enter analyst comparisons", () =>
 });
 
 test("zero SOT is valid and generic shots never become SOT", () => {
-  const r = normalizeRecord({ verifiedScore: true, outcome: "won", statsAtSignal: { onTarget: 0, shots: 14, shotsOffTarget: 8 } });
+  const r = normalizeRecord({ ...verified(), outcome: "won", statsAtSignal: { onTarget: 0, shots: 14, shotsOffTarget: 8 } });
   assert.equal(r.sot.onTarget, 0);
   assert.equal(r.sot.totalOnTarget, null);
 });
@@ -34,15 +40,31 @@ test("timing bands are deterministic and missing minutes remain unknown", () => 
 });
 
 test("calibration and provider latency are not fabricated", () => {
-  const report = buildEliteTeamReport([{ verifiedScore: true, outcome: "won", statsAtSignal: {} }]);
+  const report = buildEliteTeamReport([{ ...verified(), outcome: "won", statsAtSignal: {} }]);
   assert.equal(report.analysts.calibrationStrategy.status, "unavailable");
   assert.equal(report.analysts.providerLatency.status, "unavailable");
   assert.equal(report.analysts.chiefAnalyst.recommendations.length, 0);
 });
 
 test("recommendations require at least ten attributed examples", () => {
-  const rows = Array.from({ length: 9 }, (_, i) => ({ verifiedScore: true, outcome: i % 2 ? "lost" : "won", triggerIds: ["t"] }));
+  const rows = Array.from({ length: 9 }, (_, i) => ({ ...verified(), outcome: i % 2 ? "lost" : "won", triggerIds: ["t"] }));
   assert.equal(buildEliteTeamReport(rows).analysts.chiefAnalyst.recommendations.length, 0);
-  rows.push({ verifiedScore: true, outcome: "won", triggerIds: ["t"] });
+  rows.push({ ...verified(), outcome: "won", triggerIds: ["t"] });
   assert.equal(buildEliteTeamReport(rows).analysts.chiefAnalyst.recommendations.length, 1);
+});
+
+test("score shape alone is not a verified settlement", () => {
+  const report = buildEliteTeamReport([{
+    verifiedScore: true, outcome: "won", period: "second_half", minute: 62,
+    finalScore: "2-1", scoreScope: "full_time", triggerIds: ["t"]
+  }]);
+  assert.equal(report.outcomeSummary.verifiedWinLoss, 0);
+});
+
+test("only second-half records in the established 46-88 window are eligible", () => {
+  const outsideWindow = [
+    verified({ minute: 45 }), verified({ minute: 89 }),
+    verified({ period: "first_half", minute: 40 })
+  ].map((r, i) => ({ ...r, alertId: String(i), outcome: "won" }));
+  assert.equal(buildEliteTeamReport(outsideWindow).outcomeSummary.verifiedWinLoss, 0);
 });
