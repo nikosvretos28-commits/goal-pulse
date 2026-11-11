@@ -205,7 +205,7 @@ async function runProtocolAnalyst() {
   protocolAnalystRunInFlight = (async () => {
     if (!await ensureAlertHistoryDb() || !await ensureProtocolAnalystDb()) return null;
     const result = await analyticsPool.query(
-      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND payload->>'betOutcome' IN ('won','lost') AND payload->>'betSettlementProvider' IS NOT NULL AND payload->>'betSettlementFixtureId' IS NOT NULL AND payload->>'betScoreScope' IN ('first_half','full_time') AND payload->>'betFinalScore' ~ '^[0-9]+-[0-9]+$' AND (payload->>'betScoreScope' <> 'first_half' OR (NULLIF(payload->>'betHalfTimeScore','') IS NOT NULL AND payload->>'betHalfTimeScore'=payload->>'betFinalScore')) AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+      "SELECT payload, created_at FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND COALESCE(payload->>'alertType','') NOT LIKE 'power_ranking_%' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS trigger_id WHERE trigger_id LIKE 'power_ranking_%') AND payload->>'betOutcome' IN ('won','lost') AND payload->>'betSettlementProvider' IS NOT NULL AND payload->>'betSettlementFixtureId' IS NOT NULL AND payload->>'betScoreScope' IN ('first_half','full_time') AND payload->>'betFinalScore' ~ '^[0-9]+-[0-9]+$' AND (payload->>'betScoreScope' <> 'first_half' OR (NULLIF(payload->>'betHalfTimeScore','') IS NOT NULL AND payload->>'betHalfTimeScore'=payload->>'betFinalScore')) AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
     );
     const allRecords = result.rows.map(row => {
       const p = row.payload || {};
@@ -2131,6 +2131,7 @@ const server = http.createServer(async (req, res) => {
         const verifiedScore = scoreParts.length === 2 && String(p.betFinalScore || "").split("-").every(part => part.length > 0 && [...part].every(char => char >= "0" && char <= "9")) && scoreParts.every(value => Number.isInteger(value) && value >= 0);
         return {
           alertId: row.alert_id, eventId: row.event_id, createdAt: row.created_at,
+          alertType: p.alertType || null,
           teams: [p.homeTeam || p.home || null, p.awayTeam || p.away || null],
           league: p.league || "Άγνωστη διοργάνωση",
           minute: Number.isFinite(minute) ? minute : null, period: p.periodAtSignal || "unknown",
@@ -2142,7 +2143,7 @@ const server = http.createServer(async (req, res) => {
           settlementProvider: p.betSettlementProvider, verifiedScore,
           statsAtSignal: { onTarget: stats.onTarget ?? null, onTarget10m: stats.onTarget10m ?? null, totalOnTarget: stats.totalOnTarget ?? null, xG: stats.xG ?? null, xGDelta: stats.xGDelta ?? null }
         };
-      }).filter(row => row.verifiedScore && row.period === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88);
+      }).filter(row => !String(row.alertType || "").startsWith("power_ranking_") && !row.triggerIds.some(id => id.startsWith("power_ranking_")) && row.verifiedScore && row.period === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88);
       return send(res, 200, {
         ok: true, readOnly: true, windowDays: 180, generatedAt: new Date().toISOString(),
         scanned: result.rows.length, verifiedSettled: records.length, records,
