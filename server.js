@@ -5350,13 +5350,27 @@ const server = http.createServer(async (req, res) => {
                 { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
                 { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
-                            matches.push({
+                            const scoreboardCompetition = event.competitions?.[0] || {};
+              const scoreboardCompetitors = Array.isArray(scoreboardCompetition.competitors) ? scoreboardCompetition.competitors : [];
+              const scoreboardHome = scoreboardCompetitors.find(team => team?.homeAway === "home") || null;
+              const scoreboardAway = scoreboardCompetitors.find(team => team?.homeAway === "away") || null;
+              const scoreValue = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+              const firstPeriodScore = competitor => {
+                const line = competitor?.linescores?.[0];
+                return scoreValue(line?.value ?? line?.displayValue);
+              };
+              const liveMinute = root.live_minute ?? root.liveMinute ?? root.elapsed ?? root.time?.elapsed ??
+                root.time?.minute ?? root.status?.minute ?? root.status?.elapsed ??
+                event.live_minute ?? event.status?.displayClock ?? scoreboardCompetition.status?.displayClock ?? event.time ?? "";
+              matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "SportScore",
-                minute: root.live_minute ?? root.liveMinute ?? root.elapsed ?? root.time?.elapsed ?? event.live_minute ?? event.status?.displayClock ?? event.time ?? "",
-                homeScore: event.home_score ?? event.homeScore ?? null,
-                awayScore: event.away_score ?? event.awayScore ?? null,
-                status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
-                homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
+                minute: liveMinute,
+                homeScore: scoreValue(event.home_score ?? event.homeScore ?? scoreboardHome?.score ?? scoreboardHome?.displayValue),
+                awayScore: scoreValue(event.away_score ?? event.awayScore ?? scoreboardAway?.score ?? scoreboardAway?.displayValue),
+                status: event.status?.type?.state ?? event.status ?? scoreboardCompetition.status?.type?.state ?? "",
+                statusText: event.status_text ?? event.statusText ?? event.status?.type?.detail ?? event.status?.type?.shortDetail ?? "",
+                homeHtScore: scoreValue(event.home_ht_score ?? scoreboardHome?.linescores?.[0]?.value ?? scoreboardHome?.linescores?.[0]?.displayValue),
+                awayHtScore: scoreValue(event.away_ht_score ?? scoreboardAway?.linescores?.[0]?.value ?? scoreboardAway?.linescores?.[0]?.displayValue),
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsInBox","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values,
                 redCardIncidents
