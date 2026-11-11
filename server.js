@@ -10,6 +10,7 @@ const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow }
 const { createCompetitionHistoryStore } = require("./competition-history-store");
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
+const { evaluatePressureHunter } = require("./pressure-hunter");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 let Pool = null;
@@ -98,6 +99,7 @@ const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
 // Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
+const pushScanPressureHunterAlerts = new Set();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
 const pushScanAutonomousPowerRankingAlerts = new Set();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
@@ -161,6 +163,19 @@ async function ensureAlertHistoryDb() {
     return false;
   });
   return alertHistoryDbInit;
+}
+
+let pressureHunterDbInit = null;
+async function ensurePressureHunterDb() {
+  if (!analyticsPool) return false;
+  if (!pressureHunterDbInit) pressureHunterDbInit = analyticsPool.query(
+    "CREATE TABLE IF NOT EXISTS pressure_hunter_history (alert_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, level TEXT NOT NULL CHECK (level IN ('DUAL_PRESSURE','EXTREME')), created_at TIMESTAMPTZ NOT NULL, payload JSONB NOT NULL); CREATE INDEX IF NOT EXISTS pressure_hunter_history_created_at_idx ON pressure_hunter_history(created_at DESC); CREATE INDEX IF NOT EXISTS pressure_hunter_history_event_id_idx ON pressure_hunter_history(event_id)"
+  ).then(() => true).catch(error => {
+    pressureHunterDbInit = null;
+    console.error("Pressure Hunter database unavailable:", error.message);
+    return false;
+  });
+  return pressureHunterDbInit;
 }
 
 let highActivityHistoryDbInit = null;
@@ -2336,6 +2351,22 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/hunter/history" && req.method === "GET") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!await ensurePressureHunterDb()) return send(res, 503, { error: "Pressure Hunter history unavailable" });
+    try {
+      const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") || 50)));
+      const result = await analyticsPool.query(
+        "SELECT payload FROM pressure_hunter_history ORDER BY created_at DESC LIMIT $1",
+        [limit]
+      );
+      return send(res, 200, { ok: true, autonomous: true, alerts: result.rows.map(row => row.payload) });
+    } catch (error) {
+      console.error("Pressure Hunter history request failed:", error.message);
+      return send(res, 503, { error: "Could not load Pressure Hunter history" });
+    }
+  }
+
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) {
@@ -3446,6 +3477,80 @@ const server = http.createServer(async (req, res) => {
         const sotPressure10 = perTeamMetricWindow(current.sotByTeam, previous10?.sotByTeam, match.trend?.window10m, "shotsOnTarget", 8, 13);
         const dangerousAttacks5 = perTeamMetricWindow(current.dangerousByTeam, previous?.dangerousByTeam, match.trend?.window5m, "dangerousAttacks", 4.5, 8);
         const dangerousAttacks10 = perTeamMetricWindow(current.dangerousByTeam, previous10?.dangerousByTeam, match.trend?.window10m, "dangerousAttacks", 8, 13);
+        // Independent Pressure Hunter: mandatory SOT thresholds only. Supporting
+        // Shots-in-Box / Big-Chances are intentionally not guessed from SOT-inside-box.
+        const hunterWindow = (values, baseline, trend, minAge, maxAge) => {
+          const age = baseline ? (now - baseline.at) / 60000 : Number(trend?.sampleMinutes);
+          const fresh = Number.isFinite(age) && age >= minAge && age <= maxAge;
+          const rows = Array.isArray(values) ? values.slice(0, 2).map((value, index) => ({
+            team: current.sotByTeam[index]?.team || "",
+            shotsOnTarget: value
+          })) : [];
+          return {
+            available: Boolean(fresh && rows.length === 2 && rows.every(row => row.shotsOnTarget != null && Number.isFinite(Number(row.shotsOnTarget)))),
+            sampleMinutes: age,
+            teams: rows
+          };
+        };
+        const hunterEvaluation = evaluatePressureHunter({
+          minute: current.minute,
+          status: statusForEligibility,
+          teams: current.sotByTeam.map(side => ({ shotsOnTarget: side.value })),
+          windows: {
+            last5m: hunterWindow(sotPressure5, previous, match.trend?.window5m, 4.5, 8),
+            last10m: hunterWindow(sotPressure10, previous10, match.trend?.window10m, 8, 13)
+          }
+        });
+        if (hunterEvaluation.triggered && hunterEvaluation.level) {
+          const hunterKey = id + ":" + hunterEvaluation.level;
+          if (!pushScanPressureHunterAlerts.has(hunterKey)) {
+            const hunterAlertId = "hunter:" + id + ":" + hunterEvaluation.level;
+            try {
+              if (await ensurePressureHunterDb()) {
+                const hunterRecord = {
+                  alertId: hunterAlertId,
+                  source: "pressure-hunter",
+                  eventId: id,
+                  level: hunterEvaluation.level,
+                  createdAt: now,
+                  home: match.home || match.homeTeam || "",
+                  away: match.away || match.awayTeam || "",
+                  league: match.league || match.competition || "",
+                  country: match.country || match.countryName || null,
+                  minute: formatPushMinute(match),
+                  minuteNumber: current.minute,
+                  score: hunterEvaluation.score,
+                  reason: hunterEvaluation.reason,
+                  statsAtSignal: hunterEvaluation.evidence,
+                  outcome: "εκκρεμεί"
+                };
+                const saved = await analyticsPool.query(
+                  "INSERT INTO pressure_hunter_history(alert_id,event_id,level,created_at,payload) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
+                  [hunterAlertId, id, hunterEvaluation.level, now, JSON.stringify(hunterRecord)]
+                );
+                pushScanPressureHunterAlerts.add(hunterKey);
+                if (saved.rows.length) {
+                  try {
+                    const hunterPush = await sendPushToSubscribers({
+                      title: "GoalMatrix · PRESSURE HUNTER",
+                      body: (hunterEvaluation.level === "EXTREME" ? "🔥 EXTREME DUAL PRESSURE" : "🎯 DUAL TEAM PRESSURE") + " · " + hunterRecord.home + " – " + hunterRecord.away + " · " + hunterRecord.minute,
+                      tag: "goal-matrix-pressure-hunter-" + id + "-" + hunterEvaluation.level.toLowerCase(),
+                      url: "/"
+                    });
+                    sent += Number(hunterPush?.sent || 0);
+                  } catch (hunterPushError) {
+                    console.warn("Pressure Hunter push failed; dedicated history remains saved:", hunterPushError.message);
+                  }
+                  console.info("Pressure Hunter alert saved:", JSON.stringify({ eventId: id, level: hunterEvaluation.level, alertId: hunterAlertId }));
+                }
+              } else {
+                console.error("Pressure Hunter alert not saved: dedicated persistent history unavailable", id);
+              }
+            } catch (hunterError) {
+              console.error("Pressure Hunter dispatch failed:", hunterError.message);
+            }
+          }
+        }
         const redCardCountsKnown = current.redCardsByTeam.length >= 2 && current.redCardsByTeam.slice(0, 2).every(side => side.value != null && Number.isFinite(Number(side.value)));
         const redCardSideIndex = redCardCountsKnown
           ? current.redCardsByTeam[0].value > current.redCardsByTeam[1].value ? 0
@@ -4110,6 +4215,7 @@ const server = http.createServer(async (req, res) => {
           pushScanRedCardSince.delete(id);
           pushScanPowerRankingAlerts.delete(id);
           pushScanAutonomousPowerRankingAlerts.delete(id);
+          for (const hunterKey of pushScanPressureHunterAlerts) if (hunterKey.startsWith(id + ":")) pushScanPressureHunterAlerts.delete(hunterKey);
         }
       }
       const liveMatches = Number(metrics.totalLive || 0);
