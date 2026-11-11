@@ -2236,6 +2236,82 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:#e8c47c}
 .gp-ranking-history-note{margin:12px 0 0;color:#a9c0cb;font-size:11px;line-height:1.55}
 @media(max-width:560px){.gp-ranking-history-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.gp-ranking-history-stat strong{font-size:19px}.gp-ranking-history-toolbar{align-items:flex-start}}
 </style>
+
+<style id="gm-readable-branding-polish">
+/* GoalMatrix readability + calm premium spacing. CSS-only: no protocol, data, or event changes. */
+:root{
+ --gm-brand-lime:#b7e7a0;
+ --gm-brand-mint:#72d6b0;
+ --gm-brand-ice:#8bc9dc;
+ --gm-copy:#eef5f7;
+ --gm-copy-muted:#c0d0d8;
+}
+body{font-size:15px;line-height:1.58;color:var(--gm-copy)}
+.wrap{padding-inline:clamp(14px,2.2vw,28px)}
+header{min-height:88px;height:auto;padding-block:10px}
+.panel,.side-live{border-color:rgba(139,201,220,.22);box-shadow:0 12px 34px rgba(0,0,0,.14)}
+.panel-head{padding:18px 20px}
+.panel-head h2,.pressure-head h3,.insight h3{line-height:1.35;letter-spacing:.01em}
+.subtle,.match-meta,.league-country,.disclaimer{color:var(--gm-copy-muted)}
+.match{padding:15px 16px;margin-bottom:10px;border-color:rgba(139,201,220,.18);background:linear-gradient(145deg,#102638,#0b1d2b)}
+.match-meta{font-size:12px;line-height:1.5}
+.team{font-size:14px;line-height:1.45}
+.stats{gap:8px;margin-top:14px}
+.stat{font-size:12px;line-height:1.45;padding:7px 10px;color:#d3e2e8;background:#173247}
+.stat b{color:#fff}
+.match-bottom{margin-top:13px;padding-top:11px}
+.ai-note{font-size:12px;line-height:1.5;color:#a9d8e4}
+.gp-live-ranking{padding:17px;margin:15px 0 19px;border-color:rgba(114,214,176,.32);background:linear-gradient(145deg,#102d3a,#0b1d2b 76%,#102b32);box-shadow:0 14px 34px rgba(0,0,0,.16)}
+.gp-live-ranking-head{margin-bottom:14px}
+.gp-live-ranking-head h3{font-size:17px;line-height:1.4;color:#e9f8f2}
+.gp-live-ranking-head span{font-size:11px;color:#b5d8ce;letter-spacing:.045em}
+.gp-ranking-list{gap:10px}
+.gp-ranking-row{padding:13px 14px;gap:12px;border-color:rgba(139,201,220,.22);border-radius:13px;background:linear-gradient(145deg,#102638,#0a1b29)}
+.gp-ranking-position{font-size:21px;color:#9be1c5}
+.gp-ranking-teams{font-size:16px;line-height:1.48;letter-spacing:.005em;color:#f4f8fa}
+.gp-ranking-meta{gap:8px 10px;margin-top:8px;font-size:13px;line-height:1.6;color:#c2d2db}
+.gp-ranking-clock{font-size:13px;padding:4px 8px;color:#c4f4df}
+.gp-ranking-wave{margin:9px 0 7px;height:30px}
+.gp-ranking-triggers{gap:7px;margin-top:9px}
+.gp-ranking-trigger{font-size:12px;line-height:1.45;padding:5px 9px;border-color:rgba(114,214,176,.35);border-radius:8px;color:#c8f1df;background:rgba(28,83,68,.52);white-space:normal}
+.gp-ranking-score{min-width:58px}
+.gp-ranking-score strong{font-size:25px;color:#a9ebd1}
+.gp-ranking-score small{font-size:12px;color:#c0d0d8}
+.gp-ranking-empty{padding:16px;color:#c0d0d8;font-size:14px;line-height:1.65}
+.gp-ranking-history-panel{border-color:rgba(114,214,176,.34);background:linear-gradient(145deg,#102b36,#0b1d2b 78%,#102a32)}
+.gp-ranking-history-panel .top-ai-alerts-head h2{color:#c8f0df;line-height:1.4}
+.gp-ranking-history-panel .top-ai-alerts-head p{font-size:14px;line-height:1.65;color:#c0d0d8}
+.gp-ranking-history-card{padding:16px;border-color:rgba(139,201,220,.22);border-radius:13px;background:rgba(7,25,38,.82)}
+.gp-ranking-history-score{font-size:13px;color:#c6e8dc}
+.gp-ranking-history-status{font-size:11px;padding:5px 9px}
+.gp-ranking-history-match{font-size:16px;line-height:1.5;font-weight:800}
+.gp-ranking-history-meta,.gp-ranking-history-settlement{font-size:13px;line-height:1.7;color:#c0d0d8}
+.gp-ranking-history-details{gap:8px 16px;margin-top:12px;font-size:13px;line-height:1.65;color:#dce7eb}
+.gp-ranking-history-note{font-size:13px;line-height:1.7;color:#bdcdd5}
+.gp-ranking-history-empty{font-size:14px;line-height:1.7;color:#d4e0e5;border-color:rgba(139,201,220,.25);background:#102638}
+.gp-section-button{min-height:48px;line-height:1.4;letter-spacing:.015em}
+button,input{font-size:inherit}
+@media(max-width:700px){
+ body{font-size:14px}
+ .panel-head{padding:15px 14px}
+ .gp-live-ranking{padding:13px;margin:12px 0 16px}
+ .gp-ranking-row{grid-template-columns:29px minmax(0,1fr) 48px;padding:11px 9px;gap:8px}
+ .gp-ranking-position{font-size:18px}
+ .gp-ranking-teams{font-size:15px;line-height:1.5}
+ .gp-ranking-meta{font-size:12px;line-height:1.65;gap:7px}
+ .gp-ranking-trigger{font-size:11px;padding:5px 7px}
+ .gp-ranking-score{min-width:46px}
+ .gp-ranking-score strong{font-size:21px}
+ .gp-ranking-score small{font-size:11px}
+ .gp-ranking-history-card{padding:13px}
+ .gp-ranking-history-match{font-size:15px}
+ .gp-ranking-history-meta,.gp-ranking-history-settlement,.gp-ranking-history-details,.gp-ranking-history-note{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+ .match,.gp-ranking-row,.gp-section-button{transition:none!important}
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
