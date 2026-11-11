@@ -3864,15 +3864,40 @@ const server = http.createServer(async (req, res) => {
         }
         // Autonomous Power Ranking is a separate protocol: it does not depend on AI trigger 59+,
         // SOT/xG triggers, their cooldowns, or the AI Power Ranking deduplication state.
+        // A dip to 65 or below rearms the next autonomous 2H alert. Persist this
+        // on the latest signal so the re-crossing rule survives process restarts.
+        if (powerRankingEligible && powerRankingMinute >= 46 && Number(powerRankingScore) <= 65 &&
+            await ensureAlertHistoryDb()) {
+          await analyticsPool.query(
+            "UPDATE alert_history SET payload=jsonb_set(COALESCE(payload->'statsAtSignal','{}'::jsonb),'{autonomousRearmed}','true'::jsonb,true),updated_at=NOW() WHERE alert_id=(SELECT alert_id FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'='second_half' ORDER BY created_at DESC LIMIT 1)",
+            [id]
+          );
+          pushScanAutonomousPowerRankingAlerts.delete(id);
+        }
         const autonomousPowerRankingQualified = shouldEmitAutonomousPowerRankingAlert({
           score: powerRankingScore,
           eligible: powerRankingEligible
         });
         if (autonomousPowerRankingQualified && !pushScanAutonomousPowerRankingAlerts.has(id)) {
-          const autonomousAlertId = "push:" + id + ":POWER_RANKING:autonomous-65";
           try {
             if (await ensureAlertHistoryDb()) {
               const autonomousPeriod = powerRankingMinute <= 35 ? "first_half" : "second_half";
+              const priorSignals = await analyticsPool.query(
+                "SELECT COUNT(*)::int AS count FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'=$2",
+                [id, autonomousPeriod]
+              );
+              const autonomousAlertIndex = Number(priorSignals.rows[0]?.count || 0) + 1;
+              if (autonomousPeriod === "first_half" && autonomousAlertIndex > 1) continue;
+              if (autonomousPeriod === "second_half" && autonomousAlertIndex > 3) continue;
+              if (autonomousPeriod === "second_half" && autonomousAlertIndex > 1) {
+                const latestSignal = await analyticsPool.query(
+                  "SELECT payload FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'='second_half' ORDER BY created_at DESC LIMIT 1",
+                  [id]
+                );
+                const latestStats = latestSignal.rows[0]?.payload?.statsAtSignal || {};
+                if (latestStats.autonomousRearmed !== true) continue;
+              }
+              const autonomousAlertId = "push:" + id + ":POWER_RANKING:autonomous-" + autonomousPeriod + "-" + autonomousAlertIndex;
               // Match goals are metadata for the optional Over settlement, not an
               // eligibility condition for the autonomous Power Ranking notification.
               const autonomousMatchScoreAvailable = scoreAvailable;
@@ -3899,11 +3924,13 @@ const server = http.createServer(async (req, res) => {
                   powerRankingScore,
                   powerRankingThreshold: 65,
                   powerRankingMode: "autonomous",
+                  autonomousRearmed: false,
+                  autonomousAlertIndex,
                   powerRankingWindow: autonomousPeriod === "first_half" ? "1′–35′" : "46′–84′"
                 }
               };
-              // Persist first, then deliver. A pending delivery is retried by the next
-              // 60-second scan; a completed delivery remains one-per-match.
+              // Persist each period-specific activation before delivery. A pending
+              // delivery is retried by the next qualifying scan.
               autonomousRecord.statsAtSignal.autonomousPushDeliveryStatus = "pending";
               const autonomousSaved = await analyticsPool.query(
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
@@ -3952,7 +3979,7 @@ const server = http.createServer(async (req, res) => {
                       (/^Over\s/i.test(storedMarket) ? " · " + storedMarket : "") + " · " +
                       (storedPeriod === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "2ο ΗΜΙΧΡΟΝΟ") +
                       " · " + storedMinute,
-                    tag: "goalmatrix-autonomous-power-ranking-" + id,
+                    tag: "goalmatrix-autonomous-power-ranking-" + id + "-" + autonomousAlertIndex,
                     url: "/"
                   });
                   const deliveryComplete = autonomousPushResult?.configured === true &&
