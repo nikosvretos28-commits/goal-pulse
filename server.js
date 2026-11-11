@@ -10,6 +10,7 @@ const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow }
 const { createCompetitionHistoryStore } = require("./competition-history-store");
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
+const { evaluatePressureHunter } = require("./pressure-hunter");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 let Pool = null;
@@ -98,6 +99,7 @@ const historicalTeamResultCache = new Map();
 const pushScanLastAlert = new Map();
 // Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
+const pushScanPressureHunterAlerts = new Set();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
 const pushScanAutonomousPowerRankingAlerts = new Set();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
@@ -161,6 +163,19 @@ async function ensureAlertHistoryDb() {
     return false;
   });
   return alertHistoryDbInit;
+}
+
+let pressureHunterDbInit = null;
+async function ensurePressureHunterDb() {
+  if (!analyticsPool) return false;
+  if (!pressureHunterDbInit) pressureHunterDbInit = analyticsPool.query(
+    "CREATE TABLE IF NOT EXISTS pressure_hunter_history (alert_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, level TEXT NOT NULL CHECK (level IN ('DUAL_PRESSURE','EXTREME')), created_at TIMESTAMPTZ NOT NULL, payload JSONB NOT NULL); CREATE INDEX IF NOT EXISTS pressure_hunter_history_created_at_idx ON pressure_hunter_history(created_at DESC); CREATE INDEX IF NOT EXISTS pressure_hunter_history_event_id_idx ON pressure_hunter_history(event_id)"
+  ).then(() => true).catch(error => {
+    pressureHunterDbInit = null;
+    console.error("Pressure Hunter database unavailable:", error.message);
+    return false;
+  });
+  return pressureHunterDbInit;
 }
 
 let highActivityHistoryDbInit = null;
@@ -2336,6 +2351,22 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/hunter/history" && req.method === "GET") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    if (!await ensurePressureHunterDb()) return send(res, 503, { error: "Pressure Hunter history unavailable" });
+    try {
+      const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") || 50)));
+      const result = await analyticsPool.query(
+        "SELECT payload FROM pressure_hunter_history ORDER BY created_at DESC LIMIT $1",
+        [limit]
+      );
+      return send(res, 200, { ok: true, autonomous: true, alerts: result.rows.map(row => row.payload) });
+    } catch (error) {
+      console.error("Pressure Hunter history request failed:", error.message);
+      return send(res, 503, { error: "Could not load Pressure Hunter history" });
+    }
+  }
+
   if (url.pathname === "/api/alerts/history" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!await ensureAlertHistoryDb()) {
@@ -3326,6 +3357,8 @@ const server = http.createServer(async (req, res) => {
             value: team.shotsOnTarget == null || !Number.isFinite(Number(team.shotsOnTarget))
               ? null : Number(team.shotsOnTarget)
           })),
+          shotsInBoxByTeam: teams.map(team => ({ team: String(team.team || "").trim().toLowerCase(), value: team.shotsInBox == null || !Number.isFinite(Number(team.shotsInBox)) ? null : Number(team.shotsInBox) })),
+          bigChancesByTeam: teams.map(team => ({ team: String(team.team || "").trim().toLowerCase(), value: team.bigChances == null || !Number.isFinite(Number(team.bigChances)) ? null : Number(team.bigChances) })),
           dangerousByTeam: teams.map(team => ({
             team: String(team.team || "").trim().toLowerCase(),
             value: team.dangerousAttacks == null || !Number.isFinite(Number(team.dangerousAttacks)) ? null : Number(team.dangerousAttacks)
@@ -3446,6 +3479,85 @@ const server = http.createServer(async (req, res) => {
         const sotPressure10 = perTeamMetricWindow(current.sotByTeam, previous10?.sotByTeam, match.trend?.window10m, "shotsOnTarget", 8, 13);
         const dangerousAttacks5 = perTeamMetricWindow(current.dangerousByTeam, previous?.dangerousByTeam, match.trend?.window5m, "dangerousAttacks", 4.5, 8);
         const dangerousAttacks10 = perTeamMetricWindow(current.dangerousByTeam, previous10?.dangerousByTeam, match.trend?.window10m, "dangerousAttacks", 8, 13);
+        const hunterBox5 = perTeamMetricWindow(current.shotsInBoxByTeam, previous?.shotsInBoxByTeam, match.trend?.window5m, "shotsInBox", 4.5, 8);
+        const hunterBox10 = perTeamMetricWindow(current.shotsInBoxByTeam, previous10?.shotsInBoxByTeam, match.trend?.window10m, "shotsInBox", 8, 13);
+        const hunterChances5 = perTeamMetricWindow(current.bigChancesByTeam, previous?.bigChancesByTeam, match.trend?.window5m, "bigChances", 4.5, 8);
+        const hunterChances10 = perTeamMetricWindow(current.bigChancesByTeam, previous10?.bigChancesByTeam, match.trend?.window10m, "bigChances", 8, 13);
+        // SOT alone controls activation. Shots in the Box and Big Chances only add score.
+        const hunterWindow = (values, boxValues, chanceValues, baseline, trend, minAge, maxAge) => {
+          const age = baseline ? (now - baseline.at) / 60000 : Number(trend?.sampleMinutes);
+          const fresh = Number.isFinite(age) && age >= minAge && age <= maxAge;
+          const rows = Array.isArray(values) ? values.slice(0, 2).map((value, index) => ({
+            team: current.sotByTeam[index]?.team || "",
+            shotsOnTarget: value,
+            shotsInBox: Array.isArray(boxValues) ? boxValues[index] ?? null : null,
+            bigChances: Array.isArray(chanceValues) ? chanceValues[index] ?? null : null
+          })) : [];
+          return {
+            available: Boolean(fresh && rows.length === 2 && rows.every(row => row.shotsOnTarget != null && Number.isFinite(Number(row.shotsOnTarget)))),
+            sampleMinutes: age,
+            teams: rows
+          };
+        };
+        const hunterEvaluation = evaluatePressureHunter({
+          minute: current.minute,
+          status: statusForEligibility,
+          teams: current.sotByTeam.map(side => ({ shotsOnTarget: side.value })),
+          windows: {
+            last5m: hunterWindow(sotPressure5, hunterBox5, hunterChances5, previous, match.trend?.window5m, 4.5, 8),
+            last10m: hunterWindow(sotPressure10, hunterBox10, hunterChances10, previous10, match.trend?.window10m, 8, 13)
+          }
+        });
+        if (hunterEvaluation.triggered && hunterEvaluation.level) {
+          const hunterKey = id + ":" + hunterEvaluation.level;
+          if (!pushScanPressureHunterAlerts.has(hunterKey)) {
+            const hunterAlertId = "hunter:" + id + ":" + hunterEvaluation.level;
+            try {
+              if (await ensurePressureHunterDb()) {
+                const hunterRecord = {
+                  alertId: hunterAlertId,
+                  source: "pressure-hunter",
+                  eventId: id,
+                  level: hunterEvaluation.level,
+                  createdAt: now,
+                  home: match.home || match.homeTeam || "",
+                  away: match.away || match.awayTeam || "",
+                  league: match.league || match.competition || "",
+                  country: match.country || match.countryName || null,
+                  minute: formatPushMinute(match),
+                  minuteNumber: current.minute,
+                  score: hunterEvaluation.score,
+                  reason: hunterEvaluation.reason,
+                  statsAtSignal: hunterEvaluation.evidence,
+                  outcome: "εκκρεμεί"
+                };
+                const saved = await analyticsPool.query(
+                  "INSERT INTO pressure_hunter_history(alert_id,event_id,level,created_at,payload) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
+                  [hunterAlertId, id, hunterEvaluation.level, now, JSON.stringify(hunterRecord)]
+                );
+                pushScanPressureHunterAlerts.add(hunterKey);
+                if (saved.rows.length) {
+                  try {
+                    const hunterPush = await sendPushToSubscribers({
+                      title: "GoalMatrix · PRESSURE HUNTER",
+                      body: (hunterEvaluation.level === "EXTREME" ? "🔥 EXTREME DUAL PRESSURE" : "🎯 DUAL TEAM PRESSURE") + " · " + hunterRecord.home + " – " + hunterRecord.away + " · " + hunterRecord.minute,
+                      tag: "goal-matrix-pressure-hunter-" + id + "-" + hunterEvaluation.level.toLowerCase(),
+                      url: "/"
+                    });
+                    sent += Number(hunterPush?.sent || 0);
+                  } catch (hunterPushError) {
+                    console.warn("Pressure Hunter push failed; dedicated history remains saved:", hunterPushError.message);
+                  }
+                  console.info("Pressure Hunter alert saved:", JSON.stringify({ eventId: id, level: hunterEvaluation.level, alertId: hunterAlertId }));
+                }
+              } else {
+                console.error("Pressure Hunter alert not saved: dedicated persistent history unavailable", id);
+              }
+            } catch (hunterError) {
+              console.error("Pressure Hunter dispatch failed:", hunterError.message);
+            }
+          }
+        }
         const redCardCountsKnown = current.redCardsByTeam.length >= 2 && current.redCardsByTeam.slice(0, 2).every(side => side.value != null && Number.isFinite(Number(side.value)));
         const redCardSideIndex = redCardCountsKnown
           ? current.redCardsByTeam[0].value > current.redCardsByTeam[1].value ? 0
@@ -4110,6 +4222,7 @@ const server = http.createServer(async (req, res) => {
           pushScanRedCardSince.delete(id);
           pushScanPowerRankingAlerts.delete(id);
           pushScanAutonomousPowerRankingAlerts.delete(id);
+          for (const hunterKey of pushScanPressureHunterAlerts) if (hunterKey.startsWith(id + ":")) pushScanPressureHunterAlerts.delete(hunterKey);
         }
       }
       const liveMatches = Number(metrics.totalLive || 0);
@@ -5038,7 +5151,7 @@ const server = http.createServer(async (req, res) => {
                 const label = String(node.name || node.key || node.title || node.label || node.stat || node.type || node.stat_name || node.statName || node.short_name || node.shortName || node.abbreviation || node.abbr || node.display_name || node.displayName || node.description || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
                 const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
                 const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
-                const relevantLiveMetric = /^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|shots_on_target_inside_box|shots_on_target_in_box|shots_on_target_inside_penalty_area|shots_on_target_in_penalty_area|shots_on_target_from_inside_box|on_target_inside_box|big_chances|big_chance|big_chances_created|big_chance_created|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|attacks|total_attacks|attacks_for|total_attacks_for|dangerous_attacks|dangerous_attacks_for|dangerous_attacks_created|red_cards|red_card|red_cards_total|red_card_total|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage|expected_goals|xg|x_goals|x_goal|xgoals|expected_goals_xg|expected_goals_for|expected_goals_total|expected_goals_scored)$/.test(label);
+                const relevantLiveMetric = /^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|shots_in_box|shots_inside_box|shots_in_penalty_area|shots_inside_penalty_area|total_shots_inside_box|total_shots_in_box|shots_on_target_inside_box|shots_on_target_in_box|shots_on_target_inside_penalty_area|shots_on_target_in_penalty_area|shots_on_target_from_inside_box|on_target_inside_box|big_chances|big_chance|big_chances_created|big_chance_created|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|attacks|total_attacks|attacks_for|total_attacks_for|dangerous_attacks|dangerous_attacks_for|dangerous_attacks_created|red_cards|red_card|red_cards_total|red_card_total|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage|expected_goals|xg|x_goals|x_goal|xgoals|expected_goals_xg|expected_goals_for|expected_goals_total|expected_goals_scored)$/.test(label);
                 if (relevantLiveMetric && home != null && away != null && (typeof home !== "object") && (typeof away !== "object")) statsRows.push({ label, home, away });
                 for (const [key, value] of Object.entries(node)) {
                   if (["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) continue;
@@ -5095,8 +5208,8 @@ const server = http.createServer(async (req, res) => {
               ];
               const hasIncidentTimeline = Array.isArray(root.incidents);
               const values = [
-                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
-                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
+                { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
+                { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
                             matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "SportScore",
@@ -5146,8 +5259,8 @@ const server = http.createServer(async (req, res) => {
               const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
               const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
               const values = [
-                { team: homeName, homeAway: "home", shotsOnTarget: readExactSotStat(items, "home"), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("home", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) },
-                { team: awayName, homeAway: "away", shotsOnTarget: readExactSotStat(items, "away"), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
+                { team: homeName, homeAway: "home", shotsOnTarget: readExactSotStat(items, "home"), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("home", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) },
+                { team: awayName, homeAway: "away", shotsOnTarget: readExactSotStat(items, "away"), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
               ];
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
@@ -5198,7 +5311,7 @@ const server = http.createServer(async (req, res) => {
               return {
                 team: team.team?.displayName || team.team?.name || "",
                 homeAway: team.homeAway || team.team?.homeAway || "",
-                    shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"), totalShots: get("totalshots", "shotstotal", "shots", "shotattempts", "shotsattempted", "totalshotattempts"),
+                    shotsOnTarget: get("shotsontarget", "shotsongoal", "sog"), shotsInBox: get("shotsinbox", "shotsinsidebox", "shotsinpenaltyarea", "shotsinsidepenaltyarea", "totalshotsinsidebox", "totalshotsinbox"), totalShots: get("totalshots", "shotstotal", "shots", "shotattempts", "shotsattempted", "totalshotattempts"),
                 shotsOnTargetInsideBox: get("shotsontargetinsidebox", "shotsontargetinbox", "shotsontargetinsidepenaltyarea", "shotsontargetinpenaltyarea", "shotsontargetfrominsidebox", "ontargetinsidebox"),
                 bigChances: get("bigchances", "bigchance", "bigchancescreated", "bigchancecreated"),
                 corners: get("woncorners", "cornerkicks", "corners"),
