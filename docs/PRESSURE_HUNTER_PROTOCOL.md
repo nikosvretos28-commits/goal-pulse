@@ -1,7 +1,7 @@
 # GoalMatrix Pressure Hunter — Autonomous Protocol
 
 ## Isolation contract
-Pressure Hunter is a separate evaluator. It imports no AI/VIP/Hi Activity/Power Games modules, does not mutate their state, does not send their notifications, and does not write to their history stores. This change adds the isolated decision engine and tests only; it does not yet connect the evaluator to the live polling/notification pipeline or add a UI card.
+Pressure Hunter is a separate evaluator with its own live scan decision, push title/tag, PostgreSQL history table, and history endpoint. It does not write to AI/VIP alert history, Hi Activity history, Power Games state, or AI analyst data. Existing alert engines and their rules are not modified.
 
 ## Mandatory trigger rules
 - Live match only; finished, halftime, abandoned, postponed, and cancelled matches are excluded.
@@ -11,10 +11,18 @@ Pressure Hunter is a separate evaluator. It imports no AI/VIP/Hi Activity/Power 
 - EXTREME: each team has at least 3 SOT in the last 10 minutes AND at least 2 SOT in the last 5 minutes; match total cumulative SOT is at least 8.
 
 ## Supporting metrics
-Shots in the Box and Big Chances from the 10-minute window contribute to a 0–15 supporting score only. They can never trigger a signal by themselves. Total shots and shots off target are not read or used.
+Provider-mapped Shots in the Box and Big Chances from the rolling 10-minute window contribute to the 0–15 supporting score only. They can never trigger a signal by themselves. The parser does not substitute Shots on Target Inside Box for Shots in the Box. Total shots and shots off target are not read by the Hunter evaluator.
+
+## Live behavior
+- The background live scanner evaluates Pressure Hunter independently of AI/VIP qualification.
+- A separate `pressure_hunter_history` table stores Hunter-only records.
+- `GET /api/hunter/history` returns the dedicated history.
+- Push notifications use a Hunter-specific title and tag.
+- A per-match/per-level guard and the database primary key prevent repeated alerts for the same signal.
+- Missing/stale required SOT windows fail closed. If the persistent Hunter history database is unavailable, no push is sent, avoiding an unrecorded alert.
 
 ## Output
-`evaluatePressureHunter(input)` returns eligibility, trigger state, level, score, reason, and an evidence snapshot. Missing or stale required data fails closed.
+`evaluatePressureHunter(input)` returns eligibility, trigger state, level, score, reason, and an evidence snapshot. Unit tests cover thresholds, missing/stale data, one-sided pressure, SOT-only activation, and live status handling.
 
-## Not yet activated
-Live integration, notification delivery, persistence, deduplication, settlement, and the dashboard card/history are intentionally not wired in this isolated first implementation. They require a separate integration change after confirming the provider's exact rolling-window fields. No existing alert protocol is changed by this PR.
+## UI status
+The backend live evaluator, dedicated push path, and history API are implemented. A separate dashboard card/history view is not yet included; the existing alert UI is untouched.
