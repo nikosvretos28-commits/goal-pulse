@@ -2641,12 +2641,19 @@ const server = http.createServer(async (req, res) => {
     try {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const base = "http://127.0.0.1:" + PORT;
-      const scoreboardResponse = await fetch(base + "/api/scoreboard?date=" + date, { signal: AbortSignal.timeout(25000) });
+      // Scoreboard identity/score data and live statistics are independent inputs.
+      // Fetch them together so the scanner does not wait for one endpoint before
+      // starting the other; keep the existing timeouts and all downstream logic.
+      const [scoreboardResponse, metricsResponse] = await Promise.all([
+        fetch(base + "/api/scoreboard?date=" + date, { signal: AbortSignal.timeout(25000) }),
+        fetch(base + "/api/live-metrics?date=" + date, { signal: AbortSignal.timeout(45000) })
+      ]);
       if (!scoreboardResponse.ok) throw new Error("Scoreboard unavailable: " + scoreboardResponse.status);
-      const metricsResponse = await fetch(base + "/api/live-metrics?date=" + date, { signal: AbortSignal.timeout(45000) });
       if (!metricsResponse.ok) throw new Error("Live metrics unavailable: " + metricsResponse.status);
-      const metrics = await metricsResponse.json();
-      const scoreboard = await scoreboardResponse.json();
+      const [scoreboard, metrics] = await Promise.all([
+        scoreboardResponse.json(),
+        metricsResponse.json()
+      ]);
       const scoreboardEvents = (scoreboard.feeds || []).flatMap(feed => (feed.events || []).map(event => ({ ...event, __goalPulseLeagueCode: feed.code || "" })));
       // Include recent completed fixtures so pending alerts can settle after UTC midnight.
       // Keep the current-day feed unchanged and append only finished events from prior dates.
