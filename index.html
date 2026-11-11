@@ -2330,6 +2330,7 @@ button,input{font-size:inherit}
  <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerRankingHistory" id="powerRankingHistoryToggle">🏆 POWER RANKING HISTORY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
+  <button type="button" class="gp-section-button gp-hunter-button" data-gp-toggle="hunterPanel" id="hunterPanelToggle">🎯 PRESSURE HUNTER <span class="gp-button-count" id="hunterAlertCount">HISTORY</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="mieAlertLab">🔬 MIE ALERT LAB <span class="gp-button-count">ΕΛΕΓΧΟΣ</span></button>
  <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
@@ -2465,7 +2466,72 @@ button,input{font-size:inherit}
 </section>
 
 
-<section class="scoreboard-top">
+<section class="top-ai-alerts gp-hunter-panel" id="hunterPanel" hidden aria-labelledby="hunterPanelTitle">
+  <div class="top-ai-alerts-head">
+   <div><h2 id="hunterPanelTitle">🎯 PRESSURE HUNTER · AUTONOMOUS SIGNALS</h2><p>Ανεξάρτητο live πρωτόκολλο πίεσης. Δεν αναμειγνύεται με AI Alerts, VIP Alerts ή Hi Activity.</p></div>
+   <div class="gp-hunter-actions"><span class="pulse-status" id="hunterPanelStatus">ΑΥΤΟΝΟΜΟ</span><button type="button" class="mini-btn" id="refreshHunterHistory">↻ Ανανέωση ιστορικού</button></div>
+  </div>
+  <div class="gp-hunter-stats">
+   <div><small>ΣΥΝΟΛΟ ΣΗΜΑΤΩΝ</small><strong id="hunterTotal">0</strong></div>
+   <div><small>DUAL PRESSURE</small><strong id="hunterDual">0</strong></div>
+   <div><small>EXTREME PRESSURE</small><strong id="hunterExtreme">0</strong></div>
+  </div>
+  <div class="top-ai-alert-list gp-hunter-list" id="hunterHistoryList" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση αυτόνομου ιστορικού HUNTER…</div></div>
+  <p class="top-ai-alert-privacy">Τα σήματα ενεργοποιούνται μόνο από τα υποχρεωτικά SOT thresholds. Shots in the Box και Big Chances είναι συμπληρωματικά στοιχεία. Δεν χρησιμοποιούνται total shots ή shots off target.</p>
+ </section>
+ <style id="gp-hunter-panel-style">
+  .gp-hunter-button{border-color:rgba(67,224,162,.38)!important;background:linear-gradient(135deg,rgba(10,55,63,.96),rgba(9,27,48,.98))!important;color:#a9f4d1!important}
+  .gp-hunter-button:hover,.gp-hunter-button[aria-expanded="true"]{box-shadow:0 0 22px rgba(67,224,162,.18)!important}
+  .gp-hunter-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .gp-hunter-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}
+  .gp-hunter-stats>div{padding:11px;border:1px solid rgba(67,224,162,.2);border-radius:11px;background:rgba(7,28,43,.7)}
+  .gp-hunter-stats small{display:block;color:#8daebd;font-size:10px;letter-spacing:.07em}
+  .gp-hunter-stats strong{display:block;margin-top:4px;color:#a9f4d1;font-size:22px}
+  .gp-hunter-card{border:1px solid rgba(67,224,162,.23);background:linear-gradient(145deg,rgba(10,37,51,.96),rgba(8,20,37,.98))}
+  .gp-hunter-card .alert-card-kicker strong{color:#9cf0c7}
+  .gp-hunter-card pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;color:#bdd0dc}
+  @media(max-width:700px){.gp-hunter-stats{gap:6px}.gp-hunter-stats>div{padding:9px 7px}.gp-hunter-stats small{font-size:8px}.gp-hunter-stats strong{font-size:19px}.gp-hunter-actions{width:100%;justify-content:space-between}}
+ </style>
+ <script id="gp-hunter-history-ui">
+ (() => {
+  const list=document.getElementById('hunterHistoryList'),status=document.getElementById('hunterPanelStatus');
+  const refresh=document.getElementById('refreshHunterHistory'),count=document.getElementById('hunterAlertCount');
+  const total=document.getElementById('hunterTotal'),dual=document.getElementById('hunterDual'),extreme=document.getElementById('hunterExtreme');
+  if(!list)return;
+  const escHunter=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const render=rows=>{
+   const items=Array.isArray(rows)?rows:[];
+   if(total)total.textContent=String(items.length);
+   if(dual)dual.textContent=String(items.filter(row=>row.level==='DUAL_PRESSURE').length);
+   if(extreme)extreme.textContent=String(items.filter(row=>row.level==='EXTREME').length);
+   if(count)count.textContent=items.length?String(items.length):'HISTORY';
+   if(!items.length){list.innerHTML='<div class="top-ai-alert-empty">Δεν έχει καταγραφεί ακόμη αυτόνομο σήμα HUNTER. Η ενότητα θα ενημερωθεί όταν ενεργοποιηθεί πραγματικό live trigger.</div>';return;}
+   list.innerHTML=items.map(row=>{
+    const level=row.level==='EXTREME'?'EXTREME DUAL PRESSURE':'DUAL TEAM PRESSURE';
+    const stamp=Number(row.createdAt),time=Number.isFinite(stamp)&&stamp>0?new Date(stamp).toLocaleString('el-GR'):'Ώρα μη διαθέσιμη';
+    const evidence=row.statsAtSignal&&typeof row.statsAtSignal==='object'?JSON.stringify(row.statsAtSignal,null,2):'Δεν αποθηκεύτηκαν αναλυτικά στοιχεία.';
+    return '<article class="top-ai-alert-card gp-hunter-card"><div class="alert-card-kicker"><strong>🎯 PRESSURE HUNTER · '+escHunter(level)+'</strong><span>'+escHunter(row.minute||'LIVE')+'</span></div><div class="alert-card-match">'+escHunter(row.home||'—')+' – '+escHunter(row.away||'—')+'</div><div class="alert-card-league">'+escHunter(row.league||'Διοργάνωση μη διαθέσιμη')+(row.country?' · '+escHunter(row.country):'')+' · '+escHunter(time)+'</div><p><strong>Hunter score:</strong> '+escHunter(row.score??'—')+'/15</p><p><strong>Αιτιολογία:</strong> '+escHunter(row.reason||'—')+'</p><p><strong>Κατάσταση:</strong> '+escHunter(row.outcome||'Εκκρεμεί')+'</p><details><summary>Αναλυτικά SOT και υποστηρικτικά στοιχεία</summary><pre>'+escHunter(evidence)+'</pre></details></article>';
+   }).join('');
+  };
+  async function load(){
+   if(refresh){refresh.disabled=true;refresh.textContent='↻ Φόρτωση…';}
+   if(status)status.textContent='ΕΛΕΓΧΟΣ ΙΣΤΟΡΙΚΟΥ…';
+   try{
+    const response=await fetch('/api/hunter/history?limit=100',{cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));
+    render(data.alerts);
+    if(status)status.textContent='ΑΥΤΟΝΟΜΟ · '+(Array.isArray(data.alerts)?data.alerts.length:0)+' ΚΑΤΑΓΡΑΦΕΣ';
+   }catch(error){
+    if(status)status.textContent='ΙΣΤΟΡΙΚΟ ΜΗ ΔΙΑΘΕΣΙΜΟ';
+    list.innerHTML='<div class="top-ai-alert-empty">Δεν ήταν δυνατή η φόρτωση του HUNTER History. '+escHunter(String(error.message||error))+'</div>';
+   }finally{if(refresh){refresh.disabled=false;refresh.textContent='↻ Ανανέωση ιστορικού';}}
+  }
+  refresh?.addEventListener('click',load);
+  window.loadPressureHunterHistory=load;
+ })();
+ </script>
+ <section class="scoreboard-top">
  <div class="scoreboard-title"><div><div class="eyebrow">GOALMATRIX · AI FOOTBALL INTELLIGENCE</div><h1>Live Score <span>+</span></h1><p>Όλοι οι διαθέσιμοι αγώνες και τα live δεδομένα σε μία οθόνη.</p></div><div class="scoreboard-status"><span class="pulse-dot"></span><span id="liveCountTop">LIVE CENTER</span><small id="topUpdated">Αυτόματη ενημέρωση</small></div></div>
  <div class="top-live live-match-centre" id="highActivity"><div class="top-live-head"><strong>⚡ High Activity Matches</strong><span class="subtle">Αγώνες με έντονη επιθετική πίεση</span></div><div id="highActivityRows"><div class="subtle" style="padding:10px">Αναμονή πραγματικών live στατιστικών…</div></div></div><section class="gp-live-ranking" id="allLivePowerRanking" aria-labelledby="allLivePowerRankingTitle">
  <div class="gp-live-ranking-head"><h3 id="allLivePowerRankingTitle">🏆 POWER RANKING · ΟΛΟ ΤΟ LIVE ΚΟΥΠΟΝΙ</h3><span id="allLivePowerRankingStatus">LIVE SCAN</span></div>
@@ -5301,6 +5367,7 @@ loadHighActivityHistory();
    if(open){
     panel.scrollIntoView({behavior:'smooth',block:'start'});
     if(key==='mieAlertLab'){void loadMieAlertPerformance();}
+    if(key==='hunterPanel'){void window.loadPressureHunterHistory?.();}
     if(key==='powerRankingHistory'){void loadPersistentAlertHistory().then(()=>renderPowerRankingHistory());}
     if(key==='matrixAnalytics'){
      void loadHighActivityHistory().then(()=>reconcileHistoricalHighActivityObservations()).then(()=>{renderMatrixAnalytics();});
@@ -5629,6 +5696,7 @@ header{background:linear-gradient(180deg,#0b1d2a55,transparent);backdrop-filter:
  addHeaderClose('topVipAlerts','.top-ai-alerts-head','VIP Alerts');
  addHeaderClose('protocolAnalyst','.top-ai-alerts-head','AI Protocol Analyst και HI ACTIVITY');
  addHeaderClose('powerGames','.top-ai-alerts-head','Power Games');
+ addHeaderClose('hunterPanel','.top-ai-alerts-head','Pressure Hunter');
  addHeaderClose('matrixAnalytics','.top-ai-alerts-head','Matrix Analytics');
  addHeaderClose('trends','.gp-trend-head','Trends');
  addHeaderClose('topTrends','.gp-trend-head','Top Trends');
