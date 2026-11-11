@@ -17,7 +17,7 @@ test("audit reports explicit SOT and xG coverage without using generic shot fiel
     {
       alert_id: "a1", event_id: "e1", created_at: "2026-11-11T10:00:00Z",
       payload: { triggerIds: ["recent_sot_pressure"], statsAtSignal: { onTarget: 0, onTarget10m: 2, xG: 1.4, shots: 99, shotsOffTarget: 7 } },
-      snapshot_rows: 3, sot_snapshot_rows: 2, snapshots_before_signal: 2, sot_snapshots_before_signal: 1
+      snapshot_rows: 3, sot_snapshot_rows: 2, snapshots_before_signal: 2, sot_snapshots_before_signal: 1, snapshots_after_signal: 1, sot_snapshots_after_signal: 1, snapshot_teams: 2
     },
     {
       alert_id: "a2", event_id: "e2", created_at: "2026-11-11T10:05:00Z",
@@ -35,6 +35,8 @@ test("audit reports explicit SOT and xG coverage without using generic shot fiel
   assert.equal(report.snapshots.alertsWithSotSnapshots, 1);
   assert.equal(report.snapshots.alertsWithoutSnapshots, 1);
   assert.equal(report.snapshots.alertsWithSotSnapshotBeforeSignal, 1);
+  assert.equal(report.snapshots.snapshotsAfterSignal, 1);
+  assert.equal(report.snapshots.sotSnapshotsAfterSignal, 1);
   assert.equal(report.byTrigger.recent_sot_pressure.alerts, 2);
   assert.equal(report.byTrigger.dual_team_sot.withSignalSot, 0);
   assert.equal(report.sampleMissingData.length, 1);
