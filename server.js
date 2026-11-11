@@ -5306,6 +5306,7 @@ const server = http.createServer(async (req, res) => {
       const matches = [];
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0 };
+      const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
@@ -5510,8 +5511,79 @@ const server = http.createServer(async (req, res) => {
                 { team: homeName, homeAway: "home", shotsOnTarget: readExactSotStat(items, "home"), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("home", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) },
                 { team: awayName, homeAway: "away", shotsOnTarget: readExactSotStat(items, "away"), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
               ];
+              // PitchAPI matches used to exit before the SportScore fallback was tried.
+              // Reuse the already-loaded live fixture/slug maps so PitchAPI-only matches
+              // can receive genuine provider stats without changing alert criteria.
+              pitchSportScoreFallbackDiagnostics.attempted++;
+              const normalizeFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const homeKey = normalizeFallbackTeam(homeName);
+              const awayKey = normalizeFallbackTeam(awayName);
+              const pair = homeKey + "|" + awayKey;
+              const reversePair = awayKey + "|" + homeKey;
+              let direct = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair);
+              if (direct && Array.isArray(direct.stats) && direct.stats.length) pitchSportScoreFallbackDiagnostics.fixtureMatched++;
+              if (!direct || !Array.isArray(direct.stats) || !direct.stats.length) {
+                const fallbackSlug = sportScoreWidgetSlugCache.map.get(pair) || sportScoreWidgetSlugCache.map.get(reversePair);
+                if (fallbackSlug) {
+                  const detailResult = await fetchSportScoreMatchDetail(fallbackSlug);
+                  if (detailResult.ok) {
+                    const payload = detailResult.payload || {};
+                    direct = payload.match || payload.data || payload.fixture || payload;
+                    if (Array.isArray(direct?.stats) && direct.stats.length) pitchSportScoreFallbackDiagnostics.detailFetched++;
+                  }
+                }
+              }
+              let fallbackSupplied = false;
+              if (direct && Array.isArray(direct.stats) && direct.stats.length) {
+                const directRoot = direct.match || direct.data || direct.fixture || direct;
+                const directHomeName = directRoot.home?.name || directRoot.home_team?.name || directRoot.home_name || (typeof directRoot.home === "string" ? directRoot.home : "");
+                const sameOrientation = normalizeFallbackTeam(directHomeName) === homeKey;
+                const homeSide = sameOrientation ? "home" : "away";
+                const awaySide = sameOrientation ? "away" : "home";
+                const rows = [];
+                const visited = new Set();
+                const walkFallback = (node, depth = 0) => {
+                  if (!node || typeof node !== "object" || depth > 7 || visited.has(node)) return;
+                  visited.add(node);
+                  if (Array.isArray(node)) { for (const child of node) walkFallback(child, depth + 1); return; }
+                  const label = String(node.name || node.key || node.title || node.label || node.stat || node.type || node.stat_name || node.statName || node.short_name || node.shortName || node.abbreviation || node.abbr || node.display_name || node.displayName || node.description || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                  const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
+                  const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
+                  if (/^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|shots_in_box|shots_inside_box|shots_in_penalty_area|shots_inside_penalty_area|total_shots_inside_box|total_shots_in_box|shots_on_target_inside_box|shots_on_target_in_box|shots_on_target_inside_penalty_area|shots_on_target_in_penalty_area|shots_on_target_from_inside_box|on_target_inside_box|big_chances|big_chance|big_chances_created|big_chance_created|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage|expected_goals|xg|x_goals|x_goal|xgoals|expected_goals_xg|expected_goals_for|expected_goals_total|expected_goals_scored)$/.test(label) && home != null && away != null && typeof home !== "object" && typeof away !== "object") rows.push({ label, home, away });
+                  for (const [key, child] of Object.entries(node)) if (!["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) walkFallback(child, depth + 1);
+                };
+                walkFallback(directRoot.stats);
+                const readFallback = (side, aliases) => {
+                  const row = rows.find(item => aliases.includes(item.label));
+                  if (!row) return null;
+                  const number = Number.parseFloat(String(row[side]).replace("%", "").replace(",", "."));
+                  return Number.isFinite(number) ? number : null;
+                };
+                const getFallback = side => ({
+                  shotsOnTarget: readFallback(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
+                  shotsInBox: readFallback(side, ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]),
+                  shotsOnTargetInsideBox: readFallback(side, ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]),
+                  bigChances: readFallback(side, ["big_chances","big_chance","big_chances_created","big_chance_created"]),
+                  corners: readFallback(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
+                  possession: readFallback(side, ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]),
+                  xG: readFallback(side, ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"])
+                });
+                const fallbackValues = [getFallback(homeSide), getFallback(awaySide)];
+                const keys = ["shotsOnTarget","shotsInBox","shotsOnTargetInsideBox","bigChances","corners","possession","xG"];
+                values.forEach((value, index) => {
+                  for (const key of keys) {
+                    if (value[key] == null && fallbackValues[index][key] != null) {
+                      value[key] = fallbackValues[index][key];
+                      fallbackSupplied = true;
+                    }
+                  }
+                });
+              }
+              if (fallbackSupplied) pitchSportScoreFallbackDiagnostics.supplied++;
+              else if (!direct || !Array.isArray(direct.stats) || !direct.stats.length) pitchSportScoreFallbackDiagnostics.noMatch++;
               matches.push({
-                eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
+                eventId: String(event.id), home: homeName, away: awayName,
+                statsSource: fallbackSupplied ? "PitchAPI+SportScore" : "PitchAPI",
                 minute: event.status?.displayClock || "",
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
@@ -5673,6 +5745,7 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
+      console.log("[PitchAPI SportScore fallback audit]", JSON.stringify(pitchSportScoreFallbackDiagnostics));
       // SportAPI canary: supplement only missing cumulative match statistics.
       // It deliberately does not replace the scoreboard/clock and does not change
       // rolling-window, AI Alert, HI Activity, VIP, or settlement protocol logic.
