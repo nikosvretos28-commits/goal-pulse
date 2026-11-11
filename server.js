@@ -5232,7 +5232,6 @@ const server = http.createServer(async (req, res) => {
                 detail = directLiveMatch;
                 sportScoreDetailDiagnostics.ok++;
               } else {
-                const detailUrl = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse";
                 let detailResult = await fetchSportScoreMatchDetail(slug);
                 if (detailResult.status === 404 && slug.includes("-vs-")) {
                   const parts = slug.split("-vs-");
