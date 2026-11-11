@@ -71,6 +71,8 @@ test("autonomous Power Ranking uses its own 65+ threshold and eligibility gate",
   assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 64, eligible: true, scoreAvailable: true }), false);
   assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 65, eligible: true, scoreAvailable: true }), true);
   assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 100, eligible: false, scoreAvailable: true }), false);
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 100, eligible: true, scoreAvailable: false }), false);
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: "65", eligible: true, scoreAvailable: true }), true);
+  // Missing match goals must not suppress an otherwise qualifying autonomous ranking alert.
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 65, eligible: true }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 100, eligible: true }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: "65", eligible: true }), true);
 });
