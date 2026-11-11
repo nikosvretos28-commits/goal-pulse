@@ -3902,35 +3902,88 @@ const server = http.createServer(async (req, res) => {
                   powerRankingWindow: autonomousPeriod === "first_half" ? "1′–35′" : "46′–84′"
                 }
               };
+              // Persist first, then deliver. A pending delivery is retried by the next
+              // 60-second scan; a completed delivery remains one-per-match.
+              autonomousRecord.statsAtSignal.autonomousPushDeliveryStatus = "pending";
               const autonomousSaved = await analyticsPool.query(
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
                 [autonomousAlertId, id, now, JSON.stringify(autonomousRecord)]
               );
-              // Stable unique alert_id prevents duplicates across scanner/process restarts.
-              pushScanAutonomousPowerRankingAlerts.add(id);
-              if (autonomousSaved.rows.length) {
+              const autonomousWasInserted = autonomousSaved.rows.length > 0;
+              let autonomousDeliveryRecord = autonomousRecord;
+              if (!autonomousWasInserted) {
+                const existingAutonomous = await analyticsPool.query(
+                  "SELECT payload FROM alert_history WHERE alert_id=$1 LIMIT 1", [autonomousAlertId]
+                );
+                autonomousDeliveryRecord = existingAutonomous.rows[0]?.payload || null;
+              }
+              if (autonomousWasInserted) {
                 powerRankingAlerts++;
                 candidates++;
-                try {
-                  const autonomousPushResult = await sendPushToSubscribers({
-                    title: "GoalMatrix · POWER RANKING",
-                    body: "🏆 ΑΥΤΟΝΟΜΟ POWER RANKING " + powerRankingScore + "/100 · " +
-                      (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") +
-                      (autonomousOverLine ? " · Over " + autonomousOverLine : "") + " · " +
-                      (autonomousPeriod === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "2ο ΗΜΙΧΡΟΝΟ") +
-                      " · " + autonomousRawMinute,
-                    tag: "goalmatrix-autonomous-power-ranking-" + id,
-                    url: "/"
-                  });
-                  sent += Number(autonomousPushResult?.sent || 0);
-                } catch (autonomousPushError) {
-                  console.warn("Autonomous Power Ranking push delivery failed; in-app alert remains saved:", autonomousPushError.message);
-                }
                 console.info("Autonomous Power Ranking 65+ alert saved:", JSON.stringify({
                   eventId: id, minute: powerRankingMinute, period: autonomousPeriod,
                   score: powerRankingScore, matchScoreAvailable: autonomousMatchScoreAvailable,
                   alertId: autonomousAlertId
                 }));
+              }
+              if (!autonomousDeliveryRecord) {
+                pushScanAutonomousPowerRankingAlerts.delete(id);
+                console.error("Autonomous Power Ranking alert record could not be reloaded for push delivery", id);
+              } else {
+                const deliveryStats = autonomousDeliveryRecord.statsAtSignal &&
+                  typeof autonomousDeliveryRecord.statsAtSignal === "object"
+                  ? { ...autonomousDeliveryRecord.statsAtSignal } : {};
+                const deliveryStatus = deliveryStats.autonomousPushDeliveryStatus;
+                // Older records have no delivery state. Treat them as historical to avoid
+                // replaying notifications that may already have been delivered before this fix.
+                if (!autonomousWasInserted && deliveryStatus !== "pending") {
+                  pushScanAutonomousPowerRankingAlerts.add(id);
+                } else {
+                  const storedScore = Number(deliveryStats.powerRankingScore ?? powerRankingScore);
+                  const storedPeriod = autonomousDeliveryRecord.periodAtSignal || autonomousPeriod;
+                  const storedMarket = String(autonomousDeliveryRecord.market || "");
+                  const storedMinute = String(autonomousDeliveryRecord.minute || autonomousRawMinute);
+                  const storedHome = autonomousDeliveryRecord.home || match.home || "Γηπεδούχος";
+                  const storedAway = autonomousDeliveryRecord.away || match.away || "Φιλοξενούμενος";
+                  const autonomousPushResult = await sendPushToSubscribers({
+                    title: "GoalMatrix · POWER RANKING",
+                    body: "🏆 ΑΥΤΟΝΟΜΟ POWER RANKING " + storedScore + "/100 · " +
+                      storedHome + " – " + storedAway +
+                      (/^Over\s/i.test(storedMarket) ? " · " + storedMarket : "") + " · " +
+                      (storedPeriod === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "2ο ΗΜΙΧΡΟΝΟ") +
+                      " · " + storedMinute,
+                    tag: "goalmatrix-autonomous-power-ranking-" + id,
+                    url: "/"
+                  });
+                  const deliveryComplete = autonomousPushResult?.configured === true &&
+                    Number(autonomousPushResult?.sent || 0) > 0 &&
+                    Number(autonomousPushResult?.failed || 0) === 0;
+                  sent += Number(autonomousPushResult?.sent || 0);
+                  deliveryStats.autonomousPushDeliveryStatus = deliveryComplete ? "sent" : "pending";
+                  deliveryStats.autonomousPushDeliveryAttempts =
+                    Number(deliveryStats.autonomousPushDeliveryAttempts || 0) + 1;
+                  deliveryStats.autonomousPushLastAttemptAt = now;
+                  deliveryStats.autonomousPushLastResult = {
+                    configured: Boolean(autonomousPushResult?.configured),
+                    sent: Number(autonomousPushResult?.sent || 0),
+                    failed: Number(autonomousPushResult?.failed || 0)
+                  };
+                  autonomousDeliveryRecord.statsAtSignal = deliveryStats;
+                  await analyticsPool.query(
+                    "UPDATE alert_history SET payload=$2::jsonb,updated_at=NOW() WHERE alert_id=$1",
+                    [autonomousAlertId, JSON.stringify(autonomousDeliveryRecord)]
+                  );
+                  if (deliveryComplete) {
+                    pushScanAutonomousPowerRankingAlerts.add(id);
+                  } else {
+                    pushScanAutonomousPowerRankingAlerts.delete(id);
+                    console.warn("Autonomous Power Ranking push remains pending and will be retried:", JSON.stringify({
+                      eventId: id, configured: Boolean(autonomousPushResult?.configured),
+                      sent: Number(autonomousPushResult?.sent || 0),
+                      failed: Number(autonomousPushResult?.failed || 0), alertId: autonomousAlertId
+                    }));
+                  }
+                }
               }
             } else {
               console.error("Autonomous Power Ranking 65+ alert skipped: persistent history unavailable", id);
