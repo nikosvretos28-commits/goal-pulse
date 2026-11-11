@@ -37,6 +37,7 @@ test("audit reports explicit SOT and xG coverage without using generic shot fiel
   assert.equal(report.snapshots.alertsWithSotSnapshotBeforeSignal, 1);
   assert.equal(report.snapshots.snapshotsAfterSignal, 1);
   assert.equal(report.snapshots.sotSnapshotsAfterSignal, 1);
+  assert.equal(report.snapshots.alertsWithTwoSnapshotTeams, 1);
   assert.equal(report.byTrigger.recent_sot_pressure.alerts, 2);
   assert.equal(report.byTrigger.dual_team_sot.withSignalSot, 0);
   assert.equal(report.sampleMissingData.length, 1);
