@@ -5473,7 +5473,7 @@ const server = http.createServer(async (req, res) => {
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
             // Try the fallback whenever either team has a missing core SOT metric,
             // not only when ESPN returns no live SOT statistics.
-            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shotsOnTarget", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null));
+            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shotsOnTarget", "totalShots", "shotsOffTarget", "dangerousAttacks", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null));
             if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
