@@ -11,6 +11,7 @@ const { createCompetitionHistoryStore } = require("./competition-history-store")
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
+const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 let Pool = null;
@@ -2862,7 +2863,7 @@ const server = http.createServer(async (req, res) => {
                 for (const event of (feed.events || [])) {
                   const state = String(event.status?.type?.state || "").toLowerCase();
                   const label = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
-                  if (state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(label)) {
+                  if (state === "post" || /final|full.?time|finished|ended|\bft\b/.test(label)) {
                     scoreboardEvents.push({ ...event, __goalPulseLeagueCode: feed.code || "" });
                     addedFinished++;
                   }
@@ -3260,6 +3261,91 @@ const server = http.createServer(async (req, res) => {
           console.error("Asian bet history auto-settlement failed:", settlementError.message);
         }
       }
+      // Pressure Hunter settlement is deliberately outside the AI/VIP settlement block.
+      // It reads and writes only its own history table.
+      if (await ensurePressureHunterDb()) {
+        try {
+          const pendingHunterRows = (await analyticsPool.query(
+            "SELECT alert_id,event_id,payload,created_at FROM pressure_hunter_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending') AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 1000"
+          )).rows;
+          const todayHunterUtc = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+          const hunterDates = new Set();
+          for (const row of pendingHunterRows) {
+            if (!row.created_at) continue;
+            const date = new Date(row.created_at).toISOString().slice(0, 10);
+            for (const offset of [0, -1, 1]) {
+              const lookupDate = new Date(Date.parse(date + "T00:00:00Z") + offset * 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+              if (lookupDate <= todayHunterUtc && lookupDate !== todayHunterUtc) hunterDates.add(lookupDate);
+            }
+          }
+          for (const date of hunterDates) {
+            try {
+              const response = await fetch(base + "/api/scoreboard?date=" + date, { signal: AbortSignal.timeout(15000) });
+              if (!response.ok) continue;
+              const historical = await response.json();
+              for (const feed of (historical.feeds || [])) {
+                for (const event of (feed.events || [])) {
+                  const state = String(event.status?.type?.state || "").toLowerCase();
+                  const label = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
+                  if (state === "post" || /final|full.?time|finished|ended|\bft\b/.test(label)) {
+                    scoreboardEvents.push({ ...event, __goalPulseLeagueCode: feed.code || "" });
+                  }
+                }
+              }
+            } catch (historyError) {
+              console.warn("[pressure-hunter] Historical scoreboard lookup skipped:", JSON.stringify({ date, error: historyError.message }));
+            }
+          }
+          const hunterCompletedFixtures = [];
+          for (const event of scoreboardEvents) {
+            const competition = event.competitions?.[0];
+            const competitors = competition?.competitors || [];
+            const home = competitors.find(team => team.homeAway === "home") || competitors[0];
+            const away = competitors.find(team => team.homeAway === "away") || competitors[1];
+            const state = String(event.status?.type?.state || competition?.status?.type?.state || "").toLowerCase();
+            const statusText = [event.status?.type?.name, event.status?.type?.detail, event.status?.type?.shortDetail,
+              competition?.status?.type?.name, competition?.status?.type?.detail, competition?.status?.type?.shortDetail].filter(Boolean).join(" ").toLowerCase();
+            if (!home?.team?.displayName || !away?.team?.displayName ||
+                !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusText))) continue;
+            hunterCompletedFixtures.push({
+              id: event.id == null ? "" : String(event.id),
+              date: String(event.date || "").slice(0, 10),
+              league: String(competition?.name || ""),
+              home: home.team.displayName,
+              away: away.team.displayName,
+              result: {
+                status: "post", statusText: "finished",
+                homeScore: home.score, awayScore: away.score,
+                settlementProvider: "ESPN", settlementFixtureId: String(event.id || ""),
+                settlementFixtureDate: String(event.date || "").slice(0, 10),
+                settlementLeague: String(competition?.name || "")
+              }
+            });
+          }
+          for (const row of pendingHunterRows) {
+            const hunter = row.payload || {};
+            const date = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+            if (!date || !hunter.home || !hunter.away) continue;
+            const matched = findUniqueCompletedFixture(hunterCompletedFixtures, {
+              eventId: row.event_id || hunter.eventId, home: hunter.home, away: hunter.away,
+              league: hunter.league, date, dateToleranceDays: 1
+            });
+            if (!matched?.result) continue;
+            const settled = settlePressureHunterRecord(hunter, matched.result, now);
+            if (!settled) continue;
+            const updated = await analyticsPool.query(
+              "UPDATE pressure_hunter_history SET payload=$2::jsonb WHERE alert_id=$1 AND lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending') RETURNING alert_id",
+              [row.alert_id, JSON.stringify(settled)]
+            );
+            if (updated.rowCount) console.info("[pressure-hunter] Signal settled:", JSON.stringify({
+              alertId: row.alert_id, outcome: settled.outcomeStatus,
+              goalsAfterSignal: settled.goalsAfterSignal, finalScore: settled.finalScore
+            }));
+          }
+        } catch (hunterSettlementError) {
+          console.error("[pressure-hunter] Independent settlement cycle failed:", hunterSettlementError.message);
+        }
+      }
       let checked = 0, sent = 0, candidates = 0, powerRankingAlerts = 0;
       let strongSignals = 0, firstHalfOddsChecks = 0, secondHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const aiSignalDiagnostics = [];
@@ -3529,6 +3615,11 @@ const server = http.createServer(async (req, res) => {
                   score: hunterEvaluation.score,
                   reason: hunterEvaluation.reason,
                   statsAtSignal: hunterEvaluation.evidence,
+                  scoreAtSignal: {
+                    home: match.homeScore != null && Number.isFinite(Number(match.homeScore)) ? Number(match.homeScore) : null,
+                    away: match.awayScore != null && Number.isFinite(Number(match.awayScore)) ? Number(match.awayScore) : null
+                  },
+                  settlementRule: "goal_after_signal_until_full_time",
                   outcome: "εκκρεμεί"
                 };
                 const saved = await analyticsPool.query(

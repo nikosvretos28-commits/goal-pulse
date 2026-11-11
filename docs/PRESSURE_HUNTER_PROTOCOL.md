@@ -1,7 +1,7 @@
 # GoalMatrix Pressure Hunter — Autonomous Protocol
 
 ## Isolation contract
-Pressure Hunter is a separate evaluator with its own live scan decision, push title/tag, PostgreSQL history table, and history endpoint. It does not write to AI/VIP alert history, Hi Activity history, Power Games state, or AI analyst data. Existing alert engines and their rules are not modified.
+Pressure Hunter is a separate evaluator with its own live scan decision, push title/tag, PostgreSQL history table, history endpoint, and outcome settlement. It does not write to AI/VIP alert history, Hi Activity history, Power Games state, or AI analyst data. Existing alert engines and their rules are not modified.
 
 ## Mandatory trigger rules
 - Live match only; finished, halftime, abandoned, postponed, and cancelled matches are excluded.
@@ -21,8 +21,15 @@ Provider-mapped Shots in the Box and Big Chances from the rolling 10-minute wind
 - A per-match/per-level guard and the database primary key prevent repeated alerts for the same signal.
 - Missing/stale required SOT windows fail closed. If the persistent Hunter history database is unavailable, no push is sent, avoiding an unrecorded alert.
 
-## Output
-`evaluatePressureHunter(input)` returns eligibility, trigger state, level, score, reason, and an evidence snapshot. Unit tests cover thresholds, missing/stale data, one-sided pressure, SOT-only activation, and live status handling.
+## Automatic outcome settlement
+- Each new signal stores the verified live score snapshot at activation.
+- After a fixture is finished, settlement requires a uniquely matched completed fixture and a provider fixture ID.
+- A higher final match-goal total than the signal-time total confirms the signal; an unchanged total does not confirm it.
+- Missing signal-time score, missing provider identity, ambiguous fixture matching, or a score correction that lowers the total leaves the record pending.
+- The result is written only to `pressure_hunter_history`; it does not touch any other protocol's history.
 
-## UI status
-The backend live evaluator, dedicated push path, and history API are implemented. A separate dashboard card/history view is not yet included; the existing alert UI is untouched.
+## Output
+`evaluatePressureHunter(input)` returns eligibility, trigger state, level, score, reason, and an evidence snapshot. `settlePressureHunterRecord(record, fixture)` grades the goal-after-signal outcome. Unit tests cover thresholds, missing/stale data, one-sided pressure, SOT-only activation, live status handling, and settlement safeguards.
+
+## Dashboard
+The standalone PRESSURE HUNTER panel reads only `GET /api/hunter/history` and displays the independent history and outcome.
