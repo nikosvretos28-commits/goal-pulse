@@ -5416,7 +5416,7 @@ const server = http.createServer(async (req, res) => {
             const eventHomeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
             const eventAwayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
             const normalizeBoxscoreTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
-            const emptyTeamStats = { totalShots: null, shotsOnTarget: null, shotsOnTargetInsideBox: null, bigChances: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null };
+            const emptyTeamStats = { totalShots: null, shotsOnTarget: null, shotsInBox: null, shotsOnTargetInsideBox: null, bigChances: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null };
             if (eventHomeName && !values.some(value => value.homeAway === "home" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventHomeName))) values.unshift({ ...emptyTeamStats, team: eventHomeName, homeAway: "home" });
             if (eventAwayName && !values.some(value => value.homeAway === "away" || normalizeBoxscoreTeam(value.team) === normalizeBoxscoreTeam(eventAwayName))) values.push({ ...emptyTeamStats, team: eventAwayName, homeAway: "away" });
             // Keep ESPN boxscore teams in home/away order before pairing them with SportScore fallback values.
@@ -5467,7 +5467,7 @@ const server = http.createServer(async (req, res) => {
                   const label = String(node.name || node.key || node.title || node.label || node.stat || node.type || node.stat_name || node.statName || node.short_name || node.shortName || node.abbreviation || node.abbr || node.display_name || node.displayName || node.description || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
                   const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
                   const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
-                  const relevantLiveMetric = /^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|red_cards|red_card|red_cards_total|red_card_total|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage)$/.test(label);
+                  const relevantLiveMetric = /^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|shots_in_box|shots_inside_box|shots_in_penalty_area|shots_inside_penalty_area|total_shots_inside_box|total_shots_in_box|big_chances|big_chance|big_chances_created|big_chance_created|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|red_cards|red_card|red_cards_total|red_card_total|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage)$/.test(label);
                   if (relevantLiveMetric && home != null && away != null && typeof home !== "object" && typeof away !== "object") rows.push({label, home, away});
                   for (const [key, value] of Object.entries(node)) {
                     if (!["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) walkDirect(value, depth + 1);
@@ -5482,26 +5482,28 @@ const server = http.createServer(async (req, res) => {
                   return Number.isFinite(n) ? n : null;
                 };
                 const getDirect = side => ({
-                        shotsOnTarget: readDirect(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
-                    corners: readDirect(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
+                  shotsOnTarget: readDirect(side, ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]),
+                  shotsInBox: readDirect(side, ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]),
+                  bigChances: readDirect(side, ["big_chances","big_chance","big_chances_created","big_chance_created"]),
+                  corners: readDirect(side, ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]),
                   possession: readDirect(side, ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"])
                 });
                 const fallbackValues = [getDirect(homeSide), getDirect(awaySide)];
-                if (fallbackValues.some(v => ["shotsOnTarget","corners","possession"].some(key => v[key] != null))) {
+                if (fallbackValues.some(v => ["shotsOnTarget","shotsInBox","bigChances","corners","possession"].some(key => v[key] != null))) {
                   values.forEach((v, i) => {
                     const fallback = fallbackValues[i];
-                    for (const key of ["totalShots","shotsOnTarget","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
+                    for (const key of ["shotsOnTarget","shotsInBox","bigChances","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
                   });
-                  console.log("SportScore fallback supplied missing ESPN live stats:", JSON.stringify({eventId:String(event.id),home:homeName,away:awayName,stats:values.map(v=>({team:v.team,shotsOnTarget:v.shotsOnTarget,corners:v.corners}))}));
+                  console.log("SportScore fallback supplied missing ESPN live stats:", JSON.stringify({eventId:String(event.id),home:homeName,away:awayName,stats:values.map(v=>({team:v.team,shotsOnTarget:v.shotsOnTarget,shotsInBox:v.shotsInBox,bigChances:v.bigChances,corners:v.corners}))}));
                 }
               }
             }
             matches.push({
-              eventId: String(event.id), statsSource: values.some(v => ["shotsOnTarget","corners"].some(key => v[key] != null)) ? "ESPN+SportScore" : "ESPN",
+              eventId: String(event.id), statsSource: values.some(v => ["shotsOnTarget","shotsInBox","bigChances","corners"].some(key => v[key] != null)) ? "ESPN+SportScore" : "ESPN",
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
-              statsAvailable: teams.length > 0 && values.some(v => ["shotsOnTarget", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
+              statsAvailable: teams.length > 0 && values.some(v => ["shotsOnTarget", "shotsInBox", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
               teams: values
             });
           } catch (error) {
@@ -5709,8 +5711,10 @@ const server = http.createServer(async (req, res) => {
                   return Number.isFinite(parsed) ? parsed : null;
                 };
                 return {
-                        shotsOnTarget: number(raw.shots_on_target),
-                    corners: number(raw.corners ?? raw.corner_kicks),
+                  shotsOnTarget: number(raw.shots_on_target ?? raw.shots_on_goal),
+                  shotsInBox: number(raw.shots_in_box ?? raw.shots_inside_box ?? raw.shots_in_penalty_area ?? raw.total_shots_inside_box),
+                  bigChances: number(raw.big_chances ?? raw.big_chance ?? raw.big_chances_created),
+                  corners: number(raw.corners ?? raw.corner_kicks),
                   possession: number(raw.possession ?? raw.ball_possession)
                 };
               };
@@ -5760,7 +5764,7 @@ const server = http.createServer(async (req, res) => {
       ));
       const trendHistory = highActivityOnly ? "isolated high-activity feed; shared trend history untouched" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
-      const diagnosticFields = ["shotsOnTarget","corners","possession","xG"];
+      const diagnosticFields = ["shotsOnTarget","shotsInBox","bigChances","corners","possession","xG"];
       const liveMetricsAudit = {
         scope: highActivityOnly ? "high-activity" : "default",
         totalLiveEvents: liveEvents.length,
