@@ -625,6 +625,66 @@ const ESPN_UNSUPPORTED_LEAGUES = new Set();
 const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
 const sportScoreWidgetSlugCache = { at: 0, map: new Map() };
+const sportScoreMatchDetailCache = new Map();
+const sportScoreMatchDetailInflight = new Map();
+let sportScoreDetailActiveRequests = 0;
+const sportScoreDetailWaiters = [];
+async function withSportScoreDetailSlot(task) {
+  if (sportScoreDetailActiveRequests >= 2) await new Promise(resolve => sportScoreDetailWaiters.push(resolve));
+  sportScoreDetailActiveRequests++;
+  try { return await task(); }
+  finally {
+    sportScoreDetailActiveRequests--;
+    const next = sportScoreDetailWaiters.shift();
+    if (next) next();
+  }
+}
+async function fetchSportScoreMatchDetail(slug) {
+  const key = String(slug || "");
+  const cached = sportScoreMatchDetailCache.get(key);
+  if (cached && Date.now() - cached.at < 12000) return { ok: true, status: 200, payload: cached.payload, cached: true };
+  if (sportScoreMatchDetailInflight.has(key)) return sportScoreMatchDetailInflight.get(key);
+  const request = (async () => {
+    const url = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(key) + "&src=goal-pulse";
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let response;
+      try {
+        response = await withSportScoreDetailSlot(() => fetch(url, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(10000)
+        }));
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        continue;
+      }
+      lastStatus = response.status;
+      if (response.ok) {
+        const payload = await response.json();
+        sportScoreMatchDetailCache.set(key, { at: Date.now(), payload });
+        if (sportScoreMatchDetailCache.size > 240) {
+          const oldest = [...sportScoreMatchDetailCache.entries()].sort((a, b) => a[1].at - b[1].at);
+          for (let i = 0; i < oldest.length - 240; i++) sportScoreMatchDetailCache.delete(oldest[i][0]);
+        }
+        return { ok: true, status: response.status, payload, cached: false };
+      }
+      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
+        return { ok: false, status: response.status, payload: null, cached: false };
+      }
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(8000, retryAfter * 1000)
+        : Math.min(4000, 700 * (2 ** attempt));
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+    return { ok: false, status: lastStatus, payload: null, cached: false };
+  })();
+  sportScoreMatchDetailInflight.set(key, request);
+  try { return await request; }
+  finally { sportScoreMatchDetailInflight.delete(key); }
+}
+
 const liveHistory = new Map();
 const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
 function resolveDatabaseUrl(raw) {
@@ -5172,41 +5232,27 @@ const server = http.createServer(async (req, res) => {
                 detail = directLiveMatch;
                 sportScoreDetailDiagnostics.ok++;
               } else {
-                const detailUrl = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug) + "&src=goal-pulse";
-                let detailResponse;
-                // SportScore intermittently returns 503 under burst traffic. Retry transient failures
-                // with short backoff, while keeping the overall request concurrency conservative.
-                for (let attempt = 0; attempt < 3; attempt++) {
-                  detailResponse = await fetch(detailUrl, {
-                    headers: { "Accept": "application/json" },
-                    signal: AbortSignal.timeout(10000)
-                  });
-                  if (detailResponse.status !== 503 || attempt === 2) break;
-                  await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
-                }
-                if (detailResponse.status === 404 && slug.includes("-vs-")) {
+                let detailResult = await fetchSportScoreMatchDetail(slug);
+                if (detailResult.status === 404 && slug.includes("-vs-")) {
                   const parts = slug.split("-vs-");
                   if (parts.length === 2) {
                     const reverseSlug = parts[1] + "-vs-" + parts[0];
-                    const retryResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(reverseSlug) + "&src=goal-pulse", {
-                      headers: { "Accept": "application/json" },
-                      signal: AbortSignal.timeout(8000)
-                    });
-                    if (retryResponse.ok) { slug = reverseSlug; detailResponse = retryResponse; }
+                    const reverseResult = await fetchSportScoreMatchDetail(reverseSlug);
+                    if (reverseResult.ok) { slug = reverseSlug; detailResult = reverseResult; }
                     else {
-                      const statusKey = String(retryResponse.status);
+                      const statusKey = String(reverseResult.status);
                       sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
                     }
                   }
                 }
-                if (!detailResponse.ok) {
-                  const statusKey = String(detailResponse.status);
+                if (!detailResult.ok) {
+                  const statusKey = String(detailResult.status);
                   sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
-                  if (detailResponse.status === 404) sportScoreDetailDiagnostics.notFound++;
+                  if (detailResult.status === 404) sportScoreDetailDiagnostics.notFound++;
                   else sportScoreDetailDiagnostics.otherErrors++;
                   continue;
                 }
-                detail = await detailResponse.json();
+                detail = detailResult.payload;
                 sportScoreDetailDiagnostics.ok++;
               }
               const root = detail.match || detail.data || detail.fixture || detail;
