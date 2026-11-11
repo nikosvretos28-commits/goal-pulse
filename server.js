@@ -2863,7 +2863,7 @@ const server = http.createServer(async (req, res) => {
                 for (const event of (feed.events || [])) {
                   const state = String(event.status?.type?.state || "").toLowerCase();
                   const label = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
-                  if (state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(label)) {
+                  if (state === "post" || /final|full.?time|finished|ended|\bft\b/.test(label)) {
                     scoreboardEvents.push({ ...event, __goalPulseLeagueCode: feed.code || "" });
                     addedFinished++;
                   }
@@ -3287,7 +3287,7 @@ const server = http.createServer(async (req, res) => {
                 for (const event of (feed.events || [])) {
                   const state = String(event.status?.type?.state || "").toLowerCase();
                   const label = String(event.status?.type?.name || event.status?.type?.detail || event.status?.type?.shortDetail || "").toLowerCase();
-                  if (state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(label)) {
+                  if (state === "post" || /final|full.?time|finished|ended|\bft\b/.test(label)) {
                     scoreboardEvents.push({ ...event, __goalPulseLeagueCode: feed.code || "" });
                   }
                 }
@@ -3306,7 +3306,7 @@ const server = http.createServer(async (req, res) => {
             const statusText = [event.status?.type?.name, event.status?.type?.detail, event.status?.type?.shortDetail,
               competition?.status?.type?.name, competition?.status?.type?.detail, competition?.status?.type?.shortDetail].filter(Boolean).join(" ").toLowerCase();
             if (!home?.team?.displayName || !away?.team?.displayName ||
-                !(state === "post" || /final|full.?time|finished|ended|\\bft\\b/.test(statusText))) continue;
+                !(state === "post" || /final|full.?time|finished|ended|\bft\b/.test(statusText))) continue;
             hunterCompletedFixtures.push({
               id: event.id == null ? "" : String(event.id),
               date: String(event.date || "").slice(0, 10),
