@@ -5355,7 +5355,7 @@ const server = http.createServer(async (req, res) => {
                 awayScore: event.away_score ?? event.awayScore ?? null,
                 status: event.status ?? "", statusText: event.status_text ?? event.statusText ?? "",
                 homeHtScore: event.home_ht_score ?? null, awayHtScore: event.away_ht_score ?? null,
-                statsAvailable: values.some(value => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsInBox","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values,
                 redCardIncidents
               });
@@ -5402,7 +5402,7 @@ const server = http.createServer(async (req, res) => {
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName, statsSource: "PitchAPI",
                 minute: event.status?.displayClock || "",
-                statsAvailable: values.some(value => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
               continue;
@@ -5473,7 +5473,7 @@ const server = http.createServer(async (req, res) => {
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
             // Try the fallback whenever either team has a missing core SOT metric,
             // not only when ESPN returns no live SOT statistics.
-            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shotsOnTarget", "totalShots", "shotsOffTarget", "dangerousAttacks", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null));
+            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shotsOnTarget", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null));
             if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
