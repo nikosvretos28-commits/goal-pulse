@@ -11,6 +11,7 @@ const { createCompetitionHistoryStore } = require("./competition-history-store")
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
+const { summarizeEliteDataAudit } = require("./elite-data-audit");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -2062,6 +2063,49 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       console.error("Alert history verification failed:", error.message);
       return send(res, 503, { error: "Could not verify alert history" });
+    }
+  }
+
+  if (url.pathname === "/api/elite-team/data-audit" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    const windowDays = Math.max(1, Math.min(180, Math.floor(Number(auth.body.windowDays || 180))));
+    if (!analyticsPool) return send(res, 503, { ok: false, error: "Persistent audit database unavailable" });
+    try {
+      // Read-only coverage query. It never updates alert history or live snapshots.
+      const result = await analyticsPool.query(
+        `WITH scoped_alerts AS (
+           SELECT alert_id, event_id, created_at, payload
+             FROM alert_history
+            WHERE payload->>'source' = 'server-push'
+              AND COALESCE(payload->>'level', 'AI') = 'AI'
+              AND created_at > NOW() - ($1::int * INTERVAL '1 day')
+            ORDER BY created_at DESC
+            LIMIT 10000
+         )
+         SELECT a.alert_id, a.event_id, a.created_at, a.payload,
+                COUNT(s.id) FILTER (WHERE s.id IS NOT NULL)::int AS snapshot_rows,
+                COUNT(s.id) FILTER (WHERE s.shots_on_target IS NOT NULL)::int AS sot_snapshot_rows,
+                COUNT(s.id) FILTER (WHERE s.id IS NOT NULL AND s.observed_at <= a.created_at)::int AS snapshots_before_signal,
+                COUNT(s.id) FILTER (WHERE s.shots_on_target IS NOT NULL AND s.observed_at <= a.created_at)::int AS sot_snapshots_before_signal,
+                COUNT(s.id) FILTER (WHERE s.id IS NOT NULL AND s.observed_at > a.created_at)::int AS snapshots_after_signal,
+                COUNT(s.id) FILTER (WHERE s.shots_on_target IS NOT NULL AND s.observed_at > a.created_at)::int AS sot_snapshots_after_signal,
+                COUNT(DISTINCT s.team_name) FILTER (WHERE s.id IS NOT NULL)::int AS snapshot_teams
+           FROM scoped_alerts a
+           LEFT JOIN live_stat_snapshots s
+             ON s.event_id = a.event_id
+            AND s.observed_at >= a.created_at - INTERVAL '15 minutes'
+            AND s.observed_at <= a.created_at + INTERVAL '2 minutes'
+          GROUP BY a.alert_id, a.event_id, a.created_at, a.payload
+          ORDER BY a.created_at DESC`,
+        [windowDays]
+      );
+      const report = summarizeEliteDataAudit(result.rows, { windowDays });
+      return send(res, 200, report);
+    } catch (error) {
+      console.error("Elite team data audit failed:", String(error.message || error));
+      return send(res, 503, { ok: false, error: "Could not build read-only Elite data audit" });
     }
   }
 
