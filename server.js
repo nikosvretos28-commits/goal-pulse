@@ -2256,7 +2256,8 @@ const server = http.createServer(async (req, res) => {
     if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
     const body = auth.body;
     const now = Date.now();
-    const limit = Math.max(1, Math.min(1000, Number(body.limit || 500)));
+    try {
+      const limit = Math.max(1, Math.min(1000, Number(body.limit || 500)));
       const offset = Math.max(0, Math.floor(Number(body.offset || 0)));
       const period = String(body.period || "all").toLowerCase();
       if (!await ensureAlertHistoryDb()) {
