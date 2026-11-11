@@ -4,7 +4,7 @@
 This phase adds a deterministic report engine for the eight specialists and Chief Analyst. It consumes only records explicitly supplied by a caller. It is not wired to a route, scheduler, database, scanner, push service, settlement worker, or live protocol.
 
 ## Input contract
-Records may include `alertId`, `eventId`, `createdAt`, `teams`, `league`, `minute`, `period`, `outcome`, `verifiedScore`, `triggerIds`, `statsAtSignal`, `finalScore`, `scoreScope`, and `settlementProvider`. Only `verifiedScore === true` with outcome `won` or `lost` enters win/loss comparisons.
+Records must be supplied from the existing authenticated `/api/protocol-analyst/alerts` read-only endpoint, not arbitrary alert payloads. That endpoint's SQL gate requires a server-generated AI alert, a terminal win/loss, settlement provider, fixture ID, valid score scope and retained final score; its mapper also restricts records to second-half alerts at 46–88 minutes. The engine independently requires `verifiedScore === true`, outcome `won` or `lost`, non-empty `settlementProvider`, `scoreScope` of `first_half` or `full_time`, a numeric `finalScore`, `period === "second_half"`, and minute 46–88. This is a defense-in-depth shape check; it does not independently verify a provider fixture. Inputs from any other source must not be labelled verified.
 
 ## Analyst outputs
 - SOT & Data Integrity: presence of explicit `onTarget`, `onTarget10m`, `totalOnTarget` fields only.
@@ -21,4 +21,4 @@ Records may include `alertId`, `eventId`, `createdAt`, `teams`, `league`, `minut
 Pure synchronous JavaScript only. No network, filesystem, database, writes, scheduler, notifications, settlement, or live-protocol imports. Generic shots and off-target fields are never read. Recommendations are not applied automatically.
 
 ## Tests
-Run with the repository's supported Node 24.18.x runtime using `npm test`. This PR must remain draft until tests run in the supported runtime and the input contract is reviewed against actual verified alert records.
+Run with the repository's supported Node 24.18.x runtime using `npm test`. This PR must remain draft until tests run in the supported runtime and the input contract is reviewed against actual verified alert records. The current execution environment reports Node 22.16.0, below the package engine range, so a passing local test run there would not satisfy this gate.
