@@ -70,9 +70,11 @@ function isPowerRankingMinuteEligible(minute, status = "") {
 }
 const AUTONOMOUS_POWER_RANKING_THRESHOLD = 65;
 
-function shouldEmitAutonomousPowerRankingAlert({ score, eligible, scoreAvailable } = {}) {
+function shouldEmitAutonomousPowerRankingAlert({ score, eligible } = {}) {
   const numericScore = Number(score);
-  return eligible === true && scoreAvailable === true && Number.isFinite(numericScore) &&
+  // The autonomous trigger depends on the live Power Ranking score and its
+  // minute/period eligibility only. Match scoreboard goals are not a trigger gate.
+  return eligible === true && Number.isFinite(numericScore) &&
     numericScore >= AUTONOMOUS_POWER_RANKING_THRESHOLD;
 }
 
