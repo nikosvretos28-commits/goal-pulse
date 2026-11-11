@@ -2090,7 +2090,10 @@ const server = http.createServer(async (req, res) => {
                 COUNT(s.id) FILTER (WHERE s.id IS NOT NULL)::int AS snapshot_rows,
                 COUNT(s.id) FILTER (WHERE s.shots_on_target IS NOT NULL)::int AS sot_snapshot_rows,
                 COUNT(s.id) FILTER (WHERE s.id IS NOT NULL AND s.observed_at <= a.created_at)::int AS snapshots_before_signal,
-                COUNT(s.id) FILTER (WHERE s.shots_on_target IS NOT NULL AND s.observed_at <= a.created_at)::int AS sot_snapshots_before_signal
+                COUNT(s.id) FILTER (WHERE s.shots_on_target IS NOT NULL AND s.observed_at <= a.created_at)::int AS sot_snapshots_before_signal,
+                COUNT(s.id) FILTER (WHERE s.id IS NOT NULL AND s.observed_at > a.created_at)::int AS snapshots_after_signal,
+                COUNT(s.id) FILTER (WHERE s.shots_on_target IS NOT NULL AND s.observed_at > a.created_at)::int AS sot_snapshots_after_signal,
+                COUNT(DISTINCT s.team_name) FILTER (WHERE s.id IS NOT NULL)::int AS snapshot_teams
            FROM scoped_alerts a
            LEFT JOIN live_stat_snapshots s
              ON s.event_id = a.event_id
