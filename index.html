@@ -4778,12 +4778,13 @@ async function runSignalCheck(){
 
 // Owner-only AI alert view. The PIN is held in memory and sent only to the protected same-origin endpoint.
 let privateAiAdminPin='';
+let privateAiPreviewMode=false;
 const privateTriggerNumbers=[{id:'recent_sot_pressure',number:1},{id:'cumulative_20_sot',number:3},{id:'xg_threshold',number:5},{id:'man_advantage_pressure',number:6},{id:'first_half_8_sot',number:7},{id:'power_ranking_59',number:8},{id:'power_ranking_autonomous_65',number:9}];
 function setPrivateAiPanel(open){const panel=document.getElementById('privateAiAlertsPanel'),button=document.getElementById('privateAiAlertsToggle');if(panel)panel.hidden=!open;if(button)button.setAttribute('aria-expanded',open?'true':'false');if(open)panel?.scrollIntoView({behavior:'smooth',block:'start'});}
 document.getElementById('privateAiAlertsToggle')?.addEventListener('click',()=>setPrivateAiPanel(!!document.getElementById('privateAiAlertsPanel')?.hidden));
 document.getElementById('privateAiAlertsClose')?.addEventListener('click',()=>setPrivateAiPanel(false));
 document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
- const input=document.getElementById('privateAiPin'),status=document.getElementById('privateAiStatus'),host=document.getElementById('privateAiAlertList'),pin=String(input?.value||'').trim();
+ const input=document.getElementById('privateAiPin'),status=document.getElementById('privateAiStatus'),host=document.getElementById('privateAiAlertList'),pin=privateAiPreviewMode?'PREVIEW_MODE':String(input?.value||'').trim();
  if(!pin){if(status)status.textContent='Πληκτρολόγησε το προσωπικό PIN.';return;}
  const button=document.getElementById('privateAiUnlock');button.disabled=true;if(status)status.textContent='Έλεγχος πρόσβασης…';
  try{
@@ -4803,6 +4804,21 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
  }catch(error){privateAiAdminPin='';if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
  finally{button.disabled=false;}
 });
+
+// Preview mode is opt-in through a server-side environment flag; normal PIN protection remains the default.
+fetch(ANALYTICS_API+'/api/public-config',{cache:'no-store'}).then(response=>response.ok?response.json():null).then(config=>{
+ if(!config?.previewUnlock)return;
+ privateAiPreviewMode=true;
+ const row=document.querySelector('#privateAiAlertsPanel .notification-optin-row');
+ if(row)row.hidden=true;
+ const description=document.querySelector('#privateAiAlertsPanel .top-ai-alerts-head p');
+ if(description)description.textContent='Προσωρινή λειτουργία δοκιμών — πρόσβαση χωρίς PIN.';
+ const toggle=document.getElementById('privateAiAlertsToggle');
+ if(toggle)toggle.textContent='🔓 PREVIEW AI ALERTS';
+ const input=document.getElementById('privateAiPin');
+ if(input)input.value='PREVIEW_MODE';
+ document.getElementById('privateAiUnlock')?.click();
+}).catch(error=>console.warn('GoalMatrix preview config unavailable:',error.message||error));
 
 renderTopAiAlerts();
 document.getElementById('runSignalCheck').addEventListener('click',runSignalCheck);
