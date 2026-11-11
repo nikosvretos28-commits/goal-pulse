@@ -18,6 +18,12 @@ function createLimiter(maxConcurrent = 4) {
   };
 }
 
+function formatEspnMonth(date) {
+  const value = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(value.getTime())) throw new TypeError("A valid date is required");
+  return String(value.getUTCFullYear()) + String(value.getUTCMonth() + 1).padStart(2, "0");
+}
+
 function isHistoryLeagueSupported(league, supportedLeagues) {
   if (typeof league !== "string" || league.startsWith("sportscore.")) return false;
   if (supportedLeagues instanceof Set) return supportedLeagues.has(league);
@@ -57,4 +63,4 @@ async function fetchCompetitionHistoryWindow({
   throw new Error("Competition history provider failed: " + failures.join("; "));
 }
 
-module.exports = { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow };
+module.exports = { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow, formatEspnMonth };
