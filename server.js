@@ -626,6 +626,12 @@ const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
 const sportScoreWidgetSlugCache = { at: 0, map: new Map() };
 const sportScoreMatchDetailCache = new Map();
+// SportScore's widget edge cache is ~60 seconds; reuse detail payloads for that window.
+const SPORT_SCORE_DETAIL_CACHE_MS = 60 * 1000;
+// A 429 pauses all detail requests briefly instead of retrying every match independently.
+const SPORT_SCORE_DETAIL_429_FALLBACK_MS = 60 * 1000;
+const SPORT_SCORE_DETAIL_429_MAX_MS = 2 * 60 * 1000;
+let sportScoreDetailCooldownUntil = 0;
 const sportScoreMatchDetailInflight = new Map();
 let sportScoreDetailActiveRequests = 0;
 const sportScoreDetailWaiters = [];
@@ -641,8 +647,12 @@ async function withSportScoreDetailSlot(task) {
 }
 async function fetchSportScoreMatchDetail(slug) {
   const key = String(slug || "");
+  const now = Date.now();
   const cached = sportScoreMatchDetailCache.get(key);
-  if (cached && Date.now() - cached.at < 12000) return { ok: true, status: 200, payload: cached.payload, cached: true };
+  if (cached && now - cached.at < SPORT_SCORE_DETAIL_CACHE_MS) return { ok: true, status: 200, payload: cached.payload, cached: true };
+  if (now < sportScoreDetailCooldownUntil) {
+    return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil };
+  }
   if (sportScoreMatchDetailInflight.has(key)) return sportScoreMatchDetailInflight.get(key);
   const request = (async () => {
     const url = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(key) + "&src=goal-pulse";
@@ -669,13 +679,18 @@ async function fetchSportScoreMatchDetail(slug) {
         }
         return { ok: true, status: response.status, payload, cached: false };
       }
-      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
+      if (response.status === 429) {
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const cooldownMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(SPORT_SCORE_DETAIL_429_MAX_MS, retryAfter * 1000)
+          : SPORT_SCORE_DETAIL_429_FALLBACK_MS;
+        sportScoreDetailCooldownUntil = Math.max(sportScoreDetailCooldownUntil, Date.now() + cooldownMs);
+        return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil };
+      }
+      if (![500, 502, 503, 504].includes(response.status) || attempt === 2) {
         return { ok: false, status: response.status, payload: null, cached: false };
       }
-      const retryAfter = Number(response.headers.get("retry-after"));
-      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
-        ? Math.min(8000, retryAfter * 1000)
-        : Math.min(4000, 700 * (2 ** attempt));
+      const retryDelay = Math.min(4000, 700 * (2 ** attempt));
       await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
     return { ok: false, status: lastStatus, payload: null, cached: false };
