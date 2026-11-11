@@ -31,7 +31,8 @@ function summarizeEliteDataAudit(rows, options = {}) {
       sotSnapshotsBeforeSignal: 0,
       snapshotsAfterSignal: 0,
       sotSnapshotsAfterSignal: 0,
-      alertsWithSotSnapshotBeforeSignal: 0
+      alertsWithSotSnapshotBeforeSignal: 0,
+      alertsWithTwoSnapshotTeams: 0
     },
     byTrigger: {},
     sampleMissingData: []
@@ -70,6 +71,7 @@ function summarizeEliteDataAudit(rows, options = {}) {
     else summary.snapshots.alertsWithoutSnapshots++;
     if (item.sotSnapshotRows > 0) summary.snapshots.alertsWithSotSnapshots++;
     if (item.sotSnapshotsBefore > 0) summary.snapshots.alertsWithSotSnapshotBeforeSignal++;
+    if (item.snapshotTeams >= 2) summary.snapshots.alertsWithTwoSnapshotTeams++;
 
     const triggers = Array.isArray(payload.triggerIds) ? [...new Set(payload.triggerIds.map(String).filter(Boolean))] : [];
     for (const triggerId of triggers) {
