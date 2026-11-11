@@ -32,7 +32,7 @@ function normalizeRecord(record) {
     && ["won", "lost"].includes(outcome)
     && Boolean(String(record?.settlementProvider || "").trim())
     && ["first_half", "full_time"].includes(record?.scoreScope)
-    && /^\\d+[-:]\\d+$/.test(String(record?.finalScore || "").trim())
+    && /^\d+[-:]\d+$/.test(String(record?.finalScore || "").trim())
     && record?.period === "second_half"
     && Number.isInteger(finite(record?.minute))
     && finite(record?.minute) >= 46
