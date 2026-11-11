@@ -5355,10 +5355,6 @@ const server = http.createServer(async (req, res) => {
               const scoreboardHome = scoreboardCompetitors.find(team => team?.homeAway === "home") || null;
               const scoreboardAway = scoreboardCompetitors.find(team => team?.homeAway === "away") || null;
               const scoreValue = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
-              const firstPeriodScore = competitor => {
-                const line = competitor?.linescores?.[0];
-                return scoreValue(line?.value ?? line?.displayValue);
-              };
               const liveMinute = root.live_minute ?? root.liveMinute ?? root.elapsed ?? root.time?.elapsed ??
                 root.time?.minute ?? root.status?.minute ?? root.status?.elapsed ??
                 event.live_minute ?? event.status?.displayClock ?? scoreboardCompetition.status?.displayClock ?? event.time ?? "";
