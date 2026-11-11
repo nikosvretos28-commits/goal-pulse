@@ -25,10 +25,16 @@ function minuteBand(minute) {
   return "89+";
 }
 
+function isPowerRankingRecord(record) {
+  const alertType = String(record?.alertType || "").trim().toLowerCase();
+  return alertType.startsWith("power_ranking_") || uniqueStrings(record?.triggerIds).some(id => id.toLowerCase().startsWith("power_ranking_"));
+}
+
 function normalizeRecord(record) {
   const stats = record && record.statsAtSignal && typeof record.statsAtSignal === "object" ? record.statsAtSignal : {};
   const outcome = String(record?.outcome || record?.betOutcome || "").toLowerCase();
-  const verified = record?.verifiedScore === true
+  const verified = !isPowerRankingRecord(record)
+    && record?.verifiedScore === true
     && ["won", "lost"].includes(outcome)
     && Boolean(String(record?.settlementProvider || "").trim())
     && ["first_half", "full_time"].includes(record?.scoreScope)
@@ -42,6 +48,8 @@ function normalizeRecord(record) {
   const xg = { xG: finite(stats.xG), xGDelta: finite(stats.xGDelta) };
   return {
     alertId: record?.alertId ?? null,
+    alertType: record?.alertType || null,
+    excludedPowerRanking: isPowerRankingRecord(record),
     eventId: record?.eventId ?? null,
     createdAt: record?.createdAt ?? null,
     teams: Array.isArray(record?.teams) ? record.teams.slice(0, 2) : [],
@@ -177,4 +185,4 @@ function buildEliteTeamReport(inputRecords, options = {}) {
   };
 }
 
-module.exports = { SOT_FIELDS, MIN_COMPARISON_SAMPLE, finite, normalizeRecord, minuteBand, buildEliteTeamReport };
+module.exports = { SOT_FIELDS, MIN_COMPARISON_SAMPLE, finite, isPowerRankingRecord, normalizeRecord, minuteBand, buildEliteTeamReport };
