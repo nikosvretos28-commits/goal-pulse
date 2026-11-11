@@ -18,7 +18,7 @@ function settlePressureHunterRecord(record = {}, fixture = {}, settledAt = Date.
   const fixtureId = String(result.settlementFixtureId || "").trim();
   const status = String(result.status || "").trim().toLowerCase();
   const statusText = String(result.statusText || "").trim().toLowerCase();
-  const finished = status === "post" || /finished|full.?time|ended|final|\\bft\\b/.test(statusText);
+  const finished = status === "post" || /finished|full.?time|ended|final|\bft\b/.test(statusText);
 
   // Fail closed: no inferred baseline, no unverified score, no ambiguous live result.
   if (signalHome === null || signalAway === null || finalHome === null || finalAway === null ||
