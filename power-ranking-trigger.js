@@ -75,7 +75,7 @@ function shouldEmitAutonomousPowerRankingAlert({ score, eligible } = {}) {
   // The autonomous trigger depends on the live Power Ranking score and its
   // minute/period eligibility only. Match scoreboard goals are not a trigger gate.
   return eligible === true && Number.isFinite(numericScore) &&
-    numericScore >= AUTONOMOUS_POWER_RANKING_THRESHOLD;
+    numericScore > AUTONOMOUS_POWER_RANKING_THRESHOLD;
 }
 
 module.exports = {

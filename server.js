@@ -3864,15 +3864,53 @@ const server = http.createServer(async (req, res) => {
         }
         // Autonomous Power Ranking is a separate protocol: it does not depend on AI trigger 59+,
         // SOT/xG triggers, their cooldowns, or the AI Power Ranking deduplication state.
+        // A dip to 65 or below rearms the next autonomous 2H alert. Persist this
+        // on the latest signal so the re-crossing rule survives process restarts.
+        if (powerRankingEligible && powerRankingMinute >= 46 && Number(powerRankingScore) <= 65 &&
+            await ensureAlertHistoryDb()) {
+          await analyticsPool.query(
+            "UPDATE alert_history SET payload=jsonb_set(payload,'{statsAtSignal,autonomousRearmed}','true'::jsonb,true),updated_at=NOW() WHERE alert_id=(SELECT alert_id FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'='second_half' ORDER BY created_at DESC LIMIT 1)",
+            [id]
+          );
+          pushScanAutonomousPowerRankingAlerts.delete(id);
+        }
         const autonomousPowerRankingQualified = shouldEmitAutonomousPowerRankingAlert({
           score: powerRankingScore,
           eligible: powerRankingEligible
         });
         if (autonomousPowerRankingQualified && !pushScanAutonomousPowerRankingAlerts.has(id)) {
-          const autonomousAlertId = "push:" + id + ":POWER_RANKING:autonomous-65";
           try {
             if (await ensureAlertHistoryDb()) {
               const autonomousPeriod = powerRankingMinute <= 35 ? "first_half" : "second_half";
+              const priorSignals = await analyticsPool.query(
+                "SELECT COUNT(*)::int AS count FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'=$2",
+                [id, autonomousPeriod]
+              );
+              const priorCount = Number(priorSignals.rows[0]?.count || 0);
+              const latestSignal = priorCount ? await analyticsPool.query(
+                "SELECT alert_id,payload FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'=$2 ORDER BY created_at DESC LIMIT 1",
+                [id, autonomousPeriod]
+              ) : { rows: [] };
+              const latestPayload = latestSignal.rows[0]?.payload || {};
+              const latestStats = latestPayload.statsAtSignal || {};
+              const latestDeliveryPending = latestStats.autonomousPushDeliveryStatus === "pending";
+              const autonomousRearmed = latestStats.autonomousRearmed === true;
+              let autonomousAlertIndex = priorCount + 1;
+              if (autonomousPeriod === "first_half" && priorCount >= 1) {
+                if (latestDeliveryPending) autonomousAlertIndex = priorCount;
+                else throw Object.assign(new Error("autonomous first-half alert limit reached"), { code: "AUTONOMOUS_SKIP" });
+              }
+              if (autonomousPeriod === "second_half" && priorCount >= 3) {
+                if (latestDeliveryPending) autonomousAlertIndex = priorCount;
+                else throw Object.assign(new Error("autonomous second-half alert limit reached"), { code: "AUTONOMOUS_SKIP" });
+              }
+              if (autonomousPeriod === "second_half" && priorCount > 0 && !autonomousRearmed) {
+                if (latestDeliveryPending) autonomousAlertIndex = priorCount;
+                else throw Object.assign(new Error("autonomous second-half signal has not rearmed"), { code: "AUTONOMOUS_SKIP" });
+              }
+              const autonomousAlertId = latestDeliveryPending && latestSignal.rows[0]?.alert_id
+                ? latestSignal.rows[0].alert_id
+                : "push:" + id + ":POWER_RANKING:autonomous-" + autonomousPeriod + "-" + autonomousAlertIndex;
               // Match goals are metadata for the optional Over settlement, not an
               // eligibility condition for the autonomous Power Ranking notification.
               const autonomousMatchScoreAvailable = scoreAvailable;
@@ -3899,11 +3937,13 @@ const server = http.createServer(async (req, res) => {
                   powerRankingScore,
                   powerRankingThreshold: 65,
                   powerRankingMode: "autonomous",
+                  autonomousRearmed: false,
+                  autonomousAlertIndex,
                   powerRankingWindow: autonomousPeriod === "first_half" ? "1′–35′" : "46′–84′"
                 }
               };
-              // Persist first, then deliver. A pending delivery is retried by the next
-              // 60-second scan; a completed delivery remains one-per-match.
+              // Persist each period-specific activation before delivery. A pending
+              // delivery is retried by the next qualifying scan.
               autonomousRecord.statsAtSignal.autonomousPushDeliveryStatus = "pending";
               const autonomousSaved = await analyticsPool.query(
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
@@ -3952,7 +3992,7 @@ const server = http.createServer(async (req, res) => {
                       (/^Over\s/i.test(storedMarket) ? " · " + storedMarket : "") + " · " +
                       (storedPeriod === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "2ο ΗΜΙΧΡΟΝΟ") +
                       " · " + storedMinute,
-                    tag: "goalmatrix-autonomous-power-ranking-" + id,
+                    tag: "goalmatrix-autonomous-power-ranking-" + id + "-" + autonomousAlertIndex,
                     url: "/"
                   });
                   const deliveryComplete = autonomousPushResult?.configured === true &&
@@ -3989,7 +4029,7 @@ const server = http.createServer(async (req, res) => {
               console.error("Autonomous Power Ranking 65+ alert skipped: persistent history unavailable", id);
             }
           } catch (autonomousPowerRankingError) {
-            console.error("Autonomous Power Ranking 65+ alert failed:", autonomousPowerRankingError.message);
+            if (autonomousPowerRankingError.code !== "AUTONOMOUS_SKIP") console.error("Autonomous Power Ranking alert failed:", autonomousPowerRankingError.message);
           }
         }
         const recentGoalEvidence = dangerousAvailable

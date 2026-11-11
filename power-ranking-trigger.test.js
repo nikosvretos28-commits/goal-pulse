@@ -67,12 +67,14 @@ test("halftime and completed matches are always rejected", () => {
   assert.equal(isPowerRankingMinuteEligible(60, "finished"), false);
 });
 
-test("autonomous Power Ranking uses its own 65+ threshold and eligibility gate", () => {
+test("autonomous Power Ranking requires a score strictly above 65 and eligibility", () => {
   assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 64, eligible: true, scoreAvailable: true }), false);
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 65, eligible: true, scoreAvailable: true }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 65, eligible: true, scoreAvailable: true }), false);
   assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 100, eligible: false, scoreAvailable: true }), false);
   // Missing match goals must not suppress an otherwise qualifying autonomous ranking alert.
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 65, eligible: true }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 65, eligible: true }), false);
   assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 100, eligible: true }), true);
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: "65", eligible: true }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: "65", eligible: true }), false);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 66, eligible: true }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: "66", eligible: true }), true);
 });
