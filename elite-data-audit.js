@@ -29,6 +29,8 @@ function summarizeEliteDataAudit(rows, options = {}) {
       sotSnapshotRowsInWindow: 0,
       snapshotsBeforeSignal: 0,
       sotSnapshotsBeforeSignal: 0,
+      snapshotsAfterSignal: 0,
+      sotSnapshotsAfterSignal: 0,
       alertsWithSotSnapshotBeforeSignal: 0
     },
     byTrigger: {},
@@ -44,7 +46,10 @@ function summarizeEliteDataAudit(rows, options = {}) {
     const sotSnapshotRows = Math.max(0, Number(row.sot_snapshot_rows) || 0);
     const snapshotsBefore = Math.max(0, Number(row.snapshots_before_signal) || 0);
     const sotSnapshotsBefore = Math.max(0, Number(row.sot_snapshots_before_signal) || 0);
-    return { row, payload, stats, hasSot, hasXg, snapshotRows, sotSnapshotRows, snapshotsBefore, sotSnapshotsBefore };
+    const snapshotsAfter = Math.max(0, Number(row.snapshots_after_signal) || 0);
+    const sotSnapshotsAfter = Math.max(0, Number(row.sot_snapshots_after_signal) || 0);
+    const snapshotTeams = Math.max(0, Number(row.snapshot_teams) || 0);
+    return { row, payload, stats, hasSot, hasXg, snapshotRows, sotSnapshotRows, snapshotsBefore, sotSnapshotsBefore, snapshotsAfter, sotSnapshotsAfter, snapshotTeams };
   });
 
   for (const item of normalized) {
@@ -59,6 +64,8 @@ function summarizeEliteDataAudit(rows, options = {}) {
     summary.snapshots.sotSnapshotRowsInWindow += item.sotSnapshotRows;
     summary.snapshots.snapshotsBeforeSignal += item.snapshotsBefore;
     summary.snapshots.sotSnapshotsBeforeSignal += item.sotSnapshotsBefore;
+    summary.snapshots.snapshotsAfterSignal += item.snapshotsAfter;
+    summary.snapshots.sotSnapshotsAfterSignal += item.sotSnapshotsAfter;
     if (item.snapshotRows > 0) summary.snapshots.alertsWithSnapshots++;
     else summary.snapshots.alertsWithoutSnapshots++;
     if (item.sotSnapshotRows > 0) summary.snapshots.alertsWithSotSnapshots++;
