@@ -66,7 +66,29 @@ const pushSubscriptions = new Map();
 const pushRateLimit = new Map();
 const PUSH_SCAN_TOKEN = process.env.PUSH_SCAN_TOKEN || require("node:crypto").randomBytes(32).toString("hex");
 const POWER_GAMES_ADMIN_PIN = process.env.POWER_GAMES_ADMIN_PIN || "";
+// Temporary preview switch. Disabled by default; when enabled, private read-only panels are accessible without PIN.
+const GOALMATRIX_PREVIEW_UNLOCK = process.env.GOALMATRIX_PREVIEW_UNLOCK === "true";
 const powerGamesAuthAttempts = new Map();
+async function authorizePrivateAdminRequest(req) {
+  let body;
+  try { body = await readJsonBody(req, 4096); }
+  catch { return { ok: false, status: 400, error: "Invalid admin request" }; }
+  if (GOALMATRIX_PREVIEW_UNLOCK) return { ok: true, body };
+  if (!POWER_GAMES_ADMIN_PIN) return { ok: false, status: 503, error: "Private access is not configured" };
+  const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
+  const now = Date.now();
+  const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
+  if (attempt.blockedUntil > now) return { ok: false, status: 429, error: "Too many attempts" };
+  if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
+  if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
+    attempt.count += 1;
+    if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
+    powerGamesAuthAttempts.set(ip, attempt);
+    return { ok: false, status: attempt.blockedUntil > now ? 429 : 401, error: "Invalid admin PIN" };
+  }
+  powerGamesAuthAttempts.delete(ip);
+  return { ok: true, body };
+}
 const pushScanSnapshots = new Map();
 // Each SOT-based AI trigger keeps its own two-sample confirmation state.
 const pushScanSotConfirmations = new Map();
@@ -1839,6 +1861,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
 
+  if (url.pathname === "/api/public-config" && req.method === "GET") {
+    return send(res, 200, { previewUnlock: GOALMATRIX_PREVIEW_UNLOCK });
+  }
+
   if (url.pathname === "/api/power-games/access" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Power Games admin access is not configured" });
@@ -2041,24 +2067,8 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/protocol-analyst/alerts" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private analyst access is not configured" });
-    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
-    const now = Date.now();
-    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
-    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
-    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
-    try {
-      const body = await readJsonBody(req, 4096);
-      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
-        attempt.count += 1;
-        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
-        powerGamesAuthAttempts.set(ip, attempt);
-        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
-      }
-      powerGamesAuthAttempts.delete(ip);
-    } catch (error) {
-      return send(res, 400, { ok: false, error: "Invalid admin request" });
-    }
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
     if (!await ensureAlertHistoryDb()) return send(res, 503, { error: "Persistent alert history database unavailable" });
     try {
       // Read-only detail view. The returned records are filtered with the existing verified-settlement rules.
@@ -2102,24 +2112,8 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/protocol-analyst" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private analyst access is not configured" });
-    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
-    const now = Date.now();
-    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
-    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
-    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
-    try {
-      const body = await readJsonBody(req, 4096);
-      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
-        attempt.count += 1;
-        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
-        powerGamesAuthAttempts.set(ip, attempt);
-        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
-      }
-      powerGamesAuthAttempts.delete(ip);
-    } catch (error) {
-      return send(res, 400, { ok: false, error: "Invalid admin request" });
-    }
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
     if (!await ensureProtocolAnalystDb()) return send(res, 503, { error: "Protocol analyst database unavailable" });
     try {
       // Always recompute from current settled history; cached reports may predate
@@ -2258,22 +2252,10 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/alerts/history/private" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
-    if (!POWER_GAMES_ADMIN_PIN) return send(res, 503, { error: "Private AI access is not configured" });
-    const ip = String(req.socket?.remoteAddress || "unknown").slice(0, 100);
-    const now = Date.now();
-    const attempt = powerGamesAuthAttempts.get(ip) || { count: 0, since: now, blockedUntil: 0 };
-    if (attempt.blockedUntil > now) return send(res, 429, { error: "Too many attempts" });
-    if (now - attempt.since > 10 * 60 * 1000) { attempt.count = 0; attempt.since = now; attempt.blockedUntil = 0; }
-    try {
-      const body = await readJsonBody(req, 4096);
-      if (String(body.pin || "") !== POWER_GAMES_ADMIN_PIN) {
-        attempt.count += 1;
-        if (attempt.count >= 8) attempt.blockedUntil = now + 10 * 60 * 1000;
-        powerGamesAuthAttempts.set(ip, attempt);
-        return send(res, attempt.blockedUntil > now ? 429 : 401, { ok: false, error: "Invalid admin PIN" });
-      }
-      powerGamesAuthAttempts.delete(ip);
-      const limit = Math.max(1, Math.min(1000, Number(body.limit || 500)));
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    const body = auth.body;
+    const limit = Math.max(1, Math.min(1000, Number(body.limit || 500)));
       const offset = Math.max(0, Math.floor(Number(body.offset || 0)));
       const period = String(body.period || "all").toLowerCase();
       if (!await ensureAlertHistoryDb()) {
