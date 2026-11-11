@@ -2071,9 +2071,7 @@ const server = http.createServer(async (req, res) => {
     const auth = await authorizePrivateAdminRequest(req);
     if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
     const windowDays = Math.max(1, Math.min(180, Math.floor(Number(auth.body.windowDays || 180))));
-    if (!await ensureAlertHistoryDb() || !await ensureAnalyticsDb()) {
-      return send(res, 503, { ok: false, error: "Persistent audit databases unavailable" });
-    }
+    if (!analyticsPool) return send(res, 503, { ok: false, error: "Persistent audit database unavailable" });
     try {
       // Read-only coverage query. It never updates alert history or live snapshots.
       const result = await analyticsPool.query(
