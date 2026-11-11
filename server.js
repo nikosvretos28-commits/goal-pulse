@@ -3866,28 +3866,33 @@ const server = http.createServer(async (req, res) => {
         // SOT/xG triggers, their cooldowns, or the AI Power Ranking deduplication state.
         const autonomousPowerRankingQualified = shouldEmitAutonomousPowerRankingAlert({
           score: powerRankingScore,
-          eligible: powerRankingEligible,
-          scoreAvailable
+          eligible: powerRankingEligible
         });
         if (autonomousPowerRankingQualified && !pushScanAutonomousPowerRankingAlerts.has(id)) {
           const autonomousAlertId = "push:" + id + ":POWER_RANKING:autonomous-65";
           try {
             if (await ensureAlertHistoryDb()) {
               const autonomousPeriod = powerRankingMinute <= 35 ? "first_half" : "second_half";
-              const autonomousHomeScore = Number(match.homeScore), autonomousAwayScore = Number(match.awayScore);
-              const autonomousOverLine = (autonomousHomeScore + autonomousAwayScore + 0.5).toFixed(1);
+              // Match goals are metadata for the optional Over settlement, not an
+              // eligibility condition for the autonomous Power Ranking notification.
+              const autonomousMatchScoreAvailable = scoreAvailable;
+              const autonomousHomeScore = autonomousMatchScoreAvailable ? Number(match.homeScore) : null;
+              const autonomousAwayScore = autonomousMatchScoreAvailable ? Number(match.awayScore) : null;
+              const autonomousOverLine = autonomousMatchScoreAvailable
+                ? (autonomousHomeScore + autonomousAwayScore + 0.5).toFixed(1) : null;
               const autonomousRawMinute = String(formatPushMinute(match));
               const autonomousRecord = {
                 alertId: autonomousAlertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
                 home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
                 league: match.league || match.competition || "", country: match.country || match.countryName || null,
                 minute: autonomousRawMinute, minuteNumber: powerRankingMinute,
-                market: "Over " + autonomousOverLine,
+                market: autonomousOverLine ? "Over " + autonomousOverLine : "Power Ranking signal",
                 alertType: "power_ranking_autonomous_signal",
                 odds: null, oddsVerifiedAt: null, periodAtSignal: autonomousPeriod,
                 reason: "Αυτόνομο Power Ranking " + powerRankingScore + "/100 · όριο 65+",
-                outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
-                startScore: autonomousHomeScore + autonomousAwayScore,
+                outcome: "εκκρεμεί", betOutcome: "pending",
+                evaluationRule: autonomousMatchScoreAvailable ? "end_of_relevant_half" : "signal_only_no_score_at_signal",
+                startScore: autonomousMatchScoreAvailable ? autonomousHomeScore + autonomousAwayScore : null,
                 startHomeScore: autonomousHomeScore, startAwayScore: autonomousAwayScore,
                 triggerIds: ["power_ranking_autonomous_65"], supportSignalIds: [],
                 statsAtSignal: {
@@ -3911,7 +3916,7 @@ const server = http.createServer(async (req, res) => {
                     title: "GoalMatrix · POWER RANKING",
                     body: "🏆 ΑΥΤΟΝΟΜΟ POWER RANKING " + powerRankingScore + "/100 · " +
                       (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") +
-                      " · Over " + autonomousOverLine + " · " +
+                      (autonomousOverLine ? " · Over " + autonomousOverLine : "") + " · " +
                       (autonomousPeriod === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "2ο ΗΜΙΧΡΟΝΟ") +
                       " · " + autonomousRawMinute,
                     tag: "goalmatrix-autonomous-power-ranking-" + id,
@@ -3923,7 +3928,8 @@ const server = http.createServer(async (req, res) => {
                 }
                 console.info("Autonomous Power Ranking 65+ alert saved:", JSON.stringify({
                   eventId: id, minute: powerRankingMinute, period: autonomousPeriod,
-                  score: powerRankingScore, alertId: autonomousAlertId
+                  score: powerRankingScore, matchScoreAvailable: autonomousMatchScoreAvailable,
+                  alertId: autonomousAlertId
                 }));
               }
             } else {
