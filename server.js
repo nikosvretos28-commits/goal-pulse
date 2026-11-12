@@ -12,6 +12,7 @@ const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterFor
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
+const { isVerifiedSecondHalfMieRecord } = require("./mie-alert-verification");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
@@ -2294,7 +2295,7 @@ const server = http.createServer(async (req, res) => {
     try {
       // Read-only detail view. The returned records are filtered with the existing verified-settlement rules.
       const result = await analyticsPool.query(
-        "SELECT alert_id, event_id, created_at, payload FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND COALESCE(payload->>'alertType','') NOT LIKE 'power_ranking_%' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS t(trigger_id) WHERE t.trigger_id LIKE 'power_ranking_%') AND payload->>'betOutcome' IN ('won','lost') AND payload->>'betSettlementProvider' IS NOT NULL AND payload->>'betSettlementFixtureId' IS NOT NULL AND payload->>'betScoreScope' IN ('first_half','full_time') AND payload->>'betFinalScore' IS NOT NULL AND payload->>'betFinalScore' <> '' AND (payload->>'betScoreScope' <> 'first_half' OR (NULLIF(payload->>'betHalfTimeScore','') IS NOT NULL AND payload->>'betHalfTimeScore'=payload->>'betFinalScore')) AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
+        "SELECT alert_id, event_id, created_at, payload FROM alert_history WHERE payload->>'source'='server-push' AND COALESCE(payload->>'level','AI')='AI' AND COALESCE(payload->>'alertType','') NOT LIKE 'power_ranking_%' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS t(trigger_id) WHERE t.trigger_id LIKE 'power_ranking_%') AND payload->>'betOutcome' IN ('won','lost') AND payload->>'betSettlementProvider' IS NOT NULL AND payload->>'betSettlementFixtureId' IS NOT NULL AND payload->>'betScoreScope'='full_time' AND payload->>'betFinalScore' ~ '^[0-9]+-[0-9]+$' AND created_at > NOW() - INTERVAL '180 days' ORDER BY created_at DESC LIMIT 10000"
       );
       const records = result.rows.map(row => {
         const p = row.payload || {};
@@ -2317,10 +2318,10 @@ const server = http.createServer(async (req, res) => {
           supportSignalIds: Array.isArray(p.supportSignalIds) ? [...new Set(p.supportSignalIds.map(String))] : [],
           market: p.market || null, startScore: p.startScore ?? null, startScoreline: (p.startHomeScore ?? p.scoreAtSignal?.home) != null && (p.startAwayScore ?? p.scoreAtSignal?.away) != null ? `${p.startHomeScore ?? p.scoreAtSignal.home}-${p.startAwayScore ?? p.scoreAtSignal.away}` : null, finalScore: p.betFinalScore || null,
           halfTimeScore: p.betHalfTimeScore || null, outcome: p.betOutcome, scoreScope: p.betScoreScope,
-          settlementProvider: p.betSettlementProvider, verifiedScore,
+          settlementProvider: p.betSettlementProvider, settlementFixtureId: p.betSettlementFixtureId, verifiedScore,
           statsAtSignal: { onTarget: stats.onTarget ?? null, onTarget10m: stats.onTarget10m ?? null, totalOnTarget: stats.totalOnTarget ?? null, xG: stats.xG ?? null, xGDelta: stats.xGDelta ?? null }
         };
-      }).filter(row => !String(row.alertType || "").startsWith("power_ranking_") && !row.triggerIds.some(id => id.startsWith("power_ranking_")) && row.verifiedScore && row.period === "second_half" && Number.isInteger(row.minute) && row.minute >= 46 && row.minute <= 88);
+      }).filter(row => !String(row.alertType || "").startsWith("power_ranking_") && !row.triggerIds.some(id => id.startsWith("power_ranking_")) && isVerifiedSecondHalfMieRecord(row));
       return send(res, 200, {
         ok: true, readOnly: true, windowDays: 180, generatedAt: new Date().toISOString(),
         scanned: result.rows.length, verifiedSettled: records.length, records,
