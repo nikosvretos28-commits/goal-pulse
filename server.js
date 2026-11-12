@@ -2453,7 +2453,7 @@ const server = http.createServer(async (req, res) => {
            )
            ELSE EXCLUDED.payload
          END,updated_at=NOW()`,
-        [JSON.stringify(records)]
+        [JSON.stringify(uniqueRecords)]
       );
       return send(res, 200, { ok: true, saved: records.length, persistent: true });
     } catch (error) {
@@ -2640,9 +2640,20 @@ const server = http.createServer(async (req, res) => {
         return { alert_id: alertId, event_id: String(a.eventId), level, created_at: Number(a.createdAt), payload: { ...a, alertId, level } };
       });
       if (!records.length) return send(res, 400, { error: "No valid alert records supplied" });
+      // PostgreSQL cannot upsert the same conflict key twice in one INSERT.
+      // Merge duplicate alert IDs in the incoming batch before sending the
+      // jsonb_to_recordset payload, preserving fields supplied by either copy.
+      const deduplicatedRecords = new Map();
+      for (const record of records) {
+        const previous = deduplicatedRecords.get(record.alert_id);
+        deduplicatedRecords.set(record.alert_id, previous
+          ? { ...previous, ...record, payload: { ...previous.payload, ...record.payload } }
+          : record);
+      }
+      const uniqueRecords = Array.from(deduplicatedRecords.values());
       if (!alertHistoryDbReady) {
-        for (const record of records) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betSettlementReason", "betFinalScore", "betMatchFinalScore", "betHalfTimeScore", "betScoreScope", "betScoreSource", "betSettlementProvider", "betSettlementFixtureId", "betSettlementFixtureDate", "betSettlementLeague", "betSettledAt", "evaluatedAt", "evaluationRule"]);
-        return send(res, 200, { ok: true, persistent: false, volatile: true, saved: records.length });
+        for (const record of uniqueRecords) saveVolatileRecord(volatileAlertHistory, record.alert_id, record.payload, ["betOutcome", "outcome", "betSettlementLabel", "betSettlementReason", "betFinalScore", "betMatchFinalScore", "betHalfTimeScore", "betScoreScope", "betScoreSource", "betSettlementProvider", "betSettlementFixtureId", "betSettlementFixtureDate", "betSettlementLeague", "betSettledAt", "evaluatedAt", "evaluationRule"]);
+        return send(res, 200, { ok: true, persistent: false, volatile: true, saved: uniqueRecords.length });
       }
       await analyticsPool.query(
         `INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) SELECT x.alert_id,x.event_id,x.level,to_timestamp(x.created_at/1000.0),x.payload,NOW() FROM jsonb_to_recordset($1::jsonb) AS x(alert_id text,event_id text,level text,created_at numeric,payload jsonb) ON CONFLICT(alert_id) DO UPDATE SET payload=CASE
@@ -2713,7 +2724,7 @@ const server = http.createServer(async (req, res) => {
         )), updated_at=NOW()`,
         [JSON.stringify(records)]
       );
-      return send(res, 200, { ok: true, persistent: true, saved: records.length });
+      return send(res, 200, { ok: true, persistent: true, saved: uniqueRecords.length });
     } catch (error) {
       console.error("Alert history write failed:", error.message);
       return send(res, 503, { error: "Could not save alert history" });
