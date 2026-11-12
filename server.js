@@ -3127,7 +3127,7 @@ const server = http.createServer(async (req, res) => {
             // Also query SportScore when ESPN found the fixture but omitted half-time linescores:
             // a final score alone must never block a provider that can verify the requested half.
             const completedHasHalfTime = completed?.homeHtScore != null && completed?.awayHtScore != null;
-            const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+
             const athensToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
             if ((!completed || (firstHalf && !completedHasHalfTime)) && alertHome && alertAway && row.created_at && alertDate < athensToday) {
               const teamSlug = value => normalizeTeam(value).replace(/\s+/g, "-");
