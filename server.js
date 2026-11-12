@@ -399,7 +399,7 @@ async function runProtocolAnalyst() {
     const legacyUnattributedAlerts = approvedWindowTriggerRows.filter(row => row.triggerIds.length === 0).length;
     const triggerDefinitions = [
       { id: "recent_sot_pressure", label: "Πρόσφατη πίεση SOT", detail: "3+ SOT / 5′ ή 6+ SOT / 10′" },
-      { id: "cumulative_20_sot", label: "20+ συνολικά SOT", detail: "Συνολικά SOT πριν από το 75′" },
+      { id: "cumulative_20_sot", label: "20+ συνολικά SOT", detail: "20+ συνολικά SOT από το 1′ έως και το 65′" },
       { id: "xg_threshold", label: "Υψηλό xG δύο ομάδων", detail: "Μία ομάδα ≥3.50 xG και η άλλη ≥2.50 xG" },
       { id: "man_advantage_pressure", label: "Man Advantage", detail: "Πρόσφατη κόκκινη κάρτα και πίεση της αριθμητικά υπερέχουσας ομάδας" },
       { id: "power_ranking_59", label: "Power Ranking 59+", detail: "Βαθμολογία ≥59/100 · trigger μέσα στα AI Alerts" },
@@ -4495,7 +4495,7 @@ const server = http.createServer(async (req, res) => {
             dangerous ? dangerous + " νέες επικίνδυνες επιθέσεις" : "",
             current.shotsOnTargetInsideBox != null ? current.shotsOnTargetInsideBox + " σουτ εντός εστίας από την περιοχή" : "",
             current.bigChances != null ? current.bigChances + " μεγάλες ευκαιρίες" : "",
-            cumulativeSotQualifies ? "20+ συνολικά SOT πριν από το 75′" : "",
+            cumulativeSotQualifies ? "20+ συνολικά SOT από το 1′ έως και το 65′" : "",
             manAdvantagePressure ? "MAN ADVANTAGE PRESSURE (κόκκινη κάρτα + 4+ SOT, 2+/10′, 1+/5′, 10+/3+ επικίνδυνες επιθέσεις)" : "",
             dirtySheetSupport > 0 ? "Dirty Sheet +" + dirtySheetSupport.toFixed(1) : "",
             historicalOver.support > 0 ? "Ιστορικό Over " + supportingOverLine + " +" + Number(historicalOver.support).toFixed(1) : "",
