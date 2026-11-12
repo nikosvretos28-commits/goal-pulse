@@ -5,7 +5,9 @@
   "description": "Goal Pulse live-score API with secure PitchAPI proxy and Web Push alerts",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "start:mcp": "node goalmatrix-mcp-server.js",
+    "test:mcp": "node --test goalmatrix-mcp-server.test.js"
   },
   "engines": {
     "node": ">=24.18.0 <25"
