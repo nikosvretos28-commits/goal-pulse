@@ -5526,7 +5526,15 @@ const server = http.createServer(async (req, res) => {
       const work = rotationStart
         ? liveWork.slice(rotationStart).concat(liveWork.slice(0, rotationStart))
         : liveWork;
-      if (work.length) sportScoreDetailRotationCursor = (rotationStart + SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW) % work.length;
+      // Advance the fixture rotation only when the rolling provider budget can
+      // actually serve fresh detail requests. The old code advanced on every
+      // 15-second poll, including polls where all requests were locally rejected
+      // with 429; this skipped most fixtures before the next minute's budget reset.
+      const detailBudgetUsed = sportScoreDetailRequestTimes.filter(at => Date.now() - at < SPORT_SCORE_DETAIL_RATE_WINDOW_MS).length;
+      const detailBudgetAvailable = Math.max(0, SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW - detailBudgetUsed);
+      if (work.length && detailBudgetAvailable > 0) {
+        sportScoreDetailRotationCursor = (rotationStart + Math.min(detailBudgetAvailable, work.length)) % work.length;
+      }
       let cursor = 0;
       const matches = [];
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
