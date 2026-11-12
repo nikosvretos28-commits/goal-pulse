@@ -100,6 +100,9 @@ const pushScanSnapshots = new Map();
 const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
 const historicalTeamResultCache = new Map();
+// Keep historical settlement lookups from competing with the live-stat detail feed.
+let lastSportScoreSettlementLookupAt = 0;
+const SPORT_SCORE_SETTLEMENT_LOOKUP_GAP_MS = 60 * 1000;
 const pushScanLastAlert = new Map();
 // Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
@@ -3124,8 +3127,9 @@ const server = http.createServer(async (req, res) => {
             // Also query SportScore when ESPN found the fixture but omitted half-time linescores:
             // a final score alone must never block a provider that can verify the requested half.
             const completedHasHalfTime = completed?.homeHtScore != null && completed?.awayHtScore != null;
-            if ((!completed || (firstHalf && !completedHasHalfTime)) && alertHome && alertAway && row.created_at) {
-              const alertDate = new Date(row.created_at).toISOString().slice(0, 10);
+            const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+            const athensToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+            if ((!completed || (firstHalf && !completedHasHalfTime)) && alertHome && alertAway && row.created_at && alertDate < athensToday) {
               const teamSlug = value => normalizeTeam(value).replace(/\s+/g, "-");
               const parseScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
               const toCompleted = match => {
@@ -3161,6 +3165,9 @@ const server = http.createServer(async (req, res) => {
                   let cached = historicalTeamResultCache.get(key);
                   const cacheTtl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
                   if (!cached || Date.now() - cached.at > cacheTtl) {
+                    // One historical request per minute maximum; live match stats have priority.
+                    if (Date.now() - lastSportScoreSettlementLookupAt < SPORT_SCORE_SETTLEMENT_LOOKUP_GAP_MS) continue;
+                    lastSportScoreSettlementLookupAt = Date.now();
                     try {
                       let historicalResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) + "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
                       let body = historicalResponse.ok ? await historicalResponse.json() : {};
@@ -3169,7 +3176,7 @@ const server = http.createServer(async (req, res) => {
                       // the match. Fall back once per date to that complete feed, then apply
                       // the same strict team/date/league matching below.
                       let matches = historicalResponse.ok ? extractFixtureArray(body) : [];
-                      if (!matches.length) {
+                      if (historicalResponse.ok && !matches.length) {
                         const allKey = lookupDate + "|__all_finished__";
                         let allCached = historicalTeamResultCache.get(allKey);
                         if (!allCached || Date.now() - allCached.at > 15 * 60 * 1000) {
