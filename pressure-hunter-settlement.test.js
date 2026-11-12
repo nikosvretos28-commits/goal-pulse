@@ -9,6 +9,8 @@ const record = {
   home: "Home FC",
   away: "Away FC",
   scoreAtSignal: { home: 1, away: 0 },
+  minuteNumber: 72,
+  periodAtSignal: "second_half",
   outcome: "εκκρεμεί"
 };
 const finished = {
@@ -49,4 +51,27 @@ test("leaves record pending while fixture is not finished", () => {
 
 test("leaves record pending if final score total is lower than signal score", () => {
   assert.equal(settlePressureHunterRecord({ ...record, scoreAtSignal: { home: 2, away: 1 } }, finished), null);
+});
+
+test("first-half signal is evaluated only through the half-time score", () => {
+  const firstHalfRecord = { ...record, minuteNumber: 38, periodAtSignal: "first_half" };
+  const firstHalfFinished = { ...finished, homeScore: 2, awayScore: 1, halfTimeHomeScore: 2, halfTimeAwayScore: 0 };
+  const settled = settlePressureHunterRecord(firstHalfRecord, firstHalfFinished, 456);
+  assert.equal(settled.outcomeStatus, "confirmed");
+  assert.equal(settled.evaluationPeriod, "first_half");
+  assert.equal(settled.evaluationScore, "2-0");
+  assert.equal(settled.goalsAfterSignal, 1);
+});
+
+test("goal scored only after half-time does not confirm a first-half signal", () => {
+  const firstHalfRecord = { ...record, minuteNumber: 38, periodAtSignal: "first_half" };
+  const firstHalfFinished = { ...finished, homeScore: 2, awayScore: 0, halfTimeHomeScore: 1, halfTimeAwayScore: 0 };
+  const settled = settlePressureHunterRecord(firstHalfRecord, firstHalfFinished, 456);
+  assert.equal(settled.outcomeStatus, "not_confirmed");
+  assert.equal(settled.goalsAfterSignal, 0);
+});
+
+test("first-half signal remains pending when verified half-time score is unavailable", () => {
+  const firstHalfRecord = { ...record, minuteNumber: 38, periodAtSignal: "first_half" };
+  assert.equal(settlePressureHunterRecord(firstHalfRecord, finished, 456), null);
 });

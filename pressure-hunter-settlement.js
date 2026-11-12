@@ -14,6 +14,11 @@ function settlePressureHunterRecord(record = {}, fixture = {}, settledAt = Date.
   const signalAway = finiteScore(record.scoreAtSignal?.away);
   const finalHome = finiteScore(result.homeScore);
   const finalAway = finiteScore(result.awayScore);
+  const minute = finiteScore(record.minuteNumber);
+  const period = String(record.periodAtSignal || (minute !== null && minute <= 45 ? "first_half" : minute !== null && minute > 45 ? "second_half" : "")).toLowerCase();
+  const firstHalf = period === "first_half" || period === "1h" || period === "first";
+  const targetHome = firstHalf ? finiteScore(result.halfTimeHomeScore) : finalHome;
+  const targetAway = firstHalf ? finiteScore(result.halfTimeAwayScore) : finalAway;
   const provider = String(result.settlementProvider || "").trim();
   const fixtureId = String(result.settlementFixtureId || "").trim();
   const status = String(result.status || "").trim().toLowerCase();
@@ -22,9 +27,10 @@ function settlePressureHunterRecord(record = {}, fixture = {}, settledAt = Date.
 
   // Fail closed: no inferred baseline, no unverified score, no ambiguous live result.
   if (signalHome === null || signalAway === null || finalHome === null || finalAway === null ||
+      targetHome === null || targetAway === null || (!firstHalf && period !== "second_half" && period !== "2h" && period !== "second") ||
       !provider || !fixtureId || !finished) return null;
 
-  const goalsAfterSignal = (finalHome + finalAway) - (signalHome + signalAway);
+  const goalsAfterSignal = (targetHome + targetAway) - (signalHome + signalAway);
   // A lower final total indicates a score correction or mismatched data; do not grade it.
   if (goalsAfterSignal < 0) return null;
 
@@ -37,6 +43,9 @@ function settlePressureHunterRecord(record = {}, fixture = {}, settledAt = Date.
     outcomeStatus: confirmed ? "confirmed" : "not_confirmed",
     goalsAfterSignal,
     finalScore: finalHome + "-" + finalAway,
+    evaluationPeriod: firstHalf ? "first_half" : "second_half",
+    evaluationScore: targetHome + "-" + targetAway,
+    settlementRule: firstHalf ? "goal_after_signal_until_half_time" : "goal_after_signal_until_full_time",
     settlementProvider: provider,
     settlementFixtureId: fixtureId,
     settlementFixtureDate: result.settlementFixtureDate || null,
