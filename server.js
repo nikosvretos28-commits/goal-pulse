@@ -5404,18 +5404,45 @@ const server = http.createServer(async (req, res) => {
             const livePayload = await liveResponse.json();
             const liveFixtures = extractFixtureArray(livePayload);
             const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+            const refreshedSlugMap = new Map();
             for (const fixture of liveFixtures) {
               const statusText = [fixture.status, fixture.status_text, fixture.status_name, fixture.state, fixture.minute, fixture.elapsed].filter(v => v != null).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(" ").toLowerCase();
               if (/finished|full time|ended|complete|not started|upcoming|scheduled|postponed|cancelled/.test(statusText)) continue;
               const home = fixture.home?.name || fixture.home_team?.name || fixture.home_name || (typeof fixture.home === "string" ? fixture.home : "");
               const away = fixture.away?.name || fixture.away_team?.name || fixture.away_name || (typeof fixture.away === "string" ? fixture.away : "");
               const h = normalizeDirectTeam(home), a = normalizeDirectTeam(away);
-              if (h && a && Array.isArray(fixture.stats)) {
+              if (!h || !a) continue;
+              if (Array.isArray(fixture.stats) && fixture.stats.length) {
                 sportScoreLiveStatsByPair.set(h + "|" + a, fixture);
                 sportScoreLiveStatsByPair.set(a + "|" + h, fixture);
               }
+              let slug = fixture.slug || fixture.match_slug || fixture.matchSlug || "";
+              if (!slug && fixture.url) {
+                try {
+                  const segments = new URL(String(fixture.url), "https://sportscore.com").pathname.split("/").filter(Boolean);
+                  const matchIndex = segments.indexOf("match");
+                  slug = matchIndex >= 0 ? (segments[matchIndex + 1] || segments[matchIndex + 2] || "") : (segments[segments.length - 1] || "");
+                } catch {}
+              }
+              if (!slug && !/^\d+$/.test(String(fixture.id || ""))) slug = String(fixture.id || "");
+              if (!slug) slug = h.replace(/\s+/g, "-") + "-vs-" + a.replace(/\s+/g, "-");
+              refreshedSlugMap.set(h + "|" + a, String(slug));
+              refreshedSlugMap.set(a + "|" + h, String(slug));
             }
-            console.log("SportScore direct live stats feed:", JSON.stringify({ httpStatus: liveResponse.status, fixtures: liveFixtures.length, fixturesWithStats: sportScoreLiveStatsByPair.size / 2 }));
+            // Reuse this same live-fixtures response for detail-slug resolution below.
+            // The previous code fetched the identical endpoint a second time every scan,
+            // doubling traffic and increasing the chance of SportScore HTTP 429 throttling.
+            if (refreshedSlugMap.size) {
+              sportScoreWidgetSlugCache.map = refreshedSlugMap;
+              sportScoreWidgetSlugCache.at = Date.now();
+            }
+            console.log("SportScore direct live stats feed:", JSON.stringify({
+              httpStatus: liveResponse.status,
+              fixtures: liveFixtures.length,
+              fixturesWithStats: sportScoreLiveStatsByPair.size / 2,
+              detailSlugs: refreshedSlugMap.size / 2,
+              duplicateFixtureFetchAvoided: true
+            }));
           }
         } catch (error) { console.warn("SportScore direct live stats feed unavailable:", error.message || "request failed"); }
       }
