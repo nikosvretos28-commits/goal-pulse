@@ -2430,6 +2430,16 @@ const server = http.createServer(async (req, res) => {
         payload: x
       }));
       if (!records.length) return send(res, 400, { error: "No valid High Activity observations supplied" });
+      // PostgreSQL cannot upsert the same observation_id twice in one INSERT.
+      // Merge duplicate observations in the incoming batch before writing.
+      const deduplicatedRecords = new Map();
+      for (const record of records) {
+        const previous = deduplicatedRecords.get(record.observation_id);
+        deduplicatedRecords.set(record.observation_id, previous
+          ? { ...previous, ...record, payload: { ...previous.payload, ...record.payload } }
+          : record);
+      }
+      const uniqueRecords = Array.from(deduplicatedRecords.values());
       if (!highActivityDbReady) {
         for (const record of records) saveVolatileRecord(volatileHighActivityHistory, record.observation_id, record.payload, ["outcome", "settledAt", "settlementReason", "settlementScore", "settlementProvider", "settlementFixtureId", "settlementFixtureDate", "settlementLeague"]);
         return send(res, 200, { ok: true, saved: records.length, persistent: false, volatile: true });
@@ -2455,7 +2465,7 @@ const server = http.createServer(async (req, res) => {
          END,updated_at=NOW()`,
         [JSON.stringify(uniqueRecords)]
       );
-      return send(res, 200, { ok: true, saved: records.length, persistent: true });
+      return send(res, 200, { ok: true, saved: uniqueRecords.length, persistent: true });
     } catch (error) {
       console.error("High Activity history save failed:", error.message);
       return send(res, 503, { error: "Could not save High Activity history" });
