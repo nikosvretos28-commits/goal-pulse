@@ -2503,6 +2503,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
  <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
  <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerRankingHistory" id="powerRankingHistoryToggle">🏆 POWER RANKING HISTORY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
+ <button type="button" class="gp-section-button gp-elite-analyst-button" id="eliteFiveBotsToggle">🧠 ELITE AI ANALYST <span class="gp-button-count">DAILY REPORT</span></button>
   <button type="button" class="gp-section-button gp-hunter-button" data-gp-toggle="hunterPanel" id="hunterPanelToggle">🎯 PRESSURE HUNTER <span class="gp-button-count" id="hunterAlertCount">HISTORY</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
  <button type="button" class="gp-section-button" data-gp-toggle="mieAlertLab">🔬 MIE ALERT LAB <span class="gp-button-count">ΕΛΕΓΧΟΣ</span></button>
@@ -2511,6 +2512,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
  <button type="button" class="gp-section-button gp-prematch-button" id="preMatchToggle" aria-controls="preMatchPanel" aria-expanded="false">PRE MATCH</button>
 </div>
+
+<section class="top-ai-alerts protocol-analyst-panel gp-elite-analyst-panel" id="eliteFiveBotsPanel" hidden aria-labelledby="eliteFiveBotsTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="eliteFiveBotsTitle">🧠 ELITE AI ANALYST · DAILY REPORT</h2><p>Η ημερήσια αναφορά των πέντε specialist analysts και του Head Chief. Μόνο ανάγνωση — δεν αλλάζει κανένα live πρωτόκολλο.</p></div><button type="button" class="login" id="refreshEliteFiveBots">↻ Ανανέωση</button></div>
+ <div id="eliteFiveBotsContent" aria-live="polite"><p>Πάτησε «Ανανέωση» για να φορτώσεις την τελευταία αποθηκευμένη αναφορά.</p></div>
+ <p class="top-ai-alert-privacy">Οι εκκρεμείς και μη επαληθευμένες εγγραφές διαχωρίζονται από τις επιβεβαιωμένες νίκες/ήττες. Τα στοιχεία είναι ιστορική ανάλυση, όχι πρόβλεψη ή εγγύηση.</p>
+</section>
 
 <section class="top-ai-alerts gp-matrix-analytics-panel" id="matrixAnalytics" hidden aria-labelledby="matrixAnalyticsTitle">
  <div class="top-ai-alerts-head"><div><h2 id="matrixAnalyticsTitle">📊 MATRIX ANALYTICS</h2><p>Ιστορική συχνότητα επιτυχίας ανά ομάδα, ξεχωριστά για κάθε κατηγορία σήματος.</p></div></div>
@@ -5037,6 +5044,7 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
   const response=await fetch(ANALYTICS_API+'/api/alerts/history/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,limit:1000,period:'all'})});
   const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));privateAiAdminPin=pin;
   void loadProtocolAnalyst();
+  void loadEliteFiveBotDailyReport();
   const liveIds=new Set((Array.isArray(allMatches)?allMatches:[]).filter(m=>m&&m.state==='in').map(m=>String(m.id)));
   const rows=(Array.isArray(data.alerts)?data.alerts:[]).filter(a=>a&&a.level!=='VIP'&&liveIds.has(String(a.eventId))).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
   if(!rows.length)host.innerHTML='<div class="top-ai-alert-empty">Δεν υπάρχουν αυτή τη στιγμή ενεργά AI alerts με πλήρη εσωτερική καταγραφή.</div>';
@@ -6248,5 +6256,55 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
   observer.observe(document.body,{childList:true,subtree:true});
  };
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+})();
+</script>
+
+<script id="elite-five-bots-daily-report-ui">
+(function(){
+ 'use strict';
+ const panel=document.getElementById('eliteFiveBotsPanel');
+ const content=document.getElementById('eliteFiveBotsContent');
+ const toggle=document.getElementById('eliteFiveBotsToggle');
+ const refresh=document.getElementById('refreshEliteFiveBots');
+ const esc=value=>String(value??'—').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ const pretty=value=>esc(JSON.stringify(value,null,2));
+ function showPanel(open){
+  if(!panel)return;
+  panel.hidden=!open;
+  if(open)panel.scrollIntoView({behavior:'smooth',block:'start'});
+ }
+ async function loadEliteFiveBotDailyReport(){
+  if(!content)return;
+  if(!privateAiAdminPin){
+   content.innerHTML='<p>Η αναφορά είναι ιδιωτική. Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS με το προσωπικό PIN και μετά πάτησε ξανά το ELITE AI ANALYST.</p>';
+   if(typeof setPrivateAiPanel==='function')setPrivateAiPanel(true);
+   return;
+  }
+  if(refresh)refresh.disabled=true;
+  content.innerHTML='<p>Φόρτωση της τελευταίας αποθηκευμένης ημερήσιας αναφοράς…</p>';
+  try{
+   const response=await fetch(ANALYTICS_API+'/api/elite-five-bots/daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin,refresh:false}),cache:'no-store',signal:AbortSignal.timeout(20000)});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok||!data.ok||!data.report)throw new Error(data.error||('HTTP '+response.status));
+   const report=data.report,summary=report.summary||{},bots=Array.isArray(report.bots)?report.bots:[];
+   const rate=summary.verifiedWinRatePct==null?'—':esc(summary.verifiedWinRatePct)+'%';
+   const cards=[['ΣΥΝΟΛΟ ALERTS',summary.alerts??0],['ΕΠΑΛΗΘΕΥΜΕΝΑ SETTLED',summary.verifiedSettled??0],['ΝΙΚΕΣ',summary.verifiedWins??0],['ΗΤΤΕΣ',summary.verifiedLosses??0],['WIN RATE',rate],['ΕΚΚΡΕΜΗ',summary.pending??0],['ΜΗ ΕΠΑΛΗΘΕΥΜΕΝΑ',summary.unverifiedSettlements??0]];
+   content.innerHTML='<div class="protocol-analyst-summary">'+cards.map(([label,value])=>'<div><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong></div>').join('')+'</div>'+
+    '<p class="subtle" style="margin:12px 0">Ημερομηνία αναφοράς: <strong>'+esc(report.date)+'</strong> · Ζώνη ώρας: '+esc(report.timezone||'Europe/Athens')+' · Δημιουργήθηκε: '+esc(data.generatedAt||report.generatedAt||'—')+'</p>'+
+    '<h3>ΠΟΡΙΣΜΑΤΑ ΑΝΑΛΥΤΩΝ</h3>'+
+    (bots.length?'<div class="protocol-analyst-recommendations">'+bots.map((bot,index)=>'<article class="protocol-analyst-recommendation"><strong>'+(index+1)+'. '+esc(bot.name||'Analyst')+'</strong>'+(bot.role?'<p>'+esc(bot.role)+'</p>':'')+(bot.summary?'<p>'+esc(bot.summary)+'</p>':'')+'<details><summary>Αναλυτικά στοιχεία και ευρήματα</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto">'+pretty(bot)+'</pre></details></article>').join('')+'</div>':'<p>Δεν υπάρχουν καταχωρισμένα πορίσματα αναλυτών.</p>')+
+    '<details style="margin-top:12px"><summary>Πηγές και κάλυψη δεδομένων</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+pretty(report.sourceCoverage||{})+'</pre></details>'+
+    '<details style="margin-top:12px"><summary>Συνολικό πόρισμα Head Chief</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+pretty(report.chiefAnalyst||{})+'</pre></details>';
+  }catch(error){
+   content.innerHTML='<p role="alert">Δεν ήταν δυνατή η φόρτωση της αναφοράς: '+esc(error.message||error)+'</p><p class="subtle">Αν δεν έχει δημιουργηθεί ακόμη αναφορά για την προηγούμενη ημέρα, θα εμφανιστεί σχετικό μήνυμα.</p>';
+  }finally{if(refresh)refresh.disabled=false;}
+ }
+ window.loadEliteFiveBotDailyReport=loadEliteFiveBotDailyReport;
+ toggle?.addEventListener('click',()=>{
+  const open=panel?.hidden;
+  showPanel(!!open);
+  if(open)void loadEliteFiveBotDailyReport();
+ });
+ refresh?.addEventListener('click',()=>void loadEliteFiveBotDailyReport());
 })();
 </script>
