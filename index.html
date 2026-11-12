@@ -2514,7 +2514,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 </div>
 
 <section class="top-ai-alerts protocol-analyst-panel gp-elite-analyst-panel" id="eliteFiveBotsPanel" hidden aria-labelledby="eliteFiveBotsTitle">
- <div class="top-ai-alerts-head"><div><h2 id="eliteFiveBotsTitle">🧠 ELITE AI ANALYST · DAILY REPORT</h2><p>Η ημερήσια αναφορά των πέντε specialist analysts και του Head Chief. Μόνο ανάγνωση — δεν αλλάζει κανένα live πρωτόκολλο.</p></div><button type="button" class="login" id="refreshEliteFiveBots">↻ Ανανέωση</button></div>
+ <div class="top-ai-alerts-head"><div><h2 id="eliteFiveBotsTitle">🧠 ELITE AI ANALYST · DAILY REPORT</h2><p>Η ημερήσια αναφορά των πέντε specialist analysts και του Head Chief. Μόνο ανάγνωση — δεν αλλάζει κανένα live πρωτόκολλο.</p></div><div class="feed-actions"><button type="button" class="mini-btn" id="exportEliteFiveBots" disabled>⬇ ΕΞΑΓΩΓΗ JSON</button><button type="button" class="login" id="refreshEliteFiveBots">↻ Ανανέωση</button></div></div>
  <div id="eliteFiveBotsContent" aria-live="polite"><p>Πάτησε «Ανανέωση» για να φορτώσεις την τελευταία αποθηκευμένη αναφορά.</p></div>
  <p class="top-ai-alert-privacy">Οι εκκρεμείς και μη επαληθευμένες εγγραφές διαχωρίζονται από τις επιβεβαιωμένες νίκες/ήττες. Τα στοιχεία είναι ιστορική ανάλυση, όχι πρόβλεψη ή εγγύηση.</p>
 </section>
@@ -6266,6 +6266,8 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
  const content=document.getElementById('eliteFiveBotsContent');
  const toggle=document.getElementById('eliteFiveBotsToggle');
  const refresh=document.getElementById('refreshEliteFiveBots');
+ const exportButton=document.getElementById('exportEliteFiveBots');
+ let latestReportPayload=null;
  const esc=value=>String(value??'—').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  const pretty=value=>esc(JSON.stringify(value,null,2));
  function showPanel(open){
@@ -6281,11 +6283,15 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
    return;
   }
   if(refresh)refresh.disabled=true;
+  if(exportButton)exportButton.disabled=true;
+  latestReportPayload=null;
   content.innerHTML='<p>Φόρτωση της τελευταίας αποθηκευμένης ημερήσιας αναφοράς…</p>';
   try{
    const response=await fetch(ANALYTICS_API+'/api/elite-five-bots/daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin,refresh:false}),cache:'no-store',signal:AbortSignal.timeout(20000)});
    const data=await response.json().catch(()=>({}));
    if(!response.ok||!data.ok||!data.report)throw new Error(data.error||('HTTP '+response.status));
+   latestReportPayload={...data,exportedAt:new Date().toISOString(),exportFormat:'goalmatrix-elite-ai-daily-report-v1'};
+   if(exportButton)exportButton.disabled=false;
    const report=data.report,summary=report.summary||{},bots=Array.isArray(report.bots)?report.bots:[];
    const rate=summary.verifiedWinRatePct==null?'—':esc(summary.verifiedWinRatePct)+'%';
    const cards=[['ΣΥΝΟΛΟ ALERTS',summary.alerts??0],['ΕΠΑΛΗΘΕΥΜΕΝΑ SETTLED',summary.verifiedSettled??0],['ΝΙΚΕΣ',summary.verifiedWins??0],['ΗΤΤΕΣ',summary.verifiedLosses??0],['WIN RATE',rate],['ΕΚΚΡΕΜΗ',summary.pending??0],['ΜΗ ΕΠΑΛΗΘΕΥΜΕΝΑ',summary.unverifiedSettlements??0]];
@@ -6299,6 +6305,18 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
    content.innerHTML='<p role="alert">Δεν ήταν δυνατή η φόρτωση της αναφοράς: '+esc(error.message||error)+'</p><p class="subtle">Αν δεν έχει δημιουργηθεί ακόμη αναφορά για την προηγούμενη ημέρα, θα εμφανιστεί σχετικό μήνυμα.</p>';
   }finally{if(refresh)refresh.disabled=false;}
  }
+ function exportEliteFiveBotDailyReport(){
+  if(!latestReportPayload)return;
+  const date=String(latestReportPayload.report?.date||'daily').replace(/[^0-9-]/g,'');
+  const blob=new Blob([JSON.stringify(latestReportPayload,null,2)],{type:'application/json;charset=utf-8'});
+  const objectUrl=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=objectUrl;
+  link.download='goalmatrix-elite-ai-daily-report-'+date+'.json';
+  document.body.appendChild(link);link.click();link.remove();
+  window.setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+ }
+ exportButton?.addEventListener('click',exportEliteFiveBotDailyReport);
  window.loadEliteFiveBotDailyReport=loadEliteFiveBotDailyReport;
  toggle?.addEventListener('click',()=>{
   const open=panel?.hidden;
