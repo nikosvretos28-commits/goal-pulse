@@ -3541,6 +3541,8 @@ const server = http.createServer(async (req, res) => {
               result: {
                 status: "post", statusText: "finished",
                 homeScore: home.score, awayScore: away.score,
+                halfTimeHomeScore: Array.isArray(home.linescores) && home.linescores.length ? home.linescores[0]?.value : null,
+                halfTimeAwayScore: Array.isArray(away.linescores) && away.linescores.length ? away.linescores[0]?.value : null,
                 settlementProvider: "ESPN", settlementFixtureId: String(event.id || ""),
                 settlementFixtureDate: String(event.date || "").slice(0, 10),
                 settlementLeague: String(competition?.name || "")
@@ -3837,6 +3839,7 @@ const server = http.createServer(async (req, res) => {
                   country: match.country || match.countryName || null,
                   minute: formatPushMinute(match),
                   minuteNumber: current.minute,
+                  periodAtSignal: current.minute <= 45 ? "first_half" : "second_half",
                   score: hunterEvaluation.score,
                   reason: hunterEvaluation.reason,
                   statsAtSignal: hunterEvaluation.evidence,
@@ -3844,7 +3847,7 @@ const server = http.createServer(async (req, res) => {
                     home: match.homeScore != null && Number.isFinite(Number(match.homeScore)) ? Number(match.homeScore) : null,
                     away: match.awayScore != null && Number.isFinite(Number(match.awayScore)) ? Number(match.awayScore) : null
                   },
-                  settlementRule: "goal_after_signal_until_full_time",
+                  settlementRule: current.minute <= 45 ? "goal_after_signal_until_half_time" : "goal_after_signal_until_full_time",
                   outcome: "εκκρεμεί"
                 };
                 const saved = await analyticsPool.query(
