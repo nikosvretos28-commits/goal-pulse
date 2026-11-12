@@ -40,8 +40,7 @@ let apiSportsFootballLastBatchAt = 0;
 let apiSportsFootballBatchCursor = 0;
 const APISPORTS_FOOTBALL_DATE_CACHE_MS = 20 * 60 * 60 * 1000;
 const APISPORTS_FOOTBALL_STATS_REFRESH_MS = 35 * 60 * 1000;
-const APISPORTS_FOOTBALL_MAX_BATCHES_PER_CYCLE = 2;
-const APISPORTS_FOOTBALL_IDS_PER_BATCH = 20;
+const APISPORTS_FOOTBALL_MAX_FIXTURES_PER_CYCLE = 2;
 const sportApiDateFixturesCache = new Map();
 const sportApiFixtureStatsCache = new Map();
 const sportApiIsraelLeagueFixturesCache = new Map();
@@ -6429,8 +6428,9 @@ const server = http.createServer(async (req, res) => {
           const cached = apiSportsFootballStatsCache.get(String(item.fixture.fixture.id));
           if (cached?.fixture) applyApiSportsFixtureStats(item.match, cached.fixture);
         }
-        // Request only fixtures still missing exact SOT. Each request can contain
-        // up to 20 IDs; rotate batches so the same competitions are not favoured.
+        // The Free plan rejects the fixtures?ids= parameter. Use the supported
+        // per-fixture statistics endpoint, strictly capped to two fixtures per
+        // 35-minute cycle (roughly 83 calls/day including the daily catalogue).
         const missingSotItems = apiSportsMatched.filter(item =>
           (item.match.teams || []).slice(0, 2).some(team => team.shotsOnTarget == null)
         );
@@ -6438,16 +6438,11 @@ const server = http.createServer(async (req, res) => {
           ? missingSotItems.slice(apiSportsFootballBatchCursor % missingSotItems.length)
               .concat(missingSotItems.slice(0, apiSportsFootballBatchCursor % missingSotItems.length))
           : [];
-        const apiSportsBatches = [];
-        for (let i = 0; i < orderedMissing.length && apiSportsBatches.length < APISPORTS_FOOTBALL_MAX_BATCHES_PER_CYCLE; i += APISPORTS_FOOTBALL_IDS_PER_BATCH) {
-          const batch = orderedMissing.slice(i, i + APISPORTS_FOOTBALL_IDS_PER_BATCH)
-            .filter(item => {
-              const cached = apiSportsFootballStatsCache.get(String(item.fixture.fixture.id));
-              return !cached || apiSportsNow - cached.at >= APISPORTS_FOOTBALL_STATS_REFRESH_MS;
-            });
-          if (batch.length) apiSportsBatches.push(batch);
-        }
-        const shouldRefreshApiSports = apiSportsBatches.length > 0 &&
+        const dueItems = orderedMissing.filter(item => {
+          const cached = apiSportsFootballStatsCache.get(String(item.fixture.fixture.id));
+          return !cached || apiSportsNow - cached.at >= APISPORTS_FOOTBALL_STATS_REFRESH_MS;
+        }).slice(0, APISPORTS_FOOTBALL_MAX_FIXTURES_PER_CYCLE);
+        const shouldRefreshApiSports = dueItems.length > 0 &&
           apiSportsNow - apiSportsFootballLastBatchAt >= APISPORTS_FOOTBALL_STATS_REFRESH_MS;
         console.log("[API-Sports Football] live matching audit:", JSON.stringify({
           providerFixtures: (apiSportsDay?.rows || []).length,
@@ -6455,49 +6450,54 @@ const server = http.createServer(async (req, res) => {
           matched: apiSportsMatched.length,
           matchedMissingSot: missingSotItems.length,
           cachedStats: apiSportsFootballStatsCache.size,
-          batchesReady: apiSportsBatches.length,
+          fixtureRequestsReady: dueItems.length,
           requestDue: shouldRefreshApiSports
         }));
         if (shouldRefreshApiSports) {
           apiSportsFootballLastBatchAt = apiSportsNow;
-          for (const batch of apiSportsBatches) {
-            const ids = batch.map(item => String(item.fixture.fixture.id));
+          for (const item of dueItems) {
+            const fixtureId = String(item.fixture.fixture.id);
             try {
-              const response = await fetch("https://v3.football.api-sports.io/fixtures?ids=" +
-                encodeURIComponent(ids.join("-")), {
+              const response = await fetch("https://v3.football.api-sports.io/fixtures/statistics?fixture=" +
+                encodeURIComponent(fixtureId), {
                 headers: { "x-apisports-key": APISPORTS_API_KEY },
                 signal: AbortSignal.timeout(15000)
               });
               const payload = await response.json().catch(() => ({}));
               if (response.ok && Array.isArray(payload.response)) {
-                const returnedById = new Map(payload.response.map(fixture => [String(fixture?.fixture?.id), fixture]));
-                for (const item of batch) {
-                  const fixtureId = String(item.fixture.fixture.id);
-                  const returnedFixture = returnedById.get(fixtureId);
-                  if (!returnedFixture) continue;
-                  apiSportsFootballStatsCache.set(fixtureId, { at: apiSportsNow, fixture: returnedFixture });
-                  applyApiSportsFixtureStats(item.match, returnedFixture);
-                }
-                console.log("[API-Sports Football] batched live stats:", JSON.stringify({
-                  requested: ids.length,
-                  returned: payload.response.length,
-                  withStatistics: payload.response.filter(fixture => Array.isArray(fixture.statistics) && fixture.statistics.length).length,
-                  suppliedSot: batch.filter(item => (item.match.teams || []).slice(0, 2).every(team => team.shotsOnTarget != null)).length,
+                // Normalize the statistics endpoint response into the fixture shape
+                // consumed by applyApiSportsFixtureStats.
+                const normalizedFixture = {
+                  ...item.fixture,
+                  statistics: payload.response
+                };
+                apiSportsFootballStatsCache.set(fixtureId, {
+                  at: apiSportsNow,
+                  fixture: normalizedFixture
+                });
+                const supplied = applyApiSportsFixtureStats(item.match, normalizedFixture);
+                console.log("[API-Sports Football] fixture stats:", JSON.stringify({
+                  fixtureId,
+                  teamsReturned: payload.response.length,
+                  hasStatistics: payload.response.some(team => Array.isArray(team.statistics) && team.statistics.length),
+                  suppliedSot: supplied && (item.match.teams || []).slice(0, 2).every(team => team.shotsOnTarget != null),
                   requestsRemaining: response.headers.get("x-ratelimit-requests-remaining"),
                   errors: payload.errors || null
                 }));
               } else {
-                console.warn("[API-Sports Football] batched stats unavailable:", JSON.stringify({
-                  status: response.status, requested: ids.length, errors: payload.errors || null,
+                console.warn("[API-Sports Football] fixture stats unavailable:", JSON.stringify({
+                  fixtureId, status: response.status, errors: payload.errors || null,
                   requestsRemaining: response.headers.get("x-ratelimit-requests-remaining")
                 }));
                 if (response.status === 429) apiSportsFootballLastBatchAt = apiSportsNow + 60 * 60 * 1000;
               }
             } catch (error) {
-              console.warn("[API-Sports Football] batched stats failed:", error.message || "request failed");
+              console.warn("[API-Sports Football] fixture stats failed:", JSON.stringify({
+                fixtureId, error: error.message || "request failed"
+              }));
             }
           }
-          apiSportsFootballBatchCursor += apiSportsBatches.reduce((count, batch) => count + batch.length, 0);
+          apiSportsFootballBatchCursor += dueItems.length;
         }
       } else if (!APISPORTS_API_KEY) {
         console.log("[API-Sports Football] disabled: APISPORTS_API_KEY is not configured");
