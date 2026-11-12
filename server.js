@@ -1656,7 +1656,7 @@ async function runScheduledPreMatchCollection() {
   }
 }
 
-async function pitchGet(apiPath) {
+async function pitchGet(apiPath, ttlMs = CACHE_TTL_MS) {
   const key = process.env.PITCH_API_KEY;
   if (!key) {
     const error = new Error("PITCH_API_KEY is not configured");
@@ -1664,7 +1664,7 @@ async function pitchGet(apiPath) {
     throw error;
   }
   const cached = cache.get(apiPath);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.body;
+  if (cached && Date.now() - cached.at < ttlMs) return cached.body;
 
   let sharedRequest = pitchInflight.get(apiPath);
   if (!sharedRequest) {
@@ -5699,8 +5699,31 @@ const server = http.createServer(async (req, res) => {
               continue;
             }
             if (String(event.id).startsWith("m_")) {
-              const pitchStats = await pitchGet("/v1/matches/" + encodeURIComponent(event.id) + "/stats");
-              const periods = pitchStats?.data?.periods || [];
+              const pitchMatchId = encodeURIComponent(event.id);
+              // PitchAPI team stats and shot locations are both genuine live-source data.
+              // Refresh these two live endpoints every 45s rather than inheriting the
+              // five-minute cache used for historical lookups.
+              const pitchStats = await pitchGet("/v1/matches/" + pitchMatchId + "/stats", 45000);
+              const pitchStatsData = pitchStats?.data || {};
+              let pitchShotsData = null;
+              try {
+                pitchShotsData = (await pitchGet("/v1/matches/" + pitchMatchId + "/shots", 45000))?.data || null;
+              } catch (error) {
+                console.warn("[PitchAPI live shots unavailable]:", event.id, error.status || error.message || "request failed");
+              }
+              const shotPeriods = pitchShotsData?.periods || [];
+              const allShotPeriods = shotPeriods.filter(period => !period.period || String(period.period).trim().toLowerCase() === "all");
+              const shotPeriodsToCount = allShotPeriods.length ? allShotPeriods : shotPeriods;
+              const pitchShotRows = shotPeriodsToCount.flatMap(period => Array.isArray(period.shots) ? period.shots : []);
+              const pitchHomeTeamId = pitchStatsData.home_team?.id || pitchShotsData?.home_team?.id || "";
+              const pitchAwayTeamId = pitchStatsData.away_team?.id || pitchShotsData?.away_team?.id || "";
+              const shotsInBoxByTeam = new Map();
+              for (const shot of pitchShotRows) {
+                if (shot?.is_inside_box !== true || !shot?.team_id) continue;
+                const teamId = String(shot.team_id);
+                shotsInBoxByTeam.set(teamId, (shotsInBoxByTeam.get(teamId) || 0) + 1);
+              }
+              const periods = pitchStatsData.periods || [];
               const allPeriods = periods.filter(period => !period.period || String(period.period).trim().toLowerCase() === "all");
               // Some provider responses only expose half-by-half periods; do not silently drop all stats.
               const groups = (allPeriods.length ? allPeriods : periods).flatMap(period => period.groups || []);
@@ -5733,8 +5756,8 @@ const server = http.createServer(async (req, res) => {
               const homeName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "home")?.team?.displayName || "";
               const awayName = event.competitions?.[0]?.competitors?.find(team => team.homeAway === "away")?.team?.displayName || "";
               const values = [
-                { team: homeName, homeAway: "home", shotsOnTarget: readExactSotStat(items, "home"), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("home", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) },
-                { team: awayName, homeAway: "away", shotsOnTarget: readExactSotStat(items, "away"), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
+                { team: homeName, homeAway: "home", shotsOnTarget: readExactSotStat(items, "home"), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]) ?? (pitchHomeTeamId ? (shotsInBoxByTeam.get(String(pitchHomeTeamId)) ?? null) : null), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("home", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) },
+                { team: awayName, homeAway: "away", shotsOnTarget: readExactSotStat(items, "away"), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]) ?? (pitchAwayTeamId ? (shotsInBoxByTeam.get(String(pitchAwayTeamId)) ?? null) : null), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]), possession: readStat("away", ["possession","possession_percentage","possession_pct","ball_possession"]), xG: readStat("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"]) }
               ];
               // PitchAPI matches used to exit before the SportScore fallback was tried.
               // Reuse the already-loaded live fixture/slug maps so PitchAPI-only matches
