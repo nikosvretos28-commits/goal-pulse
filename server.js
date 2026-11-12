@@ -130,8 +130,14 @@ function saveVolatileRecord(store, key, payload, settledFields = []) {
 function volatileHistoryRows(store) { return [...store.values()].sort((a,b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)); }
 // Public alert history deliberately excludes proprietary trigger attribution and signal evidence.
 function publicAlertPayload(payload) {
-  const { reason, triggerIds, supportSignalIds, statsAtSignal, odds, bookmaker, oddsVerifiedAt, scoreAtSignal, supportingCriteriaScore, evidenceKinds, points, ...publicFields } = payload || {};
-  return publicFields;
+  const { reason, triggerIds, supportSignalIds, statsAtSignal, scoreAtSignal, supportingCriteriaScore, evidenceKinds, points, ...publicFields } = payload || {};
+  const storedOdds = payload?.odds ?? payload?.oddsAtSignal ?? null;
+  return {
+    ...publicFields,
+    oddsAtSignal: storedOdds,
+    bookmaker: payload?.bookmaker ?? null,
+    oddsVerifiedAt: payload?.oddsVerifiedAt ?? null
+  };
 }
 let pushDbInit = null;
 let alertHistoryDbInit = null;
