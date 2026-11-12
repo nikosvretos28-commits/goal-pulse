@@ -16,6 +16,7 @@ const { isVerifiedSecondHalfMieRecord } = require("./mie-alert-verification");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
+const { addRollingTrends } = require("./rolling-trend-history");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -790,7 +791,8 @@ async function fetchSportScoreMatchDetail(slug) {
 }
 
 const liveHistory = new Map();
-const LIVE_HISTORY_TTL_MS = 11 * 60 * 1000;
+// HI Activity owns a separate rolling history; it must never share AI/VIP baselines.
+const highActivityLiveHistory = new Map();
 function resolveDatabaseUrl(raw) {
   if (!raw) return "";
   const trimmed = String(raw).trim();
@@ -1028,58 +1030,6 @@ async function persistRollingTrends(matches, date) {
 }
 
 
-
-function addRollingTrends(matches) {
-  const now = Date.now();
-  for (const match of matches) {
-    const id = String(match.eventId || "");
-    if (!id || !Array.isArray(match.teams) || match.teams.length < 2) continue;
-    let history = liveHistory.get(id) || [];
-    const last = history[history.length - 1];
-    const snapshot = {
-      at: now,
-      teams: match.teams.map(team => ({
-        team: String(team.team || "").trim().toLowerCase(),
-        shotsOnTarget: team.shotsOnTarget,
-        corners: team.corners,
-        attacks: team.attacks,
-        dangerousAttacks: team.dangerousAttacks
-      }))
-    };
-    if (!last || now - last.at >= 12000) history.push(snapshot);
-    history = history.filter(item => now - item.at <= LIVE_HISTORY_TTL_MS);
-    liveHistory.set(id, history);
-
-    const makeWindow = minutes => {
-      const targetAge = minutes * 60 * 1000;
-      const baseline = [...history].reverse().find(item => now - item.at >= targetAge);
-      if (!baseline || !last) return { available: false, sampleMinutes: null, teams: [] };
-      const deltas = match.teams.map((team, index) => {
-        const name = String(team.team || "").trim().toLowerCase();
-        const previous = baseline.teams.find(item => item.team && item.team === name) || baseline.teams[index];
-        if (!previous) return { team: team.team, shotsOnTarget: null, corners: null, attacks: null, dangerousAttacks: null };
-        const delta = key => {
-          const current = team[key];
-          const old = previous[key];
-          if (current == null || old == null || !Number.isFinite(Number(current)) || !Number.isFinite(Number(old))) return null;
-          return Math.max(0, Number(current) - Number(old));
-        };
-        return { team: team.team, shotsOnTarget: delta("shotsOnTarget"), corners: delta("corners"), attacks: delta("attacks"), dangerousAttacks: delta("dangerousAttacks") };
-      });
-      const available = deltas.some(item => item.shotsOnTarget != null || item.corners != null || item.attacks != null || item.dangerousAttacks != null);
-      return { available, sampleMinutes: Math.round((now - baseline.at) / 60000 * 10) / 10, teams: deltas };
-    };
-    match.trend = {
-      source: "server-observed cumulative-stat deltas",
-      window5m: makeWindow(5),
-      window10m: makeWindow(10)
-    };
-  }
-  if (liveHistory.size > 500) {
-    const oldest = [...liveHistory.entries()].sort((a, b) => (a[1].at(-1)?.at || 0) - (b[1].at(-1)?.at || 0)).slice(0, liveHistory.size - 500);
-    for (const [id] of oldest) liveHistory.delete(id);
-  }
-}
 
 function send(res, status, body, type = "application/json; charset=utf-8") {
   res.writeHead(status, {
@@ -3791,6 +3741,12 @@ const server = http.createServer(async (req, res) => {
           }
           return values;
         };
+        // These per-team rolling deltas are also consumed by the red-card pressure
+        // check below. Keep unknown baselines null; never infer missing SOT as zero.
+        const sotPressure5 = perTeamMetricWindow(current.sotByTeam, previous?.sotByTeam, match.trend?.window5m, "shotsOnTarget", 4.5, 6);
+        const sotPressure10 = perTeamMetricWindow(current.sotByTeam, previous10?.sotByTeam, match.trend?.window10m, "shotsOnTarget", 9.5, 11);
+        const dangerousAttacks5 = perTeamMetricWindow(current.dangerousByTeam, previous?.dangerousByTeam, match.trend?.window5m, "dangerousAttacks", 4.5, 6);
+        const dangerousAttacks10 = perTeamMetricWindow(current.dangerousByTeam, previous10?.dangerousByTeam, match.trend?.window10m, "dangerousAttacks", 9.5, 11);
         // Pressure Hunter owns a separate two-window rolling shot history.
         // Do not reuse the 5m/10m windows or state used by any other protocol.
         const hunterStatus = statusForEligibility;
@@ -6195,12 +6151,13 @@ const server = http.createServer(async (req, res) => {
       }
       // High Activity must not write to or mutate the shared AI/VIP rolling-trend history.
       const persisted = highActivityOnly ? null : await persistRollingTrends(matches, date);
-      if (!highActivityOnly && !persisted) addRollingTrends(matches);
+      if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
+      else if (!persisted) addRollingTrends(matches, liveHistory);
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
         team.team && ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
-      const trendHistory = highActivityOnly ? "isolated high-activity feed; shared trend history untouched" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
+      const trendHistory = highActivityOnly ? "isolated in-memory high-activity rolling history; AI/VIP history untouched; resets on service restart" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
       const diagnosticFields = ["shotsOnTarget","shotsInBox","bigChances","corners","possession","xG"];
       const liveMetricsAudit = {
