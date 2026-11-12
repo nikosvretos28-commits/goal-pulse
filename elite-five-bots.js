@@ -178,12 +178,21 @@ function buildFiveBotDailyReport(input = {}) {
       recordsForReportDate: records.length
     },
     summary: summarize(records),
-    bots: [bot1, bot2, bot3, bot4, bot5],
+    bots: [bot1, bot2, bot3, bot4, bot5, {
+      name: "Head Chief Analyst",
+      role: "Chief coordinator & final decision",
+      status: "compiled",
+      summary: records.length
+        ? "Συντονίζει και συνθέτει τα πέντε πορίσματα. Κάθε συμπέρασμα βασίζεται αποκλειστικά στα αποθηκευμένα και επαληθεύσιμα στοιχεία."
+        : "Δεν βρέθηκαν αποθηκευμένες εγγραφές για την ημερομηνία αναφοράς· δεν εξάγεται συμπέρασμα από κενό δείγμα.",
+      recommendations: [],
+      safety: "Read-only. Δεν αλλάζει AI/VIP/HI Activity, SOT, Power Ranking, triggers, settlements ή live scanner."
+    }],
     chiefAnalyst: {
       status: "compiled",
       summary: records.length
-        ? "Οι πέντε αναλυτές ολοκλήρωσαν την ημερήσια εξέταση των αποθηκευμένων εγγραφών. Τα συμπεράσματα βασίζονται μόνο στα διαθέσιμα στοιχεία."
-        : "Δεν βρέθηκαν αποθηκευμένες εγγραφές για την ημερομηνία αναφοράς· δεν εξάγεται συμπέρασμα από κενό δείγμα.",
+        ? "Ο Head Chief ολοκλήρωσε τη σύνθεση των πέντε specialist reports."
+        : "Κενό δείγμα: δεν εξάγεται συμπέρασμα.",
       recommendations: [],
       safety: "Η ομάδα είναι read-only. Δεν αλλάζει AI/VIP/HI Activity, SOT, Power Ranking, triggers, settlements ή live scanner."
     }
