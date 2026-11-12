@@ -27,11 +27,11 @@ test("completed fixtures are never eligible even when a stale minute remains", (
   }
 });
 
-test("cumulative 20-SOT trigger is limited to minutes 46 through 84", () => {
-  for (const minute of [1, 34, 35, 40, 45, 85, 88, 89, 84.9]) {
+test("cumulative 20-SOT trigger is limited to minutes 46 through 65", () => {
+  for (const minute of [1, 34, 35, 40, 45, 66, 67, 74, 84, 85, 88, 89, 65.5, 84.9]) {
     assert.equal(isCumulativeSotMinute(minute), false, String(minute));
   }
-  for (const minute of [46, 47, 60, 74, 84]) {
+  for (const minute of [46, 47, 60, 64, 65]) {
     assert.equal(isCumulativeSotMinute(minute), true, String(minute));
   }
   assert.equal(isCumulativeSotMinute(60, "1st half"), false);
