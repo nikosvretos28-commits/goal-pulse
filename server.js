@@ -2337,7 +2337,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/integrations/elite-report" && req.method === "GET") {
     const expectedToken = String(process.env.GOALMATRIX_READONLY_TOKEN || "");
     const authorization = String(req.headers.authorization || "");
-    const suppliedToken = authorization.match(/^Bearer\\s+(.+)$/i)?.[1] || "";
+    const suppliedToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1] || "";
     const expectedBytes = Buffer.from(expectedToken);
     const suppliedBytes = Buffer.from(suppliedToken);
     const tokenMatches = expectedBytes.length > 0 &&
@@ -2346,7 +2346,7 @@ const server = http.createServer(async (req, res) => {
     if (!tokenMatches) return send(res, 401, { ok: false, error: "Unauthorized" });
     if (!analyticsPool) return send(res, 503, { ok: false, error: "Analytics database unavailable" });
     const requestedDate = String(url.searchParams.get("date") || previousAthensDateKey());
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(requestedDate)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
       return send(res, 400, { ok: false, error: "Date must be YYYY-MM-DD" });
     }
     try {
