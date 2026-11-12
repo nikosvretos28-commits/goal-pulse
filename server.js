@@ -2332,6 +2332,45 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Server-to-server, read-only integration endpoint for the GoalMatrix report reader.
+  // It exposes only the stored Elite AI daily report and never refreshes or mutates live data.
+  if (url.pathname === "/api/integrations/elite-report" && req.method === "GET") {
+    const expectedToken = String(process.env.GOALMATRIX_READONLY_TOKEN || "");
+    const authorization = String(req.headers.authorization || "");
+    const suppliedToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1] || "";
+    const expectedBytes = Buffer.from(expectedToken);
+    const suppliedBytes = Buffer.from(suppliedToken);
+    const tokenMatches = expectedBytes.length > 0 &&
+      expectedBytes.length === suppliedBytes.length &&
+      require("node:crypto").timingSafeEqual(expectedBytes, suppliedBytes);
+    if (!tokenMatches) return send(res, 401, { ok: false, error: "Unauthorized" });
+    if (!analyticsPool) return send(res, 503, { ok: false, error: "Analytics database unavailable" });
+    const requestedDate = String(url.searchParams.get("date") || previousAthensDateKey());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+      return send(res, 400, { ok: false, error: "Date must be YYYY-MM-DD" });
+    }
+    try {
+      const result = await analyticsPool.query(
+        "SELECT report, generated_at FROM elite_five_bot_daily_reports WHERE report_date=$1::date",
+        [requestedDate]
+      );
+      if (!result.rowCount) {
+        return send(res, 404, { ok: false, readOnly: true, date: requestedDate, error: "No stored Elite AI daily report for this date" });
+      }
+      return send(res, 200, {
+        ok: true,
+        readOnly: true,
+        resource: "elite-ai-daily-report",
+        date: requestedDate,
+        generatedAt: result.rows[0].generated_at,
+        report: result.rows[0].report
+      });
+    } catch (error) {
+      console.error("Read-only Elite report integration failed:", String(error.message || error));
+      return send(res, 503, { ok: false, error: "Could not read stored Elite AI daily report" });
+    }
+  }
+
   if (url.pathname === "/api/elite-five-bots/daily" && ["GET", "POST"].includes(req.method)) {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     const auth = await authorizePrivateAdminRequest(req);
