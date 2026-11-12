@@ -94,11 +94,70 @@ function groupedOutcomes(rows, keyFn) {
   return [...groups.entries()].map(([name, group]) => ({ name, ...summarize(group) }))
     .sort((a, b) => b.alerts - a.alerts || a.name.localeCompare(b.name));
 }
+
+function minuteBand(minute) {
+  if (minute === null || minute === undefined) return "unknown";
+  return minute < 46 ? "1st half" : minute <= 59 ? "46–59" : minute <= 74 ? "60–74" : minute <= 88 ? "75–88" : "89+";
+}
+function buildChiefAnalysis(records) {
+  const settled = records.filter(row => row.verified && ["won", "lost"].includes(row.outcome));
+  const wins = settled.filter(row => row.outcome === "won").length;
+  const baselineRate = settled.length ? wins / settled.length : null;
+  const buckets = new Map();
+  const add = (dimension, value, row) => {
+    const key = dimension + ":" + String(value || "unknown");
+    if (!buckets.has(key)) buckets.set(key, { dimension, segment: String(value || "unknown"), rows: [] });
+    buckets.get(key).rows.push(row);
+  };
+  for (const row of settled) {
+    for (const trigger of row.triggerIds) add("trigger", trigger, row);
+    add("minute_band", minuteBand(row.minute), row);
+    add("league", row.league, row);
+  }
+  const recommendations = [];
+  if (settled.length >= 20) {
+    for (const bucket of buckets.values()) {
+      if (bucket.rows.length < 10) continue;
+      const groupWins = bucket.rows.filter(row => row.outcome === "won").length;
+      const rate = groupWins / bucket.rows.length;
+      const delta = rate - baselineRate;
+      if (delta <= -0.15) recommendations.push({
+        type: "review_underperformance", status: "review_only",
+        dimension: bucket.dimension, segment: bucket.segment,
+        verifiedSettled: bucket.rows.length, wins: groupWins,
+        losses: bucket.rows.length - groupWins,
+        winRatePct: Math.round(rate * 1000) / 10,
+        baselineWinRatePct: Math.round(baselineRate * 1000) / 10,
+        differencePp: Math.round(delta * 1000) / 10,
+        action: "Επανέλεγχος σε μεγαλύτερο ιστορικό δείγμα· καμία αυτόματη αλλαγή κανόνα."
+      });
+    }
+  }
+  recommendations.sort((a, b) => a.differencePp - b.differencePp || b.verifiedSettled - a.verifiedSettled);
+  const missingSot = records.filter(row => row.statsAtSignal.onTarget === null &&
+    row.statsAtSignal.onTarget10m === null && row.statsAtSignal.totalOnTarget === null).length;
+  return {
+    status: settled.length >= 20 ? "evidence_available" : "insufficient_sample",
+    baseline: { verifiedSettled: settled.length, wins, losses: settled.length - wins,
+      winRatePct: baselineRate === null ? null : Math.round(baselineRate * 1000) / 10 },
+    dataQuality: { records: records.length, verifiedSettled: settled.length,
+      missingExplicitSot: missingSot,
+      missingExplicitSotPct: records.length ? Math.round(missingSot / records.length * 1000) / 10 : null },
+    recommendations: recommendations.slice(0, 8),
+    limitations: [
+      "Only explicitly verified won/lost settlements are used.",
+      "Segment comparisons are observational, not causal; small samples are not promoted.",
+      "Findings are review-only and never change a live protocol."
+    ]
+  };
+}
+
 function buildFiveBotDailyReport(input = {}) {
   const date = String(input.date || "");
   const alerts = (Array.isArray(input.alerts) ? input.alerts : []).map(row => normalizeRecord(row, "AI/VIP"));
   const hiActivity = (Array.isArray(input.hiActivity) ? input.hiActivity : []).map(row => normalizeRecord(row, "HI Activity"));
   const records = [...alerts, ...hiActivity].filter(row => dayKey(row.createdAt) === date);
+  const chiefAnalysis = buildChiefAnalysis(records);
   const snapshots = Array.isArray(input.snapshots) ? input.snapshots : [];
   const snapshotsByEvent = new Map();
   for (const snapshot of snapshots) {
@@ -185,7 +244,11 @@ function buildFiveBotDailyReport(input = {}) {
       summary: records.length
         ? "Συντονίζει και συνθέτει τα πέντε πορίσματα. Κάθε συμπέρασμα βασίζεται αποκλειστικά στα αποθηκευμένα και επαληθεύσιμα στοιχεία."
         : "Δεν βρέθηκαν αποθηκευμένες εγγραφές για την ημερομηνία αναφοράς· δεν εξάγεται συμπέρασμα από κενό δείγμα.",
-      recommendations: [],
+      analysisStatus: chiefAnalysis.status,
+      baseline: chiefAnalysis.baseline,
+      dataQuality: chiefAnalysis.dataQuality,
+      recommendations: chiefAnalysis.recommendations,
+      limitations: chiefAnalysis.limitations,
       safety: "Read-only. Δεν αλλάζει AI/VIP/HI Activity, SOT, Power Ranking, triggers, settlements ή live scanner."
     }],
     chiefAnalyst: {
@@ -193,9 +256,13 @@ function buildFiveBotDailyReport(input = {}) {
       summary: records.length
         ? "Ο Head Chief ολοκλήρωσε τη σύνθεση των πέντε specialist reports."
         : "Κενό δείγμα: δεν εξάγεται συμπέρασμα.",
-      recommendations: [],
+      analysisStatus: chiefAnalysis.status,
+      baseline: chiefAnalysis.baseline,
+      dataQuality: chiefAnalysis.dataQuality,
+      recommendations: chiefAnalysis.recommendations,
+      limitations: chiefAnalysis.limitations,
       safety: "Η ομάδα είναι read-only. Δεν αλλάζει AI/VIP/HI Activity, SOT, Power Ranking, triggers, settlements ή live scanner."
     }
   };
 }
-module.exports = { STAT_FIELDS, dayKey, normalizeRecord, summarize, buildFiveBotDailyReport };
+module.exports = { STAT_FIELDS, dayKey, normalizeRecord, summarize, buildChiefAnalysis, buildFiveBotDailyReport };

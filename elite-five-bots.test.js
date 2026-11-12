@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildFiveBotDailyReport, normalizeRecord, dayKey } = require("./elite-five-bots");
+const { buildFiveBotDailyReport, normalizeRecord, dayKey, buildChiefAnalysis } = require("./elite-five-bots");
 
 const row = (overrides = {}) => ({
   alert_id: "a1", event_id: "fx1", created_at: "2026-11-11T15:00:00.000Z",
@@ -53,4 +53,35 @@ test("goal minutes are reported only when present in stored payload", () => {
 
 test("date grouping uses Greece local calendar date", () => {
   assert.equal(dayKey("2026-11-11T22:30:00.000Z"), "2026-11-12");
+});
+
+
+test("daily chief analyst flags only materially weak segments with adequate verified samples", () => {
+  const records = [];
+  for (let i = 0; i < 10; i++) records.push(normalizeRecord(row({
+    alert_id: "weak-" + i,
+    payload: { ...row().payload, triggerIds: ["weak_trigger"], betOutcome: i < 2 ? "won" : "lost" }
+  })));
+  for (let i = 0; i < 20; i++) records.push(normalizeRecord(row({
+    alert_id: "base-" + i,
+    payload: { ...row().payload, triggerIds: ["healthy_trigger"], betOutcome: "won" }
+  })));
+  const analysis = buildChiefAnalysis(records);
+  assert.equal(analysis.status, "evidence_available");
+  const weak = analysis.recommendations.find(item => item.dimension === "trigger" && item.segment === "weak_trigger");
+  assert.ok(weak);
+  assert.equal(weak.verifiedSettled, 10);
+  assert.equal(weak.status, "review_only");
+  assert.ok(weak.differencePp <= -15);
+});
+
+test("daily chief analyst does not manufacture performance recommendations from small samples", () => {
+  const records = [0, 1, 2].map(i => normalizeRecord(row({
+    alert_id: "small-" + i,
+    payload: { ...row().payload, triggerIds: ["small_trigger"], betOutcome: "lost" }
+  })));
+  const analysis = buildChiefAnalysis(records);
+  assert.equal(analysis.status, "insufficient_sample");
+  assert.equal(analysis.recommendations.length, 0);
+  assert.equal(analysis.baseline.verifiedSettled, 3);
 });
