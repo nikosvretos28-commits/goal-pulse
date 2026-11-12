@@ -103,6 +103,8 @@ const pushScanLastAlert = new Map();
 // Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
 const pushScanPressureHunterAlerts = new Set();
+// Hunter-only 16-minute rolling snapshot buffer; never shared with other triggers.
+const pushScanHunterSnapshots = new Map();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
 const pushScanAutonomousPowerRankingAlerts = new Set();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
@@ -3789,37 +3791,68 @@ const server = http.createServer(async (req, res) => {
           }
           return values;
         };
-        const sotPressure5 = perTeamMetricWindow(current.sotByTeam, previous?.sotByTeam, match.trend?.window5m, "shotsOnTarget", 4.5, 8);
-        const sotPressure10 = perTeamMetricWindow(current.sotByTeam, previous10?.sotByTeam, match.trend?.window10m, "shotsOnTarget", 8, 13);
-        const dangerousAttacks5 = perTeamMetricWindow(current.dangerousByTeam, previous?.dangerousByTeam, match.trend?.window5m, "dangerousAttacks", 4.5, 8);
-        const dangerousAttacks10 = perTeamMetricWindow(current.dangerousByTeam, previous10?.dangerousByTeam, match.trend?.window10m, "dangerousAttacks", 8, 13);
-        const hunterBox5 = perTeamMetricWindow(current.shotsInBoxByTeam, previous?.shotsInBoxByTeam, match.trend?.window5m, "shotsInBox", 4.5, 8);
-        const hunterBox10 = perTeamMetricWindow(current.shotsInBoxByTeam, previous10?.shotsInBoxByTeam, match.trend?.window10m, "shotsInBox", 8, 13);
-        const hunterChances5 = perTeamMetricWindow(current.bigChancesByTeam, previous?.bigChancesByTeam, match.trend?.window5m, "bigChances", 4.5, 8);
-        const hunterChances10 = perTeamMetricWindow(current.bigChancesByTeam, previous10?.bigChancesByTeam, match.trend?.window10m, "bigChances", 8, 13);
-        // SOT alone controls activation. Shots in the Box and Big Chances only add score.
-        const hunterWindow = (values, boxValues, chanceValues, baseline, trend, minAge, maxAge) => {
-          const age = baseline ? (now - baseline.at) / 60000 : Number(trend?.sampleMinutes);
-          const fresh = Number.isFinite(age) && age >= minAge && age <= maxAge;
-          const rows = Array.isArray(values) ? values.slice(0, 2).map((value, index) => ({
-            team: current.sotByTeam[index]?.team || "",
-            shotsOnTarget: value,
-            shotsInBox: Array.isArray(boxValues) ? boxValues[index] ?? null : null,
-            bigChances: Array.isArray(chanceValues) ? chanceValues[index] ?? null : null
-          })) : [];
-          return {
-            available: Boolean(fresh && rows.length === 2 && rows.every(row => row.shotsOnTarget != null && Number.isFinite(Number(row.shotsOnTarget)))),
-            sampleMinutes: age,
-            teams: rows
-          };
+        // Pressure Hunter owns a separate two-window rolling shot history.
+        // Do not reuse the 5m/10m windows or state used by any other protocol.
+        const hunterStatus = statusForEligibility;
+        const hunterFirstHalf = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(hunterStatus);
+        const hunterSecondHalf = /second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(hunterStatus);
+        const hunterPeriod = hunterFirstHalf ? "first_half"
+          : hunterSecondHalf || current.minute > 45 ? "second_half"
+          : "first_half";
+        const hunterCount = value => value == null || value === "" || !Number.isFinite(Number(value))
+          ? null : Math.max(0, Number(value));
+        const hunterSnapshot = {
+          at: now,
+          period: hunterPeriod,
+          teams: teams.slice(0, 2).map((team, index) => {
+            const sot = hunterCount(team.shotsOnTarget);
+            const off = hunterCount(team.shotsOffTarget);
+            const totalShots = hunterCount(team.totalShots) ?? (sot !== null && off !== null ? sot + off : null);
+            return { team: String(team.team || "").trim().toLowerCase(), totalShots, shotsOnTarget: sot, shotsOffTarget: off };
+          })
         };
+        const hunterHistory = (pushScanHunterSnapshots.get(id) || []).filter(snapshot =>
+          snapshot.period === hunterPeriod && now - snapshot.at <= 17.5 * 60 * 1000
+        );
+        hunterHistory.push(hunterSnapshot);
+        pushScanHunterSnapshots.set(id, hunterHistory);
+        const hunterBaseline = minAge => [...hunterHistory].reverse().find(snapshot => {
+          const age = (now - snapshot.at) / 60000;
+          return age >= minAge && age <= minAge + 1.5;
+        }) || null;
+        const hunterAt8 = hunterBaseline(7.5);
+        const hunterAt16 = hunterBaseline(15.5);
+        const hunterDelta = (newer, older) => {
+          if (!newer || !older) return null;
+          return newer.teams.map((team, index) => {
+            const prior = older.teams.find(row => row.team && row.team === team.team) || older.teams[index];
+            const delta = key => team[key] == null || prior?.[key] == null || team[key] < prior[key]
+              ? null : Math.max(0, team[key] - prior[key]);
+            return {
+              totalShots: delta("totalShots"),
+              shotsOnTarget: delta("shotsOnTarget"),
+              shotsOffTarget: delta("shotsOffTarget")
+            };
+          });
+        };
+        const hunterWindow = (rows, sampleMinutes) => ({
+          available: Boolean(rows && rows.length === 2 && rows.every(row =>
+            row.totalShots !== null && row.shotsOnTarget !== null
+          )),
+          sampleMinutes,
+          teams: rows || []
+        });
+        const firstEightRows = hunterDelta(hunterAt8, hunterAt16);
+        const secondEightRows = hunterDelta(hunterSnapshot, hunterAt8);
         const hunterEvaluation = evaluatePressureHunter({
           minute: current.minute,
           status: statusForEligibility,
           teams: current.sotByTeam.map(side => ({ shotsOnTarget: side.value })),
           windows: {
-            last5m: hunterWindow(sotPressure5, hunterBox5, hunterChances5, previous, match.trend?.window5m, 4.5, 8),
-            last10m: hunterWindow(sotPressure10, hunterBox10, hunterChances10, previous10, match.trend?.window10m, 8, 13)
+            firstEightMinutes: hunterWindow(firstEightRows,
+              hunterAt8 && hunterAt16 ? (hunterAt8.at - hunterAt16.at) / 60000 : null),
+            secondEightMinutes: hunterWindow(secondEightRows,
+              hunterAt8 ? (now - hunterAt8.at) / 60000 : null)
           }
         });
         if (hunterEvaluation.triggered && hunterEvaluation.level) {
@@ -3860,7 +3893,7 @@ const server = http.createServer(async (req, res) => {
                   try {
                     const hunterPush = await sendPushToSubscribers({
                       title: "GoalMatrix · PRESSURE HUNTER",
-                      body: (hunterEvaluation.level === "EXTREME" ? "🔥 EXTREME DUAL PRESSURE" : "🎯 DUAL TEAM PRESSURE") + " · " + hunterRecord.home + " – " + hunterRecord.away + " · " + hunterRecord.minute,
+                      body: "🎯 CONTINUOUS SHOT FLOW" + " · " + hunterRecord.home + " – " + hunterRecord.away + " · " + hunterRecord.minute,
                       tag: "goal-matrix-pressure-hunter-" + id + "-" + hunterEvaluation.level.toLowerCase(),
                       url: "/"
                     });

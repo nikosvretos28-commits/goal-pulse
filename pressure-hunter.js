@@ -1,35 +1,11 @@
 "use strict";
 
-// Autonomous Pressure Hunter. Deliberately has no imports from, or writes to,
-// AI Alerts, VIP Alerts, Hi Activity, Power Games, or their history stores.
-
+// Autonomous Pressure Hunter. Deliberately isolated from every other alert protocol.
+// It evaluates two consecutive 8-minute windows within the same half.
 function numberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-function readTeamStat(team, ...keys) {
-  for (const key of keys) {
-    const n = numberOrNull(team?.[key]);
-    if (n !== null) return n;
-  }
-  return null;
-}
-
-function readWindow(window, minSample, maxSample) {
-  const sampleMinutes = Number(window?.sampleMinutes);
-  if (window?.available !== true || !Number.isFinite(sampleMinutes) ||
-      sampleMinutes < minSample || sampleMinutes > maxSample ||
-      !Array.isArray(window.teams) || window.teams.length !== 2) return null;
-
-  const teams = window.teams.map(team => ({
-    sot: readTeamStat(team, "shotsOnTarget", "shots_on_target", "sot"),
-    shotsInBox: readTeamStat(team, "shotsInBox", "shots_in_box", "shotsInsideBox"),
-    bigChances: readTeamStat(team, "bigChances", "big_chances")
-  }));
-  if (teams.some(team => team.sot === null)) return null;
-  return { teams, sampleMinutes };
 }
 
 function liveMinuteEligible(minute, status = "") {
@@ -43,48 +19,63 @@ function sum(values) {
   return values.every(value => value !== null) ? values.reduce((a, b) => a + b, 0) : null;
 }
 
+function readEightMinuteWindow(window) {
+  const sampleMinutes = Number(window?.sampleMinutes);
+  if (window?.available !== true || !Number.isFinite(sampleMinutes) ||
+      sampleMinutes < 6.5 || sampleMinutes > 9.5 ||
+      !Array.isArray(window.teams) || window.teams.length !== 2) return null;
+
+  const teams = window.teams.map(team => ({
+    totalShots: numberOrNull(team?.totalShots),
+    shotsOnTarget: numberOrNull(team?.shotsOnTarget),
+    shotsOffTarget: numberOrNull(team?.shotsOffTarget)
+  }));
+  if (teams.some(team => team.totalShots === null || team.shotsOnTarget === null)) return null;
+  return { teams, sampleMinutes };
+}
+
 function evaluatePressureHunter({ minute, status, teams, windows } = {}) {
   const rejected = reason => ({ eligible: false, triggered: false, level: null, score: 0, reason, evidence: null });
   if (!liveMinuteEligible(minute, status)) return rejected("match_not_live");
   if (!Array.isArray(teams) || teams.length !== 2) return rejected("two_teams_required");
 
-  const cumulativeSot = teams.map(team => readTeamStat(team, "shotsOnTarget", "shots_on_target", "sot"));
-  if (cumulativeSot.some(value => value === null)) return rejected("cumulative_sot_unavailable");
+  const first = readEightMinuteWindow(windows?.firstEightMinutes);
+  const second = readEightMinuteWindow(windows?.secondEightMinutes);
+  if (!first || !second) return rejected("two_valid_consecutive_8m_windows_required");
 
-  const five = readWindow(windows?.last5m, 4.5, 8);
-  const ten = readWindow(windows?.last10m, 8, 13);
-  if (!five || !ten) return rejected("valid_5m_and_10m_windows_required");
+  const firstWindowShots = sum(first.teams.map(team => team.totalShots));
+  const firstWindowSot = sum(first.teams.map(team => team.shotsOnTarget));
+  const secondWindowShots = sum(second.teams.map(team => team.totalShots));
+  if (firstWindowShots === null || firstWindowSot === null || secondWindowShots === null) {
+    return rejected("hunter_shot_counts_unavailable");
+  }
 
-  const totalSot = sum(cumulativeSot);
-  const basic = ten.teams.every(team => team.sot >= 2) &&
-    five.teams.every(team => team.sot >= 1) && totalSot >= 4;
-  const extreme = ten.teams.every(team => team.sot >= 3) &&
-    five.teams.every(team => team.sot >= 2) && totalSot >= 8;
-
-  // Supporting metrics increase the score only. They never trigger an alert.
-  const boxTotal = sum(ten.teams.map(team => team.shotsInBox));
-  const bigChanceTotal = sum(ten.teams.map(team => team.bigChances));
-  const sot5Total = sum(five.teams.map(team => team.sot));
-  const sot10Total = sum(ten.teams.map(team => team.sot));
-  const score = Math.min(15,
-    Math.min(6, sot5Total * 0.75) +
-    Math.min(5, sot10Total * 0.5) +
-    Math.min(2, (boxTotal ?? 0) * 0.5) +
-    Math.min(2, (bigChanceTotal ?? 0) * 1)
-  );
-
+  // First 8-minute window must qualify fully. The alert fires on the first
+  // observed shot in the immediately following 8-minute window.
+  const firstWindowQualified = firstWindowShots >= 4 && firstWindowSot >= 2;
+  const firstShotInSecondWindow = secondWindowShots >= 1;
+  const triggered = firstWindowQualified && firstShotInSecondWindow;
+  const score = Math.min(10, firstWindowShots * 0.5 + firstWindowSot);
   return {
     eligible: true,
-    triggered: basic,
-    level: extreme ? "EXTREME" : basic ? "DUAL_PRESSURE" : null,
+    triggered,
+    level: triggered ? "DUAL_PRESSURE" : null,
     score: Math.round(score * 10) / 10,
-    reason: extreme ? "extreme_dual_team_pressure" : basic ? "dual_team_pressure" : "thresholds_not_met",
+    reason: triggered ? "continuous_shot_flow_first_shot" : !firstWindowQualified ? "first_8m_thresholds_not_met" : "waiting_for_first_shot_in_second_8m",
     evidence: {
-      cumulativeSot: { home: cumulativeSot[0], away: cumulativeSot[1], total: totalSot },
-      last5mSot: { home: five.teams[0].sot, away: five.teams[1].sot },
-      last10mSot: { home: ten.teams[0].sot, away: ten.teams[1].sot },
-      last10mShotsInBox: boxTotal,
-      last10mBigChances: bigChanceTotal
+      firstEightMinutes: {
+        totalShots: firstWindowShots,
+        shotsOnTarget: firstWindowSot,
+        home: first.teams[0],
+        away: first.teams[1]
+      },
+      secondEightMinutes: {
+        totalShotsAtSignal: secondWindowShots,
+        shotsOnTarget: sum(second.teams.map(team => team.shotsOnTarget)),
+        home: second.teams[0],
+        away: second.teams[1],
+        activation: "first_shot"
+      }
     }
   };
 }
