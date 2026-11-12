@@ -29,8 +29,8 @@ function isCumulativeSotMinute(minute, status = "") {
   const period = String(status || "").trim().toLowerCase();
   // The cumulative 20+ combined-SOT trigger spans the full live match clock
   // from minute 1 through 65, independently of the general second-half window.
-  if (/\\b(?:finished|full\\s*time|ended|complete|completed|ft|aet|ht|half[\\s-]*time|halftime)\\b/.test(period) ||
-      /ολοκληρώθηκε|τελικό\\s*σφύριγμα|λήξη\\s*αγώνα|ανάπαυλα/.test(period)) return false;
+  if (/\b(?:finished|full\s*time|ended|complete|completed|ft|aet|ht|half[\s-]*time|halftime)\b/.test(period) ||
+      /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|ανάπαυλα/.test(period)) return false;
   return true;
 }
 
