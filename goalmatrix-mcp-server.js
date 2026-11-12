@@ -50,10 +50,10 @@ function rpcError(id, code, message) {
 
 async function callEliteReport(args, env, fetchImpl) {
   const date = args?.date;
-  if (date !== undefined && (typeof date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date))) {
+  if (date !== undefined && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
     throw new Error("date must use YYYY-MM-DD");
   }
-  const base = String(env.GOALMATRIX_API_BASE_URL || "https://goalmatrix-production.up.railway.app").replace(/\\/$/, "");
+  const base = String(env.GOALMATRIX_API_BASE_URL || "https://goalmatrix-production.up.railway.app").replace(/\/$/, "");
   const url = new URL(base + "/api/integrations/elite-report");
   if (date) url.searchParams.set("date", date);
   const response = await fetchImpl(url, {
@@ -89,7 +89,7 @@ function createMcpServer(options = {}) {
       res.writeHead(405, { allow: "POST", "cache-control": "no-store" });
       return res.end();
     }
-    if (!tokenMatches((req.headers.authorization || "").replace(/^Bearer\\s+/i, ""), env.GOALMATRIX_MCP_TOKEN)) {
+    if (!tokenMatches((req.headers.authorization || "").replace(/^Bearer\s+/i, ""), env.GOALMATRIX_MCP_TOKEN)) {
       return sendJson(res, 401, { error: "Unauthorized" });
     }
 
@@ -134,7 +134,7 @@ function createMcpServer(options = {}) {
             inputSchema: {
               type: "object",
               properties: {
-                date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Optional report date in Europe/Athens calendar, YYYY-MM-DD." }
+                date: { type: "string", pattern: "^\d{4}-\d{2}-\d{2}$", description: "Optional report date in Europe/Athens calendar, YYYY-MM-DD." }
               },
               additionalProperties: false
             }
