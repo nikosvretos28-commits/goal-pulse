@@ -24,8 +24,10 @@ function isFirstHalfSotMinute(minute, status = "") {
   return !period || /\blive\b/.test(period);
 }
 
+// AI-only cumulative trigger: 20+ combined match SOT must be reached by minute 65.
+// Other second-half AI triggers retain their separate 46–84 minute window.
 function isCumulativeSotMinute(minute, status = "") {
-  return isAiMinuteEligible(minute, status);
+  return Number.isInteger(minute) && minute <= 65 && isAiMinuteEligible(minute, status);
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.
