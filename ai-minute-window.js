@@ -13,9 +13,9 @@ function isAiMinuteEligible(minute, status = "") {
 }
 
 // First-half rolling SOT triggers use the same independently qualifying 5m/10m
-// thresholds as the second half, but only during live first-half minutes 1–40.
+// thresholds as the second half, but only during live first-half minutes 1–34.
 function isFirstHalfSotMinute(minute, status = "") {
-  if (!Number.isInteger(minute) || minute < 1 || minute > 40) return false;
+  if (!Number.isInteger(minute) || minute < 1 || minute > 34) return false;
   const period = String(status || "").trim().toLowerCase();
   if (/\b(?:finished|full\s*time|ended|complete|completed|ft|aet|2h|2nd\s*half|second\s*half|second_half|ht|half[\s-]*time|halftime)\b/.test(period) ||
       /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|δεύτερο\s*ημίχρονο|2ο\s*ημίχρονο|ανάπαυλα|ημίχρονο/.test(period)) return false;
@@ -25,7 +25,7 @@ function isFirstHalfSotMinute(minute, status = "") {
 }
 
 function isCumulativeSotMinute(minute, status = "") {
-  return isAiMinuteEligible(minute, status) && minute < 75;
+  return isAiMinuteEligible(minute, status);
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.

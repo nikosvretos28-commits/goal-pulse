@@ -3985,7 +3985,7 @@ const server = http.createServer(async (req, res) => {
           const alertId = "push:" + id + ":AI:power-ranking-59";
           try {
             if (await ensureAlertHistoryDb()) {
-              const periodAtSignal = powerRankingMinute <= 35 ? "first_half" : "second_half";
+              const periodAtSignal = powerRankingMinute <= 34 ? "first_half" : "second_half";
               const homeScore = Number(match.homeScore), awayScore = Number(match.awayScore);
               const overLine = (homeScore + awayScore + 0.5).toFixed(1);
               const rawMinute = String(formatPushMinute(match));
@@ -4000,7 +4000,7 @@ const server = http.createServer(async (req, res) => {
                 outcome: "εκκρεμεί", betOutcome: "pending", evaluationRule: "end_of_relevant_half",
                 startScore: homeScore + awayScore, startHomeScore: homeScore, startAwayScore: awayScore,
                 triggerIds: ["power_ranking_59"], supportSignalIds: [],
-                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–35′" : "46′–84′" }
+                statsAtSignal: { powerRankingScore, powerRankingThreshold: 59, powerRankingWindow: periodAtSignal === "first_half" ? "1′–34′" : "46′–84′" }
               };
               const saved = await analyticsPool.query(
                 "INSERT INTO alert_history(alert_id,event_id,level,created_at,payload,updated_at) VALUES($1,$2,'AI',to_timestamp($3/1000.0),$4::jsonb,NOW()) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
@@ -4049,7 +4049,7 @@ const server = http.createServer(async (req, res) => {
         if (autonomousPowerRankingQualified && !pushScanAutonomousPowerRankingAlerts.has(id)) {
           try {
             if (await ensureAlertHistoryDb()) {
-              const autonomousPeriod = powerRankingMinute <= 35 ? "first_half" : "second_half";
+              const autonomousPeriod = powerRankingMinute <= 34 ? "first_half" : "second_half";
               const priorSignals = await analyticsPool.query(
                 "SELECT COUNT(*)::int AS count FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'=$2",
                 [id, autonomousPeriod]
@@ -4107,7 +4107,7 @@ const server = http.createServer(async (req, res) => {
                   powerRankingMode: "autonomous",
                   autonomousRearmed: false,
                   autonomousAlertIndex,
-                  powerRankingWindow: autonomousPeriod === "first_half" ? "1′–35′" : "46′–84′"
+                  powerRankingWindow: autonomousPeriod === "first_half" ? "1′–34′" : "46′–84′"
                 }
               };
               // Persist each period-specific activation before delivery. A pending
@@ -4397,7 +4397,7 @@ const server = http.createServer(async (req, res) => {
           // send an alert after the agreed window.
           const dispatchMinute = parseLiveMinute(getMatchMinute(match));
           const dispatchMinuteAllowed = Number.isFinite(dispatchMinute) &&
-            ((dispatchMinute >= 1 && dispatchMinute <= 40) || (dispatchMinute >= 46 && dispatchMinute <= 84));
+            ((dispatchMinute >= 1 && dispatchMinute <= 34) || (dispatchMinute >= 46 && dispatchMinute <= 84));
           if (level === "AI" && !dispatchMinuteAllowed) {
             console.warn("[AI push blocked: minute outside protocol window]", JSON.stringify({
               eventId: String(match.eventId),
