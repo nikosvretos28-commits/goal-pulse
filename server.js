@@ -2339,7 +2339,7 @@ const server = http.createServer(async (req, res) => {
     if (!await ensureEliteFiveBotDb()) return send(res, 503, { ok: false, error: "Five-bot report database unavailable" });
     const requestedDate = String(url.searchParams.get("date") || previousAthensDateKey());
     if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(requestedDate)) return send(res, 400, { ok: false, error: "Date must be YYYY-MM-DD" });
-    if (req.method === "POST") {
+    if (req.method === "POST" && auth.body?.refresh !== false) {
       const report = await runEliteFiveBotDailyReport(requestedDate);
       if (!report) return send(res, 503, { ok: false, error: "Five-bot report could not be generated" });
       return send(res, 200, { ok: true, report, refreshed: true });
