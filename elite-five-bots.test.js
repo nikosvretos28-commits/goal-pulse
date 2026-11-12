@@ -22,7 +22,8 @@ test("daily report separates verified, pending and unverified outcomes", () => {
   assert.equal(report.summary.alerts, 2);
   assert.equal(report.summary.verifiedWins, 1);
   assert.equal(report.summary.unverifiedSettlements, 1);
-  assert.equal(report.bots.length, 5);
+  assert.equal(report.bots.length, 6);
+  assert.equal(report.bots[5].name, "Head Chief Analyst");
 });
 
 test("SOT analyst never reads generic shots or off-target values", () => {
