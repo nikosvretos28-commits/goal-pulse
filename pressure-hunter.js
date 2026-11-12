@@ -12,7 +12,7 @@ function liveMinuteEligible(minute, status = "") {
   const m = Number(minute);
   if (!Number.isFinite(m) || m < 1 || m > 130) return false;
   const s = String(status).trim().toLowerCase();
-  return !/finished|full.?time|ended|completed|\\bft\\b|\\baet\\b|\\bht\\b|half.?time|halftime|interval|postponed|cancelled|abandoned|ολοκληρώθηκε|ανάπαυλα/.test(s);
+  return !/finished|full.?time|ended|completed|\bft\b|\baet\b|\bht\b|half.?time|halftime|interval|postponed|cancelled|abandoned|ολοκληρώθηκε|ανάπαυλα/.test(s);
 }
 
 function sum(values) {
