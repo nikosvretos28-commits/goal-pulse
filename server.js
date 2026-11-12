@@ -5129,7 +5129,12 @@ const server = http.createServer(async (req, res) => {
           // Use it for broader coverage; stats still must come from verified metrics providers.
           try {
             const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
-            const sportScoreResponses = await Promise.all(["live", "upcoming", "finished"].map(async status => {
+            const isRequestedDateToday = requestedIsoDate === new Date().toISOString().slice(0, 10);
+            // Historical scoreboard pages must never request the global live feed.
+            // Repeating that unscoped endpoint for every historical date rapidly
+            // exhausts SportScore's shared rate limit and starves live-stat requests.
+            const requestedStatuses = isRequestedDateToday ? ["live", "upcoming", "finished"] : ["finished"];
+            const sportScoreResponses = await Promise.all(requestedStatuses.map(async status => {
               const endpoint = "https://sportscore.com/api/v1/fixtures/?sport=football" +
                 (status === "live" ? "" : "&date=" + encodeURIComponent(requestedIsoDate)) + "&status=" + status + "&limit=200&src=goal-pulse";
               try {
@@ -5227,8 +5232,9 @@ const server = http.createServer(async (req, res) => {
 
           // Removed the redundant recent-match widget request: verified logs show it maps zero live fixtures and only adds up to 9 seconds of latency.
 
-          // Dedicated live-only endpoint: unlike the recent-match widget, this explicitly filters status=live.
-          try {
+          // Dedicated live-only endpoint is useful only for today's live scoreboard.
+          // Historical date pages must not spend another request on the live feed.
+          if (date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8) === new Date().toISOString().slice(0, 10)) try {
             const liveDate = date.length === 8 ? date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8) : new Date().toISOString().slice(0, 10);
             const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
               headers: { "Accept": "application/json" },
