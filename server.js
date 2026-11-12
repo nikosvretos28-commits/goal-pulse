@@ -737,7 +737,7 @@ const SPORT_SCORE_DETAIL_CACHE_MS = 60 * 1000;
 // Keep a rolling request budget and rotate fixture order so the same first
 // matches are not the only ones that ever receive fresh statistics.
 const SPORT_SCORE_DETAIL_RATE_WINDOW_MS = 60 * 1000;
-const SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW = 6;
+const SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW = 12;
 let sportScoreDetailRequestTimes = [];
 let sportScoreDetailRotationCursor = 0;
 function reserveSportScoreDetailRequest(now = Date.now()) {
