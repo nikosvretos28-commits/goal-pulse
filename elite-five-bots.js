@@ -29,7 +29,7 @@ function normalizeRecord(row, source = "AI/VIP") {
     Boolean(p.betSettlementProvider || p.settlementProvider) &&
     Boolean(p.betSettlementFixtureId || p.settlementFixtureId) &&
     ["first_half", "full_time"].includes(String(scoreScope || "")) &&
-    /^\\d+[-:]\\d+$/.test(String(finalScore || ""));
+    /^\d+[-:]\d+$/.test(String(finalScore || ""));
   const minuteValue = p.minuteNumber ?? p.minute;
   const minuteMatch = String(minuteValue ?? "").match(/[0-9]{1,3}/);
   const minute = minuteMatch ? Number(minuteMatch[0]) : null;
