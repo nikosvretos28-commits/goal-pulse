@@ -5308,7 +5308,23 @@ const server = http.createServer(async (req, res) => {
                     const away = teams.find(team => team.homeAway === "away") || teams[1] || {};
                     return normalizeLiveTeam(home.team?.displayName || home.team?.name) + "||" + normalizeLiveTeam(away.team?.displayName || away.team?.name) === pair;
                   });
-                  if (index >= 0) { feed.events[index] = event; replaced = true; replacedLive++; break; }
+                  if (index >= 0) {
+                    const existing = feed.events[index];
+                    // Keep the ESPN event identity when the SportScore live fixture
+                    // replaces its scoreboard row, so ESPN's independent boxscore
+                    // can still be queried for missing live statistics.
+                    if (existing?.id && !String(existing.id).startsWith("m_") &&
+                        !String(existing.id).startsWith("sportscore:") &&
+                        !String(existing.id).startsWith("sportscore-widget:") &&
+                        SCOREBOARD_LEAGUES.includes(String(feed.code || ""))) {
+                      event.espnEventId = String(existing.id);
+                      event.espnLeagueCode = String(feed.code);
+                    }
+                    feed.events[index] = event;
+                    replaced = true;
+                    replacedLive++;
+                    break;
+                  }
                 }
                 if (!replaced) liveEventsFromApi.push(event);
               }
@@ -5683,6 +5699,63 @@ const server = http.createServer(async (req, res) => {
                 { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
                 { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
+              // If this SportScore fixture replaced an ESPN scoreboard event, use
+              // the preserved ESPN identity to request its independent boxscore.
+              // Only fill genuinely missing fields; SOT remains the exact SOT field.
+              if (event.espnEventId && event.espnLeagueCode &&
+                  values.some(team => ["shotsOnTarget","shotsInBox","bigChances","corners","possession","xG"].some(key => team[key] == null))) {
+                try {
+                  espnSummaryDiagnostics.attempted++;
+                  let espnResponse = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
+                    encodeURIComponent(event.espnLeagueCode) + "/summary?event=" + encodeURIComponent(event.espnEventId), {
+                    headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
+                  });
+                  if ([403, 429].includes(espnResponse.status) || espnResponse.status >= 500) {
+                    espnResponse = await fetch("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" +
+                      encodeURIComponent(event.espnLeagueCode) + "/summary?event=" + encodeURIComponent(event.espnEventId), {
+                      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
+                    });
+                  }
+                  if (espnResponse.ok) {
+                    espnSummaryDiagnostics.httpOk++;
+                    const espnPayload = await espnResponse.json();
+                    const espnTeams = espnPayload?.boxscore?.teams || [];
+                    if (!espnTeams.length) espnSummaryDiagnostics.missingBoxscoreTeams++;
+                    const normalizeEspnMetric = value => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                    for (const espnTeam of espnTeams) {
+                      const target = values.find(team => team.homeAway === espnTeam.homeAway) ||
+                        values.find(team => normalizeEspnMetric(team.team) === normalizeEspnMetric(espnTeam.team?.displayName || espnTeam.team?.name));
+                      if (!target) continue;
+                      const stats = Array.isArray(espnTeam.statistics) ? espnTeam.statistics : [];
+                      const readEspnMetric = (...aliases) => {
+                        const found = stats.find(stat => aliases.some(alias =>
+                          [stat.name, stat.abbreviation].filter(Boolean).some(value => normalizeEspnMetric(value) === normalizeEspnMetric(alias))
+                        ));
+                        if (!found) return null;
+                        const parsed = Number.parseFloat(String(found.displayValue ?? found.value ?? "").replace("%", ""));
+                        return Number.isFinite(parsed) ? parsed : null;
+                      };
+                      const fallback = {
+                        shotsOnTarget: readEspnMetric("shotsontarget", "shotsongoal", "sog"),
+                        shotsInBox: readEspnMetric("shotsinbox", "shotsinsidebox", "shotsinpenaltyarea", "totalshotsinsidebox"),
+                        bigChances: readEspnMetric("bigchances", "bigchance", "bigchancescreated"),
+                        corners: readEspnMetric("woncorners", "cornerkicks", "corners"),
+                        possession: readEspnMetric("possessionpct", "possession"),
+                        xG: readEspnMetric("expectedgoals", "xg", "expectedgoalsfor")
+                      };
+                      for (const [key, value] of Object.entries(fallback)) {
+                        if (target[key] == null && value != null) target[key] = value;
+                      }
+                    }
+                  } else {
+                    const statusKey = String(espnResponse.status);
+                    espnSummaryDiagnostics.httpErrors[statusKey] = (espnSummaryDiagnostics.httpErrors[statusKey] || 0) + 1;
+                  }
+                } catch (espnError) {
+                  espnSummaryDiagnostics.timeoutErrors++;
+                  console.warn("[GoalMatrix linked ESPN fallback]", JSON.stringify({ eventId: event.espnEventId, error: espnError.message || "request failed" }));
+                }
+              }
                             const scoreboardCompetition = event.competitions?.[0] || {};
               const scoreboardCompetitors = Array.isArray(scoreboardCompetition.competitors) ? scoreboardCompetition.competitors : [];
               const scoreboardHome = scoreboardCompetitors.find(team => team?.homeAway === "home") || null;
