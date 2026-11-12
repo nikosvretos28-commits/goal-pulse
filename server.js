@@ -718,6 +718,19 @@ const sportScoreWidgetSlugCache = { at: 0, map: new Map() };
 const sportScoreMatchDetailCache = new Map();
 // SportScore's widget edge cache is ~60 seconds; reuse detail payloads for that window.
 const SPORT_SCORE_DETAIL_CACHE_MS = 60 * 1000;
+// SportScore rate-limits detail widgets across both live-metrics scopes.
+// Keep a rolling request budget and rotate fixture order so the same first
+// matches are not the only ones that ever receive fresh statistics.
+const SPORT_SCORE_DETAIL_RATE_WINDOW_MS = 60 * 1000;
+const SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW = 6;
+let sportScoreDetailRequestTimes = [];
+let sportScoreDetailRotationCursor = 0;
+function reserveSportScoreDetailRequest(now = Date.now()) {
+  sportScoreDetailRequestTimes = sportScoreDetailRequestTimes.filter(at => now - at < SPORT_SCORE_DETAIL_RATE_WINDOW_MS);
+  if (sportScoreDetailRequestTimes.length >= SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW) return false;
+  sportScoreDetailRequestTimes.push(now);
+  return true;
+}
 // A 429 pauses all detail requests briefly instead of retrying every match independently.
 const SPORT_SCORE_DETAIL_429_FALLBACK_MS = 60 * 1000;
 const SPORT_SCORE_DETAIL_429_MAX_MS = 2 * 60 * 1000;
@@ -744,6 +757,11 @@ async function fetchSportScoreMatchDetail(slug) {
     return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil };
   }
   if (sportScoreMatchDetailInflight.has(key)) return sportScoreMatchDetailInflight.get(key);
+  // Do not spend more requests than SportScore has allowed recently. This is
+  // a local budget (not a fake provider response); the next scan rotates onward.
+  if (!reserveSportScoreDetailRequest(now)) {
+    return { ok: false, status: 429, payload: null, cached: false, rateLimited: true };
+  }
   const request = (async () => {
     const url = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(key) + "&src=goal-pulse";
     let lastStatus = 0;
@@ -5493,7 +5511,12 @@ const server = http.createServer(async (req, res) => {
           console.warn("SportScore detail slug map refresh failed:", error.message || "unknown error");
         }
       }
-      const work = liveEvents.slice(0, 60);
+      const liveWork = liveEvents.slice(0, 60);
+      const rotationStart = liveWork.length ? sportScoreDetailRotationCursor % liveWork.length : 0;
+      const work = rotationStart
+        ? liveWork.slice(rotationStart).concat(liveWork.slice(0, rotationStart))
+        : liveWork;
+      if (work.length) sportScoreDetailRotationCursor = (rotationStart + SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW) % work.length;
       let cursor = 0;
       const matches = [];
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
