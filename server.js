@@ -14,6 +14,7 @@ const { evaluatePressureHunter } = require("./pressure-hunter");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
+const { buildFiveBotDailyReport } = require("./elite-five-bots");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -202,6 +203,91 @@ async function ensureHighActivityHistoryDb() {
 
 let protocolAnalystDbInit = null;
 let protocolAnalystRunInFlight = null;
+
+let eliteFiveBotDbInit = null;
+let eliteFiveBotRunInFlight = null;
+async function ensureEliteFiveBotDb() {
+  if (!analyticsPool) return false;
+  if (!eliteFiveBotDbInit) eliteFiveBotDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS elite_five_bot_daily_reports (
+      report_date DATE PRIMARY KEY,
+      generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      report JSONB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS elite_five_bot_daily_reports_generated_at_idx
+      ON elite_five_bot_daily_reports(generated_at DESC);
+  `).then(() => true).catch(error => {
+    eliteFiveBotDbInit = null;
+    console.error("Elite five-bot report database unavailable:", error.message);
+    return false;
+  });
+  return eliteFiveBotDbInit;
+}
+
+function athensDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const part = type => parts.find(item => item.type === type)?.value;
+  return part("year") + "-" + part("month") + "-" + part("day");
+}
+function previousAthensDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const part = type => Number(parts.find(item => item.type === type)?.value);
+  const utcMidnight = new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
+  utcMidnight.setUTCDate(utcMidnight.getUTCDate() - 1);
+  return utcMidnight.toISOString().slice(0, 10);
+}
+async function runEliteFiveBotDailyReport(date = previousAthensDateKey()) {
+  if (eliteFiveBotRunInFlight) return eliteFiveBotRunInFlight;
+  eliteFiveBotRunInFlight = (async () => {
+    if (!await ensureAlertHistoryDb() || !await ensureHighActivityHistoryDb() ||
+        !await ensureAnalyticsDb() || !await ensureEliteFiveBotDb()) {
+      throw new Error("One or more persistent GoalMatrix history databases are unavailable");
+    }
+    const [alertsResult, hiResult, snapshotsResult] = await Promise.all([
+      analyticsPool.query(
+        "SELECT alert_id, event_id, created_at, payload FROM alert_history WHERE (created_at AT TIME ZONE 'Europe/Athens')::date = $1::date ORDER BY created_at ASC LIMIT 20000",
+        [date]
+      ),
+      highActivityHistoryPool.query(
+        "SELECT observation_id, event_id, created_at, payload FROM high_activity_history WHERE (created_at AT TIME ZONE 'Europe/Athens')::date = $1::date ORDER BY created_at ASC LIMIT 20000",
+        [date]
+      ),
+      analyticsPool.query(
+        "SELECT event_id, match_date, team_name, observed_at, shots_on_target, corners, attacks, dangerous_attacks, minute FROM live_stat_snapshots WHERE (observed_at AT TIME ZONE 'Europe/Athens')::date = $1::date ORDER BY observed_at ASC LIMIT 50000",
+        [date]
+      )
+    ]);
+    const report = buildFiveBotDailyReport({
+      date,
+      alerts: alertsResult.rows,
+      hiActivity: hiResult.rows,
+      snapshots: snapshotsResult.rows,
+      generatedAt: new Date().toISOString()
+    });
+    report.sourceCoverage.highActivityHistoryPersistent = true;
+    report.sourceCoverage.alertHistoryPersistent = true;
+    report.sourceCoverage.snapshotsPersistent = true;
+    await analyticsPool.query(
+      "INSERT INTO elite_five_bot_daily_reports(report_date,generated_at,report) VALUES($1::date,$2,$3::jsonb) ON CONFLICT(report_date) DO UPDATE SET generated_at=EXCLUDED.generated_at,report=EXCLUDED.report",
+      [date, report.generatedAt, JSON.stringify(report)]
+    );
+    console.log("GoalMatrix five-bot daily report completed:", JSON.stringify({
+      date, alerts: report.summary.alerts, verifiedSettled: report.summary.verifiedSettled,
+      hiActivity: report.sourceCoverage.hiActivityRecordsLoaded,
+      snapshots: report.sourceCoverage.snapshotsLoaded,
+      bots: report.bots.map(bot => bot.name)
+    }));
+    return report;
+  })().catch(error => {
+    console.error("GoalMatrix five-bot daily report failed:", String(error.message || error));
+    return null;
+  }).finally(() => { eliteFiveBotRunInFlight = null; });
+  return eliteFiveBotRunInFlight;
+}
 
 async function ensureProtocolAnalystDb() {
   if (!analyticsPool) return false;
@@ -2243,6 +2329,31 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       console.error("MIE alert detail read failed:", error.message);
       return send(res, 503, { error: "Could not load verified alert details" });
+    }
+  }
+
+  if (url.pathname === "/api/elite-five-bots/daily" && ["GET", "POST"].includes(req.method)) {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    if (!await ensureEliteFiveBotDb()) return send(res, 503, { ok: false, error: "Five-bot report database unavailable" });
+    const requestedDate = String(url.searchParams.get("date") || previousAthensDateKey());
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(requestedDate)) return send(res, 400, { ok: false, error: "Date must be YYYY-MM-DD" });
+    if (req.method === "POST") {
+      const report = await runEliteFiveBotDailyReport(requestedDate);
+      if (!report) return send(res, 503, { ok: false, error: "Five-bot report could not be generated" });
+      return send(res, 200, { ok: true, report, refreshed: true });
+    }
+    try {
+      const result = await analyticsPool.query(
+        "SELECT report,generated_at FROM elite_five_bot_daily_reports WHERE report_date=$1::date",
+        [requestedDate]
+      );
+      if (!result.rowCount) return send(res, 404, { ok: false, error: "No daily five-bot report has been generated for this date", date: requestedDate });
+      return send(res, 200, { ok: true, report: result.rows[0].report, generatedAt: result.rows[0].generated_at });
+    } catch (error) {
+      console.error("Five-bot daily report read failed:", String(error.message || error));
+      return send(res, 503, { ok: false, error: "Could not read five-bot daily report" });
     }
   }
 
@@ -6138,6 +6249,23 @@ if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED !== "false") {
 }
 // Re-evaluate settled AI alert performance hourly; the report recommends tests but never mutates live rules.
 const protocolAnalystTimer = setInterval(() => { runProtocolAnalyst().catch(() => {}); }, 60 * 60 * 1000);
+let eliteFiveBotLastScheduledDate = "";
+const eliteFiveBotDailyTimer = setInterval(async () => {
+  const today = athensDateKey();
+  const local = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).format(new Date());
+  if (local < "00:05" || eliteFiveBotLastScheduledDate === today) return;
+  eliteFiveBotLastScheduledDate = today;
+  await runEliteFiveBotDailyReport(previousAthensDateKey());
+}, 60 * 1000);
+eliteFiveBotDailyTimer.unref();
+setTimeout(() => {
+  const local = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).format(new Date());
+  if (local >= "00:05") runEliteFiveBotDailyReport(previousAthensDateKey()).catch(() => {});
+}, 20000).unref?.();
 protocolAnalystTimer.unref();
 setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
 
