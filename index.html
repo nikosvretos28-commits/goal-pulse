@@ -4714,14 +4714,31 @@ async function reconcileHistoricalAlertSettlements(){
      alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
      alert.betSettlementRule='historical_period_final_score_vs_market_line';changed.add(alert);
     }
-   }else if(market==='πιθανό γκολ'&&!alert.manualOutcome&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
+   }else if((market==='πιθανό γκολ'||/^1ο ημίχρονο\\s*[·-]\\s*επόμενο γκολ$/i.test(market))&&!alert.manualOutcome&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
     const signalTotal=Number(alert.startScore??(Number(alert.scoreAtSignal?.home)+Number(alert.scoreAtSignal?.away)));
     if(!Number.isFinite(signalTotal))continue;
     const period=String(alert.periodAtSignal||'first_half');
-    if(period==='first_half'){if(halfTotal==null)continue;won=halfTotal>signalTotal;scoreScope='first_half';}
-    else won=total>signalTotal;
+    if(period==='first_half'){
+     if(halfTotal==null||!Number.isInteger(signalTotal))continue;
+     won=halfTotal>signalTotal;scoreScope='first_half';
+     alert.market='Over '+(signalTotal+0.5).toFixed(1);
+     alert.overLine=signalTotal+0.5;
+     alert.betFinalScore=String(h1)+'-'+String(a1);
+     alert.betHalfTimeScore=alert.betFinalScore;
+     alert.betScoreSource='period_1_linescore';
+    }else{
+     won=total>signalTotal;scoreScope='full_time';
+     alert.betFinalScore=String(hs)+'-'+String(as);
+     alert.betScoreSource='confirmed_full_time_score';
+    }
     alert.outcome=won?'Επιβεβαιώθηκε · σημειώθηκε επιπλέον γκολ πριν από τη λήξη του ημιχρόνου/αγώνα':'Δεν επιβεβαιώθηκε · δεν σημειώθηκε επιπλέον γκολ πριν από τη λήξη του ημιχρόνου/αγώνα';
-    alert.betOutcome=won?'won':'lost';alert.betSettlementLabel=won?'Κερδισμένο · επιτεύχθηκε επιπλέον γκολ':'Χαμένο · δεν επιτεύχθηκε επιπλέον γκολ';alert.betFinalScore=String(hs)+'-'+String(as);alert.betMatchFinalScore=alert.betFinalScore;alert.betScoreScope=scoreScope;alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
+    alert.betOutcome=won?'won':'lost';alert.betSettlementLabel=won?'Κερδισμένο · επιτεύχθηκε επιπλέον γκολ':'Χαμένο · δεν επιτεύχθηκε επιπλέον γκολ';
+    alert.betMatchFinalScore=String(hs)+'-'+String(as);alert.betScoreScope=scoreScope;
+    alert.betSettlementProvider=String(event.__goalMatrixSettlementProvider||'ESPN scoreboard');
+    alert.betSettlementFixtureId=String(event.__goalMatrixFixtureId||event.id);
+    alert.betSettlementFixtureDate=new Date(Number(alert.createdAt)).toISOString().slice(0,10);
+    alert.betSettlementLeague=competition?.name||alert.league||null;
+    alert.betSettledAt=Date.now();alert.betUpdatedAt=alert.betSettledAt;alert.betAutoSettledAt=alert.betSettledAt;
     alert.evaluationRule='historical_period_final_score';alert.evaluatedAt=Date.now();alert.recordUpdatedAt=alert.evaluatedAt;changed.add(alert);
    }
    if(graded&&(!alert.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(alert.outcome).trim().toLowerCase()))){
