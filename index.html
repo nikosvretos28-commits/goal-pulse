@@ -3373,7 +3373,7 @@ function setLiveMetricsCache(rows){
  for(const match of live){
   const id=String(match.id);
   if(next.has(id))continue;
-  const home=norm(match.home?.name),away=norm(match.away?.name);
+  const home=norm(match.home?.name||match.home?.displayName||match.home),away=norm(match.away?.name||match.away?.displayName||match.away);
   if(!home||!away)continue;
   const found=incoming.map(normalizeForHighActivity).find(row=>norm(row.home)===home&&norm(row.away)===away);
   if(found)next.set(id,hasUsableStats(found)?stamp(found):found);
