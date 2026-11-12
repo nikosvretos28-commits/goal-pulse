@@ -35,6 +35,7 @@ const SPORTAPI_API_KEY = process.env.SPORTAPI_API_KEY || "";
 // keeping the normal worst case below the daily quota while avoiding per-fixture calls.
 const APISPORTS_API_KEY = process.env.APISPORTS_API_KEY || "";
 const apiSportsFootballDateCache = new Map();
+const apiSportsFootballStatsCache = new Map();
 let apiSportsFootballLastBatchAt = 0;
 let apiSportsFootballBatchCursor = 0;
 const APISPORTS_FOOTBALL_DATE_CACHE_MS = 20 * 60 * 60 * 1000;
