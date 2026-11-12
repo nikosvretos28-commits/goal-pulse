@@ -5481,13 +5481,23 @@ const server = http.createServer(async (req, res) => {
               const pair = normalizeTeam(homeName) + "|" + normalizeTeam(awayName);
               const reversePair = normalizeTeam(awayName) + "|" + normalizeTeam(homeName);
               let slug = sportScoreWidgetSlugCache.map.get(pair) || sportScoreWidgetSlugCache.map.get(reversePair) || (/^\d+$/.test(suffix) || suffix.includes(":") ? "" : suffix);
-              if (!slug) {
+              const directLiveMatch = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair);
+              if (!slug && !(directLiveMatch && Array.isArray(directLiveMatch.stats) && directLiveMatch.stats.length)) {
                 sportScoreDetailDiagnostics.noSlug = (sportScoreDetailDiagnostics.noSlug || 0) + 1;
+                // Preserve the scoreboard fixture so the independent SportAPI
+                // matcher below can still retrieve genuine stats by team pair.
+                matches.push({
+                  eventId: String(event.id), home: homeName, away: awayName,
+                  statsSource: "scoreboard-only", minute: event.status?.displayClock || "", statsAvailable: false,
+                  teams: [
+                    { team: homeName, homeAway: "home", shotsOnTarget: null, shotsInBox: null, totalShots: null, shotsOffTarget: null, shotsOnTargetInsideBox: null, bigChances: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null },
+                    { team: awayName, homeAway: "away", shotsOnTarget: null, shotsInBox: null, totalShots: null, shotsOffTarget: null, shotsOnTargetInsideBox: null, bigChances: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null }
+                  ]
+                });
                 continue;
               }
-              if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
+              if (slug && sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
               let detail;
-              const directLiveMatch = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair);
               if (directLiveMatch && Array.isArray(directLiveMatch.stats) && directLiveMatch.stats.length) {
                 detail = directLiveMatch;
                 sportScoreDetailDiagnostics.ok++;
@@ -5510,6 +5520,16 @@ const server = http.createServer(async (req, res) => {
                   sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
                   if (detailResult.status === 404) sportScoreDetailDiagnostics.notFound++;
                   else sportScoreDetailDiagnostics.otherErrors++;
+                  // Preserve the live fixture on SportScore 404/429 so the
+                  // independent SportAPI matcher can still attempt real stats.
+                  matches.push({
+                    eventId: String(event.id), home: homeName, away: awayName,
+                    statsSource: "scoreboard-only", minute: event.status?.displayClock || "", statsAvailable: false,
+                    teams: [
+                      { team: homeName, homeAway: "home", shotsOnTarget: null, shotsInBox: null, totalShots: null, shotsOffTarget: null, shotsOnTargetInsideBox: null, bigChances: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null },
+                      { team: awayName, homeAway: "away", shotsOnTarget: null, shotsInBox: null, totalShots: null, shotsOffTarget: null, shotsOnTargetInsideBox: null, bigChances: null, corners: null, attacks: null, dangerousAttacks: null, possession: null, xG: null }
+                    ]
+                  });
                   continue;
                 }
                 detail = detailResult.payload;
