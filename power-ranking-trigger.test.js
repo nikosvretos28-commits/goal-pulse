@@ -40,14 +40,15 @@ test("missing or stale statistics contribute zero and never fabricate a score", 
   }), 0);
 });
 
-test("Power Ranking first-half window is 1–35 inclusive", () => {
+test("Power Ranking first-half window is 1–34 inclusive", () => {
   assert.equal(isPowerRankingMinuteEligible(1, "live"), true);
-  assert.equal(isPowerRankingMinuteEligible(35, "1st half"), true);
+  assert.equal(isPowerRankingMinuteEligible(34, "1st half"), true);
+  assert.equal(isPowerRankingMinuteEligible(35, "1st half"), false);
   assert.equal(isPowerRankingMinuteEligible(36, "1st half"), false);
   assert.equal(isPowerRankingMinuteEligible(45, "1st half"), false);
   assert.equal(isPowerRankingMinuteEligible(35, "2nd half"), false);
-  assert.equal(isPowerRankingMinuteEligible(35, "1ο ημίχρονο"), true);
-  assert.equal(isPowerRankingMinuteEligible(35, "first_half"), true);
+  assert.equal(isPowerRankingMinuteEligible(34, "1ο ημίχρονο"), true);
+  assert.equal(isPowerRankingMinuteEligible(34, "first_half"), true);
 });
 
 test("Power Ranking second-half window is 46–84 inclusive", () => {

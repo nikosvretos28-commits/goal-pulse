@@ -64,7 +64,7 @@ function isPowerRankingMinuteEligible(minute, status = "") {
     /1ο\s*ημίχρονο|πρώτο\s*ημίχρονο/.test(period);
   const explicitlySecondHalf = /\b(?:2h|2nd[\s_-]*half|second[\s_-]*half|second_half)\b/.test(period) ||
     /2ο\s*ημίχρονο|δεύτερο\s*ημίχρονο/.test(period);
-  if (minute >= 1 && minute <= 35) return !explicitlySecondHalf;
+  if (minute >= 1 && minute <= 34) return !explicitlySecondHalf;
   if (minute >= 46 && minute <= 84) return !explicitlyFirstHalf;
   return false;
 }
