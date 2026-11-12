@@ -5572,17 +5572,13 @@ const server = http.createServer(async (req, res) => {
               const pair = normalizeTeam(homeName) + "|" + normalizeTeam(awayName);
               const reversePair = normalizeTeam(awayName) + "|" + normalizeTeam(homeName);
               let slug = sportScoreWidgetSlugCache.map.get(pair) || sportScoreWidgetSlugCache.map.get(reversePair) || (/^\d+$/.test(suffix) || suffix.includes(":") ? "" : suffix);
-              if (!slug) {
-                sportScoreDetailDiagnostics.noSlug = (sportScoreDetailDiagnostics.noSlug || 0) + 1;
-                continue;
-              }
-              if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
               let detail;
               const directLiveMatch = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair);
               if (directLiveMatch && Array.isArray(directLiveMatch.stats) && directLiveMatch.stats.length) {
                 detail = directLiveMatch;
                 sportScoreDetailDiagnostics.ok++;
-              } else {
+              } else if (slug) {
+                if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
                 let detailResult = await fetchSportScoreMatchDetail(slug);
                 if (detailResult.status === 404 && slug.includes("-vs-")) {
                   const parts = slug.split("-vs-");
@@ -5601,10 +5597,23 @@ const server = http.createServer(async (req, res) => {
                   sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
                   if (detailResult.status === 404) sportScoreDetailDiagnostics.notFound++;
                   else sportScoreDetailDiagnostics.otherErrors++;
-                  continue;
+                } else {
+                  detail = detailResult.payload;
+                  sportScoreDetailDiagnostics.ok++;
                 }
-                detail = detailResult.payload;
-                sportScoreDetailDiagnostics.ok++;
+              } else {
+                sportScoreDetailDiagnostics.noSlug = (sportScoreDetailDiagnostics.noSlug || 0) + 1;
+              }
+              // Never drop a live fixture because a statistics provider is throttling
+              // or cannot resolve its detail slug. Keep both teams in the API response
+              // with explicitly unavailable metrics so independent fallbacks can still
+              // match the fixture and supply real values; nulls are never treated as 0.
+              if (!detail) {
+                detail = {
+                  home: { name: homeName },
+                  away: { name: awayName },
+                  stats: []
+                };
               }
               const root = detail.match || detail.data || detail.fixture || detail;
               if (sportScoreDetailDiagnostics.minuteSamples.length < 8) sportScoreDetailDiagnostics.minuteSamples.push({ home: root.home || homeName, away: root.away || awayName, live_minute: root.live_minute ?? null, minute: root.minute ?? null, elapsed: root.elapsed ?? null, status_text: root.status_text ?? null, time: root.time ?? null, trackerKeys: root.tracker && typeof root.tracker === "object" ? Object.keys(root.tracker).slice(0, 10) : [], statsCount: Array.isArray(root.stats) ? root.stats.length : null, statsSample: Array.isArray(root.stats) ? root.stats.length : null });
