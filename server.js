@@ -2255,7 +2255,8 @@ const server = http.createServer(async (req, res) => {
           ? p.minuteNumber : String(p.minute || "").match(/[0-9]{1,3}/)?.[0];
         const parsedMinute = Number(minuteCandidate);
         const minute = Number.isFinite(parsedMinute) ? parsedMinute : Number(String(minuteCandidate ?? "").match(/[0-9]{1,3}/)?.[0]);
-        const odds = p.odds !== null && p.odds !== undefined && p.odds !== "" ? Number(p.odds) : null;
+        const rawOdds = p.odds ?? p.oddsAtSignal ?? null;
+        const odds = rawOdds !== "" && rawOdds !== undefined && rawOdds !== null ? Number(rawOdds) : null;
         const stats = p.statsAtSignal || {};
         const scoreParts = String(p.betFinalScore || "").split("-").map(Number);
         const verifiedScore = scoreParts.length === 2 && String(p.betFinalScore || "").split("-").every(part => part.length > 0 && [...part].every(char => char >= "0" && char <= "9")) && scoreParts.every(value => Number.isInteger(value) && value >= 0);
