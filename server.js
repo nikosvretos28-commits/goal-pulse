@@ -896,8 +896,9 @@ const poolConnectionString = getPoolConnectionString(resolvedDatabaseUrl);
 // Aiven PostgreSQL uses a project-specific CA. Set AIVEN_CA_CERT in the
 // hosting environment to enable full server-certificate verification.
 // Railway supports multiline values; escaped \\n sequences are normalized too.
-const aivenCaCertificate = String(process.env.AIVEN_CA_CERT || "").replace(/\\n/g, "\\n").trim();
-const isLocalDatabase = /localhost|127\\.0\\.0\\.1/.test(poolConnectionString);
+const aivenCaCertificate = String(process.env.AIVEN_CA_CERT || "").replace(/\\n/g, "\n").trim();
+const poolHost = (() => { try { return new URL(poolConnectionString).hostname; } catch { return ""; } })();
+const isLocalDatabase = ["localhost", "127.0.0.1", "::1"].includes(poolHost);
 const poolSsl = isLocalDatabase
   ? false
   : aivenCaCertificate
