@@ -3757,17 +3757,33 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  };
  const trail=signalTrails.get(String(m.id))||[],now=Date.now();
  const delta=(minutes,key)=>{
-  const base=[...trail].reverse().find(item=>now-item.at>=minutes*60000);
+  // Only accept a local baseline close to the requested window. An older
+  // snapshot must never be mislabeled as a 5m/10m delta.
+  const minAge=minutes===5?4.5:9.5;
+  const maxAge=minutes===5?8:13;
+  const base=[...trail].reverse().find(item=>{
+   const age=(now-Number(item.at))/60000;
+   return Number.isFinite(age)&&age>=minAge&&age<=maxAge;
+  });
   if(base){
    const values=base.values||[],a=teams[0]?.[key],b=teams[1]?.[key],x=values[0]?.[key],y=values[1]?.[key];
-   if(a!=null&&b!=null&&x!=null&&y!=null)return Math.max(0,Number(a)-Number(x))+'–'+Math.max(0,Number(b)-Number(y));
+   if(a!=null&&b!=null&&x!=null&&y!=null&&[a,b,x,y].every(value=>Number.isFinite(Number(value)))){
+    return Math.max(0,Number(a)-Number(x))+'–'+Math.max(0,Number(b)-Number(y));
+   }
   }
+  // Prefer the server's persisted rolling SOT baseline when the browser has
+  // not been open long enough to collect a valid local window.
   const trend=minutes===10?stats?.trend?.window10m:stats?.trend?.window5m;
   if(trend?.available&&Array.isArray(trend.teams)&&trend.teams.length>=2){
-   const find=(team)=>trend.teams.find(t=>String(t.team||'').trim().toLowerCase()===String(team.team||'').trim().toLowerCase());
+   const normalize=name=>String(name||'').trim().toLowerCase();
+   const find=team=>trend.teams.find(t=>normalize(t.team)===normalize(team.team));
    const a=find(teams[0]),b=find(teams[1]);
    const x=a?.[key],y=b?.[key];
-   if(x!=null&&y!=null)return Math.max(0,Number(x))+'–'+Math.max(0,Number(y))+(trend.sampleMinutes&&Math.abs(trend.sampleMinutes-minutes)>1?'*':'');
+   if(x!=null&&y!=null&&Number.isFinite(Number(x))&&Number.isFinite(Number(y))){
+    const sampleAge=Number(trend.sampleMinutes);
+    const marker=Number.isFinite(sampleAge)&&Math.abs(sampleAge-minutes)>1?'*':'';
+    return Math.max(0,Number(x))+'–'+Math.max(0,Number(y))+marker;
+   }
   }
   return '—';
  };
