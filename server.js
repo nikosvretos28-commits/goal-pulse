@@ -768,14 +768,15 @@ async function fetchSportScoreMatchDetail(slug) {
   const now = Date.now();
   const cached = sportScoreMatchDetailCache.get(key);
   if (cached && now - cached.at < SPORT_SCORE_DETAIL_CACHE_MS) return { ok: true, status: 200, payload: cached.payload, cached: true };
+  const staleCache = cached ? { stalePayload: cached.payload, staleAt: cached.at } : {};
   if (now < sportScoreDetailCooldownUntil) {
-    return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil };
+    return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil, ...staleCache };
   }
   if (sportScoreMatchDetailInflight.has(key)) return sportScoreMatchDetailInflight.get(key);
   // Do not spend more requests than SportScore has allowed recently. This is
   // a local budget (not a fake provider response); the next scan rotates onward.
   if (!reserveSportScoreDetailRequest(now)) {
-    return { ok: false, status: 429, payload: null, cached: false, rateLimited: true };
+    return { ok: false, status: 429, payload: null, cached: false, rateLimited: true, ...staleCache };
   }
   const request = (async () => {
     const url = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(key) + "&src=goal-pulse";
@@ -788,7 +789,7 @@ async function fetchSportScoreMatchDetail(slug) {
           signal: AbortSignal.timeout(10000)
         }));
       } catch (error) {
-        if (attempt === 2) throw error;
+        if (attempt === 2) return { ok: false, status: 0, payload: null, cached: false, networkError: true, ...staleCache };
         await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
         continue;
       }
@@ -808,15 +809,15 @@ async function fetchSportScoreMatchDetail(slug) {
           ? Math.min(SPORT_SCORE_DETAIL_429_MAX_MS, retryAfter * 1000)
           : SPORT_SCORE_DETAIL_429_FALLBACK_MS;
         sportScoreDetailCooldownUntil = Math.max(sportScoreDetailCooldownUntil, Date.now() + cooldownMs);
-        return { ok: false, status: 429, payload: null, cached: false, cooldown: true, provider429: true, retryAt: sportScoreDetailCooldownUntil };
+        return { ok: false, status: 429, payload: null, cached: false, cooldown: true, provider429: true, retryAt: sportScoreDetailCooldownUntil, ...staleCache };
       }
       if (![500, 502, 503, 504].includes(response.status) || attempt === 2) {
-        return { ok: false, status: response.status, payload: null, cached: false };
+        return { ok: false, status: response.status, payload: null, cached: false, ...staleCache };
       }
       const retryDelay = Math.min(4000, 700 * (2 ** attempt));
       await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
-    return { ok: false, status: lastStatus, payload: null, cached: false };
+    return { ok: false, status: lastStatus, payload: null, cached: false, ...staleCache };
   })();
   sportScoreMatchDetailInflight.set(key, request);
   try { return await request; }
@@ -5646,6 +5647,8 @@ const server = http.createServer(async (req, res) => {
               const reversePair = normalizeTeam(awayName) + "|" + normalizeTeam(homeName);
               let slug = sportScoreWidgetSlugCache.map.get(pair) || sportScoreWidgetSlugCache.map.get(reversePair) || (/^\d+$/.test(suffix) || suffix.includes(":") ? "" : suffix);
               let detail;
+              let staleDetailForDisplay = null;
+              let staleDetailObservedAt = null;
               const directLiveMatch = sportScoreLiveStatsByPair.get(pair) || sportScoreLiveStatsByPair.get(reversePair);
               if (directLiveMatch && Array.isArray(directLiveMatch.stats) && directLiveMatch.stats.length) {
                 detail = directLiveMatch;
@@ -5660,6 +5663,7 @@ const server = http.createServer(async (req, res) => {
                     const reverseResult = await fetchSportScoreMatchDetail(reverseSlug);
                     if (reverseResult.ok) { slug = reverseSlug; detailResult = reverseResult; }
                     else {
+                      if (reverseResult.stalePayload) { staleDetailForDisplay = reverseResult.stalePayload; staleDetailObservedAt = reverseResult.staleAt || null; }
                       const statusKey = String(reverseResult.status);
                       sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
                       if (reverseResult.rateLimited) sportScoreDetailDiagnostics.localBudgetLimited++;
@@ -5669,6 +5673,7 @@ const server = http.createServer(async (req, res) => {
                   }
                 }
                 if (!detailResult.ok) {
+                  if (detailResult.stalePayload) { staleDetailForDisplay = detailResult.stalePayload; staleDetailObservedAt = detailResult.staleAt || null; }
                   const statusKey = String(detailResult.status);
                   sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
                   if (detailResult.rateLimited) sportScoreDetailDiagnostics.localBudgetLimited++;
@@ -5788,6 +5793,34 @@ const server = http.createServer(async (req, res) => {
                 { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
                 { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
+              // Last-known SOT is carried in a display-only field. It is deliberately
+              // not copied into shotsOnTarget, which remains the sole scanner input.
+              if (staleDetailForDisplay && staleDetailObservedAt) {
+                const staleRoot = staleDetailForDisplay.match || staleDetailForDisplay.data || staleDetailForDisplay.fixture || staleDetailForDisplay;
+                const staleRows = [];
+                const staleVisited = new Set();
+                const walkStaleSot = (node, depth = 0) => {
+                  if (!node || typeof node !== "object" || depth > 8 || staleVisited.has(node)) return;
+                  staleVisited.add(node);
+                  if (Array.isArray(node)) { for (const item of node) walkStaleSot(item, depth + 1); return; }
+                  const label = String(node.name || node.key || node.title || node.label || node.stat || node.type || node.stat_name || node.statName || node.short_name || node.shortName || node.abbreviation || node.abbr || node.display_name || node.displayName || node.description || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                  const home = node.home ?? node.home_value ?? node.homeValue ?? node.home_team ?? node.homeTeam ?? node.value_home ?? node.home_score;
+                  const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
+                  if (/^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target)$/.test(label) && home != null && away != null && typeof home !== "object" && typeof away !== "object") staleRows.push({ label, home, away });
+                  for (const [key, value] of Object.entries(node)) if (!["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) walkStaleSot(value, depth + 1);
+                };
+                walkStaleSot(staleRoot);
+                const staleRead = side => {
+                  for (const alias of ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"]) {
+                    const found = staleRows.find(row => row.label === alias);
+                    if (found) { const n = Number.parseFloat(String(found[side]).replace(",", ".")); if (Number.isFinite(n)) return n; }
+                  }
+                  return null;
+                };
+                const staleHome = staleRead("home"), staleAway = staleRead("away");
+                if (values[0].shotsOnTarget == null && staleHome != null) values[0].displayShotsOnTarget = staleHome;
+                if (values[1].shotsOnTarget == null && staleAway != null) values[1].displayShotsOnTarget = staleAway;
+              }
               // If this SportScore fixture replaced an ESPN scoreboard event, use
               // the preserved ESPN identity to independently cross-check cumulative SOT.
               // For other metrics, ESPN remains a fill-only fallback; SOT uses the
@@ -5877,6 +5910,7 @@ const server = http.createServer(async (req, res) => {
                 awayHtScore: scoreValue(event.away_ht_score ?? scoreboardAway?.linescores?.[0]?.value ?? scoreboardAway?.linescores?.[0]?.displayValue),
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsInBox","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values,
+                displaySotObservedAt: values.some(value => value.displayShotsOnTarget != null) ? staleDetailObservedAt : null,
                 redCardIncidents
               });
               continue;

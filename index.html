@@ -3408,6 +3408,17 @@ function setLiveMetricsCache(rows){
     else if(old._goalMatrixTrendReceivedAt)mergedRow._goalMatrixTrendReceivedAt=old._goalMatrixTrendReceivedAt;
     next.set(id,stamp(mergedRow));
    }else next.set(id,stamp({...row,_hiActivitySotAvailable:freshSot}));
+  }else if(old&&Array.isArray(row.teams)&&row.teams.some(team=>team?.displayShotsOnTarget!=null)){
+   // Merge stale SOT only into a UI-only field. Keep every scanner-facing
+   // metric from the existing cache row unchanged.
+   const oldTeams=Array.isArray(old.teams)?old.teams:[];
+   const teams=row.teams.map((team,index)=>{
+    const previous=oldTeams[index]||{};
+    return team?.displayShotsOnTarget!=null
+     ? {...previous,displayShotsOnTarget:team.displayShotsOnTarget}
+     : previous;
+   });
+   next.set(id,{...old,teams,displaySotObservedAt:row.displaySotObservedAt||old.displaySotObservedAt});
   }else if(!old)next.set(id,row);
  }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
@@ -3759,7 +3770,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  const away=teams.find(team=>team?.homeAway==='away')||teams.find(team=>normalizeStatTeamName(team?.team)===normalizeStatTeamName(m.away?.name))||teams.find(team=>team!==home)||{};
  const metric=(team,key,eventTeam=null)=>{
   const aliases={
-   shotsOnTarget:['shotsOnTarget','shots_on_target','shots_on_goal','shotsOnGoal','onTargetShots'],
+   shotsOnTarget:['shotsOnTarget','displayShotsOnTarget','shots_on_target','shots_on_goal','shotsOnGoal','onTargetShots'],
    totalShots:['totalShots','total_shots','shots_total','shots','shot_attempts','totalShotsFor'],
    shotsOffTarget:['shotsOffTarget','shots_off_target','off_target_shots','shots_off_goal','shotsOffGoal'],
    dangerousAttacks:['dangerousAttacks','dangerous_attacks','dangerous_attacks_for','dangerous_attacks_created'],
@@ -3831,7 +3842,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  };
  const fmtPair=(key)=>pair(key);
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
- const statsHtml='<div class="live-inline-stats">'+statCell('SOT 5′',delta(5,'shotsOnTarget'),'interval')+statCell('SOT 10′',delta(10,'shotsOnTarget'),'interval')+statCell('ΣΟΥΤ ΕΝΤΟΣ ΕΣΤΙΑΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΣΟΥΤ ΕΚΤΟΣ ΕΣΤΙΑΣ',fmtPair('shotsOffTarget'),'shot')+statCell('ΣΥΝΟΛΙΚΑ ΣΟΥΤ',fmtPair('totalShots'),'shot')+statCell('ΕΠΙΚΙΝΔΥΝΕΣ ΕΠΙΘΕΣΕΙΣ',fmtPair('dangerousAttacks'),'corner')+statCell('SHOTS IN THE BOX',fmtPair('shotsInBox'),'shot')+statCell('BIG CHANCES',fmtPair('bigChances'),'corner')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
+ const statsHtml='<div class="live-inline-stats">'+statCell('SOT 5′',delta(5,'shotsOnTarget'),'interval')+statCell('SOT 10′',delta(10,'shotsOnTarget'),'interval')+statCell(stats?.displaySotObservedAt?'SOT ΣΥΝΟΛΟ · ΤΕΛΕΥΤΑΙΑ ΜΕΤΡΗΣΗ':'ΣΟΥΤ ΕΝΤΟΣ ΕΣΤΙΑΣ',fmtPair('shotsOnTarget'),'shot')+statCell('ΣΟΥΤ ΕΚΤΟΣ ΕΣΤΙΑΣ',fmtPair('shotsOffTarget'),'shot')+statCell('ΣΥΝΟΛΙΚΑ ΣΟΥΤ',fmtPair('totalShots'),'shot')+statCell('ΕΠΙΚΙΝΔΥΝΕΣ ΕΠΙΘΕΣΕΙΣ',fmtPair('dangerousAttacks'),'corner')+statCell('SHOTS IN THE BOX',fmtPair('shotsInBox'),'shot')+statCell('BIG CHANCES',fmtPair('bigChances'),'corner')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
  const rawClock=String(m.clock||'').trim();
  const clockCandidates=[stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute,rawClock];
  const numericClock=clockCandidates.map(v=>String(v??'').trim()).find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));
