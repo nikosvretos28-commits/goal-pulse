@@ -3408,6 +3408,17 @@ function setLiveMetricsCache(rows){
     else if(old._goalMatrixTrendReceivedAt)mergedRow._goalMatrixTrendReceivedAt=old._goalMatrixTrendReceivedAt;
     next.set(id,stamp(mergedRow));
    }else next.set(id,stamp({...row,_hiActivitySotAvailable:freshSot}));
+  }else if(old&&Array.isArray(row.teams)&&row.teams.some(team=>team?.displayShotsOnTarget!=null)){
+   // Merge stale SOT only into a UI-only field. Keep every scanner-facing
+   // metric from the existing cache row unchanged.
+   const oldTeams=Array.isArray(old.teams)?old.teams:[];
+   const teams=row.teams.map((team,index)=>{
+    const previous=oldTeams[index]||{};
+    return team?.displayShotsOnTarget!=null
+     ? {...previous,displayShotsOnTarget:team.displayShotsOnTarget}
+     : previous;
+   });
+   next.set(id,{...old,teams,displaySotObservedAt:row.displaySotObservedAt||old.displaySotObservedAt});
   }else if(!old)next.set(id,row);
  }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
