@@ -17,6 +17,7 @@ const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
 const { addRollingTrends } = require("./rolling-trend-history");
+const { normalizeTeamName: normalizeStatArenaTeam, normalizeStatArenaMatch } = require("./statarena-live-stats");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -34,6 +35,10 @@ const SPORTAPI_API_KEY = process.env.SPORTAPI_API_KEY || "";
 // up to two batched fixture-stat requests (20 fixture IDs each) run every 35 minutes,
 // keeping the normal worst case below the daily quota while avoiding per-fixture calls.
 const APISPORTS_API_KEY = process.env.APISPORTS_API_KEY || "";
+// StatArena free-tier live match statistics (8 selected competitions; request-cached).
+const STATARENA_API_KEY = process.env.ARENA_API_KEY || process.env.STATARENA_API_KEY || "";
+const statArenaLiveCache = { at: 0, rows: [] };
+const STATARENA_LIVE_CACHE_MS = 45 * 1000;
 const apiSportsFootballDateCache = new Map();
 const apiSportsFootballStatsCache = new Map();
 let apiSportsFootballLastBatchAt = 0;
@@ -6638,6 +6643,93 @@ const server = http.createServer(async (req, res) => {
         }
       } else if (!APISPORTS_API_KEY) {
         console.log("[API-Sports Football] disabled: APISPORTS_API_KEY is not configured");
+      }
+      // StatArena is an independent live-statistics fallback. The live route
+      // supports the statistics add-on on the Free plan; cache it to stay within
+      // the provider's 100 requests/hour allowance. It only fills missing fields.
+      if (STATARENA_API_KEY && matches.length) {
+        const now = Date.now();
+        if (!statArenaLiveCache.at || now - statArenaLiveCache.at >= STATARENA_LIVE_CACHE_MS) {
+          try {
+            const response = await fetch("https://live.statarena-api.com/v1/matches/live?inPlay=true&addons=statistics,teams,scores,league,state", {
+              headers: { "Accept": "application/json", "X-API-Key": STATARENA_API_KEY },
+              signal: AbortSignal.timeout(12000)
+            });
+            const payload = await response.json().catch(() => ({}));
+            const rows = Array.isArray(payload?.data) ? payload.data : [];
+            if (response.ok) {
+              statArenaLiveCache.at = now;
+              statArenaLiveCache.rows = rows;
+              console.log("[StatArena] live feed:", JSON.stringify({
+                status: response.status, fixtures: rows.length,
+                fixturesWithStatistics: rows.filter(row => Array.isArray(row.statistics) && row.statistics.length).length,
+                requestId: payload?.meta?.request_id || null
+              }));
+            } else {
+              console.warn("[StatArena] live feed unavailable:", JSON.stringify({
+                status: response.status, code: payload?.error?.code || null,
+                message: payload?.error?.message || null
+              }));
+              statArenaLiveCache.at = now;
+              statArenaLiveCache.rows = [];
+            }
+          } catch (error) {
+            console.warn("[StatArena] live feed failed:", error.message || "request failed");
+            statArenaLiveCache.at = now;
+            statArenaLiveCache.rows = [];
+          }
+        }
+        const byPair = new Map();
+        for (const row of statArenaLiveCache.rows) {
+          const normalized = normalizeStatArenaMatch(row);
+          if (!normalized) continue;
+          const home = normalizeStatArenaTeam(normalized.homeName);
+          const away = normalizeStatArenaTeam(normalized.awayName);
+          if (home && away) {
+            byPair.set(home + "|" + away, normalized);
+            byPair.set(away + "|" + home, normalized);
+          }
+        }
+        let matched = 0, suppliedMatches = 0, suppliedSotPairs = 0;
+        for (const match of matches) {
+          const home = normalizeStatArenaTeam(match.home);
+          const away = normalizeStatArenaTeam(match.away);
+          const source = byPair.get(home + "|" + away);
+          if (!source) continue;
+          matched++;
+          const sides = [
+            match.teams?.find(team => team.homeAway === "home") || match.teams?.[0],
+            match.teams?.find(team => team.homeAway === "away") || match.teams?.[1]
+          ];
+          const statsSides = source.homeName && normalizeStatArenaTeam(source.homeName) === home
+            ? [source.values.home, source.values.away]
+            : [source.values.away, source.values.home];
+          let supplied = false;
+          for (let index = 0; index < 2; index++) {
+            const target = sides[index], stats = statsSides[index] || {};
+            if (!target) continue;
+            for (const [key, value] of Object.entries(stats)) {
+              if (target[key] == null && Number.isFinite(Number(value))) {
+                target[key] = Number(value);
+                supplied = true;
+                if (key === "shotsOnTarget") suppliedSotPairs++;
+              }
+            }
+          }
+          if (supplied) {
+            const currentSource = String(match.statsSource || "unknown");
+            if (!currentSource.includes("StatArena")) match.statsSource = currentSource + "+StatArena";
+            match.statsAvailable = true;
+            suppliedMatches++;
+          }
+        }
+        console.log("[StatArena] live statistics matching:", JSON.stringify({
+          providerFixtures: statArenaLiveCache.rows.length,
+          providerFixturesWithStatistics: statArenaLiveCache.rows.filter(row => Array.isArray(row.statistics) && row.statistics.length).length,
+          liveMatches: matches.length, matched, suppliedMatches, suppliedSotPairs
+        }));
+      } else if (!STATARENA_API_KEY) {
+        console.log("[StatArena] disabled: ARENA_API_KEY is not configured");
       }
       console.log("[GoalMatrix ESPN summary audit]", JSON.stringify(espnSummaryDiagnostics));
       const isSportScoreEvent = value => String(value || "").startsWith("sportscore:") || String(value || "").startsWith("sportscore-widget:");
