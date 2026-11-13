@@ -25,13 +25,9 @@ function isFirstHalfSotMinute(minute, status = "") {
 }
 
 function isCumulativeSotMinute(minute, status = "") {
-  if (!Number.isInteger(minute) || minute < 1 || minute > 65) return false;
-  const period = String(status || "").trim().toLowerCase();
-  // The cumulative 20+ combined-SOT trigger spans the full live match clock
-  // from minute 1 through 65, independently of the general second-half window.
-  if (/\b(?:finished|full\s*time|ended|complete|completed|ft|aet|ht|half[\s-]*time|halftime)\b/.test(period) ||
-      /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|ανάπαυλα/.test(period)) return false;
-  return true;
+  // The cumulative 20+ combined-SOT trigger follows the same approved AI
+  // windows as every other protocol: 1′–34′ and 46′–84′. Hunter is separate.
+  return isFirstHalfSotMinute(minute, status) || isAiMinuteEligible(minute, status);
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.
