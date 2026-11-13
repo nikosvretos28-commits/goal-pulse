@@ -4366,7 +4366,7 @@ const server = http.createServer(async (req, res) => {
           ["recent_sot_pressure", recentSotQualifies && (eligibleMinute || firstHalfSotWindow)],
           ["cumulative_20_sot", cumulativeSotQualifies],
           ["first_half_8_sot", firstHalfEightSotQualifies],
-          ["man_advantage_pressure", eligibleMinute && manAdvantagePressure]
+          ["man_advantage_pressure", (eligibleMinute || firstHalfSotWindow) && manAdvantagePressure]
         ];
         // Keep one fixture-wide provider-integrity guard in addition to per-trigger
         // confirmations. A provider correction must quarantine every SOT trigger,

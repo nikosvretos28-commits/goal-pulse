@@ -19,19 +19,20 @@ function buildIndependentAiTriggers({
 } = {}) {
   const confirmed = new Set(confirmedSotTriggerIds);
   const triggers = [];
+  const inApprovedAiWindow = Boolean(eligibleMinute || firstHalfSotWindow);
   if ((eligibleMinute || firstHalfSotWindow) && recentSotQualifies && confirmed.has("recent_sot_pressure")) {
     triggers.push({ id: "recent_sot_pressure" });
   }
-  if (eligibleMinute && cumulativeSotQualifies && confirmed.has("cumulative_20_sot")) {
+  if (inApprovedAiWindow && cumulativeSotQualifies && confirmed.has("cumulative_20_sot")) {
     triggers.push({ id: "cumulative_20_sot" });
   }
   if (firstHalfSotWindow && firstHalfEightSotQualifies && confirmed.has("first_half_8_sot")) {
     triggers.push({ id: "first_half_8_sot" });
   }
-  if (eligibleMinute && manAdvantagePressure && confirmed.has("man_advantage_pressure")) {
+  if (inApprovedAiWindow && manAdvantagePressure && confirmed.has("man_advantage_pressure")) {
     triggers.push({ id: "man_advantage_pressure" });
   }
-  if (eligibleMinute && xGQualifies) {
+  if (inApprovedAiWindow && xGQualifies) {
     triggers.push({ id: "xg_threshold" });
   }
   return triggers;
