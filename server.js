@@ -893,7 +893,19 @@ function getPoolConnectionString(raw) {
   }
 }
 const poolConnectionString = getPoolConnectionString(resolvedDatabaseUrl);
-const poolSsl = poolConnectionString.includes("localhost") ? false : { rejectUnauthorized: false };
+// Aiven PostgreSQL uses a project-specific CA. Set AIVEN_CA_CERT in the
+// hosting environment to enable full server-certificate verification.
+// Railway supports multiline values; escaped \\n sequences are normalized too.
+const aivenCaCertificate = String(process.env.AIVEN_CA_CERT || "").replace(/\\n/g, "\\n").trim();
+const isLocalDatabase = /localhost|127\\.0\\.0\\.1/.test(poolConnectionString);
+const poolSsl = isLocalDatabase
+  ? false
+  : aivenCaCertificate
+    ? { rejectUnauthorized: true, ca: aivenCaCertificate }
+    : { rejectUnauthorized: false };
+if (poolConnectionString && !isLocalDatabase && !aivenCaCertificate) {
+  console.warn("Aiven PostgreSQL TLS: encrypted connection active, but certificate verification is not enabled; configure AIVEN_CA_CERT to verify the Aiven CA.");
+}
 const analyticsPool = poolConnectionString && Pool ? new Pool({
   connectionString: poolConnectionString,
   ssl: poolSsl,
@@ -6631,7 +6643,7 @@ const databaseUrlShape = {
   hasBaseHost: /(?:@|:\/\/)base(?=[:/?#]|$)/i.test(rawDatabaseUrl),
   prefix: (rawDatabaseUrl.match(/^[a-z][a-z0-9+.-]*:\/\//i) || [rawDatabaseUrl.slice(0, Math.min(8, rawDatabaseUrl.length))])[0]
 };
-console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED !== "false"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool), databaseHost: analyticsDatabaseHost, databaseUrlShape, databaseCredentialEnvKeys: Object.keys(process.env).filter(key => /^(DATABASE|POSTGRES|PGHOST|PGUSER|PGDATABASE|PGPASSWORD)/i.test(key)) }));
+console.log("Push scanner configuration:", JSON.stringify({ enabled: Boolean(PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED !== "false"), pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), databaseConfigured: Boolean(analyticsPool), databaseTlsVerification: isLocalDatabase ? "not_applicable_local" : aivenCaCertificate ? "aiven_ca_verified" : "encrypted_unverified_fallback", databaseHost: analyticsDatabaseHost, databaseUrlShape, databaseCredentialEnvKeys: Object.keys(process.env).filter(key => /^(DATABASE|POSTGRES|PGHOST|PGUSER|PGDATABASE|PGPASSWORD)/i.test(key)) }));
 if (PUSH_SCAN_TOKEN && process.env.PUSH_SCAN_INTERVAL_ENABLED !== "false") {
   console.log("Background push scanner scheduled every 60 seconds.");
   // Run once shortly after startup so the live pipeline is tested immediately after every deploy.
