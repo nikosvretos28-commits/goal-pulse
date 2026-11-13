@@ -3353,21 +3353,34 @@ function setLiveMetricsCache(rows){
   const row=old?.trend&&!normalizedRow.trend?{...normalizedRow,trend:old.trend}:normalizedRow;
   if(hasUsableStats(row)){
    const freshSot=row._hiActivitySotAvailable===true;
-   const oldHasSot=old?normalizeForHighActivity(old)?._hiActivitySotAvailable===true:false;
-   if(old&&freshSot){
-    // Prefer the newest valid SOT sample even when the provider omits unrelated stats.
-    // Keep older non-null supplemental fields, but never let them block fresh SOT.
-    const oldTeams=Array.isArray(old.teams)?old.teams:[];
+   const oldNormalized=old?normalizeForHighActivity(old):null;
+   const oldHasSot=oldNormalized?._hiActivitySotAvailable===true;
+   if(old){
+    // Merge provider responses without allowing a partial response to erase valid SOT.
+    // The default and isolated Hi Activity endpoints run concurrently and may omit
+    // different fields on adjacent refreshes.
+    const oldTeams=Array.isArray(oldNormalized?.teams)?oldNormalized.teams:[];
     const newTeams=Array.isArray(row.teams)?row.teams:[];
     const teams=newTeams.map((team,index)=>{
      const previous=oldTeams[index]||{};
      const merged={...previous,...team};
+     const incomingSot=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;
+     const previousSot=previous?.shotsOnTarget??previous?.shots_on_target??previous?.shots_on_goal??previous?.shotsOnGoal??previous?.onTargetShots;
+     if((incomingSot==null||incomingSot===''||!Number.isFinite(Number(incomingSot)))&&previousSot!=null&&previousSot!==''&&Number.isFinite(Number(previousSot)))merged.shotsOnTarget=Number(previousSot);
      for(const key of Object.keys(previous))if((merged[key]==null||merged[key]==='')&&previous[key]!=null&&previous[key]!=='')merged[key]=previous[key];
      return merged;
     });
-    next.set(id,stamp({...old,...row,teams,_hiActivitySotAvailable:true}));
-   }else if(!old||statsQuality(row)>=statsQuality(old))next.set(id,stamp(row));
-   else if(!oldHasSot&&freshSot)next.set(id,stamp(row));
+    const validWindow=window=>Boolean(window?.available&&Array.isArray(window.teams)&&window.teams.length>=2&&window.teams.slice(0,2).every(team=>{
+     const value=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;
+     return value!=null&&value!==''&&Number.isFinite(Number(value));
+    }));
+    const mergedTrend={...(old.trend||{}),...(row.trend||{})};
+    for(const key of ['window5m','window10m'])if(!validWindow(row.trend?.[key])&&validWindow(old.trend?.[key]))mergedTrend[key]=old.trend[key];
+    const mergedRow={...old,...row,teams,_hiActivitySotAvailable:freshSot||oldHasSot,trend:Object.keys(mergedTrend).length?mergedTrend:(row.trend||old.trend)};
+    if(row.trend&&(['window5m','window10m'].some(key=>validWindow(row.trend[key]))))mergedRow._goalMatrixTrendReceivedAt=receivedAt;
+    else if(old._goalMatrixTrendReceivedAt)mergedRow._goalMatrixTrendReceivedAt=old._goalMatrixTrendReceivedAt;
+    next.set(id,stamp(mergedRow));
+   }else next.set(id,stamp({...row,_hiActivitySotAvailable:freshSot}));
   }else if(!old)next.set(id,row);
  }
  const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
@@ -4336,7 +4349,20 @@ function renderAllLivePowerRanking(){
   const danger=t=>num(t.dangerousAttacks,t.dangerous_attacks,t.dangerousAttack),attacks=t=>num(t.attacks,t.totalAttacks,t.total_attacks),xg=t=>num(t.xG,t.xg,t.expectedGoals);
   const total=getter=>teams.length===2&&teams.every(t=>getter(t)!==null)?teams.reduce((sum,t)=>sum+getter(t),0):null;
   const windowDelta=(w,getter,min,max)=>{const age=Number(w?.sampleMinutes);if(!w?.available||!Array.isArray(w.teams)||w.teams.length<2||!Number.isFinite(age)||age<min||age>max)return null;const v=w.teams.slice(0,2).map(getter);return v.every(x=>x!==null)?v.reduce((a,b)=>a+b,0):null;};
-  const w5=stats?.trend?.window5m,w10=stats?.trend?.window10m,sot5=windowDelta(w5,sot,4.5,8),sot10=windowDelta(w10,sot,8,13),danger10=windowDelta(w10,danger,8,13),attacks10=windowDelta(w10,attacks,8,13);
+  const w5=stats?.trend?.window5m,w10=stats?.trend?.window10m;
+  // Power Ranking uses the same persisted, match-specific SOT trail as HI Activity
+  // when provider rolling windows blink or are temporarily omitted.
+  const trail=highActivityTrails.get(String(m.id))||[];
+  const trailBaseline=(minAge,maxAge)=>[...trail].reverse().find(item=>Number.isFinite(Number(item?.at))&&Date.now()-Number(item.at)>=minAge*60000&&Date.now()-Number(item.at)<=maxAge*60000);
+  const trailSotDelta=baseline=>{
+   if(!baseline||!Array.isArray(baseline.values)||baseline.values.length<2||teams.length<2)return null;
+   const current=teams.slice(0,2).map(sot),previous=baseline.values.slice(0,2).map(sot);
+   if(!current.every(value=>value!==null)&&!previous.every(value=>value!==null))return null;
+   if(!current.every(value=>value!==null)||!previous.every(value=>value!==null))return null;
+   return current.reduce((sum,value,index)=>sum+Math.max(0,value-previous[index]),0);
+  };
+  const trail5=trailSotDelta(trailBaseline(4.5,8)),trail10=trailSotDelta(trailBaseline(9.5,11));
+  const sot5=trail5??windowDelta(w5,sot,4.5,8),sot10=trail10??windowDelta(w10,sot,8,13),danger10=windowDelta(w10,danger,8,13),attacks10=windowDelta(w10,attacks,8,13);
   const totalSot=total(sot),totalXg=total(xg);
   const signals=[(sot5!==null&&sot5>=2)||(sot10!==null&&sot10>=3)?'Πρόσφατη πίεση SOT':null,totalSot!==null&&totalSot>=8?'Όγκος SOT':null,totalXg!==null&&totalXg>=2.5?'Πίεση xG':null,danger10!==null&&danger10>=15?'Επικίνδυνες επιθέσεις':null].filter(Boolean);
   const score=Math.max(0,Math.min(100,Math.round(Math.min(25,(totalSot||0)*2.5)+Math.min(15,(sot5||0)*5)+Math.min(10,(sot10||0)*2)+Math.min(24,(totalXg||0)*6)+Math.min(15,(danger10||0))+Math.min(10,(attacks10||0)*.25))));
