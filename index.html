@@ -2991,6 +2991,8 @@ function competitionLabel(code){
 }
 
 let active='live', allMatches=[], successfulFeeds=0, loadingScores=false, lastSuccessfulScoreUpdate=null;
+const missingLiveMatchSince=new Map();
+const LIVE_MATCH_MISSING_GRACE_MS=90000;
 let powerGamesUnlocked=true; let goalFlashMatchIds=[];
 const readFavorites=()=>{try{return new Set(JSON.parse(localStorage.getItem('goalPulseFavorites')||'[]').map(String))}catch{return new Set()}};
 let favoriteMatchIds=readFavorites();
@@ -3179,10 +3181,35 @@ async function loadScores(){
  // Preserve the previous in-memory and local snapshot until a valid feed returns.
  const usableFeedResponse=feedsSucceeded>0;
  if(usableFeedResponse&&freshMatches.length>0){
-  saveMatchSnapshot(freshMatches);
+  const now=Date.now();
   const previousById=new Map(allMatches.map(m=>[String(m.id),m]));
-  freshMatches.forEach(m=>{const prev=previousById.get(String(m.id));if(!prev)return;const oldHome=Number(prev.home.score),newHome=Number(m.home.score),oldAway=Number(prev.away.score),newAway=Number(m.away.score);if(Number.isFinite(oldHome)&&Number.isFinite(newHome)&&Number.isFinite(oldAway)&&Number.isFinite(newAway)&&(newHome>oldHome||newAway>oldAway))goalFlashMatchIds.push(String(m.id));});
-  allMatches=freshMatches;lastSuccessfulScoreUpdate=new Date();
+  const freshIds=new Set(freshMatches.map(m=>String(m.id)));
+  freshMatches.forEach(m=>{
+   const id=String(m.id);
+   missingLiveMatchSince.delete(id);
+   const prev=previousById.get(id);
+   if(!prev)return;
+   const oldHome=Number(prev.home.score),newHome=Number(m.home.score),oldAway=Number(prev.away.score),newAway=Number(m.away.score);
+   if(Number.isFinite(oldHome)&&Number.isFinite(newHome)&&Number.isFinite(oldAway)&&Number.isFinite(newAway)&&(newHome>oldHome||newAway>oldAway))goalFlashMatchIds.push(id);
+  });
+  // A successful response can still be partial: retain previously visible live
+  // fixtures briefly when they disappear from a non-empty refresh. A later
+  // authoritative row replaces them; otherwise the grace period expires.
+  const temporarilyMissing=[];
+  for(const previous of allMatches){
+   const id=String(previous.id);
+   if(previous.state!=='in'||freshIds.has(id))continue;
+   const firstMissing=missingLiveMatchSince.get(id)??now;
+   missingLiveMatchSince.set(id,firstMissing);
+   if(now-firstMissing<=LIVE_MATCH_MISSING_GRACE_MS)temporarilyMissing.push(previous);
+   else missingLiveMatchSince.delete(id);
+  }
+  const mergedById=new Map(freshMatches.map(match=>[String(match.id),match]));
+  for(const previous of temporarilyMissing)if(!mergedById.has(String(previous.id)))mergedById.set(String(previous.id),previous);
+  const stableMatches=[...mergedById.values()].sort((a,b)=>({in:0,pre:1,post:2}[a.state]??3)-({in:0,pre:1,post:2}[b.state]??3));
+  saveMatchSnapshot(stableMatches);
+  allMatches=stableMatches;
+  lastSuccessfulScoreUpdate=new Date();
  }
  render();
  renderTrendSections();
