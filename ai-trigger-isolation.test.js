@@ -66,3 +66,38 @@ test("first-half triggers and second-half-only triggers keep their existing wind
   });
   assert.deepEqual(firstHalf.map(item => item.id), ["recent_sot_pressure", "first_half_8_sot"]);
 });
+
+
+test("all non-Hunter AI protocols accept first-half and second-half approved windows", () => {
+  const firstHalf = buildIndependentAiTriggers({
+    eligibleMinute: false,
+    firstHalfSotWindow: true,
+    recentSotQualifies: false,
+    cumulativeSotQualifies: true,
+    firstHalfEightSotQualifies: false,
+    manAdvantagePressure: true,
+    xGQualifies: true,
+    confirmedSotTriggerIds: ["cumulative_20_sot", "man_advantage_pressure"]
+  });
+  assert.deepEqual(firstHalf.map(item => item.id), [
+    "cumulative_20_sot",
+    "man_advantage_pressure",
+    "xg_threshold"
+  ]);
+});
+
+test("non-Hunter AI protocols remain blocked outside both approved windows", () => {
+  const outside = buildIndependentAiTriggers({
+    eligibleMinute: false,
+    firstHalfSotWindow: false,
+    recentSotQualifies: true,
+    cumulativeSotQualifies: true,
+    firstHalfEightSotQualifies: true,
+    manAdvantagePressure: true,
+    xGQualifies: true,
+    confirmedSotTriggerIds: [
+      "recent_sot_pressure", "cumulative_20_sot", "first_half_8_sot", "man_advantage_pressure"
+    ]
+  });
+  assert.deepEqual(outside, []);
+});
