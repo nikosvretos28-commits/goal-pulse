@@ -6472,8 +6472,7 @@ const server = http.createServer(async (req, res) => {
         let apiSportsDay = apiSportsFootballDateCache.get(apiSportsDate);
         if (!apiSportsDay || apiSportsNow - apiSportsDay.at >= APISPORTS_FOOTBALL_DATE_CACHE_MS) {
           try {
-            const response = await fetch("https://v3.football.api-sports.io/fixtures?date=" +
-              encodeURIComponent(apiSportsDate) + "&timezone=Europe%2FAthens", {
+            const response = await fetch("https://v3.football.api-sports.io/fixtures?live=all&timezone=Europe%2FAthens", {
               headers: { "x-apisports-key": APISPORTS_API_KEY },
               signal: AbortSignal.timeout(12000)
             });
