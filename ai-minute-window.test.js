@@ -27,18 +27,21 @@ test("completed fixtures are never eligible even when a stale minute remains", (
   }
 });
 
-test("cumulative 20-SOT trigger is eligible from minute 1 through 65 across both halves", () => {
-  for (const minute of [0, 66, 75, 84, 85, 88, 89, 65.5, 45.5, null, Number.NaN]) {
+test("cumulative 20-SOT trigger follows the shared AI windows 1–34 and 46–84", () => {
+  for (const minute of [0, 35, 40, 45, 85, 88, 89, 65.5, 45.5, null, Number.NaN]) {
     assert.equal(isCumulativeSotMinute(minute), false, String(minute));
   }
-  for (const minute of [1, 2, 34, 45, 46, 47, 60, 64, 65]) {
+  for (const minute of [1, 2, 34, 46, 47, 60, 69, 70, 84]) {
     assert.equal(isCumulativeSotMinute(minute), true, String(minute));
   }
   for (const status of ["Finished", "Full Time", "FT", "Ended", "Completed", "AET", "HT", "Half Time", "ανάπαυλα"]) {
+    assert.equal(isCumulativeSotMinute(20, status), false, status);
     assert.equal(isCumulativeSotMinute(60, status), false, status);
   }
-  assert.equal(isCumulativeSotMinute(60, "1st half"), true);
+  assert.equal(isCumulativeSotMinute(20, "1st half"), true);
   assert.equal(isCumulativeSotMinute(60, "2nd half"), true);
+  assert.equal(isCumulativeSotMinute(20, "2nd half"), false);
+  assert.equal(isCumulativeSotMinute(60, "1st half"), false);
 });
 
 
