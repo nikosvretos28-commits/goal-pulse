@@ -875,18 +875,37 @@ function getConfiguredDatabaseUrl() {
     "@" + host + ":" + encodeURIComponent(port) + "/" + encodeURIComponent(database);
 }
 const resolvedDatabaseUrl = resolveDatabaseUrl(getConfiguredDatabaseUrl());
-const analyticsPool = resolvedDatabaseUrl && Pool ? new Pool({
-  connectionString: resolvedDatabaseUrl,
-  ssl: resolvedDatabaseUrl.includes("localhost") ? false : { rejectUnauthorized: false },
+// node-postgres lets SSL query parameters in connectionString override the
+// explicit ssl object. Aiven service URIs can include verify-ca/verify-full
+// parameters that reject Aiven's provider certificate chain in this runtime.
+// Keep TLS encryption enabled, but let the explicit Pool SSL configuration
+// control certificate verification instead of conflicting URI parameters.
+function getPoolConnectionString(raw) {
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    for (const key of ["sslmode", "sslrootcert", "sslcert", "sslkey"]) {
+      parsed.searchParams.delete(key);
+    }
+    return parsed.toString();
+  } catch {
+    return raw;
+  }
+}
+const poolConnectionString = getPoolConnectionString(resolvedDatabaseUrl);
+const poolSsl = poolConnectionString.includes("localhost") ? false : { rejectUnauthorized: false };
+const analyticsPool = poolConnectionString && Pool ? new Pool({
+  connectionString: poolConnectionString,
+  ssl: poolSsl,
   max: 3,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000
 }) : null;
 const competitionHistoryStore = createCompetitionHistoryStore({ pool: analyticsPool });
 // Dedicated pool prevents shared analytics traffic from starving HI Activity history.
-const highActivityHistoryPool = resolvedDatabaseUrl && Pool ? new Pool({
-  connectionString: resolvedDatabaseUrl,
-  ssl: resolvedDatabaseUrl.includes("localhost") ? false : { rejectUnauthorized: false },
+const highActivityHistoryPool = poolConnectionString && Pool ? new Pool({
+  connectionString: poolConnectionString,
+  ssl: poolSsl,
   max: 2,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 10000
