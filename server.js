@@ -5361,6 +5361,7 @@ const server = http.createServer(async (req, res) => {
                 const homeScore = score(match.home_score ?? match.score_home ?? match.home?.score ?? match.home_team?.score ?? match.scores?.home);
                 const awayScore = score(match.away_score ?? match.score_away ?? match.away?.score ?? match.away_team?.score ?? match.scores?.away);
                 const event = {
+                  _goalMatrixSource: "SportScore", _goalMatrixObservedAt: Date.now(),
                   id: "sportscore:" + slug,
                   date: match.time_utc || match.time || match.date || new Date().toISOString(),
                   name: homeName + " vs " + awayName,
