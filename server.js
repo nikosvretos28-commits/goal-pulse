@@ -5086,7 +5086,7 @@ const server = http.createServer(async (req, res) => {
           feeds.push(...batchResults.flat());
           let finalFeeds = feeds;
           let successfulFeeds = feeds.filter(feed => feed.ok).length;
-          if (process.env.PITCH_API_KEY && process.env.PITCH_API_SCOREBOARD_FALLBACK_ENABLED === "true") {
+          if (process.env.PITCH_API_KEY && process.env.PITCH_API_SCOREBOARD_FALLBACK_ENABLED !== "false") {
             // Supplement partial ESPN coverage with PitchAPI fixtures; merge by team pair to avoid duplicates.
             try {
               const isoDate = date.slice(0,4) + "-" + date.slice(4,6) + "-" + date.slice(6,8);
