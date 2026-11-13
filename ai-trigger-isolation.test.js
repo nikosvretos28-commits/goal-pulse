@@ -64,7 +64,13 @@ test("first-half window admits all approved non-Hunter AI trigger families", () 
     xGQualifies: true,
     confirmedSotTriggerIds: ["recent_sot_pressure", "first_half_8_sot", "cumulative_20_sot", "man_advantage_pressure"]
   });
-  assert.deepEqual(firstHalf.map(item => item.id), ["recent_sot_pressure", "cumulative_20_sot", "first_half_8_sot", "xg_threshold"]);
+  assert.deepEqual(firstHalf.map(item => item.id), [
+    "recent_sot_pressure",
+    "cumulative_20_sot",
+    "first_half_8_sot",
+    "man_advantage_pressure",
+    "xg_threshold"
+  ]);
 });
 
 
