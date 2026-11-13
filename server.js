@@ -808,7 +808,7 @@ async function fetchSportScoreMatchDetail(slug) {
           ? Math.min(SPORT_SCORE_DETAIL_429_MAX_MS, retryAfter * 1000)
           : SPORT_SCORE_DETAIL_429_FALLBACK_MS;
         sportScoreDetailCooldownUntil = Math.max(sportScoreDetailCooldownUntil, Date.now() + cooldownMs);
-        return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil };
+        return { ok: false, status: 429, payload: null, cached: false, cooldown: true, provider429: true, retryAt: sportScoreDetailCooldownUntil };
       }
       if (![500, 502, 503, 504].includes(response.status) || attempt === 2) {
         return { ok: false, status: response.status, payload: null, cached: false };
@@ -5626,7 +5626,7 @@ const server = http.createServer(async (req, res) => {
       }
       let cursor = 0;
       const matches = [];
-      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
+      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, localBudgetLimited: 0, provider429: 0, providerCooldownSkipped: 0, cachedDetailHits: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0 };
       const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
@@ -5662,17 +5662,24 @@ const server = http.createServer(async (req, res) => {
                     else {
                       const statusKey = String(reverseResult.status);
                       sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
+                      if (reverseResult.rateLimited) sportScoreDetailDiagnostics.localBudgetLimited++;
+                      if (reverseResult.provider429) sportScoreDetailDiagnostics.provider429++;
+                      else if (reverseResult.cooldown) sportScoreDetailDiagnostics.providerCooldownSkipped++;
                     }
                   }
                 }
                 if (!detailResult.ok) {
                   const statusKey = String(detailResult.status);
                   sportScoreDetailDiagnostics.statuses[statusKey] = (sportScoreDetailDiagnostics.statuses[statusKey] || 0) + 1;
+                  if (detailResult.rateLimited) sportScoreDetailDiagnostics.localBudgetLimited++;
+                  if (detailResult.provider429) sportScoreDetailDiagnostics.provider429++;
+                  else if (detailResult.cooldown) sportScoreDetailDiagnostics.providerCooldownSkipped++;
                   if (detailResult.status === 404) sportScoreDetailDiagnostics.notFound++;
                   else sportScoreDetailDiagnostics.otherErrors++;
                 } else {
                   detail = detailResult.payload;
                   sportScoreDetailDiagnostics.ok++;
+                  if (detailResult.cached) sportScoreDetailDiagnostics.cachedDetailHits++;
                 }
               } else {
                 sportScoreDetailDiagnostics.noSlug = (sportScoreDetailDiagnostics.noSlug || 0) + 1;
@@ -6475,6 +6482,11 @@ const server = http.createServer(async (req, res) => {
           const away = normalizeApiSportsTeam(match.away);
           return { match, fixture: apiSportsFixtureByPair.get(home + "|" + away) || null };
         }).filter(item => item.fixture);
+        const apiSportsUnmatched = matches.filter(match => {
+          const home = normalizeApiSportsTeam(match.home);
+          const away = normalizeApiSportsTeam(match.away);
+          return !apiSportsFixtureByPair.has(home + "|" + away);
+        });
         const applyApiSportsFixtureStats = (match, fixture) => {
           const fixtureStats = Array.isArray(fixture.statistics) ? fixture.statistics : [];
           if (!fixtureStats.length || !Array.isArray(match.teams)) return false;
@@ -6537,6 +6549,9 @@ const server = http.createServer(async (req, res) => {
           providerFixtures: (apiSportsDay?.rows || []).length,
           liveMatches: matches.length,
           matched: apiSportsMatched.length,
+          unmatched: apiSportsUnmatched.length,
+          unmatchedSamples: apiSportsUnmatched.slice(0, 12).map(match => ({ home: match.home, away: match.away, minute: match.minute, status: match.status, statsSource: match.statsSource || null })),
+          matchedSamples: apiSportsMatched.slice(0, 8).map(item => ({ home: item.match.home, away: item.match.away, fixtureId: item.fixture.fixture.id, league: item.fixture.league?.name || null, country: item.fixture.league?.country || null })),
           matchedMissingSot: missingSotItems.length,
           cachedStats: apiSportsFootballStatsCache.size,
           fixtureRequestsReady: dueItems.length,
