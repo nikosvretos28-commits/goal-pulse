@@ -789,7 +789,7 @@ async function fetchSportScoreMatchDetail(slug) {
           signal: AbortSignal.timeout(10000)
         }));
       } catch (error) {
-        if (attempt === 2) throw error;
+        if (attempt === 2) return { ok: false, status: 0, payload: null, cached: false, networkError: true, ...staleCache };
         await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
         continue;
       }
