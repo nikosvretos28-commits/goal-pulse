@@ -5073,7 +5073,10 @@ const server = http.createServer(async (req, res) => {
                 }
                 if (!response.ok) { if (response.status === 400) ESPN_UNSUPPORTED_LEAGUES.add(code); return { code, events: [], ok: false, error: "HTTP " + response.status }; }
                 const body = await response.json();
-                return { code, events: Array.isArray(body.events) ? body.events : [], ok: true };
+                const observedAt = Date.now();
+                const events = Array.isArray(body.events) ? body.events : [];
+                for (const event of events) { event._goalMatrixSource = "ESPN"; event._goalMatrixObservedAt = observedAt; }
+                return { code, events, ok: true, observedAt };
               } catch (error) {
                 return { code, events: [], ok: false, error: error.message || "request failed" };
               }
@@ -5111,6 +5114,7 @@ const server = http.createServer(async (req, res) => {
                 if (chosen?.id) idToCode.set(String(chosen.id), code);
               }
               const pitchBody = await pitchGet("/v1/date/" + isoDate + "?status=all");
+              const pitchObservedAt = Date.now();
               const sourceMatches = pitchBody?.data?.matches || [];
               const byCode = new Map();
               const aliasesByCode = new Map(SCOREBOARD_LEAGUES.map(code => [code, pitchLeagueAliases(code).map(normal)]));
@@ -5158,6 +5162,7 @@ const server = http.createServer(async (req, res) => {
                 const homeName = match.home_team?.name || "";
                 const awayName = match.away_team?.name || "";
                 const event = {
+                  _goalMatrixSource: "PitchAPI", _goalMatrixObservedAt: pitchObservedAt,
                   id: String(match.id || ""), date: match.time_utc || match.date || "",
                   name: homeName + " vs " + awayName, leagueName: String(match.league?.name || "Άλλη διοργάνωση"), status,
                   competitions: [{ status, competitors: [
@@ -5184,14 +5189,16 @@ const server = http.createServer(async (req, res) => {
                   const existing = feeds.find(feed => feed.code === code);
                   const events = [];
                   const ids = new Set();
-                  const pairs = new Set();
+                  const pairSources = new Map();
                   const add = event => {
                     const id = String(event.id || "");
                     const pair = teamPair(event);
-                    if ((id && ids.has(id)) || (pair && pairs.has(pair))) return;
+                    const source = String(event._goalMatrixSource || "unknown");
+                    const sources = pairSources.get(pair) || new Set();
+                    if ((id && ids.has(id)) || (pair && sources.has(source))) return;
                     events.push(event);
                     if (id) ids.add(id);
-                    if (pair) pairs.add(pair);
+                    if (pair) { sources.add(source); pairSources.set(pair, sources); }
                   };
                   for (const event of existing?.events || []) add(event);
                   for (const event of byCode.get(code) || []) add(event);
@@ -5354,6 +5361,7 @@ const server = http.createServer(async (req, res) => {
                 const homeScore = score(match.home_score ?? match.score_home ?? match.home?.score ?? match.home_team?.score ?? match.scores?.home);
                 const awayScore = score(match.away_score ?? match.score_away ?? match.away?.score ?? match.away_team?.score ?? match.scores?.away);
                 const event = {
+                  _goalMatrixSource: "SportScore", _goalMatrixObservedAt: Date.now(),
                   id: "sportscore:" + slug,
                   date: match.time_utc || match.time || match.date || new Date().toISOString(),
                   name: homeName + " vs " + awayName,
@@ -5424,7 +5432,7 @@ const server = http.createServer(async (req, res) => {
             empty: feeds.filter(feed => feed.ok && !(feed.events || []).length).map(feed => feed.code),
             failed: feeds.filter(feed => !feed.ok).map(feed => ({ code: feed.code, error: feed.error || "unknown" }))
           }));
-          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok,error}) => ({code,events,ok,...(error ? {error} : {})})), source: successfulFeeds ? scoreboardSource : "unavailable" };
+          const body = { date, successfulFeeds, totalFeeds: SCOREBOARD_LEAGUES.length, feeds: finalFeeds.map(({code,events,ok,error,observedAt}) => ({code,events,ok,...(observedAt ? {observedAt} : {}),...(error ? {error} : {})})), source: successfulFeeds ? scoreboardSource : "unavailable" };
           if (successfulFeeds > 0) {
             scoreboardCache.set(date, { at: Date.now(), body });
             return { status: 200, body, cache: "MISS" };
