@@ -5785,7 +5785,8 @@ const server = http.createServer(async (req, res) => {
               // the preserved ESPN identity to request its independent boxscore.
               // Only fill genuinely missing fields; SOT remains the exact SOT field.
               if (event.espnEventId && event.espnLeagueCode &&
-                  values.some(team => ["shotsOnTarget","shotsInBox","bigChances","corners","possession","xG"].some(key => team[key] == null))) {
+                  (values.some(team => ["shotsOnTarget","shotsInBox","bigChances","corners","possession","xG"].some(key => team[key] == null)) ||
+                   values.slice(0, 2).length === 2 && values.slice(0, 2).every(team => team.shotsOnTarget != null))) {
                 try {
                   espnSummaryDiagnostics.attempted++;
                   let espnResponse = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
@@ -5826,7 +5827,18 @@ const server = http.createServer(async (req, res) => {
                         xG: readEspnMetric("expectedgoals", "xg", "expectedgoalsfor")
                       };
                       for (const [key, value] of Object.entries(fallback)) {
-                        if (target[key] == null && value != null) target[key] = value;
+                        if (key === "shotsOnTarget" && value != null) {
+                          const previous = target[key];
+                          if (previous != null && Number(previous) !== Number(value)) {
+                            console.warn("[GoalMatrix SOT provider disagreement]", JSON.stringify({
+                              eventId: String(event.id), team: target.team,
+                              sportScore: Number(previous), espn: Number(value),
+                              selected: Math.max(Number(previous), Number(value)),
+                              rule: "highest_cumulative_sot_to_avoid_stale_provider_undercount"
+                            }));
+                          }
+                          target[key] = previous == null ? value : Math.max(Number(previous), Number(value));
+                        } else if (target[key] == null && value != null) target[key] = value;
                       }
                     }
                   } else {
@@ -6067,7 +6079,9 @@ const server = http.createServer(async (req, res) => {
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
             // Try the fallback whenever either team has a missing core SOT metric,
             // not only when ESPN returns no live SOT statistics.
-            const espnNeedsFallback = values.length < 2 || values.slice(0, 2).some(v => ["shotsOnTarget", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null));
+            const espnNeedsFallback = values.length < 2 ||
+              values.slice(0, 2).some(v => ["shotsOnTarget", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null)) ||
+              values.slice(0, 2).length === 2 && values.slice(0, 2).every(v => v.shotsOnTarget != null);
             if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
@@ -6135,7 +6149,20 @@ const server = http.createServer(async (req, res) => {
                 if (fallbackValues.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners","possession"].some(key => v[key] != null))) {
                   values.forEach((v, i) => {
                     const fallback = fallbackValues[i];
-                    for (const key of ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners","possession"]) if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
+                    for (const key of ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners","possession"]) {
+                      if (key === "shotsOnTarget" && fallback[key] != null) {
+                        const previous = v[key];
+                        if (previous != null && Number(previous) !== Number(fallback[key])) {
+                          console.warn("[GoalMatrix SOT provider disagreement]", JSON.stringify({
+                            eventId: String(event.id), team: v.team,
+                            espn: Number(previous), sportScore: Number(fallback[key]),
+                            selected: Math.max(Number(previous), Number(fallback[key])),
+                            rule: "highest_cumulative_sot_to_avoid_stale_provider_undercount"
+                          }));
+                        }
+                        v[key] = previous == null ? fallback[key] : Math.max(Number(previous), Number(fallback[key]));
+                      } else if (v[key] == null && fallback[key] != null) v[key] = fallback[key];
+                    }
                   });
                   console.log("SportScore fallback supplied missing ESPN live stats:", JSON.stringify({eventId:String(event.id),home:homeName,away:awayName,stats:values.map(v=>({team:v.team,shotsOnTarget:v.shotsOnTarget,shotsInBox:v.shotsInBox,bigChances:v.bigChances,corners:v.corners}))}));
                 }
