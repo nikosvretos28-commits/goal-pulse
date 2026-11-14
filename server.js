@@ -6141,7 +6141,7 @@ const server = http.createServer(async (req, res) => {
               const pitchAwayKey = normalizePitchPair(eventAwayName);
               const pitchFixture = liveEvents.find(candidate => {
                 const candidateEvent = candidate.event;
-                if (!String(candidateEvent?.id || "").startsWith("m_")) return false;
+                if (candidateEvent?._goalMatrixSource !== "PitchAPI") return false;
                 const competitors = candidateEvent.competitions?.[0]?.competitors || [];
                 const candidateHome = competitors.find(team => team.homeAway === "home")?.team?.displayName || "";
                 const candidateAway = competitors.find(team => team.homeAway === "away")?.team?.displayName || "";
