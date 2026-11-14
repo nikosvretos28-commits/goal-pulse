@@ -5636,6 +5636,8 @@ const server = http.createServer(async (req, res) => {
       }
       let cursor = 0;
       const matches = [];
+      let espnProviderDiagnosticSample = null;
+      let apiSportsMatchAuditForEspnSample = null;
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, localBudgetLimited: 0, provider429: 0, providerCooldownSkipped: 0, cachedDetailHits: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0 };
       const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
@@ -6112,6 +6114,7 @@ const server = http.createServer(async (req, res) => {
                 })
               };
               console.log("[GoalMatrix ESPN raw stats shape] " + JSON.stringify(rawStatsShape));
+              espnProviderDiagnosticSample = rawStatsShape;
               espnRawStatsShapeLogged = true;
             }
             if (!teams.length) espnSummaryDiagnostics.missingBoxscoreTeams++;
@@ -6638,6 +6641,20 @@ const server = http.createServer(async (req, res) => {
           const away = normalizeApiSportsTeam(match.away);
           return !apiSportsFixtureByPair.has(home + "|" + away);
         });
+        if (espnProviderDiagnosticSample) {
+          const sampleHome = espnProviderDiagnosticSample.teams.find(team => team.homeAway === "home")?.team || espnProviderDiagnosticSample.teams[0]?.team || "";
+          const sampleAway = espnProviderDiagnosticSample.teams.find(team => team.homeAway === "away")?.team || espnProviderDiagnosticSample.teams[1]?.team || "";
+          const sampleFixture = apiSportsFixtureByPair.get(normalizeApiSportsTeam(sampleHome) + "|" + normalizeApiSportsTeam(sampleAway)) || null;
+          apiSportsMatchAuditForEspnSample = {
+            providerFixtures: (apiSportsDay?.rows || []).length,
+            liveMatches: matches.length,
+            matched: apiSportsMatched.length,
+            unmatched: apiSportsUnmatched.length,
+            sampleMatched: Boolean(sampleFixture),
+            sampleFixtureId: sampleFixture?.fixture?.id ?? null,
+            sampleLeague: sampleFixture?.league?.name || null
+          };
+        }
         const applyApiSportsFixtureStats = (match, fixture) => {
           const fixtureStats = Array.isArray(fixture.statistics) ? fixture.statistics : [];
           if (!fixtureStats.length || !Array.isArray(match.teams)) return false;
@@ -6756,6 +6773,29 @@ const server = http.createServer(async (req, res) => {
         }
       } else if (!APISPORTS_API_KEY) {
         console.log("[API-Sports Football] disabled: APISPORTS_API_KEY is not configured");
+      }
+      if (espnProviderDiagnosticSample) {
+        const normalizeDiagnosticTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+        const sampleHome = espnProviderDiagnosticSample.teams.find(team => team.homeAway === "home")?.team || espnProviderDiagnosticSample.teams[0]?.team || "";
+        const sampleAway = espnProviderDiagnosticSample.teams.find(team => team.homeAway === "away")?.team || espnProviderDiagnosticSample.teams[1]?.team || "";
+        const homeKey = normalizeDiagnosticTeam(sampleHome);
+        const awayKey = normalizeDiagnosticTeam(sampleAway);
+        const pitchApiMatch = liveEvents.find(candidate => {
+          if (candidate.event?._goalMatrixSource !== "PitchAPI") return false;
+          const competitors = candidate.event.competitions?.[0]?.competitors || [];
+          const home = competitors.find(team => team.homeAway === "home")?.team?.displayName || "";
+          const away = competitors.find(team => team.homeAway === "away")?.team?.displayName || "";
+          return normalizeDiagnosticTeam(home) === homeKey && normalizeDiagnosticTeam(away) === awayKey;
+        });
+        const sportScoreDirectMatch = sportScoreLiveStatsByPair.get(homeKey + "|" + awayKey) || sportScoreLiveStatsByPair.get(awayKey + "|" + homeKey) || null;
+        console.log("[GoalMatrix ESPN provider match sample]", JSON.stringify({
+          sample: espnProviderDiagnosticSample,
+          providers: {
+            pitchApi: { matched: Boolean(pitchApiMatch), eventId: pitchApiMatch ? String(pitchApiMatch.event.id) : null },
+            sportScoreDirect: { matched: Boolean(sportScoreDirectMatch), hasStats: Boolean(sportScoreDirectMatch?.stats?.length) },
+            apiSports: apiSportsMatchAuditForEspnSample || { configured: Boolean(APISPORTS_API_KEY), sampleMatchChecked: false }
+          }
+        }));
       }
       console.log("[GoalMatrix ESPN summary audit]", JSON.stringify(espnSummaryDiagnostics));
       const isSportScoreEvent = value => String(value || "").startsWith("sportscore:") || String(value || "").startsWith("sportscore-widget:");
