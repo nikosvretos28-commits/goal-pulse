@@ -3205,7 +3205,7 @@ const server = http.createServer(async (req, res) => {
             const completedHasHalfTime = completed?.homeHtScore != null && completed?.awayHtScore != null;
 
             const athensToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-            if ((!completed || (firstHalf && !completedHasHalfTime)) && alertHome && alertAway && row.created_at && alertDate < athensToday) {
+            if ((!completed || (firstHalf && !completedHasHalfTime)) && alertHome && alertAway && row.created_at && alertDate <= athensToday) {
               const teamSlug = value => normalizeTeam(value).replace(/\s+/g, "-");
               const parseScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
               const toCompleted = match => {
