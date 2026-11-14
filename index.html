@@ -3447,6 +3447,9 @@ function setLiveMetricsCache(rows){
   }
  }
  liveMetricsCache=next;
+ // Refresh the existing live-stat boxes as soon as a metrics response arrives.
+ // Do not wait for the next scoreboard poll; this only redraws the current rows.
+ if(typeof renderLiveRows==='function')renderLiveRows();
 }
 let selectedLiveStatsId="";
 let signalBusy=false, signalSnapshots=new Map(), signalTrails=new Map(), highActivityTrails=new Map(), highActivityRedCardSince=new Map(), signalLastAlertAt=new Map(), signalCandidateCounts=new Map(), signalCandidateLastAt=new Map(), signalAlertHistory=[];
