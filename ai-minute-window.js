@@ -21,7 +21,10 @@ function isFirstHalfSotMinute(minute, status = "") {
       /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|δεύτερο\s*ημίχρονο|2ο\s*ημίχρονο|ανάπαυλα|ημίχρονο/.test(period)) return false;
   if (/\b(?:1h|1st\s*half|first\s*half|first_half)\b/.test(period) ||
       /1ο\s*ημίχρονο|πρώτο\s*ημίχρονο/.test(period)) return true;
-  return !period || /\blive\b/.test(period);
+  // ESPN can provide the elapsed clock as statusText (for example "31'") and
+  // the authoritative event state separately as "in". Accept that explicit
+  // live state, but never a halftime/finished/second-half label rejected above.
+  return !period || /\b(?:live|in)\b/.test(period);
 }
 
 function isCumulativeSotMinute(minute, status = "") {
@@ -38,7 +41,10 @@ function isFirstHalfEightSotMinute(minute, status = "") {
       /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|δεύτερο\s*ημίχρονο|2ο\s*ημίχρονο|ανάπαυλα/.test(period)) return false;
   if (/\b(?:1h|1st\s*half|first\s*half)\b/.test(period) ||
       /1ο\s*ημίχρονο|πρώτο\s*ημίχρονο/.test(period)) return true;
-  return !period || /\blive\b/.test(period);
+  // ESPN can provide the elapsed clock as statusText (for example "31'") and
+  // the authoritative event state separately as "in". Accept that explicit
+  // live state, but never a halftime/finished/second-half label rejected above.
+  return !period || /\b(?:live|in)\b/.test(period);
 }
 
 module.exports = { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute };

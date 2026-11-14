@@ -53,6 +53,8 @@ test("first-half rolling SOT triggers are eligible only from 1 through 34", () =
     assert.equal(isFirstHalfSotMinute(minute, "1st half"), true, String(minute));
   }
   assert.equal(isFirstHalfSotMinute(27, "LIVE"), true);
+  assert.equal(isFirstHalfSotMinute(27, "31' in"), true);
+  assert.equal(isFirstHalfSotMinute(27, "31'"), false);
   assert.equal(isFirstHalfSotMinute(27, ""), true);
   for (const status of ["2nd half", "HT", "Half Time", "Finished", "FT", "2ο ημίχρονο", "ανάπαυλα"]) {
     assert.equal(isFirstHalfSotMinute(27, status), false, status);
@@ -74,6 +76,8 @@ test("first-half 8-SOT trigger is limited to minutes 1 through 34", () => {
     assert.equal(isFirstHalfEightSotMinute(minute, "1st half"), true, String(minute));
   }
   assert.equal(isFirstHalfEightSotMinute(34, "LIVE"), true);
+  assert.equal(isFirstHalfEightSotMinute(34, "34' in"), true);
+  assert.equal(isFirstHalfEightSotMinute(34, "34'"), false);
   for (const status of ["2nd half", "Second Half", "HT", "Finished", "FT", "2ο ημίχρονο", "ανάπαυλα"]) {
     assert.equal(isFirstHalfEightSotMinute(34, status), false, status);
   }

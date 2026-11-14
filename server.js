@@ -3683,7 +3683,9 @@ const server = http.createServer(async (req, res) => {
           ? teams.reduce((sum, team) => sum + Number(team[key] || 0), 0) : null;
         const minuteRawForEligibility = getMatchMinute(match);
         const minuteForEligibility = parseLiveMinute(minuteRawForEligibility);
-        const statusForEligibility = String(match.statusText || match.status || match.status_text || "").toLowerCase();
+        const statusForEligibility = [match.statusText, match.status, match.status_text]
+          .filter(value => value != null && String(value).trim() !== "")
+          .map(value => String(value).trim().toLowerCase()).join(" ");
         const goalsForEligibility = Number(match.homeScore) + Number(match.awayScore);
         const validSecondHalfMinute = Number.isFinite(minuteForEligibility) && minuteForEligibility >= 46 && minuteForEligibility <= 84;
         if (validSecondHalfMinute && /second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(statusForEligibility) && Number.isFinite(goalsForEligibility) && goalsForEligibility < 2) secondHalfEligible++;
