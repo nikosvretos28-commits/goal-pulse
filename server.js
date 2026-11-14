@@ -5990,7 +5990,7 @@ const server = http.createServer(async (req, res) => {
               // Reuse the already-loaded live fixture/slug maps so PitchAPI-only matches
               // can receive genuine provider stats without changing alert criteria.
               pitchSportScoreFallbackDiagnostics.attempted++;
-              const normalizeFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const normalizeFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeKey = normalizeFallbackTeam(homeName);
               const awayKey = normalizeFallbackTeam(awayName);
               const pair = homeKey + "|" + awayKey;
@@ -6131,9 +6131,6 @@ const server = http.createServer(async (req, res) => {
             if (espnHasShotStats) espnSummaryDiagnostics.teamsWithShotStats += values.length;
             // Try the SportScore fallback for missing core metrics and also when
             // ESPN already has both SOT values, so cumulative SOT can be cross-checked.
-            const espnNeedsFallback = values.length < 2 ||
-              values.slice(0, 2).some(v => ["shotsOnTarget", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null)) ||
-              values.slice(0, 2).length === 2 && values.slice(0, 2).every(v => v.shotsOnTarget != null);
             // PitchAPI is the independent live-statistics partner for ESPN fixtures.
             // Match by both team names and reuse the PitchAPI fixture already present
             // in the merged scoreboard; fill missing fields only (never substitute total shots for SOT).
@@ -6211,6 +6208,9 @@ const server = http.createServer(async (req, res) => {
                 }
               }
             }
+            const espnNeedsFallback = values.length < 2 ||
+              values.slice(0, 2).some(v => ["shotsOnTarget", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null)) ||
+              values.slice(0, 2).length === 2 && values.slice(0, 2).every(v => v.shotsOnTarget != null);
             if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
