@@ -43,7 +43,10 @@ const apiSportsFootballDateCache = new Map();
 const apiSportsFootballStatsCache = new Map();
 let apiSportsFootballLastBatchAt = 0;
 let apiSportsFootballBatchCursor = 0;
-const APISPORTS_FOOTBALL_DATE_CACHE_MS = 20 * 60 * 60 * 1000;
+// API-Sports' live=all catalogue must be refreshed during the day, not cached
+// for 20 hours. Two per-fixture statistics calls every 35 minutes consume ~82/day;
+// a 90-minute live-catalogue refresh adds ~16/day and stays within the 100/day plan.
+const APISPORTS_FOOTBALL_DATE_CACHE_MS = 90 * 60 * 1000;
 const APISPORTS_FOOTBALL_STATS_REFRESH_MS = 35 * 60 * 1000;
 const APISPORTS_FOOTBALL_MAX_FIXTURES_PER_CYCLE = 2;
 const sportApiDateFixturesCache = new Map();
@@ -6490,15 +6493,14 @@ const server = http.createServer(async (req, res) => {
                 requestsRemaining: response.headers.get("x-ratelimit-requests-remaining")
               }));
             } else {
-              apiSportsDay = { at: apiSportsNow, rows: [] };
-              apiSportsFootballDateCache.set(apiSportsDate, apiSportsDay);
+              // Do not cache a failed response as an empty live catalogue. Keep the
+              // last successful snapshot (if any) and retry on the next eligible poll.
               console.warn("[API-Sports Football] fixture catalogue unavailable:", JSON.stringify({
                 status: response.status, errors: payload.errors || null
               }));
             }
           } catch (error) {
-            apiSportsDay = { at: apiSportsNow, rows: [] };
-            apiSportsFootballDateCache.set(apiSportsDate, apiSportsDay);
+            // A transient network failure must not replace known-good live fixtures.
             console.warn("[API-Sports Football] fixture catalogue failed:", error.message || "request failed");
           }
         }
