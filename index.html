@@ -3392,12 +3392,9 @@ function setLiveMetricsCache(rows){
     const teamSide=team=>String(team?.homeAway||team?.side||'').toLowerCase();
     const teams=newTeams.map((team,index)=>{
      const identity=teamIdentity(team),side=teamSide(team);
-     const previous=oldTeams.find(candidate=>{
-      const candidateIdentity=teamIdentity(candidate),candidateSide=teamSide(candidate);
-      if(identity&&candidateIdentity)return identity===candidateIdentity;
-      if((side==='home'||side==='away')&&(candidateSide==='home'||candidateSide==='away'))return side===candidateSide;
-      return false;
-     })||((!identity&&side!=='home'&&side!=='away')?(oldTeams[index]||{}):{});
+     const previous=oldTeams.find(candidate=>identity&&teamIdentity(candidate)===identity)
+      ||((side==='home'||side==='away')?oldTeams.find(candidate=>teamSide(candidate)===side):null)
+      ||((!identity&&side!=='home'&&side!=='away')?(oldTeams[index]||{}):{});
      const merged={...previous,...team};
      const incomingSot=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;
      const previousSot=previous?.shotsOnTarget??previous?.shots_on_target??previous?.shots_on_goal??previous?.shotsOnGoal??previous?.onTargetShots;
