@@ -5990,7 +5990,7 @@ const server = http.createServer(async (req, res) => {
               // Reuse the already-loaded live fixture/slug maps so PitchAPI-only matches
               // can receive genuine provider stats without changing alert criteria.
               pitchSportScoreFallbackDiagnostics.attempted++;
-              const normalizeFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const normalizeFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeKey = normalizeFallbackTeam(homeName);
               const awayKey = normalizeFallbackTeam(awayName);
               const pair = homeKey + "|" + awayKey;
@@ -6139,7 +6139,7 @@ const server = http.createServer(async (req, res) => {
             // in the merged scoreboard; fill missing fields only (never substitute total shots for SOT).
             let pitchApiSupplemented = false;
             if (process.env.PITCH_API_KEY && values.length >= 2) {
-              const normalizePitchPair = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const normalizePitchPair = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const pitchHomeKey = normalizePitchPair(eventHomeName);
               const pitchAwayKey = normalizePitchPair(eventAwayName);
               const pitchFixture = liveEvents.find(candidate => {
