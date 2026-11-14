@@ -6134,6 +6134,83 @@ const server = http.createServer(async (req, res) => {
             const espnNeedsFallback = values.length < 2 ||
               values.slice(0, 2).some(v => ["shotsOnTarget", "shotsInBox", "bigChances", "corners"].some(key => v[key] == null)) ||
               values.slice(0, 2).length === 2 && values.slice(0, 2).every(v => v.shotsOnTarget != null);
+            // PitchAPI is the independent live-statistics partner for ESPN fixtures.
+            // Match by both team names and reuse the PitchAPI fixture already present
+            // in the merged scoreboard; fill missing fields only (never substitute total shots for SOT).
+            let pitchApiSupplemented = false;
+            if (process.env.PITCH_API_KEY && values.length >= 2) {
+              const normalizePitchPair = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const pitchHomeKey = normalizePitchPair(eventHomeName);
+              const pitchAwayKey = normalizePitchPair(eventAwayName);
+              const pitchFixture = liveEvents.find(candidate => {
+                const candidateEvent = candidate.event;
+                if (!String(candidateEvent?.id || "").startsWith("m_")) return false;
+                const competitors = candidateEvent.competitions?.[0]?.competitors || [];
+                const candidateHome = competitors.find(team => team.homeAway === "home")?.team?.displayName || "";
+                const candidateAway = competitors.find(team => team.homeAway === "away")?.team?.displayName || "";
+                return normalizePitchPair(candidateHome) === pitchHomeKey && normalizePitchPair(candidateAway) === pitchAwayKey;
+              });
+              if (pitchFixture) {
+                try {
+                  const pitchId = encodeURIComponent(String(pitchFixture.event.id));
+                  const pitchPayload = await pitchGet("/v1/matches/" + pitchId + "/stats", 45000);
+                  const pitchData = pitchPayload?.data || {};
+                  const pitchPeriods = Array.isArray(pitchData.periods) ? pitchData.periods : [];
+                  const pitchAllPeriods = pitchPeriods.filter(period => !period.period || String(period.period).trim().toLowerCase() === "all");
+                  const pitchItems = (pitchAllPeriods.length ? pitchAllPeriods : pitchPeriods).flatMap(period => period.groups || []).flatMap(group => group.items || []);
+                  const pitchRead = (side, aliases, exactOnly = false) => {
+                    let found = null;
+                    for (const alias of aliases) {
+                      found = pitchItems.find(stat =>
+                        String(stat.key || "").toLowerCase() === alias ||
+                        String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") === alias
+                      );
+                      if (found) break;
+                    }
+                    if (!found && !exactOnly) {
+                      found = pitchItems.find(stat => {
+                        const key = String(stat.key || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                        const title = String(stat.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+                        return [key, title].some(label => aliases.some(alias => alias.length >= 5 && label.startsWith(alias + "_")) && !/(percentage|percent|rate|per_game|average)/.test(label));
+                      }) || null;
+                    }
+                    if (!found) return null;
+                    const number = Number.parseFloat(String(found[side] ?? "").replace(",", "."));
+                    return Number.isFinite(number) ? number : null;
+                  };
+                  const pitchFallback = {
+                    home: {
+                      shotsOnTarget: pitchRead("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true),
+                      shotsInBox: pitchRead("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]),
+                      bigChances: pitchRead("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]),
+                      corners: pitchRead("home", ["corners","corner_kicks","won_corners","corner_kicks_total"]),
+                      possession: pitchRead("home", ["possession","possession_percentage","possession_pct","ball_possession"]),
+                      xG: pitchRead("home", ["expected_goals","expected_goals_xg","xg","expected_goals_for"])
+                    },
+                    away: {
+                      shotsOnTarget: pitchRead("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true),
+                      shotsInBox: pitchRead("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]),
+                      bigChances: pitchRead("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]),
+                      corners: pitchRead("away", ["corners","corner_kicks","won_corners","corner_kicks_total"]),
+                      possession: pitchRead("away", ["possession","possession_percentage","possession_pct","ball_possession"]),
+                      xG: pitchRead("away", ["expected_goals","expected_goals_xg","xg","expected_goals_for"])
+                    }
+                  };
+                  for (const value of values.slice(0, 2)) {
+                    const side = value.homeAway === "away" ? "away" : "home";
+                    for (const key of ["shotsOnTarget","shotsInBox","bigChances","corners","possession","xG"]) {
+                      if (value[key] == null && pitchFallback[side][key] != null) {
+                        value[key] = pitchFallback[side][key];
+                        pitchApiSupplemented = true;
+                      }
+                    }
+                  }
+                  if (pitchApiSupplemented) console.log("[GoalMatrix PitchAPI ESPN supplement]", JSON.stringify({ espnEventId: String(event.id), pitchEventId: String(pitchFixture.event.id), home: eventHomeName, away: eventAwayName, supplied: values.slice(0, 2).map(value => ({ team: value.team, shotsOnTarget: value.shotsOnTarget, corners: value.corners })) }));
+                } catch (pitchError) {
+                  console.warn("[GoalMatrix PitchAPI ESPN supplement unavailable]", JSON.stringify({ espnEventId: String(event.id), pitchEventId: String(pitchFixture.event.id), error: pitchError.message || "request failed" }));
+                }
+              }
+            }
             if (espnNeedsFallback) {
               const normFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeName = event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "";
@@ -6224,7 +6301,7 @@ const server = http.createServer(async (req, res) => {
               }
             }
             matches.push({
-              eventId: String(event.id), statsSource: values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) ? "ESPN+SportScore" : "ESPN",
+              eventId: String(event.id), statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
