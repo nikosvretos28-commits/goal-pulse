@@ -3388,8 +3388,16 @@ function setLiveMetricsCache(rows){
     // different fields on adjacent refreshes.
     const oldTeams=Array.isArray(oldNormalized?.teams)?oldNormalized.teams:[];
     const newTeams=Array.isArray(row.teams)?row.teams:[];
+    const teamIdentity=team=>String(team?.team||team?.name||team?.teamName||team?.displayName||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+    const teamSide=team=>String(team?.homeAway||team?.side||'').toLowerCase();
     const teams=newTeams.map((team,index)=>{
-     const previous=oldTeams[index]||{};
+     const identity=teamIdentity(team),side=teamSide(team);
+     const previous=oldTeams.find(candidate=>{
+      const candidateIdentity=teamIdentity(candidate),candidateSide=teamSide(candidate);
+      if(identity&&candidateIdentity)return identity===candidateIdentity;
+      if((side==='home'||side==='away')&&(candidateSide==='home'||candidateSide==='away'))return side===candidateSide;
+      return false;
+     })||((!identity&&side!=='home'&&side!=='away')?(oldTeams[index]||{}):{});
      const merged={...previous,...team};
      const incomingSot=team?.shotsOnTarget??team?.shots_on_target??team?.shots_on_goal??team?.shotsOnGoal??team?.onTargetShots;
      const previousSot=previous?.shotsOnTarget??previous?.shots_on_target??previous?.shots_on_goal??previous?.shotsOnGoal??previous?.onTargetShots;
