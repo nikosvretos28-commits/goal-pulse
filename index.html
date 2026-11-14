@@ -1366,6 +1366,38 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline-color:var(--gre
   .pulse-alerts #testNotifications{flex:1 1 100%;min-height:44px}
 }
 
+
+/* GoalMatrix live-stat tiles: restore readable mobile layout; presentation only. */
+@media (max-width: 560px) {
+  .live-match-line {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr) !important;
+  }
+  .live-inline-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    padding: 5px !important;
+    align-content: stretch;
+  }
+  .live-inline-stat {
+    min-width: 0;
+    padding: 7px 3px !important;
+    gap: 4px !important;
+  }
+  .live-inline-stat span {
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    letter-spacing: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  .live-inline-stat b {
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+  }
+}
+
 </style>
 
 <style id="goalmatrix-premium-finish">
