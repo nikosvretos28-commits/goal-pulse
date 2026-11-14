@@ -6147,11 +6147,14 @@ const server = http.createServer(async (req, res) => {
                   || sportScoreWidgetSlugCache.map.get(normFallbackTeam(awayName) + "|" + normFallbackTeam(homeName));
                 if (fallbackSlug) {
                   try {
-                    const detailResponse = await fetch("https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(fallbackSlug) + "&src=goal-pulse", {
-                      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
-                    });
-                    if (detailResponse.ok) {
-                      const detailPayload = await detailResponse.json();
+                    // Reuse the shared detail cache, in-flight deduplication, concurrency
+                    // slots, and rolling provider budget. This ESPN fallback previously
+                    // fetched the same detail endpoint directly for every live match,
+                    // bypassing all throttling and causing the provider to reject the
+                    // requests needed by the live-stat boxes.
+                    const detailResult = await fetchSportScoreMatchDetail(fallbackSlug);
+                    if (detailResult.ok) {
+                      const detailPayload = detailResult.payload || {};
                       direct = detailPayload.match || detailPayload.data || detailPayload.fixture || detailPayload;
                     }
                   } catch (fallbackError) {
