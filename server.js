@@ -74,6 +74,71 @@ function extractFixtureArray(body) {
   return [];
 }
 
+// Reuse one verified SportScore live catalogue across scoreboard and live-metrics.
+// The fixtures endpoint can return an empty live list while the documented widget
+// matches endpoint still exposes live fixtures. Fall back only when fixtures is empty.
+const sportScoreLiveFixtureCatalogCache = { at: 0, result: null };
+async function fetchSportScoreLiveFixtureCatalog(isoDate) {
+  const now = Date.now();
+  const cached = sportScoreLiveFixtureCatalogCache.result;
+  if (cached && now - sportScoreLiveFixtureCatalogCache.at < 45000) return cached;
+  let primaryResult = null;
+  try {
+    const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
+      encodeURIComponent(isoDate) + "&status=live&limit=200&src=goalmatrix", {
+      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000)
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      const rows = extractFixtureArray(payload);
+      primaryResult = { ok: true, status: response.status, payload, source: "fixtures", count: rows.length };
+      if (rows.length) {
+        sportScoreLiveFixtureCatalogCache.at = now;
+        sportScoreLiveFixtureCatalogCache.result = primaryResult;
+        return primaryResult;
+      }
+    } else {
+      primaryResult = { ok: false, status: response.status, payload: null, source: "fixtures", count: 0 };
+    }
+  } catch (error) {
+    primaryResult = { ok: false, status: 0, payload: null, source: "fixtures", count: 0, error: error.message || "request failed" };
+  }
+  try {
+    // /api/widget/matches/ is SportScore's documented live-and-recent feed.
+    // Filter to live states at the consuming call sites; do not invent statistics.
+    const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&limit=50&src=goalmatrix", {
+      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000)
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      const rows = extractFixtureArray(payload);
+      const result = { ok: true, status: response.status, payload, source: "widget-matches", count: rows.length };
+      sportScoreLiveFixtureCatalogCache.at = now;
+      sportScoreLiveFixtureCatalogCache.result = result;
+      if (rows.length) console.log("SportScore live fixture fallback selected:", JSON.stringify({
+        primarySource: "fixtures", primaryCount: primaryResult?.count ?? 0,
+        fallbackSource: result.source, fallbackCount: rows.length
+      }));
+      return result;
+    }
+    const result = { ok: false, status: response.status, payload: null, source: "widget-matches", count: 0 };
+    sportScoreLiveFixtureCatalogCache.at = now;
+    sportScoreLiveFixtureCatalogCache.result = result;
+    console.warn("SportScore live fixture sources returned no usable catalogue:", JSON.stringify({
+      primary: primaryResult, fallbackStatus: response.status
+    }));
+    return result;
+  } catch (error) {
+    const result = { ok: false, status: 0, payload: null, source: "widget-matches", count: 0, error: error.message || "request failed" };
+    sportScoreLiveFixtureCatalogCache.at = now;
+    sportScoreLiveFixtureCatalogCache.result = result;
+    console.warn("SportScore live fixture fallback failed:", JSON.stringify({
+      primary: primaryResult, fallbackError: result.error
+    }));
+    return result;
+  }
+}
+
 const competitionHistoryLimiter = createLimiter(4);
 
 const ESPN_HEADERS = {
@@ -5346,12 +5411,9 @@ const server = http.createServer(async (req, res) => {
           // Historical date pages must not spend another request on the live feed.
           if (date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8) === new Date().toISOString().slice(0, 10)) try {
             const liveDate = date.length === 8 ? date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8) : new Date().toISOString().slice(0, 10);
-            const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
-              headers: { "Accept": "application/json" },
-              signal: AbortSignal.timeout(9000)
-            });
+            const response = await fetchSportScoreLiveFixtureCatalog(liveDate);
             if (response.ok) {
-              const payload = await response.json();
+              const payload = response.payload;
               const liveFixtures = extractFixtureArray(payload);
               const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const liveEventsFromApi = [];
@@ -5531,11 +5593,9 @@ const server = http.createServer(async (req, res) => {
       if (liveEvents.length) {
         try {
           const liveDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
-          const liveResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" + liveDate + "&status=live&limit=200", {
-            headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000)
-          });
+          const liveResponse = await fetchSportScoreLiveFixtureCatalog(liveDate);
           if (liveResponse.ok) {
-            const livePayload = await liveResponse.json();
+            const livePayload = liveResponse.payload;
             const liveFixtures = extractFixtureArray(livePayload);
             const normalizeDirectTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
             const refreshedSlugMap = new Map();
