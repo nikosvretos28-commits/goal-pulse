@@ -31,9 +31,9 @@ const PRE_MATCH_OVER_LINES = Object.freeze(["0.5","1.5","2.5","3.5","4.5","5.5",
 // per-fixture stats request globally every 5 minutes (~432 requests/day at most).
 const SPORTAPI_API_KEY = process.env.SPORTAPI_API_KEY || "";
 // API-Sports / API-Football is an independent live-statistics fallback.
-// The free plan allows 100 requests/day. One date lookup is cached per day;
-// up to two batched fixture-stat requests (20 fixture IDs each) run every 35 minutes,
-// keeping the normal worst case below the daily quota while avoiding per-fixture calls.
+// The free plan allows 100 requests/day. Refresh the live=all catalogue every
+// 90 minutes (~16 calls/day) and cap per-fixture statistics at two calls per 35 minutes
+// (~82 calls/day), keeping the combined normal budget below 100 requests/day.
 const APISPORTS_API_KEY = process.env.APISPORTS_API_KEY || "";
 // StatArena free-tier live match statistics (8 selected competitions; request-cached).
 const STATARENA_API_KEY = process.env.ARENA_API_KEY || process.env.STATARENA_API_KEY || "";
