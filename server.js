@@ -6775,7 +6775,7 @@ const server = http.createServer(async (req, res) => {
         console.log("[API-Sports Football] disabled: APISPORTS_API_KEY is not configured");
       }
       if (espnProviderDiagnosticSample) {
-        const normalizeDiagnosticTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+        const normalizeDiagnosticTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
         const sampleHome = espnProviderDiagnosticSample.teams.find(team => team.homeAway === "home")?.team || espnProviderDiagnosticSample.teams[0]?.team || "";
         const sampleAway = espnProviderDiagnosticSample.teams.find(team => team.homeAway === "away")?.team || espnProviderDiagnosticSample.teams[1]?.team || "";
         const homeKey = normalizeDiagnosticTeam(sampleHome);
