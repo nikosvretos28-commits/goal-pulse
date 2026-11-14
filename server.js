@@ -21,6 +21,8 @@ let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
 const PORT = Number(process.env.PORT || 3000);
+// One-time, bounded ESPN stat-shape diagnostic; logs labels/values only, never full payloads.
+let espnRawStatsShapeLogged = false;
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
 const PRE_MATCH_OVER_LINES = Object.freeze(["0.5","1.5","2.5","3.5","4.5","5.5","6.5"]);
@@ -6085,6 +6087,33 @@ const server = http.createServer(async (req, res) => {
             espnSummaryDiagnostics.httpOk++;
             const summary = await response.json();
             const teams = summary?.boxscore?.teams || [];
+            if (!espnRawStatsShapeLogged && teams.some(team => Array.isArray(team.statistics) && team.statistics.length)) {
+              const relevantStatPattern = /shot|chance|expected|\\bxg\\b|attack|corner|possession|goal/i;
+              const rawStatsShape = {
+                eventId: String(event.id),
+                leagueCode: String(item.leagueCode || ""),
+                teams: teams.slice(0, 2).map(team => {
+                  const stats = Array.isArray(team.statistics) ? team.statistics : [];
+                  return {
+                    team: team.team?.displayName || team.team?.name || "",
+                    homeAway: team.homeAway || team.team?.homeAway || "",
+                    statisticsType: Array.isArray(team.statistics) ? "array" : typeof team.statistics,
+                    statisticsCount: stats.length,
+                    firstStatKeys: stats[0] && typeof stats[0] === "object" ? Object.keys(stats[0]) : [],
+                    relevantStats: stats.filter(stat => relevantStatPattern.test([stat.name, stat.abbreviation, stat.displayName, stat.shortDisplayName].filter(Boolean).join(" "))).slice(0, 30).map(stat => ({
+                      name: stat.name ?? null,
+                      abbreviation: stat.abbreviation ?? null,
+                      displayName: stat.displayName ?? null,
+                      shortDisplayName: stat.shortDisplayName ?? null,
+                      displayValue: stat.displayValue ?? null,
+                      value: stat.value ?? null
+                    }))
+                  };
+                })
+              };
+              console.log("[GoalMatrix ESPN raw stats shape] " + JSON.stringify(rawStatsShape));
+              espnRawStatsShapeLogged = true;
+            }
             if (!teams.length) espnSummaryDiagnostics.missingBoxscoreTeams++;
             espnSummaryDiagnostics.teamsFound += teams.length;
             const values = teams.map(team => {
