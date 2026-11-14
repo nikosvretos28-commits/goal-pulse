@@ -40,6 +40,7 @@ const STATARENA_API_KEY = process.env.ARENA_API_KEY || process.env.STATARENA_API
 const statArenaLiveCache = { at: 0, rows: [] };
 const STATARENA_LIVE_CACHE_MS = 45 * 1000;
 const apiSportsFootballDateCache = new Map();
+const apiSportsFootballCatalogueAttemptAt = new Map();
 const apiSportsFootballStatsCache = new Map();
 let apiSportsFootballLastBatchAt = 0;
 let apiSportsFootballBatchCursor = 0;
@@ -47,6 +48,7 @@ let apiSportsFootballBatchCursor = 0;
 // for 20 hours. Two per-fixture statistics calls every 35 minutes consume ~82/day;
 // a 90-minute live-catalogue refresh adds ~16/day and stays within the 100/day plan.
 const APISPORTS_FOOTBALL_DATE_CACHE_MS = 90 * 60 * 1000;
+const APISPORTS_FOOTBALL_CATALOGUE_RETRY_MS = 5 * 60 * 1000;
 const APISPORTS_FOOTBALL_STATS_REFRESH_MS = 35 * 60 * 1000;
 const APISPORTS_FOOTBALL_MAX_FIXTURES_PER_CYCLE = 2;
 const sportApiDateFixturesCache = new Map();
@@ -6478,7 +6480,10 @@ const server = http.createServer(async (req, res) => {
         const apiSportsNow = Date.now();
         const apiSportsDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
         let apiSportsDay = apiSportsFootballDateCache.get(apiSportsDate);
-        if (!apiSportsDay || apiSportsNow - apiSportsDay.at >= APISPORTS_FOOTBALL_DATE_CACHE_MS) {
+        const apiSportsLastCatalogueAttempt = apiSportsFootballCatalogueAttemptAt.get(apiSportsDate) || 0;
+        if ((!apiSportsDay || apiSportsNow - apiSportsDay.at >= APISPORTS_FOOTBALL_DATE_CACHE_MS) &&
+            apiSportsNow - apiSportsLastCatalogueAttempt >= APISPORTS_FOOTBALL_CATALOGUE_RETRY_MS) {
+          apiSportsFootballCatalogueAttemptAt.set(apiSportsDate, apiSportsNow);
           try {
             const response = await fetch("https://v3.football.api-sports.io/fixtures?live=all&timezone=Europe%2FAthens", {
               headers: { "x-apisports-key": APISPORTS_API_KEY },
@@ -6488,7 +6493,7 @@ const server = http.createServer(async (req, res) => {
             if (response.ok && Array.isArray(payload.response)) {
               apiSportsDay = { at: apiSportsNow, rows: payload.response };
               apiSportsFootballDateCache.set(apiSportsDate, apiSportsDay);
-              console.log("[API-Sports Football] daily fixture catalogue:", JSON.stringify({
+              console.log("[API-Sports Football] live fixture catalogue:", JSON.stringify({
                 date: apiSportsDate, fixtures: payload.response.length,
                 requestsRemaining: response.headers.get("x-ratelimit-requests-remaining")
               }));
