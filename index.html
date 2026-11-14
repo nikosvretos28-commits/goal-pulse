@@ -378,6 +378,19 @@ header nav a{padding:9px 0;font-size:11px}
 .live-inline-stat.interval span{color:var(--cyan)}
 .live-inline-stat.interval b{color:#f2f7fa}
 @media(max-width:850px){.live-match-centre{overflow-x:auto}.live-match-line{min-width:850px;grid-template-columns:minmax(350px,1fr) minmax(450px,1fr)}.live-match-line .live-row{padding:9px 6px}.live-inline-stats{padding:5px;gap:4px}}
+
+/* GoalMatrix mobile repair: keep each fixture and its stat tiles inside the phone viewport. */
+@media(max-width:560px){
+ .live-match-centre{overflow-x:visible}
+ .live-match-line{min-width:0;width:100%;grid-template-columns:minmax(0,1fr)}
+ .live-match-main{min-width:0;width:100%}
+ .live-match-line .live-row{grid-template-columns:30px minmax(0,1fr) 42px minmax(0,1fr);gap:5px;padding:10px 7px}
+ .live-match-line .live-row .teamname{min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:11px}
+ .live-inline-stats{width:100%;min-width:0;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:7px}
+ .live-inline-stat{min-width:0;padding:8px 4px}
+ .live-inline-stat span{white-space:normal;overflow-wrap:anywhere;font-size:9px;line-height:1.25}
+ .live-inline-stat b{font-size:13px}
+}
 @media(max-width:560px){.live-match-centre .top-live-head{position:sticky;left:0}.live-match-line{min-width:920px;grid-template-columns:380px 540px}.live-match-line .live-row{grid-template-columns:20px minmax(76px,1fr) 44px minmax(76px,1fr) 20px 38px;gap:5px}.live-match-line .live-row .teamname{font-size:12px}.live-inline-stats{grid-template-columns:repeat(4,minmax(96px,1fr));gap:5px;padding:6px}.live-inline-stat{padding:7px 4px}.live-inline-stat span{font-size:10px}.live-inline-stat b{font-size:13px}}
 .live-match-main{min-width:340px;display:flex;flex-direction:column;gap:3px}.live-row-league{padding:5px 8px 2px;color:#8adcf2;font-size:10px;font-weight:850;letter-spacing:.2px;white-space:normal;overflow-wrap:anywhere}.live-row-league:before{content:"🏆 ";}.goal-now-alert{display:inline-flex;align-self:flex-start;margin:0 8px 7px;padding:5px 9px;border:1px solid #ff9a36;border-radius:6px;background:#43220b;color:#ffd08a;font-size:10px;font-weight:900;letter-spacing:.3px;animation:goalPulseGlow 1.2s ease-in-out infinite alternate}.goal-now-alert:before{content:"";display:inline-block;width:6px;height:6px;margin:auto 6px auto 0;border-radius:50%;background:#ff8b26}@keyframes goalPulseGlow{from{box-shadow:0 0 0 #ff8b2600}to{box-shadow:0 0 12px #ff8b2666}}
 
