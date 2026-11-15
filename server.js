@@ -5329,13 +5329,10 @@ const server = http.createServer(async (req, res) => {
           try {
             const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
             const isRequestedDateToday = requestedIsoDate === new Date().toISOString().slice(0, 10);
-            // Keep this legacy fixture-enrichment request disabled. The dedicated
-            // live-only endpoint below already supplies current live fixtures; calling
-            // the same SportScore host again for live/upcoming/finished (and especially
-            // once per historical date) consumes the shared quota needed by match-detail
-            // statistics. ESPN/PitchAPI remain the scoreboard sources; live details
-            // continue through the dedicated live feed and the existing stats pipeline.
-            const requestedStatuses = [];
+            // Fetch only the live fixture catalog to broaden the general LIVE list.
+            // Do not request upcoming/finished catalogs or alter the stats-provider
+            // pipeline; preserve the shared quota for match-detail statistics.
+            const requestedStatuses = ["live"];
             const sportScoreResponses = await Promise.all(requestedStatuses.map(async status => {
               const endpoint = "https://sportscore.com/api/v1/fixtures/?sport=football" +
                 (status === "live" ? "" : "&date=" + encodeURIComponent(requestedIsoDate)) + "&status=" + status + "&limit=200&src=goal-pulse";
