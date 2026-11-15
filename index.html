@@ -2795,19 +2795,20 @@ async function loadPersistentAlertHistory(){
   while(true){const response=await fetch(ANALYTICS_API+'/api/alerts/history?limit='+pageSize+'&offset='+offset+'&period=all',{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);const data=await response.json();if(!Array.isArray(data.alerts))throw new Error('Invalid alert history response');allAlerts.push(...data.alerts);if(data.alerts.length<pageSize)break;offset+=data.alerts.length;}
   const merged=new Map();
   allAlerts.forEach(a=>{if(a&&Number.isFinite(Number(a.createdAt)))merged.set(alertHistoryKey(a),a)});
+  const localRecordsToPersist=new Map();
   const latestRecordTime=a=>Math.max(0,...['recordUpdatedAt','betUpdatedAt','manualOutcomeUpdatedAt','betSettledAt','evaluatedAt'].map(k=>Number(a?.[k])||0));
   const isSettledBet=a=>['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
   const isPendingOutcome=a=>!a?.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase());
   signalAlertHistory.forEach(a=>{
    const key=alertHistoryKey(a),saved=merged.get(key);
-   if(!saved){merged.set(key,a);return}
+   if(!saved){merged.set(key,a);localRecordsToPersist.set(key,a);return}
    const localSettled=isSettledBet(a),serverSettled=isSettledBet(saved);
    // Never let an old browser copy with a pending bet overwrite an automatic server settlement.
    if(serverSettled&&!localSettled){return}
-   if(localSettled&&!serverSettled){merged.set(key,a);return}
-   if(latestRecordTime(a)>latestRecordTime(saved)){merged.set(key,a);return}
-   if(a.manualOutcome&&!saved.manualOutcome){merged.set(key,a);return}
-   if(!isPendingOutcome(a)&&isPendingOutcome(saved)){merged.set(key,a);return}
+   if(localSettled&&!serverSettled){merged.set(key,a);localRecordsToPersist.set(key,a);return}
+   if(latestRecordTime(a)>latestRecordTime(saved)){merged.set(key,a);localRecordsToPersist.set(key,a);return}
+   if(a.manualOutcome&&!saved.manualOutcome){merged.set(key,a);localRecordsToPersist.set(key,a);return}
+   if(!isPendingOutcome(a)&&isPendingOutcome(saved)){merged.set(key,a);localRecordsToPersist.set(key,a);return}
   });
   signalAlertHistory=[...merged.values()].sort((a,b)=>Number(b.createdAt)-Number(a.createdAt));
   signalAlertHistory.forEach(a=>{if(!a.alertId)a.alertId=alertHistoryKey(a)});
@@ -2815,7 +2816,9 @@ async function loadPersistentAlertHistory(){
   showSignalHistory();
   renderTopAiAlerts();
   renderPowerRankingHistory();
-  await persistAlertBatch(signalAlertHistory);
+  // Upload only browser-only records or local updates that are newer than the database.
+  // Re-posting the entire database history on every refresh exceeded the 4 MB API limit.
+  if(localRecordsToPersist.size)await persistAlertBatch([...localRecordsToPersist.values()]);
   void reconcileHistoricalAlertSettlements();
   const status=document.getElementById('signalStatus');if(status)status.textContent+=' · ιστορικό μόνιμης βάσης συγχρονισμένο';
  }catch(error){console.warn('Persistent alert history unavailable:',error.message)}
