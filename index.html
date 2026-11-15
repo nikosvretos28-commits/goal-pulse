@@ -2783,9 +2783,18 @@ async function persistAlertRecord(a){
 async function persistAlertBatch(alerts){
  const records=(Array.isArray(alerts)?alerts:[]).filter(a=>a&&a.eventId&&Number.isFinite(Number(a.createdAt))).map(a=>{if(!a.alertId)a.alertId=alertHistoryKey(a);return a});
  if(!records.length)return true;
+ const batches=[];let batch=[],batchSize=0;
+ for(const record of records){
+  const recordSize=JSON.stringify(record).length+1;
+  if(batch.length&&batchSize+recordSize>500000){batches.push(batch);batch=[];batchSize=0}
+  batch.push(record);batchSize+=recordSize;
+ }
+ if(batch.length)batches.push(batch);
  try{
-  const response=await fetch(ANALYTICS_API+'/api/alerts/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alerts:records})});
-  if(!response.ok)throw new Error('HTTP '+response.status);
+  for(const chunk of batches){
+   const response=await fetch(ANALYTICS_API+'/api/alerts/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alerts:chunk})});
+   if(!response.ok)throw new Error('HTTP '+response.status);
+  }
   return true;
  }catch(error){console.warn('Persistent alert history batch save failed:',error.message);return false}
 }
