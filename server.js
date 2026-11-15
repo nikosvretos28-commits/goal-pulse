@@ -5329,10 +5329,10 @@ const server = http.createServer(async (req, res) => {
           try {
             const requestedIsoDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
             const isRequestedDateToday = requestedIsoDate === new Date().toISOString().slice(0, 10);
-            // Fetch only the live fixture catalog to broaden the general LIVE list.
-            // Do not request upcoming/finished catalogs or alter the stats-provider
-            // pipeline; preserve the shared quota for match-detail statistics.
-            const requestedStatuses = ["live"];
+            // Keep the legacy fixture-enrichment request disabled, as in the verified
+            // 11:05 Greece reference build. The dedicated live-only catalogue below
+            // remains separate; do not add a second live-catalogue request here.
+            const requestedStatuses = [];
             const sportScoreResponses = await Promise.all(requestedStatuses.map(async status => {
               const endpoint = "https://sportscore.com/api/v1/fixtures/?sport=football" +
                 (status === "live" ? "" : "&date=" + encodeURIComponent(requestedIsoDate)) + "&status=" + status + "&limit=200&src=goal-pulse";
