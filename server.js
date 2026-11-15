@@ -120,8 +120,8 @@ async function fetchSportScoreLiveFixtureCatalog(isoDate) {
     fallbackResult = { ok: false, status: 0, payload: null, source: "widget-matches", count: 0, error: error.message || "request failed" };
   }
 
-  const normalizeTeam = value => String(value || "").normalize("NFD").replace(/\\p{M}/gu, "")
-    .toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ")
+  const normalizeTeam = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "")
+    .toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ").trim();
   const fixtureKey = fixture => {
     const id = fixture?.id ?? fixture?.fixture_id ?? fixture?.event_id ?? fixture?.slug ?? fixture?.match_slug;
@@ -6078,7 +6078,7 @@ const server = http.createServer(async (req, res) => {
               // Reuse the already-loaded live fixture/slug maps so PitchAPI-only matches
               // can receive genuine provider stats without changing alert criteria.
               pitchSportScoreFallbackDiagnostics.attempted++;
-              const normalizeFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+              const normalizeFallbackTeam = value => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const homeKey = normalizeFallbackTeam(homeName);
               const awayKey = normalizeFallbackTeam(awayName);
               const pair = homeKey + "|" + awayKey;
