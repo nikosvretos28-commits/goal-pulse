@@ -2833,6 +2833,63 @@ async function loadPersistentAlertHistory(){
  }catch(error){console.warn('Persistent alert history unavailable:',error.message)}
 }
 
+
+/*
+ * Keep the AI/VIP alert panels reconciled with the persistent server history
+ * while the page stays open. This is deliberately separate from loadScores()
+ * and runSignalCheck(): it does not touch live-score or alert-trigger logic.
+ */
+let recentAlertHistorySyncPromise=null;
+async function syncRecentAlertHistoryFromServer(){
+ if(document.hidden||recentAlertHistorySyncPromise)return recentAlertHistorySyncPromise;
+ recentAlertHistorySyncPromise=(async()=>{
+  const serverAlerts=[];let offset=0;const pageSize=5000;
+  while(true){
+   const response=await fetch(ANALYTICS_API+'/api/alerts/history?limit='+pageSize+'&offset='+offset+'&period=7d',{cache:'no-store'});
+   if(!response.ok)throw new Error('HTTP '+response.status);
+   const data=await response.json();
+   if(!Array.isArray(data.alerts))throw new Error('Invalid recent alert history response');
+   serverAlerts.push(...data.alerts);
+   if(data.alerts.length<pageSize)break;
+   offset+=data.alerts.length;
+  }
+  const current=Array.isArray(signalAlertHistory)?signalAlertHistory:[];
+  const merged=new Map(current.map(a=>[alertHistoryKey(a),a]));
+  const updateTime=a=>Math.max(0,...['recordUpdatedAt','betUpdatedAt','manualOutcomeUpdatedAt','betSettledAt','evaluatedAt'].map(key=>Number(a?.[key])||0));
+  const settled=a=>['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
+  const completed=a=>settled(a)||Boolean(a?.manualOutcome)||(Boolean(a?.outcome)&&!['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase()));
+  for(const saved of serverAlerts){
+   if(!saved||!Number.isFinite(Number(saved.createdAt)))continue;
+   const key=alertHistoryKey(saved),local=merged.get(key);
+   if(!local){merged.set(key,saved);continue;}
+   // A server-side settlement always replaces an older pending browser copy.
+   if(completed(saved)&&!completed(local)){merged.set(key,saved);continue;}
+   // Preserve manual/local final decisions when the server still has a pending copy.
+   if(completed(local)&&!completed(saved))continue;
+   if(updateTime(saved)>updateTime(local)){merged.set(key,saved);continue;}
+   // Server history is authoritative for newly persisted records; do not collapse
+   // different alertIds, even when they belong to the same fixture.
+  }
+  signalAlertHistory=[...merged.values()].sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
+  signalAlertHistory.forEach(a=>{if(!a.alertId)a.alertId=alertHistoryKey(a)});
+  try{localStorage.setItem('goalPulseAlertHistory',JSON.stringify(signalAlertHistory))}catch(error){console.warn('Recent alert cache update skipped:',error.message)}
+  renderTopAiAlerts();
+  showSignalHistory();
+  renderPowerRankingHistory();
+ })().catch(error=>{console.warn('Recent AI alert history sync failed:',error.message)}).finally(()=>{recentAlertHistorySyncPromise=null});
+ return recentAlertHistorySyncPromise;
+}
+let recentAlertHistorySyncTimer=null;
+function startRecentAlertHistorySync(){
+ if(recentAlertHistorySyncTimer)return;
+ recentAlertHistorySyncTimer=setInterval(()=>{if(!document.hidden)void syncRecentAlertHistoryFromServer()},60000);
+}
+startRecentAlertHistorySync();
+setTimeout(()=>{if(!document.hidden)void syncRecentAlertHistoryFromServer()},10000);
+document.addEventListener('visibilitychange',()=>{
+ if(!document.hidden)void syncRecentAlertHistoryFromServer();
+});
+
 let liveDetailRefreshTimer=null;
 function stopLiveDetailRefresh(){if(liveDetailRefreshTimer){clearInterval(liveDetailRefreshTimer);liveDetailRefreshTimer=null;}}
 const LEAGUES=[
