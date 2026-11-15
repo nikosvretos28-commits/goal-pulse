@@ -93,9 +93,10 @@ async function fetchSportScoreLiveFixtureCatalog(isoDate) {
       const rows = extractFixtureArray(payload);
       primaryResult = { ok: true, status: response.status, payload, source: "fixtures", count: rows.length };
       if (rows.length) {
+        // Keep the primary live catalogue, but also query the secondary feed
+        // below so a partial non-empty response cannot hide other live matches.
         sportScoreLiveFixtureCatalogCache.at = now;
         sportScoreLiveFixtureCatalogCache.result = primaryResult;
-        return primaryResult;
       }
     } else {
       primaryResult = { ok: false, status: response.status, payload: null, source: "fixtures", count: 0 };
