@@ -804,7 +804,8 @@ const scoreboardInflight = new Map();
 const sportScoreWidgetSlugCache = { at: 0, map: new Map() };
 const sportScoreMatchDetailCache = new Map();
 // Restore the pre-PR-309 detail refresh window.
-const SPORT_SCORE_DETAIL_CACHE_MS = 12 * 1000;
+// Keep detail payloads warm across the two independently cached 15-second metrics scopes.
+const SPORT_SCORE_DETAIL_CACHE_MS = 20 * 1000;
 // SportScore rate-limits detail widgets across both live-metrics scopes.
 // Keep a rolling request budget and rotate fixture order so the same first
 // matches are not the only ones that ever receive fresh statistics.
