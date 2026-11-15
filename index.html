@@ -4743,7 +4743,9 @@ async function reconcileHistoricalAlertSettlements(){
     !a.outcome||['εκκρεμεί','pending','σε εκκρεμότητα'].includes(String(a.outcome).trim().toLowerCase());
   });
   if(!pending.length)return;
-  const dates=new Set(pending.map(a=>goalMatrixHistoryDateKey(a.createdAt)).filter(Boolean));
+  const shiftDate=(key,days)=>{const date=new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(4,6))-1,Number(key.slice(6,8))+days));return date.getUTCFullYear()+String(date.getUTCMonth()+1).padStart(2,'0')+String(date.getUTCDate()).padStart(2,'0');};
+  const dates=new Set();
+  for(const alert of pending){const key=goalMatrixHistoryDateKey(alert.createdAt);if(key)for(const offset of [-1,0,1])dates.add(shiftDate(key,offset));}
   const eventsById=new Map(),now=Date.now();
   for(const date of dates){
    let cached=historicalAlertScoreboardCache.get(date);
@@ -4761,19 +4763,52 @@ async function reconcileHistoricalAlertSettlements(){
   const normalizeTeam=value=>String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
   const changed=new Set();
   for(const alert of pending){
-   let event=eventsById.get(String(alert.eventId));
-   if(!event){
-    const matches=[];
-    for(const cached of historicalAlertScoreboardCache.values())for(const candidate of cached.events||[]){
-     const teams=candidate.competitions?.[0]?.competitors||[];
-     const home=teams.find(team=>team.homeAway==='home')||teams[0],away=teams.find(team=>team.homeAway==='away')||teams[1];
-     const hn=normalizeTeam(home?.team?.displayName||home?.team?.name||home?.displayName||home?.name);
-     const an=normalizeTeam(away?.team?.displayName||away?.team?.name||away?.displayName||away?.name);
-     if(hn===normalizeTeam(alert.home)&&an===normalizeTeam(alert.away))matches.push(candidate);
-    }
-    if(matches.length===1)event=matches[0];
+   const alertHome=normalizeTeam(alert.home),alertAway=normalizeTeam(alert.away);
+   if(!alertHome||!alertAway)continue;
+   const created=Number(alert.createdAt);
+   const candidates=[];
+   for(const cached of historicalAlertScoreboardCache.values())for(const candidate of cached.events||[]){
+    const teams=candidate.competitions?.[0]?.competitors||[];
+    const home=teams.find(team=>team.homeAway==='home')||teams[0],away=teams.find(team=>team.homeAway==='away')||teams[1];
+    const hn=normalizeTeam(home?.team?.displayName||home?.team?.name||home?.displayName||home?.name);
+    const an=normalizeTeam(away?.team?.displayName||away?.team?.name||away?.displayName||away?.name);
+    if(hn!==alertHome||an!==alertAway)continue;
+    const kickoff=Date.parse(candidate.date||candidate.competitions?.[0]?.date||'');
+    if(!Number.isFinite(kickoff)||Math.abs(kickoff-created)>36*60*60*1000)continue;
+    candidates.push(candidate);
    }
-   if(!event)continue;
+   if(!candidates.length)continue;
+   const idMatches=candidates.filter(candidate=>String(candidate.id)===String(alert.eventId));
+   let matches=idMatches.length?idMatches:candidates;
+   const leagueHint=String(alert.leagueName||alert.league||alert.competitionName||alert.competition||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+   if(leagueHint){
+    const leagueMatches=matches.filter(candidate=>{
+     const league=String(candidate.leagueName||candidate.competitions?.[0]?.name||candidate.__goalMatrixLeagueCode||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+     return league&&(league===leagueHint||league.includes(leagueHint)||leagueHint.includes(league));
+    });
+    if(leagueMatches.length)matches=leagueMatches;
+   }
+   const times=matches.map(candidate=>Date.parse(candidate.date||candidate.competitions?.[0]?.date||'')).filter(Number.isFinite);
+   if(times.length>1&&Math.max(...times)-Math.min(...times)>6*60*60*1000)continue;
+   const scored=matches.filter(candidate=>{
+    const competitors=candidate.competitions?.[0]?.competitors||[];
+    const home=competitors.find(team=>team.homeAway==='home')||competitors[0],away=competitors.find(team=>team.homeAway==='away')||competitors[1];
+    const hs=home?.score==null||String(home.score).trim()===''?NaN:Number(home.score);
+    const as=away?.score==null||String(away.score).trim()===''?NaN:Number(away.score);
+    const types=[candidate.status?.type,candidate.competitions?.[0]?.status?.type].filter(Boolean);
+    const state=types.map(type=>String(type.state||'').toLowerCase()).find(Boolean)||'';
+    const label=types.map(type=>[type.name,type.detail,type.shortDetail].filter(Boolean).join(' ')).join(' ').toLowerCase();
+    const finished=state==='post'||/\b(?:final|full[ -]?time|finished|ended|ft|after extra time|after penalties|aet)\b/i.test(label);
+    return finished&&Number.isInteger(hs)&&hs>=0&&Number.isInteger(as)&&as>=0;
+   });
+   if(!scored.length)continue;
+   const scorePairs=new Set(scored.map(candidate=>{
+    const competitors=candidate.competitions?.[0]?.competitors||[];
+    const home=competitors.find(team=>team.homeAway==='home')||competitors[0],away=competitors.find(team=>team.homeAway==='away')||competitors[1];
+    return String(home.score)+'-'+String(away.score);
+   }));
+   if(scorePairs.size!==1)continue;
+   const event=scored.find(candidate=>String(candidate._goalMatrixSource||'')==='ESPN')||scored[0];
    const competition=event.competitions?.[0],teams=competition?.competitors||[];
    const home=teams.find(team=>team.homeAway==='home')||teams[0],away=teams.find(team=>team.homeAway==='away')||teams[1];
    const hs=home?.score==null||String(home.score).trim()===''?NaN:Number(home.score);
@@ -4787,11 +4822,12 @@ async function reconcileHistoricalAlertSettlements(){
    if(!finished||excluded)continue;
    const total=hs+as;
    const firstHalfGoals=side=>{
-    const scores=(side?.linescores||[]).map(x=>Number(x.value??x.displayValue)).filter(Number.isFinite);
-    if(scores.length)return scores[0];
+    const scores=(side?.linescores||[]).map(x=>{const raw=x?.value??x?.displayValue;return raw==null||raw===''?NaN:Number(raw)}).filter(Number.isFinite);
+    if(scores.length)return Number.isInteger(scores[0])&&scores[0]>=0?scores[0]:null;
     const summary=side?.statistics?.find(x=>/half.?time score/i.test(String(x.name||x.abbreviation||'')));
-    const n=Number(summary?.displayValue??summary?.value);
-    return Number.isFinite(n)?n:null;
+    const raw=summary?.displayValue??summary?.value;
+    const n=raw==null||raw===''?NaN:Number(raw);
+    return Number.isInteger(n)&&n>=0?n:null;
    };
    const h1=firstHalfGoals(home),a1=firstHalfGoals(away);
    const halfTotal=h1!=null&&a1!=null?h1+a1:null;
