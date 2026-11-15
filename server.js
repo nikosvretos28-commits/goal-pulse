@@ -82,7 +82,9 @@ async function fetchSportScoreLiveFixtureCatalog(isoDate) {
   const now = Date.now();
   const cached = sportScoreLiveFixtureCatalogCache.result;
   if (cached && now - sportScoreLiveFixtureCatalogCache.at < 45000) return cached;
-  let primaryResult = null;
+
+  let primaryResult = { ok: false, status: 0, payload: null, source: "fixtures", count: 0 };
+  let primaryRows = [];
   try {
     const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
       encodeURIComponent(isoDate) + "&status=live&limit=200&src=goalmatrix", {
@@ -90,54 +92,78 @@ async function fetchSportScoreLiveFixtureCatalog(isoDate) {
     });
     if (response.ok) {
       const payload = await response.json();
-      const rows = extractFixtureArray(payload);
-      primaryResult = { ok: true, status: response.status, payload, source: "fixtures", count: rows.length };
-      if (rows.length) {
-        // Keep the primary live catalogue, but also query the secondary feed
-        // below so a partial non-empty response cannot hide other live matches.
-        sportScoreLiveFixtureCatalogCache.at = now;
-        sportScoreLiveFixtureCatalogCache.result = primaryResult;
-      }
+      primaryRows = extractFixtureArray(payload);
+      primaryResult = { ok: true, status: response.status, payload, source: "fixtures", count: primaryRows.length };
     } else {
       primaryResult = { ok: false, status: response.status, payload: null, source: "fixtures", count: 0 };
     }
   } catch (error) {
     primaryResult = { ok: false, status: 0, payload: null, source: "fixtures", count: 0, error: error.message || "request failed" };
   }
+
+  let fallbackResult = { ok: false, status: 0, payload: null, source: "widget-matches", count: 0 };
+  let fallbackRows = [];
   try {
-    // /api/widget/matches/ is SportScore's documented live-and-recent feed.
-    // Filter to live states at the consuming call sites; do not invent statistics.
+    // Query the secondary feed even when the primary feed is non-empty:
+    // either endpoint may return only a partial live catalogue.
     const response = await fetch("https://sportscore.com/api/widget/matches/?sport=football&limit=50&src=goalmatrix", {
       headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(9000)
     });
     if (response.ok) {
       const payload = await response.json();
-      const rows = extractFixtureArray(payload);
-      const result = { ok: true, status: response.status, payload, source: "widget-matches", count: rows.length };
-      sportScoreLiveFixtureCatalogCache.at = now;
-      sportScoreLiveFixtureCatalogCache.result = result;
-      if (rows.length) console.log("SportScore live fixture fallback selected:", JSON.stringify({
-        primarySource: "fixtures", primaryCount: primaryResult?.count ?? 0,
-        fallbackSource: result.source, fallbackCount: rows.length
-      }));
-      return result;
+      fallbackRows = extractFixtureArray(payload);
+      fallbackResult = { ok: true, status: response.status, payload, source: "widget-matches", count: fallbackRows.length };
+    } else {
+      fallbackResult = { ok: false, status: response.status, payload: null, source: "widget-matches", count: 0 };
     }
-    const result = { ok: false, status: response.status, payload: null, source: "widget-matches", count: 0 };
-    sportScoreLiveFixtureCatalogCache.at = now;
-    sportScoreLiveFixtureCatalogCache.result = result;
-    console.warn("SportScore live fixture sources returned no usable catalogue:", JSON.stringify({
-      primary: primaryResult, fallbackStatus: response.status
-    }));
-    return result;
   } catch (error) {
-    const result = { ok: false, status: 0, payload: null, source: "widget-matches", count: 0, error: error.message || "request failed" };
-    sportScoreLiveFixtureCatalogCache.at = now;
-    sportScoreLiveFixtureCatalogCache.result = result;
-    console.warn("SportScore live fixture fallback failed:", JSON.stringify({
-      primary: primaryResult, fallbackError: result.error
-    }));
-    return result;
+    fallbackResult = { ok: false, status: 0, payload: null, source: "widget-matches", count: 0, error: error.message || "request failed" };
   }
+
+  const normalizeTeam = value => String(value || "").normalize("NFD").replace(/\\p{M}/gu, "")
+    .toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+  const fixtureKey = fixture => {
+    const id = fixture?.id ?? fixture?.fixture_id ?? fixture?.event_id ?? fixture?.slug ?? fixture?.match_slug;
+    if (id != null && String(id).trim()) return "id:" + String(id).trim().toLowerCase();
+    const home = fixture?.home?.name || fixture?.home_team?.name || fixture?.home_name ||
+      (typeof fixture?.home === "string" ? fixture.home : "");
+    const away = fixture?.away?.name || fixture?.away_team?.name || fixture?.away_name ||
+      (typeof fixture?.away === "string" ? fixture.away : "");
+    const pair = normalizeTeam(home) + "||" + normalizeTeam(away);
+    return pair === "||" ? "" : "teams:" + pair;
+  };
+  const mergedRows = [];
+  const seen = new Set();
+  for (const fixture of [...primaryRows, ...fallbackRows]) {
+    const key = fixtureKey(fixture);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    mergedRows.push(fixture);
+  }
+
+  const result = {
+    ok: primaryResult.ok || fallbackResult.ok,
+    status: primaryResult.ok ? primaryResult.status : fallbackResult.status,
+    payload: { matches: mergedRows },
+    source: "fixtures+widget-matches",
+    count: mergedRows.length,
+    sources: {
+      fixtures: { ok: primaryResult.ok, status: primaryResult.status, count: primaryRows.length },
+      widgetMatches: { ok: fallbackResult.ok, status: fallbackResult.status, count: fallbackRows.length }
+    }
+  };
+  sportScoreLiveFixtureCatalogCache.at = now;
+  sportScoreLiveFixtureCatalogCache.result = result;
+  console.log("SportScore combined live fixture catalog:", JSON.stringify({
+    fixtures: primaryRows.length, widgetMatches: fallbackRows.length,
+    merged: mergedRows.length, ok: result.ok
+  }));
+  if (!result.ok) console.warn("SportScore live fixture sources both failed:", JSON.stringify({
+    primary: primaryResult.error || primaryResult.status,
+    fallback: fallbackResult.error || fallbackResult.status
+  }));
+  return result;
 }
 
 const competitionHistoryLimiter = createLimiter(4);
