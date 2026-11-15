@@ -803,8 +803,8 @@ const scoreboardCache = new Map();
 const scoreboardInflight = new Map();
 const sportScoreWidgetSlugCache = { at: 0, map: new Map() };
 const sportScoreMatchDetailCache = new Map();
-// SportScore's widget edge cache is ~60 seconds; reuse detail payloads for that window.
-const SPORT_SCORE_DETAIL_CACHE_MS = 60 * 1000;
+// Restore the pre-PR-309 detail refresh window.
+const SPORT_SCORE_DETAIL_CACHE_MS = 12 * 1000;
 // SportScore rate-limits detail widgets across both live-metrics scopes.
 // Keep a rolling request budget and rotate fixture order so the same first
 // matches are not the only ones that ever receive fresh statistics.
@@ -818,10 +818,6 @@ function reserveSportScoreDetailRequest(now = Date.now()) {
   sportScoreDetailRequestTimes.push(now);
   return true;
 }
-// A 429 pauses all detail requests briefly instead of retrying every match independently.
-const SPORT_SCORE_DETAIL_429_FALLBACK_MS = 60 * 1000;
-const SPORT_SCORE_DETAIL_429_MAX_MS = 2 * 60 * 1000;
-let sportScoreDetailCooldownUntil = 0;
 const sportScoreMatchDetailInflight = new Map();
 let sportScoreDetailActiveRequests = 0;
 const sportScoreDetailWaiters = [];
@@ -841,9 +837,6 @@ async function fetchSportScoreMatchDetail(slug) {
   const cached = sportScoreMatchDetailCache.get(key);
   if (cached && now - cached.at < SPORT_SCORE_DETAIL_CACHE_MS) return { ok: true, status: 200, payload: cached.payload, cached: true };
   const staleCache = cached ? { stalePayload: cached.payload, staleAt: cached.at } : {};
-  if (now < sportScoreDetailCooldownUntil) {
-    return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil, ...staleCache };
-  }
   if (sportScoreMatchDetailInflight.has(key)) return sportScoreMatchDetailInflight.get(key);
   // Do not spend more requests than SportScore has allowed recently. This is
   // a local budget (not a fake provider response); the next scan rotates onward.
@@ -875,18 +868,13 @@ async function fetchSportScoreMatchDetail(slug) {
         }
         return { ok: true, status: response.status, payload, cached: false };
       }
-      if (response.status === 429) {
-        const retryAfter = Number(response.headers.get("retry-after"));
-        const cooldownMs = Number.isFinite(retryAfter) && retryAfter > 0
-          ? Math.min(SPORT_SCORE_DETAIL_429_MAX_MS, retryAfter * 1000)
-          : SPORT_SCORE_DETAIL_429_FALLBACK_MS;
-        sportScoreDetailCooldownUntil = Math.max(sportScoreDetailCooldownUntil, Date.now() + cooldownMs);
-        return { ok: false, status: 429, payload: null, cached: false, cooldown: true, provider429: true, retryAt: sportScoreDetailCooldownUntil, ...staleCache };
-      }
-      if (![500, 502, 503, 504].includes(response.status) || attempt === 2) {
+      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
         return { ok: false, status: response.status, payload: null, cached: false, ...staleCache };
       }
-      const retryDelay = Math.min(4000, 700 * (2 ** attempt));
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(8000, retryAfter * 1000)
+        : Math.min(4000, 700 * (2 ** attempt));
       await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
     return { ok: false, status: lastStatus, payload: null, cached: false, ...staleCache };
