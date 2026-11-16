@@ -27,7 +27,15 @@ function isFirstHalfSotMinute(minute, status = "") {
 // AI-only cumulative trigger: 20+ combined match SOT must be reached by minute 65.
 // Other second-half AI triggers retain their separate 46–84 minute window.
 function isCumulativeSotMinute(minute, status = "") {
-  return Number.isInteger(minute) && minute <= 65 && isAiMinuteEligible(minute, status);
+  if (!Number.isInteger(minute) || minute < 1 || minute > 65) return false;
+  const period = String(status || "").trim().toLowerCase();
+  // A cumulative match-wide SOT total can qualify in either half, but never
+  // during halftime or after the fixture has finished.
+  if (/\b(?:finished|full\s*time|ended|complete|completed|ft|aet)\b/.test(period) ||
+      /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα/.test(period)) return false;
+  if (/\b(?:ht|half[\s-]*time|halftime)\b/.test(period) ||
+      /ανάπαυλα/.test(period)) return false;
+  return true;
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.
