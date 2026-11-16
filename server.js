@@ -5786,7 +5786,7 @@ const server = http.createServer(async (req, res) => {
       const matches = [];
       let espnProviderDiagnosticSample = null;
       let apiSportsMatchAuditForEspnSample = null;
-      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, localBudgetLimited: 0, provider429: 0, providerCooldownSkipped: 0, cachedDetailHits: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
+      const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, localBudgetLimited: 0, provider429: 0, providerCooldownSkipped: 0, cachedDetailHits: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null, unmatchedLabels: [] };
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0, unmatchedSportScoreLabels: [] };
       const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
       const pitchApiSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, liveFetched: 0, supplied: 0, skippedRateLimit: 0, errors: 0 };
@@ -5895,6 +5895,12 @@ const server = http.createServer(async (req, res) => {
                 const away = node.away ?? node.away_value ?? node.awayValue ?? node.away_team ?? node.awayTeam ?? node.value_away ?? node.away_score;
                 const relevantLiveMetric = /^(shots_on_target|shots_on_goal|shots_on_target_total|sot|on_target|total_shots|shots_total|shot_attempts|shots_off_target|off_target_shots|shots_off_goal|shots_in_box|shots_inside_box|shots_in_penalty_area|shots_inside_penalty_area|total_shots_inside_box|total_shots_in_box|shots_on_target_inside_box|shots_on_target_in_box|shots_on_target_inside_penalty_area|shots_on_target_in_penalty_area|shots_on_target_from_inside_box|on_target_inside_box|big_chances|big_chance|big_chances_created|big_chance_created|corners|corner|corner_kicks|corner_kick|cornerkicks|cornerkick|won_corners|corners_won|corner_kicks_won|corner_kicks_total|total_corners|corners_total|total_corner_kicks|total_corner_kicks_won|attacks|total_attacks|attacks_for|total_attacks_for|dangerous_attacks|dangerous_attacks_for|dangerous_attacks_created|red_cards|red_card|red_cards_total|red_card_total|possession|ball_possession|possession_percentage|possession_pct|ball_possession_percentage|expected_goals|xg|x_goals|x_goal|xgoals|expected_goals_xg|expected_goals_for|expected_goals_total|expected_goals_scored)$/.test(label);
                 if (relevantLiveMetric && home != null && away != null && (typeof home !== "object") && (typeof away !== "object")) statsRows.push({ label, home, away });
+                else if (label && home != null && away != null && typeof home !== "object" && typeof away !== "object" &&
+                  sportScoreDetailDiagnostics.unmatchedLabels.length < 40 &&
+                  !sportScoreDetailDiagnostics.unmatchedLabels.includes(label)) {
+                  // Diagnostic only: numeric stat labels dropped by the whitelist.
+                  sportScoreDetailDiagnostics.unmatchedLabels.push(label);
+                }
                 for (const [key, value] of Object.entries(node)) {
                   if (["home","away","home_value","away_value","homeValue","awayValue","value_home","value_away"].includes(key)) continue;
                   walk(value, depth + 1);
