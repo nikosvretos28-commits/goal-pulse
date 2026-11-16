@@ -3460,6 +3460,10 @@ function setLiveMetricsCache(rows){
   }
  }
  liveMetricsCache=next;
+ // Persist each completed provider refresh so a browser reload can restore the last
+ // known live-stat snapshot immediately, before the next provider response arrives.
+ // This does not change the metrics used by any alert or ranking protocol.
+ persistLiveMetricsState();
  // Refresh the existing live-stat boxes as soon as a metrics response arrives.
  // Do not wait for the next scoreboard poll; this only redraws the current rows.
  if(typeof renderLiveRows==='function')renderLiveRows();
