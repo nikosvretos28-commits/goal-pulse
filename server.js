@@ -77,12 +77,21 @@ function extractFixtureArray(body) {
 // Reuse one verified SportScore live catalogue across scoreboard and live-metrics.
 // The fixtures endpoint can return an empty live list while the documented widget
 // matches endpoint still exposes live fixtures. Fall back only when fixtures is empty.
-const sportScoreLiveFixtureCatalogCache = { at: 0, result: null };
+const sportScoreLiveFixtureCatalogCache = { at: 0, date: "", result: null };
+// Concurrent AI/VIP, HI Activity, and push scans for the same date share one
+// upstream catalogue request instead of racing past the 45-second result cache.
+const sportScoreLiveFixtureCatalogInflight = new Map();
 async function fetchSportScoreLiveFixtureCatalog(isoDate) {
+  const cacheKey = String(isoDate || "");
   const now = Date.now();
   const cached = sportScoreLiveFixtureCatalogCache.result;
-  if (cached && now - sportScoreLiveFixtureCatalogCache.at < 45000) return cached;
+  if (cached && sportScoreLiveFixtureCatalogCache.date === cacheKey &&
+      now - sportScoreLiveFixtureCatalogCache.at < 45000) return cached;
+  if (sportScoreLiveFixtureCatalogInflight.has(cacheKey)) {
+    return sportScoreLiveFixtureCatalogInflight.get(cacheKey);
+  }
 
+  const request = (async () => {
   let primaryResult = { ok: false, status: 0, payload: null, source: "fixtures", count: 0 };
   let primaryRows = [];
   try {
@@ -153,7 +162,8 @@ async function fetchSportScoreLiveFixtureCatalog(isoDate) {
       widgetMatches: { ok: fallbackResult.ok, status: fallbackResult.status, count: fallbackRows.length }
     }
   };
-  sportScoreLiveFixtureCatalogCache.at = now;
+  sportScoreLiveFixtureCatalogCache.at = Date.now();
+  sportScoreLiveFixtureCatalogCache.date = cacheKey;
   sportScoreLiveFixtureCatalogCache.result = result;
   console.log("SportScore combined live fixture catalog:", JSON.stringify({
     fixtures: primaryRows.length, widgetMatches: fallbackRows.length,
@@ -164,6 +174,15 @@ async function fetchSportScoreLiveFixtureCatalog(isoDate) {
     fallback: fallbackResult.error || fallbackResult.status
   }));
   return result;
+  })();
+  sportScoreLiveFixtureCatalogInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    if (sportScoreLiveFixtureCatalogInflight.get(cacheKey) === request) {
+      sportScoreLiveFixtureCatalogInflight.delete(cacheKey);
+    }
+  }
 }
 
 const competitionHistoryLimiter = createLimiter(4);
