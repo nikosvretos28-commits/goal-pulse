@@ -3154,8 +3154,11 @@ async function loadScores(){
    // Extra-time and shootout phases are excluded from the regulation-only match clock.
    const statusPeriod=Number((e.status&&e.status.period)??(comp.status&&comp.status.period));
    const isIgnoredClockPhase=/\b(extra[ -]?time|extratime|penalt(?:y|ies)|shootout|aet)\b/i.test(stateText)||(Number.isFinite(statusPeriod)&&statusPeriod>2);
-   const rawState=statusTypes.map(x=>String(x.state||'').toLowerCase()).find(x=>x);
-   const state=['in','live','in_progress','in-play'].includes(rawState)||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(stateText)?'in':['post','finished','complete'].includes(rawState)||/\b(full time|finished|ended|ft|aet|penalties)\b/.test(stateText)?'post':(rawState||'pre');
+   const normalizedStates=statusTypes.map(x=>String(x.state||'').toLowerCase());
+   const rawState=normalizedStates.find(x=>x);
+   const hasLiveState=normalizedStates.some(x=>['in','live','in_progress','in-play'].includes(x));
+   const hasFinishedState=normalizedStates.some(x=>['post','finished','complete'].includes(x));
+   const state=hasLiveState||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(stateText)?'in':hasFinishedState||/\b(full time|finished|ended|ft|aet|penalties)\b/.test(stateText)?'post':(rawState||'pre');
    const st=statusTypes.find(x=>x.state===state)||statusTypes[0]||{};
    const kickoff=e.date?new Date(e.date):null;
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
