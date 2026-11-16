@@ -3,15 +3,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { evaluatePressureHunter, liveMinuteEligible } = require("./pressure-hunter");
 
-function fixture({ first = [[2, 1], [2, 1]], second = [[0, 0], [0, 0]], minute = 62, status = "2nd half" } = {}) {
-  const window = rows => ({
+function fixture({ first = [1, 1], second = [0, 0], minute = 62, status = "2nd half" } = {}) {
+  const window = values => ({
     available: true,
     sampleMinutes: 8,
-    teams: rows.map(([totalShots, shotsOnTarget]) => ({
-      totalShots,
-      shotsOnTarget,
-      shotsOffTarget: totalShots - shotsOnTarget
-    }))
+    teams: values.map(shotsOnTarget => ({ shotsOnTarget }))
   });
   return {
     minute,
@@ -24,49 +20,43 @@ function fixture({ first = [[2, 1], [2, 1]], second = [[0, 0], [0, 0]], minute =
   };
 }
 
-test("first 8-minute window qualifies at 4 shots including at least 2 SOT; alert fires on first next-window shot", () => {
-  const result = evaluatePressureHunter(fixture({ second: [[1, 0], [0, 0]] }));
+test("first 8-minute window qualifies at 2 combined SOT; first next-window SOT triggers", () => {
+  const result = evaluatePressureHunter(fixture({ second: [1, 0] }));
   assert.equal(result.triggered, true);
   assert.equal(result.level, "DUAL_PRESSURE");
-  assert.equal(result.reason, "continuous_shot_flow_first_shot");
-  assert.equal(result.evidence.firstEightMinutes.totalShots, 4);
+  assert.equal(result.reason, "continuous_sot_flow_first_sot");
   assert.equal(result.evidence.firstEightMinutes.shotsOnTarget, 2);
-  assert.equal(result.evidence.secondEightMinutes.totalShotsAtSignal, 1);
+  assert.equal(result.evidence.secondEightMinutes.shotsOnTargetAtSignal, 1);
+  assert.equal(result.evidence.secondEightMinutes.activation, "first_sot");
 });
 
-test("valid first window accepts 3 SOT plus 1 off-target shot", () => {
-  const result = evaluatePressureHunter(fixture({ first: [[3, 3], [1, 0]], second: [[0, 0], [0, 0]] }));
+test("first window qualifies using SOT alone without total-shot or off-target fields", () => {
+  const result = evaluatePressureHunter(fixture({ first: [2, 0] }));
   assert.equal(result.triggered, false);
-  assert.equal(result.reason, "waiting_for_first_shot_in_second_8m");
+  assert.equal(result.reason, "waiting_for_first_sot_in_second_8m");
 });
 
-test("valid first window accepts 4 SOT and does not require off-target shots", () => {
-  const result = evaluatePressureHunter(fixture({ first: [[4, 4], [0, 0]], second: [[0, 0], [0, 0]] }));
+test("first window accepts 4 combined SOT", () => {
+  const result = evaluatePressureHunter(fixture({ first: [4, 0] }));
   assert.equal(result.triggered, false);
-  assert.equal(result.reason, "waiting_for_first_shot_in_second_8m");
+  assert.equal(result.reason, "waiting_for_first_sot_in_second_8m");
 });
 
-test("first window fails when total shots are below 4", () => {
-  const result = evaluatePressureHunter(fixture({ first: [[2, 2], [1, 0]], second: [[1, 0], [0, 0]] }));
+test("first window fails when combined SOT are below 2", () => {
+  const result = evaluatePressureHunter(fixture({ first: [1, 0], second: [1, 0] }));
   assert.equal(result.triggered, false);
-  assert.equal(result.reason, "first_8m_thresholds_not_met");
+  assert.equal(result.reason, "first_8m_sot_threshold_not_met");
 });
 
-test("first window fails when fewer than 2 SOT are recorded", () => {
-  const result = evaluatePressureHunter(fixture({ first: [[4, 1], [0, 0]], second: [[1, 0], [0, 0]] }));
-  assert.equal(result.triggered, false);
-  assert.equal(result.reason, "first_8m_thresholds_not_met");
-});
-
-test("second window does not wait for its own four-shot or two-SOT threshold", () => {
-  const result = evaluatePressureHunter(fixture({ second: [[0, 0], [1, 0]] }));
+test("second window activates on one SOT without a total-shots threshold", () => {
+  const result = evaluatePressureHunter(fixture({ second: [0, 1] }));
   assert.equal(result.triggered, true);
-  assert.equal(result.evidence.secondEightMinutes.totalShotsAtSignal, 1);
+  assert.equal(result.evidence.secondEightMinutes.shotsOnTargetAtSignal, 1);
 });
 
-test("missing shot counts fail closed", () => {
+test("missing SOT counts fail closed", () => {
   const input = fixture();
-  input.windows.firstEightMinutes.teams[0].totalShots = null;
+  input.windows.firstEightMinutes.teams[0].shotsOnTarget = null;
   assert.equal(evaluatePressureHunter(input).reason, "two_valid_consecutive_8m_windows_required");
 });
 
