@@ -6,10 +6,11 @@ function sotTriggerConfirmationKey(eventId, triggerId) {
 
 // Return one candidate per independently satisfied protocol trigger.
 // Each SOT trigger requires confirmation under its own trigger ID; xG remains
-// an independent second-half alternative and never borrows SOT confirmation.
+// an independent eligible-half alternative and never borrows SOT confirmation.
 function buildIndependentAiTriggers({
   eligibleMinute,
   firstHalfSotWindow,
+  cumulativeSotWindow,
   recentSotQualifies,
   cumulativeSotQualifies,
   firstHalfEightSotQualifies,
@@ -23,7 +24,7 @@ function buildIndependentAiTriggers({
   if ((eligibleMinute || firstHalfSotWindow) && recentSotQualifies && confirmed.has("recent_sot_pressure")) {
     triggers.push({ id: "recent_sot_pressure" });
   }
-  if (inApprovedAiWindow && cumulativeSotQualifies && confirmed.has("cumulative_20_sot")) {
+  if (cumulativeSotWindow && cumulativeSotQualifies && confirmed.has("cumulative_20_sot")) {
     triggers.push({ id: "cumulative_20_sot" });
   }
   if (firstHalfSotWindow && firstHalfEightSotQualifies && confirmed.has("first_half_8_sot")) {

@@ -28,9 +28,19 @@ function isFirstHalfSotMinute(minute, status = "") {
 }
 
 function isCumulativeSotMinute(minute, status = "") {
-  // The cumulative 20+ combined-SOT trigger follows the same approved AI
-  // windows as every other protocol: 1′–34′ and 46′–84′. Hunter is separate.
-  return isFirstHalfSotMinute(minute, status) || isAiMinuteEligible(minute, status);
+  if (!Number.isInteger(minute) || minute < 1 || minute > 65) return false;
+  const period = String(status || "").trim().toLowerCase();
+  // The 20+ combined-SOT trigger spans both halves, independently of the
+  // narrower minute windows used by other AI triggers.
+  if (/\b(?:finished|full\s*time|ended|complete|completed|ft|aet|ht|half[\s-]*time|halftime)\b/.test(period) ||
+      /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|ανάπαυλα/.test(period)) return false;
+  if (minute <= 45) {
+    if (/\b(?:2h|2nd\s*half|second\s*half|second_half)\b/.test(period) ||
+        /δεύτερο\s*ημίχρονο|2ο\s*ημίχρονο/.test(period)) return false;
+    return !period || /\b(?:live|in|1h|1st\s*half|first\s*half|first_half)\b/.test(period) ||
+      /1ο\s*ημίχρονο|πρώτο\s*ημίχρονο/.test(period);
+  }
+  return isAiMinuteEligible(minute, status);
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.

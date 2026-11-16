@@ -1,7 +1,7 @@
 "use strict";
 
 // Autonomous Pressure Hunter. Deliberately isolated from every other alert protocol.
-// It evaluates two consecutive 8-minute windows within the same half.
+// It evaluates two consecutive 8-minute windows within the same half, using SOT only.
 function numberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -26,11 +26,9 @@ function readEightMinuteWindow(window) {
       !Array.isArray(window.teams) || window.teams.length !== 2) return null;
 
   const teams = window.teams.map(team => ({
-    totalShots: numberOrNull(team?.totalShots),
-    shotsOnTarget: numberOrNull(team?.shotsOnTarget),
-    shotsOffTarget: numberOrNull(team?.shotsOffTarget)
+    shotsOnTarget: numberOrNull(team?.shotsOnTarget)
   }));
-  if (teams.some(team => team.totalShots === null || team.shotsOnTarget === null)) return null;
+  if (teams.some(team => team.shotsOnTarget === null)) return null;
   return { teams, sampleMinutes };
 }
 
@@ -43,38 +41,35 @@ function evaluatePressureHunter({ minute, status, teams, windows } = {}) {
   const second = readEightMinuteWindow(windows?.secondEightMinutes);
   if (!first || !second) return rejected("two_valid_consecutive_8m_windows_required");
 
-  const firstWindowShots = sum(first.teams.map(team => team.totalShots));
   const firstWindowSot = sum(first.teams.map(team => team.shotsOnTarget));
-  const secondWindowShots = sum(second.teams.map(team => team.totalShots));
-  if (firstWindowShots === null || firstWindowSot === null || secondWindowShots === null) {
-    return rejected("hunter_shot_counts_unavailable");
+  const secondWindowSot = sum(second.teams.map(team => team.shotsOnTarget));
+  if (firstWindowSot === null || secondWindowSot === null) {
+    return rejected("hunter_sot_counts_unavailable");
   }
 
-  // First 8-minute window must qualify fully. The alert fires on the first
-  // observed shot in the immediately following 8-minute window.
-  const firstWindowQualified = firstWindowShots >= 4 && firstWindowSot >= 2;
-  const firstShotInSecondWindow = secondWindowShots >= 1;
-  const triggered = firstWindowQualified && firstShotInSecondWindow;
-  const score = Math.min(10, firstWindowShots * 0.5 + firstWindowSot);
+  // The first 8-minute window needs at least 2 SOT in total.
+  // The alert fires on the first SOT in the immediately following 8-minute window.
+  const firstWindowQualified = firstWindowSot >= 2;
+  const firstSotInSecondWindow = secondWindowSot >= 1;
+  const triggered = firstWindowQualified && firstSotInSecondWindow;
+  const score = Math.min(10, firstWindowSot);
   return {
     eligible: true,
     triggered,
     level: triggered ? "DUAL_PRESSURE" : null,
     score: Math.round(score * 10) / 10,
-    reason: triggered ? "continuous_shot_flow_first_shot" : !firstWindowQualified ? "first_8m_thresholds_not_met" : "waiting_for_first_shot_in_second_8m",
+    reason: triggered ? "continuous_sot_flow_first_sot" : !firstWindowQualified ? "first_8m_sot_threshold_not_met" : "waiting_for_first_sot_in_second_8m",
     evidence: {
       firstEightMinutes: {
-        totalShots: firstWindowShots,
         shotsOnTarget: firstWindowSot,
         home: first.teams[0],
         away: first.teams[1]
       },
       secondEightMinutes: {
-        totalShotsAtSignal: secondWindowShots,
-        shotsOnTarget: sum(second.teams.map(team => team.shotsOnTarget)),
+        shotsOnTargetAtSignal: secondWindowSot,
         home: second.teams[0],
         away: second.teams[1],
-        activation: "first_shot"
+        activation: "first_sot"
       }
     }
   };

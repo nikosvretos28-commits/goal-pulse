@@ -4009,7 +4009,7 @@ const server = http.createServer(async (req, res) => {
         const sotPressure10 = perTeamMetricWindow(current.sotByTeam, previous10?.sotByTeam, match.trend?.window10m, "shotsOnTarget", 9.5, 11);
         const dangerousAttacks5 = perTeamMetricWindow(current.dangerousByTeam, previous?.dangerousByTeam, match.trend?.window5m, "dangerousAttacks", 4.5, 6);
         const dangerousAttacks10 = perTeamMetricWindow(current.dangerousByTeam, previous10?.dangerousByTeam, match.trend?.window10m, "dangerousAttacks", 9.5, 11);
-        // Pressure Hunter owns a separate two-window rolling shot history.
+        // Pressure Hunter owns a separate two-window rolling SOT history.
         // Do not reuse the 5m/10m windows or state used by any other protocol.
         const hunterStatus = statusForEligibility;
         const hunterFirstHalf = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(hunterStatus);
@@ -4022,12 +4022,10 @@ const server = http.createServer(async (req, res) => {
         const hunterSnapshot = {
           at: now,
           period: hunterPeriod,
-          teams: teams.slice(0, 2).map((team, index) => {
-            const sot = hunterCount(team.shotsOnTarget);
-            const off = hunterCount(team.shotsOffTarget);
-            const totalShots = hunterCount(team.totalShots) ?? (sot !== null && off !== null ? sot + off : null);
-            return { team: String(team.team || "").trim().toLowerCase(), totalShots, shotsOnTarget: sot, shotsOffTarget: off };
-          })
+          teams: teams.slice(0, 2).map(team => ({
+            team: String(team.team || "").trim().toLowerCase(),
+            shotsOnTarget: hunterCount(team.shotsOnTarget)
+          }))
         };
         const hunterHistory = (pushScanHunterSnapshots.get(id) || []).filter(snapshot =>
           snapshot.period === hunterPeriod && now - snapshot.at <= 17.5 * 60 * 1000
@@ -4047,15 +4045,13 @@ const server = http.createServer(async (req, res) => {
             const delta = key => team[key] == null || prior?.[key] == null || team[key] < prior[key]
               ? null : Math.max(0, team[key] - prior[key]);
             return {
-              totalShots: delta("totalShots"),
-              shotsOnTarget: delta("shotsOnTarget"),
-              shotsOffTarget: delta("shotsOffTarget")
+              shotsOnTarget: delta("shotsOnTarget")
             };
           });
         };
         const hunterWindow = (rows, sampleMinutes) => ({
           available: Boolean(rows && rows.length === 2 && rows.every(row =>
-            row.totalShots !== null && row.shotsOnTarget !== null
+            row.shotsOnTarget !== null
           )),
           sampleMinutes,
           teams: rows || []
@@ -4513,8 +4509,9 @@ const server = http.createServer(async (req, res) => {
           Number(preMatchSeason.support || 0) + Number(matchupEvidence.score || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
-        // Updated second-half AI protocol window: 46′–84′ for every second-half trigger.
-        // Independent first-half exception: 8+ combined match SOT by minute 34.
+        // Standard AI windows: first half 1′–34′ and second half 46′–84′.
+        // The independent cumulative 20+ SOT trigger has its own 1′–65′ window;
+        // the separate 8+ combined-SOT trigger remains first-half-only through 34′.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = isAiMinuteEligible(aiMinute, statusForEligibility);
         const firstHalfSotWindow = isFirstHalfSotMinute(aiMinute, statusForEligibility);
@@ -4581,6 +4578,7 @@ const server = http.createServer(async (req, res) => {
         const qualifiedAiTriggers = buildIndependentAiTriggers({
           eligibleMinute,
           firstHalfSotWindow,
+          cumulativeSotWindow,
           recentSotQualifies,
           cumulativeSotQualifies,
           firstHalfEightSotQualifies,
@@ -4593,7 +4591,7 @@ const server = http.createServer(async (req, res) => {
         const isAiGoal = scoreAvailable && qualifiedAiTriggers.length > 0;
         // Keep the first 16 general samples, but never omit an eligible 46′–84′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
-        if (eligibleMinute || firstHalfSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
+        if (eligibleMinute || firstHalfSotWindow || cumulativeSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
           away: String(match.away || ""),
           minute: Number.isFinite(aiMinute) ? aiMinute : null,
@@ -4635,7 +4633,7 @@ const server = http.createServer(async (req, res) => {
           eligibleMinute,
           qualifies: isAiGoal,
           qualifiedTriggerIds: qualifiedAiTriggers.map(trigger => trigger.id),
-          rejection: !scoreAvailable ? "score_missing" : qualifiedAiTriggers.length ? "qualified_independent_triggers" : sotSignalQualifies && !confirmedSotSignal ? "awaiting_independent_sot_confirmation" : !eligibleMinute && !firstHalfSotWindow ? "minute_outside_approved_ai_window" : "no_independent_trigger_qualified"
+          rejection: !scoreAvailable ? "score_missing" : qualifiedAiTriggers.length ? "qualified_independent_triggers" : sotSignalQualifies && !confirmedSotSignal ? "awaiting_independent_sot_confirmation" : !eligibleMinute && !firstHalfSotWindow && !cumulativeSotWindow ? "minute_outside_approved_ai_window" : "no_independent_trigger_qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = isAiGoal ? qualifiedAiTriggers.map(trigger => ({ level: "AI", triggerId: trigger.id })) : [];

@@ -14,6 +14,7 @@ test("all independently qualified triggers are returned separately", () => {
   const triggers = buildIndependentAiTriggers({
     eligibleMinute: true,
     firstHalfSotWindow: true,
+    cumulativeSotWindow: true,
     recentSotQualifies: true,
     cumulativeSotQualifies: true,
     firstHalfEightSotQualifies: true,
@@ -57,6 +58,7 @@ test("xG remains independent of SOT confirmation", () => {
 test("first-half window admits all approved non-Hunter AI trigger families", () => {
   const firstHalf = buildIndependentAiTriggers({
     firstHalfSotWindow: true,
+    cumulativeSotWindow: true,
     recentSotQualifies: true,
     firstHalfEightSotQualifies: true,
     cumulativeSotQualifies: true,
@@ -78,6 +80,7 @@ test("all non-Hunter AI protocols accept first-half and second-half approved win
   const firstHalf = buildIndependentAiTriggers({
     eligibleMinute: false,
     firstHalfSotWindow: true,
+    cumulativeSotWindow: true,
     recentSotQualifies: false,
     cumulativeSotQualifies: true,
     firstHalfEightSotQualifies: false,
@@ -104,6 +107,38 @@ test("non-Hunter AI protocols remain blocked outside both approved windows", () 
     confirmedSotTriggerIds: [
       "recent_sot_pressure", "cumulative_20_sot", "first_half_8_sot", "man_advantage_pressure"
     ]
+  });
+  assert.deepEqual(outside, []);
+});
+
+
+test("20+ cumulative SOT trigger is independently allowed through minute 65 in either half", () => {
+  const firstHalfLate = buildIndependentAiTriggers({
+    eligibleMinute: false,
+    firstHalfSotWindow: false,
+    cumulativeSotWindow: true,
+    cumulativeSotQualifies: true,
+    confirmedSotTriggerIds: ["cumulative_20_sot"]
+  });
+  assert.deepEqual(firstHalfLate.map(item => item.id), ["cumulative_20_sot"]);
+
+  const secondHalfThrough65 = buildIndependentAiTriggers({
+    eligibleMinute: true,
+    firstHalfSotWindow: false,
+    cumulativeSotWindow: true,
+    cumulativeSotQualifies: true,
+    confirmedSotTriggerIds: ["cumulative_20_sot"]
+  });
+  assert.deepEqual(secondHalfThrough65.map(item => item.id), ["cumulative_20_sot"]);
+});
+
+test("20+ cumulative SOT trigger remains blocked when its own minute window is false", () => {
+  const outside = buildIndependentAiTriggers({
+    eligibleMinute: true,
+    firstHalfSotWindow: false,
+    cumulativeSotWindow: false,
+    cumulativeSotQualifies: true,
+    confirmedSotTriggerIds: ["cumulative_20_sot"]
   });
   assert.deepEqual(outside, []);
 });

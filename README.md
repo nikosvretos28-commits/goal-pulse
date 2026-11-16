@@ -1,68 +1,108 @@
-# Goal Pulse
+# GoalMatrix
 
-Premium dark-themed live football scoreboard prototype.
+24/7 live football intelligence dashboard with a Node.js backend and browser-based interface.
 
-## Current functionality
+## Repository structure
 
-- Pulls scoreboard events from ESPN's public soccer scoreboard endpoints for 18 selected competitions: Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Primeira Liga, Eredivisie, Scottish Premiership, Greek Super League, Süper Lig, Brasileirão, Liga Profesional Argentina, MLS, Liga MX, A-League, Champions League, Europa League and Conference League.
-- Refreshes the scoreboard automatically every 60 seconds and provides date navigation.
-- Shows live, upcoming and completed events when the feed provides them.
-- Includes league shortcuts, status filters, team/league search, and clear loading/error/empty states.
-- Match analysis modal can show provider-supplied xG, xGOT, shot totals, available team statistics, event timeline and pressure/momentum curve for completed matches when the provider has data.
-- Includes an experimental Alert Lab for transparent, rule-based match monitoring; its context score is not a probability and is not a validated AI prediction.
+- `index.html` — GoalMatrix web interface and client-side dashboard.
+- `server.js` — Node.js API/backend, live match processing, alert workflows and persistence integrations.
+- `ai-minute-window.js`, `ai-trigger-isolation.js`, `sot-integrity.js` — isolated AI minute eligibility, independent trigger selection and SOT integrity helpers.
+- `goalmatrix-mcp-server.js` — optional MCP server entry point.
+- `docs/` — protocol reference and analytics design documentation.
 
-## Important limitations
+## Runtime
 
-The scoreboard depends on ESPN's public endpoints, which are not a guaranteed commercial data API and may be unavailable or incomplete. The list of selected competitions is not the same as guaranteed worldwide coverage; some leagues or matches may be missing. The current scoreboard feed does not provide the complete live match statistics, five-/ten-minute activity filters, or live pressure data needed to match MyGoal247's full live-scanner experience. The PitchAPI integration used for xG/xGOT, event timeline, team stats and momentum is for covered matches and is currently used for post-match analysis; availability varies by match. The Alert Lab is only an experimental rule-based scaffold: it is not a trained AI model, does not establish a hit rate, and must not be marketed as a proven alert system. Full live AI/VIP alerts, hit-rate history, personal scanners, and validated prediction models are not yet implemented. A real production launch at worldwide scale requires a reliable licensed live-data feed and a validated alert model.
+- Node.js version: `>=24.18.0 <25`.
+- Install dependencies with `npm install`.
+- Start the service with `npm start` (runs `node server.js`).
+- Run the Node test suite with `npm test`.
+- The repository also defines `npm run start:mcp` and `npm run test:mcp` for the optional MCP server.
 
-## AI alert quality and validation plan
+The application uses PostgreSQL and Web Push dependencies. Runtime configuration, provider credentials, database connectivity and push configuration are supplied through the deployment environment; do not commit secrets or local `.env` files.
 
-1. **Live inputs first:** obtain reliable minute-by-minute shots, shots on target, xG/xGOT, dangerous attacks, corners, cards, match clock and event updates. The current ESPN scoreboard alone does not provide these signals.
-2. **Build a time-stamped historical dataset:** save only information available at the time each alert would have fired, along with the match outcome. Prevent data leakage from final scores or post-match statistics.
-3. **Define each alert outcome in advance:** for example, specify whether a goal within the next 10 minutes counts as a hit, how suspended/abandoned matches are handled, and how duplicate alerts are counted.
-4. **Backtest chronologically:** train on earlier matches and evaluate on later, unseen matches across leagues and seasons. Compare against simple baselines and report sample size, precision, recall, calibration, and false-alert rate.
-5. **Publish honest daily reporting:** show alerts issued, settled outcomes, wins/losses under the declared definition, and a rolling sample size. Never claim 90% (or higher) without reproducible results on a meaningful out-of-sample sample.
-6. **Launch in shadow mode first:** generate signals without presenting them as betting recommendations; only consider public alerts after reliability and drift checks pass.
+## Live data and operational limitations
 
-A stated competitor hit rate such as 90% cannot be fairly compared until both systems use the same alert definition, time window, market, settlement rules and sample period. No hit rate is guaranteed.
+Live match coverage, statistics availability and update frequency depend on the configured providers and their coverage. A match appearing on the scoreboard does not guarantee that every live statistic (including SOT, rolling windows or xG) is available, fresh or supported for that competition. Missing values must not be treated as verified zeroes. Provider corrections and stale/incomplete feeds can affect whether a signal is eligible.
 
+The presence of code for an alert, analytics panel or integration does not by itself prove that the deployed service is running the same commit or that every provider supplies the required data. Verify the deployed revision, runtime health, environment configuration and live feed before describing a feature as operational.
 
-## Goal Pulse live Over alert protocol (verify deployed revision before claiming operational status)
+## Alert quality and validation
 
-### Four independent Over-alert triggers
-- Eligible minute windows: 1–40 inclusive and 46–88 inclusive; High Activity uses the same windows.
-- Any ONE trigger is sufficient:
-  1. At least 3 new shots on target (SOT) in the rolling last 5 minutes.
-  2. At least 6 new SOT in the rolling last 10 minutes.
-  3. At least 10 cumulative SOT by either one team.
-  4. Live xG of at least 2.50 for BOTH teams individually.
-- These are OR conditions; they are not all required together.
-- Do not add the two teams' xG together to reach 2.50. Missing xG is neutral.
-- No minimum odds cutoff. Automatic alerts must not use Asian Over markets; Asian Over remains a manual VIP-only option.
+1. Save the exact timestamped inputs available when each alert is generated; never use later match events or final statistics as pre-alert evidence.
+2. Define settlement rules and prediction horizons before evaluating alerts. Handle abandoned, suspended and unverified matches consistently.
+3. Evaluate chronologically on unseen matches. Avoid leakage between training and evaluation data.
+4. Report sample size, settled/unsettled counts, precision, false-alert rate, calibration and coverage. Split results by market, time window and competition where sample size permits.
+5. Keep measured statistics separate from heuristic scores and model probabilities. Do not describe a heuristic as a calibrated probability.
+6. Do not claim a hit rate or guaranteed betting outcome without reproducible, appropriately sized evaluation.
 
-### Scanner pipeline
-1. **Live Stats / freshness scanner:** validate match identity, clock, score, event timestamps and freshness of each data source. Do not issue alerts from stale or contradictory statistics.
-2. **SOT scanner:** calculate rolling 5- and 10-minute SOT windows from timestamped events/statistics and apply the required thresholds.
-3. **Dangerous Match scanner:** detect repeated dangerous actions at short intervals, including sequences occurring roughly every minute. Use timestamped shots, SOT, big chances and dangerous attacks only when the provider supplies them. Treat this as an urgency/priority signal that triggers an immediate re-evaluation, not as a replacement for the mandatory SOT gate.
-4. **Open Game scanner:** look for rapid transitions, counterattacks and attacks by both teams, rather than possession or pressure by one team alone. Use available event/stat data; do not infer unprovided events.
-5. **Rapid Chance scanner:** detect clusters of shots/SOT or high-quality chances within a short 2–3 minute span. This should prompt an immediate re-check of the rolling SOT windows.
-6. **Momentum scanner:** distinguish sustained pressure from a short burst and check whether activity is increasing or fading.
-7. **Historical team scanner:** use available season/sample data for scoring/conceding, clean sheets/dirty sheets, SOT conversion and goal-time patterns. Historical features are supporting evidence, not automatic vetoes of strong live signals.
-8. **Match context / Over selection:** account for current score, match minute, red cards and time remaining; select only a non-Asian Over market that matches the intended goal threshold. No minimum odds cutoff.
-9. **Alert validation / duplicate guard:** verify the required SOT gate, eligible minute, fresh data, valid market and absence of an accidental duplicate before publishing.
-10. **Re-alert scanner:** allow a new alert on the same match only when fresh data justifies it and a configured cooldown/deduplication rule is satisfied.
-11. **Performance and learning scanner:** record time-stamped inputs, alerts and settled outcomes; evaluate performance by window, market and match context using chronological out-of-sample tests. It may recommend protocol changes, but must not change the active rules without explicit user approval.
+## GoalMatrix live protocols — code-aligned reference
 
-### Important implementation constraints
-- Dangerous/open-game signals can trigger an immediate re-evaluation even between routine refreshes, but alert timing is limited by the live provider's actual update frequency.
-- Do not assume a provider exposes per-minute dangerous attacks, shot timestamps, or complete live statistics unless verified.
-- Missing xG is not the same as xG = 0.
-- Clearly label this as a protocol specification until the scanners, data feed, persistence and alert delivery have been implemented and tested. Do not present it as a live feature or claim a validated hit rate before evidence exists.
+The rules below document the implementation in the repository. AI Alerts and Hi Activity are separate protocols with separate criteria. The deployed service must be checked independently before claiming that a particular commit is live.
+
+### Global SOT data rule
+
+- Shot-based protocol inputs use **shots on target (SOT) only**.
+- Total shots, shots off target and blocked shots must not be substituted for SOT.
+- Rolling 5-/10-minute values must represent changes in SOT, not total-shot attempts.
+- Missing data must remain unknown; it must not be fabricated as zero.
+
+### AI Alerts
+
+**Eligible live minute windows**
+- First half: 1′–34′.
+- Second half: 46′–84′.
+- Half-time and completed matches are ineligible.
+
+**Independent triggers (OR logic; any one may qualify):**
+1. Recent SOT pressure: 3+ SOT in the rolling last 5 minutes **or** 6+ SOT in the rolling last 10 minutes.
+2. Cumulative SOT: 20+ combined match SOT from match minute 1 through 65 (first-half minutes 1–45 and second-half minutes 46–65 only).
+3. First-half cumulative SOT: 8+ combined match SOT by minute 34.
+4. Two-team xG: one team has xG ≥3.50 and the other has xG ≥2.50. Both values must be present.
+5. Man Advantage: a recent red card and pressure from the team with the numerical advantage. The implementation requires that team's cumulative SOT ≥4, SOT ≥1 in the last 5 minutes, SOT ≥2 in the last 10 minutes, dangerous attacks ≥3 in the last 5 minutes and ≥10 in the last 10 minutes.
+6. Power Ranking AI alert: an independent Power Ranking score ≥59/100, subject to the same eligible minute windows and match-score availability. It does not depend on the SOT/xG trigger confirmations.
+7. Autonomous Power Ranking alert: a separate independent trigger when the Power Ranking score is strictly greater than 65/100 in an eligible window. It has its own per-match/period persistence and re-arming behavior; it is not the same as the 59+ AI alert.
+
+**Integrity and confirmation**
+- Each SOT-derived trigger has its own confirmation state; a qualifying SOT trigger must be confirmed by a subsequent provider sample.
+- A fixture-wide SOT integrity check also guards against provider regressions.
+- The xG trigger is independent of SOT confirmation, but requires both teams' xG values.
+- Power Ranking 59+ and Autonomous Power Ranking >65 are separate score-based AI alert paths; they are not SOT thresholds.
+- The 8+ combined-SOT trigger is first-half-only. The 20+ combined-SOT trigger is limited to match minutes 1–65: first-half minutes 1–45 and second-half minutes 46–65.
+- Do not infer total shots from SOT or use off-target/blocked shots in any trigger.
+
+### Hi Activity — separate protocol
+
+**Eligible live minute windows**
+- First half: 1′–34′.
+- Second half: 46′–84′.
+
+**Independent qualifying conditions (OR logic; any one may qualify):**
+1. First half: 3+ SOT in the rolling last 5 minutes.
+2. First half or second half: 6+ SOT in the rolling last 10 minutes.
+3. First half by minute 34: 8+ combined match SOT.
+4. First half: both teams have xG ≥2.00.
+5. Both teams have cumulative SOT ≥4 each, with each team also recording at least 1 SOT in the last 5 minutes and at least 2 SOT in the last 10 minutes.
+6. Man Advantage: after a recent red card, the advantaged team has cumulative SOT ≥4, at least 1 SOT in the last 5 minutes, at least 2 SOT in the last 10 minutes, at least 3 dangerous attacks in the last 5 minutes and at least 10 dangerous attacks in the last 10 minutes.
+
+**Additional behavior**
+- Hi Activity maintains its own rolling SOT snapshots; it does not depend on the general AI scanner successfully processing the match.
+- Inside-box SOT and Big Chances are supporting/ranking context, not standalone Hi Activity triggers.
+- Attacks and dangerous attacks do not qualify a match by themselves, except as required components of the Man Advantage condition.
+- Missing xG does not qualify the xG condition; it does not convert to zero.
+- HI observations are tracked as distinct match/half/minute/score/stat snapshots.
+
+### Pressure Hunter — independent SOT-only protocol
+
+- Pressure Hunter keeps its own two consecutive rolling 8-minute windows within the same half; it does not reuse AI Alerts or Hi Activity rolling state.
+- The first 8-minute window qualifies at **2+ combined SOT** from the two teams.
+- The signal fires on the **first SOT** recorded in the immediately following 8-minute window.
+- Both windows must be valid and fresh. Missing SOT remains unknown and fails closed.
+- Total shots, off-target shots and blocked shots are not inputs to Hunter eligibility, thresholds or scoring.
+
+### Other analytics and validation
+
+The advanced analytics and dedicated corner-pressure design requirements are documented separately in `docs/AI_ANALYTICS_PROTOCOL.md`. Design aspirations in that document are not proof that the corresponding model, data feed or feature is fully implemented. Do not claim a calibrated prediction or hit rate without persisted outcomes and chronological validation.
 
 ## Deployment
 
-Deploy through the hosting provider currently configured by the owner. Verify the connected repository, branch, deployed revision, runtime health, and live-data availability before considering a release complete.
-
-## Repository
-
-The site entry point is `index.html`. The interface is self-contained; it does not require a package installation or build step.
+Deploy through the hosting provider currently configured by the owner. Verify the connected repository, branch, deployed revision, runtime health, environment configuration and live-data availability before considering a release complete.
