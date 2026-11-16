@@ -3867,7 +3867,9 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
  };
  const fmtPair=(key)=>pair(key);
  const statCell=(label,value,kind)=>'<div class="live-inline-stat '+kind+'"><span>'+label+'</span><b>'+value+'</b></div>';
- const statsHtml='<div class="live-inline-stats">'+statCell('SOT 5′',delta(5,'shotsOnTarget'),'interval')+statCell('SOT 10′',delta(10,'shotsOnTarget'),'interval')+statCell('SOT ΣΥΝΟΛΟ',fmtPair('shotsOnTarget'),'shot')+statCell('ΕΠΙΚΙΝΔΥΝΕΣ ΕΠΙΘΕΣΕΙΣ',fmtPair('dangerousAttacks'),'corner')+statCell('SHOTS IN THE BOX',fmtPair('shotsInBox'),'shot')+statCell('BIG CHANCES',fmtPair('bigChances'),'corner')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
+ // Hide a tile when the provider supplies no value for it, instead of showing a blank "—".
+ const optionalStatCell=(label,key,kind)=>{const value=fmtPair(key);return value==='—'?'':statCell(label,value,kind)};
+ const statsHtml='<div class="live-inline-stats">'+statCell('SOT 5′',delta(5,'shotsOnTarget'),'interval')+statCell('SOT 10′',delta(10,'shotsOnTarget'),'interval')+statCell('SOT ΣΥΝΟΛΟ',fmtPair('shotsOnTarget'),'shot')+optionalStatCell('ΕΠΙΚΙΝΔΥΝΕΣ ΕΠΙΘΕΣΕΙΣ','dangerousAttacks','corner')+optionalStatCell('SHOTS IN THE BOX','shotsInBox','shot')+optionalStatCell('BIG CHANCES','bigChances','corner')+statCell('ΚΟΡΝΕΡ',fmtPair('corners'),'corner')+statCell('ΚΑΤΟΧΗ',fmtPair('possession'),'possession')+(metric(home,'xG')&&metric(away,'xG')?statCell('xG',fmtPair('xG'),'xg'):'')+'</div>';
  const rawClock=String(m.clock||'').trim();
  const clockCandidates=[stats?.live_minute,stats?.liveMinute,stats?.elapsed,stats?.time?.elapsed,stats?.minute,rawClock];
  const numericClock=clockCandidates.map(v=>String(v??'').trim()).find(v=>/^\d{1,3}(?:\s*\+\s*\d{1,2})?(?:\s*['′’])?$/.test(v)||/^\d{1,3}:\d{2}$/.test(v));
