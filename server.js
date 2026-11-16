@@ -4009,7 +4009,7 @@ const server = http.createServer(async (req, res) => {
         const sotPressure10 = perTeamMetricWindow(current.sotByTeam, previous10?.sotByTeam, match.trend?.window10m, "shotsOnTarget", 9.5, 11);
         const dangerousAttacks5 = perTeamMetricWindow(current.dangerousByTeam, previous?.dangerousByTeam, match.trend?.window5m, "dangerousAttacks", 4.5, 6);
         const dangerousAttacks10 = perTeamMetricWindow(current.dangerousByTeam, previous10?.dangerousByTeam, match.trend?.window10m, "dangerousAttacks", 9.5, 11);
-        // Pressure Hunter owns a separate two-window rolling shot history.
+        // Pressure Hunter owns a separate two-window rolling SOT history.
         // Do not reuse the 5m/10m windows or state used by any other protocol.
         const hunterStatus = statusForEligibility;
         const hunterFirstHalf = /first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(hunterStatus);
