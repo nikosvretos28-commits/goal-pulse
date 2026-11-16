@@ -881,6 +881,49 @@ async function withSportScoreDetailSlot(task) {
     if (next) next();
   }
 }
+// Share ESPN's per-match summary between AI/VIP, HI Activity, and push scans.
+// A short TTL limits duplicate provider calls while keeping live stats reasonably fresh.
+const espnSoccerSummaryCache = new Map();
+const espnSoccerSummaryInflight = new Map();
+const ESPN_SOCCER_SUMMARY_CACHE_MS = 12000;
+async function fetchEspnSoccerSummary(leagueCode, eventId) {
+  const league = String(leagueCode || "");
+  const event = String(eventId || "");
+  const key = league + ":" + event;
+  const now = Date.now();
+  const cached = espnSoccerSummaryCache.get(key);
+  if (cached && now - cached.at < ESPN_SOCCER_SUMMARY_CACHE_MS) {
+    return { ok: true, status: 200, payload: cached.payload, cached: true };
+  }
+  if (espnSoccerSummaryInflight.has(key)) return espnSoccerSummaryInflight.get(key);
+  const request = (async () => {
+    const path = "/apis/site/v2/sports/soccer/" + encodeURIComponent(league) +
+      "/summary?event=" + encodeURIComponent(event);
+    let response = await fetch("https://site.api.espn.com" + path, {
+      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
+    });
+    if ([403, 429].includes(response.status) || response.status >= 500) {
+      response = await fetch("https://site.web.api.espn.com" + path, {
+        headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
+      });
+    }
+    if (!response.ok) return { ok: false, status: response.status, payload: null, cached: false };
+    const payload = await response.json();
+    espnSoccerSummaryCache.set(key, { at: Date.now(), payload });
+    if (espnSoccerSummaryCache.size > 500) {
+      const oldest = [...espnSoccerSummaryCache.entries()].sort((a, b) => a[1].at - b[1].at);
+      for (let i = 0; i < oldest.length - 500; i++) espnSoccerSummaryCache.delete(oldest[i][0]);
+    }
+    return { ok: true, status: response.status, payload, cached: false };
+  })();
+  espnSoccerSummaryInflight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (espnSoccerSummaryInflight.get(key) === request) espnSoccerSummaryInflight.delete(key);
+  }
+}
+
 async function fetchSportScoreMatchDetail(slug) {
   const key = String(slug || "");
   const now = Date.now();
@@ -5944,19 +5987,11 @@ const server = http.createServer(async (req, res) => {
                    values.slice(0, 2).length === 2 && values.slice(0, 2).every(team => team.shotsOnTarget != null))) {
                 try {
                   espnSummaryDiagnostics.attempted++;
-                  let espnResponse = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
-                    encodeURIComponent(event.espnLeagueCode) + "/summary?event=" + encodeURIComponent(event.espnEventId), {
-                    headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
-                  });
-                  if ([403, 429].includes(espnResponse.status) || espnResponse.status >= 500) {
-                    espnResponse = await fetch("https://site.web.api.espn.com/apis/site/v2/sports/soccer/" +
-                      encodeURIComponent(event.espnLeagueCode) + "/summary?event=" + encodeURIComponent(event.espnEventId), {
-                      headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(8000)
-                    });
-                  }
-                  if (espnResponse.ok) {
+                  const espnResult = await fetchEspnSoccerSummary(event.espnLeagueCode, event.espnEventId);
+                  if (espnResult.cached) espnSummaryDiagnostics.cachedHits = (espnSummaryDiagnostics.cachedHits || 0) + 1;
+                  if (espnResult.ok) {
                     espnSummaryDiagnostics.httpOk++;
-                    const espnPayload = await espnResponse.json();
+                    const espnPayload = espnResult.payload;
                     const espnTeams = espnPayload?.boxscore?.teams || [];
                     if (!espnTeams.length) espnSummaryDiagnostics.missingBoxscoreTeams++;
                     const normalizeEspnMetric = value => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -5997,7 +6032,7 @@ const server = http.createServer(async (req, res) => {
                       }
                     }
                   } else {
-                    const statusKey = String(espnResponse.status);
+                    const statusKey = String(espnResult.status);
                     espnSummaryDiagnostics.httpErrors[statusKey] = (espnSummaryDiagnostics.httpErrors[statusKey] || 0) + 1;
                   }
                 } catch (espnError) {
