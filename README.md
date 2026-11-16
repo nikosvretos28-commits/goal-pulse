@@ -1,34 +1,43 @@
-# Goal Pulse
+# GoalMatrix
 
-Premium dark-themed live football scoreboard prototype.
+24/7 live football intelligence dashboard with a Node.js backend and browser-based interface.
 
-## Current functionality
+## Repository structure
 
-- Pulls scoreboard events from ESPN's public soccer scoreboard endpoints for 18 selected competitions: Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Primeira Liga, Eredivisie, Scottish Premiership, Greek Super League, Süper Lig, Brasileirão, Liga Profesional Argentina, MLS, Liga MX, A-League, Champions League, Europa League and Conference League.
-- Refreshes the scoreboard automatically every 60 seconds and provides date navigation.
-- Shows live, upcoming and completed events when the feed provides them.
-- Includes league shortcuts, status filters, team/league search, and clear loading/error/empty states.
-- Match analysis modal can show provider-supplied xG, xGOT, shot totals, available team statistics, event timeline and pressure/momentum curve for completed matches when the provider has data.
-- Includes an experimental Alert Lab for transparent, rule-based match monitoring; its context score is not a probability and is not a validated AI prediction.
+- `index.html` — GoalMatrix web interface and client-side dashboard.
+- `server.js` — Node.js API/backend, live match processing, alert workflows and persistence integrations.
+- `ai-minute-window.js`, `ai-trigger-isolation.js`, `sot-integrity.js` — isolated AI minute eligibility, independent trigger selection and SOT integrity helpers.
+- `goalmatrix-mcp-server.js` — optional MCP server entry point.
+- `docs/` — protocol reference and analytics design documentation.
 
-## Important limitations
+## Runtime
 
-The scoreboard depends on ESPN's public endpoints, which are not a guaranteed commercial data API and may be unavailable or incomplete. The list of selected competitions is not the same as guaranteed worldwide coverage; some leagues or matches may be missing. The current scoreboard feed does not provide the complete live match statistics, five-/ten-minute activity filters, or live pressure data needed to match MyGoal247's full live-scanner experience. The PitchAPI integration used for xG/xGOT, event timeline, team stats and momentum is for covered matches and is currently used for post-match analysis; availability varies by match. The Alert Lab is only an experimental rule-based scaffold: it is not a trained AI model, does not establish a hit rate, and must not be marketed as a proven alert system. Full live AI/VIP alerts, hit-rate history, personal scanners, and validated prediction models are not yet implemented. A real production launch at worldwide scale requires a reliable licensed live-data feed and a validated alert model.
+- Node.js version: `>=24.18.0 <25`.
+- Install dependencies with `npm install`.
+- Start the service with `npm start` (runs `node server.js`).
+- Run the Node test suite with `npm test`.
+- The repository also defines `npm run start:mcp` and `npm run test:mcp` for the optional MCP server.
 
-## AI alert quality and validation plan
+The application uses PostgreSQL and Web Push dependencies. Runtime configuration, provider credentials, database connectivity and push configuration are supplied through the deployment environment; do not commit secrets or local `.env` files.
 
-1. **Live inputs first:** obtain reliable minute-by-minute shots, shots on target (SOT), xG/xGOT, dangerous attacks, corners, cards, match clock and event updates. The current ESPN scoreboard alone does not provide these signals.
-2. **Build a time-stamped historical dataset:** save only information available at the time each alert would have fired, along with the match outcome. Prevent data leakage from final scores or post-match statistics.
-3. **Define each alert outcome in advance:** for example, specify whether a goal within the next 10 minutes counts as a hit, how suspended/abandoned matches are handled, and how duplicate alerts are counted.
-4. **Backtest chronologically:** train on earlier matches and evaluate on later, unseen matches across leagues and seasons. Compare against simple baselines and report sample size, precision, recall, calibration, and false-alert rate.
-5. **Publish honest daily reporting:** show alerts issued, settled outcomes, wins/losses under the declared definition, and a rolling sample size. Never claim 90% (or higher) without reproducible results on a meaningful out-of-sample sample.
-6. **Launch in shadow mode first:** generate signals without presenting them as betting recommendations; only consider public alerts after reliability and drift checks pass.
+## Live data and operational limitations
 
-A stated competitor hit rate such as 90% cannot be fairly compared until both systems use the same alert definition, time window, market, settlement rules and sample period. No hit rate is guaranteed.
+Live match coverage, statistics availability and update frequency depend on the configured providers and their coverage. A match appearing on the scoreboard does not guarantee that every live statistic (including SOT, rolling windows or xG) is available, fresh or supported for that competition. Missing values must not be treated as verified zeroes. Provider corrections and stale/incomplete feeds can affect whether a signal is eligible.
+
+The presence of code for an alert, analytics panel or integration does not by itself prove that the deployed service is running the same commit or that every provider supplies the required data. Verify the deployed revision, runtime health, environment configuration and live feed before describing a feature as operational.
+
+## Alert quality and validation
+
+1. Save the exact timestamped inputs available when each alert is generated; never use later match events or final statistics as pre-alert evidence.
+2. Define settlement rules and prediction horizons before evaluating alerts. Handle abandoned, suspended and unverified matches consistently.
+3. Evaluate chronologically on unseen matches. Avoid leakage between training and evaluation data.
+4. Report sample size, settled/unsettled counts, precision, false-alert rate, calibration and coverage. Split results by market, time window and competition where sample size permits.
+5. Keep measured statistics separate from heuristic scores and model probabilities. Do not describe a heuristic as a calibrated probability.
+6. Do not claim a hit rate or guaranteed betting outcome without reproducible, appropriately sized evaluation.
 
 ## GoalMatrix live protocols — code-aligned reference
 
-The rules below document the implementation in the repository. They are separate protocols: AI Alerts and Hi Activity do not share thresholds. The deployed service must be checked independently before claiming that a particular commit is live.
+The rules below document the implementation in the repository. AI Alerts and Hi Activity are separate protocols with separate criteria. The deployed service must be checked independently before claiming that a particular commit is live.
 
 ### Global SOT data rule
 
@@ -85,8 +94,4 @@ The advanced analytics and dedicated corner-pressure design requirements are doc
 
 ## Deployment
 
-Deploy through the hosting provider currently configured by the owner. Verify the connected repository, branch, deployed revision, runtime health, and live-data availability before considering a release complete.
-
-## Repository
-
-The site entry point is `index.html`. The interface is self-contained; it does not require a package installation or build step.
+Deploy through the hosting provider currently configured by the owner. Verify the connected repository, branch, deployed revision, runtime health, environment configuration and live-data availability before considering a release complete.
