@@ -58,12 +58,12 @@ The rules below document the implementation in the repository. AI Alerts and Hi 
 2. Cumulative SOT: 20+ combined match SOT by the current eligible minute, in either eligible half.
 3. First-half cumulative SOT: 8+ combined match SOT by minute 34.
 4. Two-team xG: one team has xG ≥3.50 and the other has xG ≥2.50. Both values must be present.
-5. Man Advantage: a recent red card and pressure from the team with the numerical advantage. The implementation requires that team's cumulative SOT ≥4, SOT ≥1 in the last 5 minutes, SOT ≥2 in the last 10 minutes, dangerous attacks ≥3 in the last 5 minutes and ≥10 in the last 10 minutes.
+5. Man Advantage: a recent red card and pressure from the team with the numerical advantage. The implementation requires that team's cumulative SOT ≥4, SOT ≥1 in the last 5 minutes, SOT ≥2 in the last 10 minutes, dangerous attacks ≥3 in the last 5 minutes and ≥10 in the last 10 minutes.\n6. Power Ranking AI alert: an independent Power Ranking score ≥59/100, subject to the same eligible minute windows and match-score availability. It does not depend on the SOT/xG trigger confirmations.\n7. Autonomous Power Ranking alert: a separate independent trigger when the Power Ranking score is strictly greater than 65/100 in an eligible window. It has its own per-match/period persistence and re-arming behavior; it is not the same as the 59+ AI alert.
 
 **Integrity and confirmation**
 - Each SOT-derived trigger has its own confirmation state; a qualifying SOT trigger must be confirmed by a subsequent provider sample.
 - A fixture-wide SOT integrity check also guards against provider regressions.
-- The xG trigger is independent of SOT confirmation, but requires both teams' xG values.
+- The xG trigger is independent of SOT confirmation, but requires both teams' xG values.\n- Power Ranking 59+ and Autonomous Power Ranking >65 are separate score-based AI alert paths; they are not SOT thresholds.
 - The 8+ combined-SOT trigger is first-half-only. The 20+ combined-SOT trigger uses the eligible first- and second-half windows.
 - Do not infer total shots from SOT or use off-target/blocked shots in any trigger.
 
