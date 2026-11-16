@@ -7146,7 +7146,7 @@ const server = http.createServer(async (req, res) => {
         if ((!catalogue || soccerNow - catalogue.at >= SOCCER_DATA_CATALOGUE_REFRESH_MS) &&
             usage.count < SOCCER_DATA_DAILY_BUDGET) {
           try {
-            const query = new URLSearchParams({ date_from: soccerDate, date_to: soccerDate, per_page: "100", page: "1" });
+            const query = new URLSearchParams({ status: "live", per_page: "100", page: "1" });
             const result = await requestSoccerData("/matches?" + query.toString());
             if (result.response?.ok && Array.isArray(result.payload?.data)) {
               catalogue = { at: soccerNow, rows: result.payload.data.filter(item => String(item?.status || "").toLowerCase() === "live") };
