@@ -39,6 +39,9 @@ test("cumulative 20-SOT trigger spans both halves from match minute 1 through 65
     assert.equal(isCumulativeSotMinute(60, status), false, status);
   }
   assert.equal(isCumulativeSotMinute(20, "1st half"), true);
+  assert.equal(isCumulativeSotMinute(35, "1st half"), true);
+  assert.equal(isCumulativeSotMinute(45, "1st half"), true);
+  assert.equal(isCumulativeSotMinute(35, "2nd half"), false);
   assert.equal(isCumulativeSotMinute(60, "2nd half"), true);
   assert.equal(isCumulativeSotMinute(65, "2nd half"), true);
   assert.equal(isCumulativeSotMinute(66, "2nd half"), false);
