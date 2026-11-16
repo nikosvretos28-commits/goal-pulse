@@ -38,6 +38,15 @@ const SPORTAPI_API_KEY = process.env.SPORTAPI_API_KEY || "";
 // 90 minutes (~16 calls/day) and cap per-fixture statistics at two calls per 35 minutes
 // (~82 calls/day), keeping the combined normal budget below 100 requests/day.
 const APISPORTS_API_KEY = process.env.APISPORTS_API_KEY || "";
+ // Soccer Data supplemental live-statistics cache and conservative free-tier budget.
+const SOCCER_DATA_KEY = process.env.SOCCER_DATA_KEY || "";
+const SOCCER_DATA_CATALOGUE_REFRESH_MS = 2 * 60 * 60 * 1000;
+const SOCCER_DATA_STATS_REFRESH_MS = 2 * 60 * 60 * 1000;
+const SOCCER_DATA_DAILY_BUDGET = 40;
+const soccerDataLiveCatalogueCache = new Map();
+const soccerDataLiveStatsCache = new Map();
+const soccerDataDailyUsage = new Map();
+let soccerDataStatsCursor = 0;
 const apiSportsFootballDateCache = new Map();
 const apiSportsFootballCatalogueAttemptAt = new Map();
 const apiSportsFootballStatsCache = new Map();
@@ -7111,6 +7120,116 @@ const server = http.createServer(async (req, res) => {
         }
       } else if (!APISPORTS_API_KEY) {
         console.log("[API-Sports Football] disabled: APISPORTS_API_KEY is not configured");
+      }
+      // Soccer Data: supplemental live-statistics provider. Fill missing values only;
+      // SOT is read exclusively from the provider's explicit shots_on_target field.
+      if (SOCCER_DATA_KEY && matches.length) {
+        const soccerNow = Date.now();
+        const soccerDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+        let usage = soccerDataDailyUsage.get(soccerDate);
+        if (!usage) { usage = { count: 0 }; soccerDataDailyUsage.set(soccerDate, usage); }
+        for (const key of soccerDataDailyUsage.keys()) if (key !== soccerDate) soccerDataDailyUsage.delete(key);
+        const normalizeSoccerDataTeam = value => String(value || "").normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "").toLowerCase()
+          .replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ")
+          .replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+        const requestSoccerData = async endpoint => {
+          if (usage.count >= SOCCER_DATA_DAILY_BUDGET) return { limited: true };
+          usage.count++;
+          const response = await fetch("https://api.soccer-data.co/v1" + endpoint, {
+            headers: { "Accept": "application/json", "X-Api-Key": SOCCER_DATA_KEY },
+            signal: AbortSignal.timeout(10000)
+          });
+          return { response, payload: await response.json().catch(() => ({})) };
+        };
+        let catalogue = soccerDataLiveCatalogueCache.get(soccerDate);
+        if ((!catalogue || soccerNow - catalogue.at >= SOCCER_DATA_CATALOGUE_REFRESH_MS) &&
+            usage.count < SOCCER_DATA_DAILY_BUDGET) {
+          try {
+            const query = new URLSearchParams({ status: "live", date_from: soccerDate, date_to: soccerDate, per_page: "100", page: "1" });
+            const result = await requestSoccerData("/matches?" + query.toString());
+            if (result.response?.ok && Array.isArray(result.payload?.data)) {
+              catalogue = { at: soccerNow, rows: result.payload.data };
+              soccerDataLiveCatalogueCache.set(soccerDate, catalogue);
+              console.log("[Soccer Data] live catalogue:", JSON.stringify({ date: soccerDate, fixtures: catalogue.rows.length, requestsUsedToday: usage.count }));
+            } else if (result.response) {
+              console.warn("[Soccer Data] live catalogue unavailable:", JSON.stringify({ status: result.response.status, requestsUsedToday: usage.count }));
+            }
+          } catch (error) {
+            console.warn("[Soccer Data] live catalogue failed:", String(error.message || "request failed").slice(0, 160));
+          }
+        }
+        const fixtureByPair = new Map();
+        for (const fixture of catalogue?.rows || []) {
+          const home = normalizeSoccerDataTeam(fixture?.home_team?.name);
+          const away = normalizeSoccerDataTeam(fixture?.away_team?.name);
+          if (!home || !away || fixture?.id == null) continue;
+          fixtureByPair.set(home + "|" + away, { fixture, sameOrientation: true });
+          fixtureByPair.set(away + "|" + home, { fixture, sameOrientation: false });
+        }
+        const matched = matches.map(match => {
+          const found = fixtureByPair.get(normalizeSoccerDataTeam(match.home) + "|" + normalizeSoccerDataTeam(match.away));
+          return found ? { match, ...found } : null;
+        }).filter(Boolean);
+        const applyStats = (match, statsRoot, sameOrientation) => {
+          const sot = statsRoot?.stats?.shots_on_target?.all;
+          if (!sot || !Array.isArray(match.teams)) return false;
+          let supplied = false;
+          for (const team of match.teams.slice(0, 2)) {
+            const targetSide = team.homeAway === "away" ? "away" : "home";
+            const sourceSide = sameOrientation ? targetSide : (targetSide === "home" ? "away" : "home");
+            const raw = sot[sourceSide];
+            const value = raw == null || raw === "" ? null : Number(raw);
+            if (team.shotsOnTarget == null && value != null && Number.isFinite(value) && value >= 0) {
+              team.shotsOnTarget = value;
+              supplied = true;
+            }
+          }
+          if (supplied) {
+            const source = String(match.statsSource || "unknown");
+            if (!source.includes("Soccer Data")) match.statsSource = source + "+Soccer Data";
+            match.statsAvailable = true;
+          }
+          return supplied;
+        };
+        for (const item of matched) {
+          const cached = soccerDataLiveStatsCache.get(String(item.fixture.id));
+          if (cached?.stats) applyStats(item.match, cached.stats, item.sameOrientation);
+        }
+        const missing = matched.filter(item => (item.match.teams || []).slice(0, 2).some(team => team.shotsOnTarget == null));
+        const offset = missing.length ? soccerDataStatsCursor % missing.length : 0;
+        const rotated = missing.slice(offset).concat(missing.slice(0, offset));
+        const due = rotated.filter(item => {
+          const cached = soccerDataLiveStatsCache.get(String(item.fixture.id));
+          return !cached || soccerNow - cached.at >= SOCCER_DATA_STATS_REFRESH_MS;
+        }).slice(0, 2);
+        for (const item of due) {
+          if (usage.count >= SOCCER_DATA_DAILY_BUDGET) break;
+          const fixtureId = String(item.fixture.id);
+          try {
+            const result = await requestSoccerData("/matches/" + encodeURIComponent(fixtureId) + "/live-stats");
+            if (result.response?.ok) {
+              const statsRoot = result.payload?.data?.stats ? result.payload.data : result.payload?.data || result.payload;
+              soccerDataLiveStatsCache.set(fixtureId, { at: soccerNow, stats: statsRoot });
+              const supplied = applyStats(item.match, statsRoot, item.sameOrientation);
+              console.log("[Soccer Data] live stats:", JSON.stringify({
+                fixtureId, home: item.match.home, away: item.match.away,
+                explicitSotPresent: Boolean(statsRoot?.stats?.shots_on_target?.all),
+                suppliedMissingSot: supplied, requestsUsedToday: usage.count
+              }));
+            } else {
+              console.warn("[Soccer Data] fixture stats unavailable:", JSON.stringify({ fixtureId, status: result.response?.status || null, requestsUsedToday: usage.count }));
+            }
+          } catch (error) {
+            console.warn("[Soccer Data] fixture stats failed:", JSON.stringify({ fixtureId, error: String(error.message || "request failed").slice(0, 160) }));
+          }
+        }
+        if (due.length) soccerDataStatsCursor += due.length;
+        console.log("[Soccer Data] live integration audit:", JSON.stringify({
+          catalogueFixtures: catalogue?.rows?.length || 0, matched: matched.length,
+          missingSot: missing.length, statsRequestsThisCycle: due.length,
+          requestsUsedToday: usage.count, dailyBudget: SOCCER_DATA_DAILY_BUDGET
+        }));
       }
       if (espnProviderDiagnosticSample) {
         const normalizeDiagnosticTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
