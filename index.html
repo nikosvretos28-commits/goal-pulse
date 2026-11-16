@@ -2616,7 +2616,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 <section class="top-ai-alerts" id="privateAiAlertsPanel" hidden aria-labelledby="privateAiAlertsTitle">
  <div class="top-ai-alerts-head"><div><h2 id="privateAiAlertsTitle">🔒 PRIVATE AI ALERTS · OWNER VIEW</h2><p>Πλήρης εσωτερική εικόνα των ενεργών AI alerts, μόνο μετά από PIN.</p></div><button type="button" class="login" id="privateAiAlertsClose">ΚΛΕΙΣΙΜΟ</button></div>
  <div class="notification-optin-row"><label for="privateAiPin">Admin PIN</label><input id="privateAiPin" type="password" autocomplete="current-password" inputmode="numeric" placeholder="Εισαγωγή PIN" style="max-width:220px"><button type="button" class="login" id="privateAiUnlock">ΞΕΚΛΕΙΔΩΜΑ</button><span id="privateAiStatus" class="subtle" aria-live="polite">Απαιτείται προσωπικό PIN.</span></div>
- <div class="top-ai-alert-list" id="privateAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Κλειδωμένο.</div></div>
+<div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="runSoccerDataDiagnostic" disabled>🔎 ΕΛΕΓΧΟΣ SOCCER DATA</button><span id="soccerDataDiagnosticStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div><pre id="soccerDataDiagnosticResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:420px;overflow:auto"></pre>
+  <div class="top-ai-alert-list" id="privateAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Κλειδωμένο.</div></div>
 </section>
 
 <section class="top-ai-alerts top-vip-alerts" id="topVipAlerts" hidden aria-labelledby="topVipAlertsTitle">
@@ -5184,6 +5185,8 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
  try{
   const response=await fetch(ANALYTICS_API+'/api/alerts/history/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,limit:1000,period:'all'})});
   const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));privateAiAdminPin=pin;
+  const soccerDiagnosticButton=document.getElementById('runSoccerDataDiagnostic');if(soccerDiagnosticButton)soccerDiagnosticButton.disabled=false;
+  const soccerDiagnosticStatus=document.getElementById('soccerDataDiagnosticStatus');if(soccerDiagnosticStatus)soccerDiagnosticStatus.textContent='Πρόσβαση επιβεβαιώθηκε · μπορείς να εκτελέσεις τον έλεγχο.';
   void loadProtocolAnalyst();
   void loadEliteFiveBotDailyReport();
   const liveIds=new Set((Array.isArray(allMatches)?allMatches:[]).filter(m=>m&&m.state==='in').map(m=>String(m.id)));
@@ -5198,6 +5201,26 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
   if(status)status.textContent='Πρόσβαση επιβεβαιώθηκε · '+rows.length+' ενεργά AI alerts.';
  }catch(error){privateAiAdminPin='';if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
  finally{button.disabled=false;}
+});
+
+// Owner-only, read-only Soccer Data check. Reuses the PIN already verified by PRIVATE AI ALERTS.
+const soccerDataDiagnosticButton=document.getElementById('runSoccerDataDiagnostic');
+soccerDataDiagnosticButton?.addEventListener('click',async()=>{
+ const status=document.getElementById('soccerDataDiagnosticStatus');
+ const output=document.getElementById('soccerDataDiagnosticResult');
+ if(!privateAiAdminPin){if(status)status.textContent='Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.';return;}
+ soccerDataDiagnosticButton.disabled=true;
+ if(status)status.textContent='Έλεγχος Soccer Data σε εξέλιξη… (έως 4 αιτήματα παρόχου)';
+ if(output)output.textContent='';
+ try{
+  const response=await fetch(ANALYTICS_API+'/api/diagnostics/soccer-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin}),cache:'no-store',signal:AbortSignal.timeout(45000)});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));
+  if(output)output.textContent=JSON.stringify(data,null,2);
+  if(status)status.textContent='Ο έλεγχος ολοκληρώθηκε · '+(data.requestsUsedByDiagnostic??'—')+' αιτήματα παρόχου.';
+ }catch(error){
+  if(status)status.textContent='Ο έλεγχος απέτυχε: '+String(error.message||error).slice(0,160);
+ }finally{soccerDataDiagnosticButton.disabled=!privateAiAdminPin;}
 });
 
 // Preview mode is opt-in through a server-side environment flag; normal PIN protection remains the default.
