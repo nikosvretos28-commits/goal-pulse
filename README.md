@@ -91,6 +91,14 @@ The rules below document the implementation in the repository. AI Alerts and Hi 
 - Missing xG does not qualify the xG condition; it does not convert to zero.
 - HI observations are tracked as distinct match/half/minute/score/stat snapshots.
 
+### Pressure Hunter — independent SOT-only protocol
+
+- Pressure Hunter keeps its own two consecutive rolling 8-minute windows within the same half; it does not reuse AI Alerts or Hi Activity rolling state.
+- The first 8-minute window qualifies at **2+ combined SOT** from the two teams.
+- The signal fires on the **first SOT** recorded in the immediately following 8-minute window.
+- Both windows must be valid and fresh. Missing SOT remains unknown and fails closed.
+- Total shots, off-target shots and blocked shots are not inputs to Hunter eligibility, thresholds or scoring.
+
 ### Other analytics and validation
 
 The advanced analytics and dedicated corner-pressure design requirements are documented separately in `docs/AI_ANALYTICS_PROTOCOL.md`. Design aspirations in that document are not proof that the corresponding model, data feed or feature is fully implemented. Do not claim a calibrated prediction or hit rate without persisted outcomes and chronological validation.
