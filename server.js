@@ -7149,9 +7149,21 @@ const server = http.createServer(async (req, res) => {
             const query = new URLSearchParams({ status: "live", per_page: "100", page: "1" });
             const result = await requestSoccerData("/matches?" + query.toString());
             if (result.response?.ok && Array.isArray(result.payload?.data)) {
-              catalogue = { at: soccerNow, rows: result.payload.data.filter(item => String(item?.status || "").toLowerCase() === "live") };
+              const rawRows = result.payload.data;
+              const statusCounts = rawRows.reduce((counts, item) => {
+                const status = String(item?.status || "(missing)").toLowerCase();
+                counts[status] = (counts[status] || 0) + 1;
+                return counts;
+              }, {});
+              catalogue = { at: soccerNow, rows: rawRows.filter(item => String(item?.status || "").toLowerCase() === "live") };
               soccerDataLiveCatalogueCache.set(soccerDate, catalogue);
-              console.log("[Soccer Data] live catalogue:", JSON.stringify({ date: soccerDate, fixtures: catalogue.rows.length, requestsUsedToday: usage.count }));
+              console.log("[Soccer Data] live catalogue:", JSON.stringify({
+                date: soccerDate, httpStatus: result.response.status,
+                rawRows: rawRows.length, statusCounts, fixtures: catalogue.rows.length,
+                providerTotal: result.payload?.meta?.total ?? null,
+                providerPages: result.payload?.meta?.total_pages ?? null,
+                requestsUsedToday: usage.count
+              }));
             } else if (result.response) {
               console.warn("[Soccer Data] live catalogue unavailable:", JSON.stringify({ status: result.response.status, requestsUsedToday: usage.count }));
             }
