@@ -27,11 +27,11 @@ test("completed fixtures are never eligible even when a stale minute remains", (
   }
 });
 
-test("cumulative 20-SOT trigger is limited to match minutes 1 through 65", () => {
-  for (const minute of [0, 35, 40, 45, 66, 69, 70, 84, 85, 88, 89, 65.5, 45.5, null, Number.NaN]) {
+test("cumulative 20-SOT trigger spans both halves from match minute 1 through 65", () => {
+  for (const minute of [0, 66, 69, 70, 84, 85, 88, 89, 65.5, 45.5, null, Number.NaN]) {
     assert.equal(isCumulativeSotMinute(minute), false, String(minute));
   }
-  for (const minute of [1, 2, 34, 46, 47, 60, 64, 65]) {
+  for (const minute of [1, 2, 34, 35, 40, 45, 46, 47, 60, 64, 65]) {
     assert.equal(isCumulativeSotMinute(minute), true, String(minute));
   }
   for (const status of ["Finished", "Full Time", "FT", "Ended", "Completed", "AET", "HT", "Half Time", "ανάπαυλα"]) {
@@ -42,6 +42,10 @@ test("cumulative 20-SOT trigger is limited to match minutes 1 through 65", () =>
   assert.equal(isCumulativeSotMinute(60, "2nd half"), true);
   assert.equal(isCumulativeSotMinute(65, "2nd half"), true);
   assert.equal(isCumulativeSotMinute(66, "2nd half"), false);
+  assert.equal(isCumulativeSotMinute(45, "1st half"), true);
+  assert.equal(isCumulativeSotMinute(45, "2nd half"), false);
+  assert.equal(isCumulativeSotMinute(46, "1st half"), false);
+  assert.equal(isCumulativeSotMinute(46, "2nd half"), true);
   assert.equal(isCumulativeSotMinute(20, "2nd half"), false);
   assert.equal(isCumulativeSotMinute(60, "1st half"), false);
 });
