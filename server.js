@@ -25,6 +25,8 @@ const PORT = Number(process.env.PORT || 3000);
 let espnRawStatsShapeLogged = false;
 const ROOT = __dirname;
 const API_BASE = "https://api.pitchapi.dev";
+// Keep SportScore-to-PitchAPI live fallback calls comfortably below PitchAPI live endpoint limits.
+const pitchApiSportScoreFallbackRequestTimes = [];
 const PRE_MATCH_OVER_LINES = Object.freeze(["0.5","1.5","2.5","3.5","4.5","5.5","6.5"]);
 
 // SportAPI is a strictly supplemental, budget-capped canary for cumulative live stats.
@@ -5787,6 +5789,7 @@ const server = http.createServer(async (req, res) => {
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, localBudgetLimited: 0, provider429: 0, providerCooldownSkipped: 0, cachedDetailHits: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null };
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0 };
       const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
+      const pitchApiSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, liveFetched: 0, supplied: 0, skippedRateLimit: 0, errors: 0 };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const item = work[cursor++];
@@ -5946,10 +5949,114 @@ const server = http.createServer(async (req, res) => {
                 redCardIncidents.filter(incident => incident.sideIndex === 1).length
               ];
               const hasIncidentTimeline = Array.isArray(root.incidents);
+              let statsSource = "SportScore";
               const values = [
                 { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
                 { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
+              // Reverse fallback: when SportScore recognizes a live fixture but has no stats,
+              // look for the exact same fixture in PitchAPI's free live catalogue.
+              // This is fill-only; SOT is read only from explicit SOT fields and is never
+              // inferred from total shots or shot counts.
+              if (process.env.PITCH_API_KEY && values.length >= 2 &&
+                  values.some(team => ["shotsOnTarget","shotsInBox","bigChances","corners","possession","xG"].some(key => team[key] == null))) {
+                pitchApiSportScoreFallbackDiagnostics.attempted++;
+                try {
+                  const isoDate = /^\d{8}$/.test(String(date || ""))
+                    ? String(date).slice(0,4) + "-" + String(date).slice(4,6) + "-" + String(date).slice(6,8)
+                    : new Date().toISOString().slice(0,10);
+                  const pitchDay = await pitchGet("/v1/date/" + isoDate + "?status=all", 45000);
+                  const pitchRows = Array.isArray(pitchDay?.data?.matches) ? pitchDay.data.matches : [];
+                  const normalizePitchFallbackTeam = value => String(value || "").normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "").toLowerCase()
+                    .replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ")
+                    .replace(/[^a-z0-9]+/g, " ").trim();
+                  const homeKey = normalizePitchFallbackTeam(homeName);
+                  const awayKey = normalizePitchFallbackTeam(awayName);
+                  const candidates = pitchRows.filter(match => {
+                    const pitchHome = normalizePitchFallbackTeam(match?.home_team?.name);
+                    const pitchAway = normalizePitchFallbackTeam(match?.away_team?.name);
+                    return (pitchHome === homeKey && pitchAway === awayKey) ||
+                      (pitchHome === awayKey && pitchAway === homeKey);
+                  });
+                  if (candidates.length === 1 && /^m_[A-Za-z0-9]{6}$/.test(String(candidates[0].id || ""))) {
+                    const pitchFixture = candidates[0];
+                    pitchApiSportScoreFallbackDiagnostics.fixtureMatched++;
+                    const now = Date.now();
+                    while (pitchApiSportScoreFallbackRequestTimes.length &&
+                      now - pitchApiSportScoreFallbackRequestTimes[0] >= 60000) {
+                      pitchApiSportScoreFallbackRequestTimes.shift();
+                    }
+                    if (pitchApiSportScoreFallbackRequestTimes.length < 6) {
+                      pitchApiSportScoreFallbackRequestTimes.push(now);
+                      const livePayload = await pitchGet("/v1/matches/" +
+                        encodeURIComponent(String(pitchFixture.id)) + "/live", 15000);
+                      const liveData = livePayload?.data || {};
+                      const liveRows = Array.isArray(liveData.stats) ? liveData.stats : [];
+                      if (liveData.live === true && liveRows.length &&
+                          (!Number.isFinite(Number(liveData.age_seconds)) || Number(liveData.age_seconds) <= 60)) {
+                        pitchApiSportScoreFallbackDiagnostics.liveFetched++;
+                        const sameOrientation =
+                          normalizePitchFallbackTeam(pitchFixture?.home_team?.name) === homeKey;
+                        const readPitchLiveStat = (side, aliases, exactOnly = false) => {
+                          for (const alias of aliases) {
+                            const found = liveRows.find(stat =>
+                              String(stat?.key || "").toLowerCase() === alias ||
+                              String(stat?.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") === alias
+                            );
+                            if (found) {
+                              const raw = found[side];
+                              const parsed = Number.parseFloat(String(raw ?? "").replace("%", "").replace(",", "."));
+                              if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+                            }
+                          }
+                          if (!exactOnly) return null;
+                          return null;
+                        };
+                        let supplied = false;
+                        for (const team of values.slice(0, 2)) {
+                          const targetSide = team.homeAway === "away" ? "away" : "home";
+                          const sourceSide = sameOrientation ? targetSide : (targetSide === "home" ? "away" : "home");
+                          const fill = (key, value) => {
+                            if (team[key] == null && value != null) {
+                              team[key] = value;
+                              supplied = true;
+                            }
+                          };
+                          fill("shotsOnTarget", readExactSotStat(liveRows, sourceSide));
+                          fill("shotsInBox", readPitchLiveStat(sourceSide, [
+                            "shots_inside_box","shots_in_box","shots_in_penalty_area","shots_inside_penalty_area"
+                          ]));
+                          fill("bigChances", readPitchLiveStat(sourceSide, ["big_chances","big_chance"]));
+                          fill("corners", readPitchLiveStat(sourceSide, ["corners","corner_kicks","won_corners"]));
+                          fill("possession", readPitchLiveStat(sourceSide, ["ball_possession","possession","possession_percentage"]));
+                          fill("xG", readPitchLiveStat(sourceSide, ["expected_goals","xg"]));
+                        }
+                        if (supplied) {
+                          statsSource = "SportScore+PitchAPI";
+                          pitchApiSportScoreFallbackDiagnostics.supplied++;
+                          console.log("[GoalMatrix SportScore PitchAPI live fallback]", JSON.stringify({
+                            eventId, pitchMatchId: pitchFixture.id, home: homeName, away: awayName,
+                            fields: values.slice(0,2).map(team => ({
+                              side: team.homeAway, shotsOnTarget: team.shotsOnTarget,
+                              shotsInBox: team.shotsInBox, bigChances: team.bigChances,
+                              corners: team.corners, possession: team.possession, xG: team.xG
+                            }))
+                          }));
+                        }
+                      }
+                    } else {
+                      pitchApiSportScoreFallbackDiagnostics.skippedRateLimit++;
+                    }
+                  }
+                } catch (error) {
+                  pitchApiSportScoreFallbackDiagnostics.errors++;
+                  console.warn("[GoalMatrix SportScore PitchAPI live fallback unavailable]", JSON.stringify({
+                    eventId, status: error.status || null, code: error.code || null,
+                    message: String(error.message || "request failed").slice(0, 160)
+                  }));
+                }
+              }
               // Last-known SOT is carried in a display-only field. It is deliberately
               // not copied into shotsOnTarget, which remains the sole scanner input.
               if (staleDetailForDisplay && staleDetailObservedAt) {
@@ -6049,7 +6156,7 @@ const server = http.createServer(async (req, res) => {
                 root.time?.minute ?? root.status?.minute ?? root.status?.elapsed ??
                 event.live_minute ?? event.status?.displayClock ?? scoreboardCompetition.status?.displayClock ?? event.time ?? "";
               matches.push({
-                eventId: String(event.id), home: homeName, away: awayName, statsSource: "SportScore",
+                eventId: String(event.id), home: homeName, away: awayName, statsSource,
                 minute: liveMinute,
                 homeScore: scoreValue(event.home_score ?? event.homeScore ?? scoreboardHome?.score ?? scoreboardHome?.displayValue),
                 awayScore: scoreValue(event.away_score ?? event.awayScore ?? scoreboardAway?.score ?? scoreboardAway?.displayValue),
@@ -6483,6 +6590,7 @@ const server = http.createServer(async (req, res) => {
       });
       await Promise.all(workers);
       console.log("[PitchAPI SportScore fallback audit]", JSON.stringify(pitchSportScoreFallbackDiagnostics));
+      console.log("[SportScore PitchAPI reverse fallback audit]", JSON.stringify(pitchApiSportScoreFallbackDiagnostics));
       // SportAPI canary: supplement only missing cumulative match statistics.
       // It deliberately does not replace the scoreboard/clock and does not change
       // rolling-window, AI Alert, HI Activity, VIP, or settlement protocol logic.
