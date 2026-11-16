@@ -2482,9 +2482,9 @@ const server = http.createServer(async (req, res) => {
       { home: "Salaam FC", away: "Akon Buoi FC" },
       { home: "Bangkok University Rangsit", away: "Dhurakij Pundit University U21" }
     ];
-    const normalize = value => String(value || "").normalize("NFD").replace(/\\p{M}/gu, "")
-      .toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g, " ")
-      .replace(/[^a-z0-9]+/g, " ").trim().replace(/\\s+/g, " ");
+    const normalize = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "")
+      .toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
     const requestJson = async endpoint => {
       const response = await fetch("https://api.soccer-data.co/v1" + endpoint, {
         headers: { "Accept": "application/json", "X-Api-Key": apiKey },
