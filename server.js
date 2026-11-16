@@ -4022,12 +4022,10 @@ const server = http.createServer(async (req, res) => {
         const hunterSnapshot = {
           at: now,
           period: hunterPeriod,
-          teams: teams.slice(0, 2).map((team, index) => {
-            const sot = hunterCount(team.shotsOnTarget);
-            const off = hunterCount(team.shotsOffTarget);
-            const totalShots = hunterCount(team.totalShots) ?? (sot !== null && off !== null ? sot + off : null);
-            return { team: String(team.team || "").trim().toLowerCase(), totalShots, shotsOnTarget: sot, shotsOffTarget: off };
-          })
+          teams: teams.slice(0, 2).map(team => ({
+            team: String(team.team || "").trim().toLowerCase(),
+            shotsOnTarget: hunterCount(team.shotsOnTarget)
+          }))
         };
         const hunterHistory = (pushScanHunterSnapshots.get(id) || []).filter(snapshot =>
           snapshot.period === hunterPeriod && now - snapshot.at <= 17.5 * 60 * 1000
@@ -4047,15 +4045,13 @@ const server = http.createServer(async (req, res) => {
             const delta = key => team[key] == null || prior?.[key] == null || team[key] < prior[key]
               ? null : Math.max(0, team[key] - prior[key]);
             return {
-              totalShots: delta("totalShots"),
-              shotsOnTarget: delta("shotsOnTarget"),
-              shotsOffTarget: delta("shotsOffTarget")
+              shotsOnTarget: delta("shotsOnTarget")
             };
           });
         };
         const hunterWindow = (rows, sampleMinutes) => ({
           available: Boolean(rows && rows.length === 2 && rows.every(row =>
-            row.totalShots !== null && row.shotsOnTarget !== null
+            row.shotsOnTarget !== null
           )),
           sampleMinutes,
           teams: rows || []
