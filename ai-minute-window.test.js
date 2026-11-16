@@ -27,14 +27,19 @@ test("completed fixtures are never eligible even when a stale minute remains", (
   }
 });
 
-test("cumulative 20-SOT trigger is limited to minutes 46 through 65", () => {
-  for (const minute of [1, 34, 35, 40, 45, 66, 67, 74, 84, 85, 88, 89, 65.5, 84.9]) {
+test("cumulative 20-SOT trigger is eligible from minutes 1 through 65 in either half", () => {
+  for (const minute of [0, 66, 67, 74, 84, 85, 88, 89, 90, 120, 0.5, 1.5, 65.5, null, Number.NaN]) {
     assert.equal(isCumulativeSotMinute(minute), false, String(minute));
   }
-  for (const minute of [46, 47, 60, 64, 65]) {
+  for (const minute of [1, 2, 34, 35, 40, 45, 46, 47, 60, 64, 65]) {
     assert.equal(isCumulativeSotMinute(minute), true, String(minute));
   }
-  assert.equal(isCumulativeSotMinute(60, "1st half"), false);
+  for (const status of ["1H", "1st half", "First Half", "2H", "2nd half", "Second Half", "LIVE", ""]) {
+    assert.equal(isCumulativeSotMinute(30, status), true, status);
+  }
+  for (const status of ["HT", "Half Time", "Halftime", "ανάπαυλα", "Finished", "Full Time", "FT", "Ended", "Completed", "AET", "Ολοκληρώθηκε", "Λήξη αγώνα"]) {
+    assert.equal(isCumulativeSotMinute(54, status), false, status);
+  }
 });
 
 
