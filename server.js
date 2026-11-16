@@ -4513,8 +4513,9 @@ const server = http.createServer(async (req, res) => {
           Number(preMatchSeason.support || 0) + Number(matchupEvidence.score || 0) + liveConversionSupport;
         const points = basePoints + supportingCriteriaScore;
         const sustainedPoints = baseSustainedPoints + supportingCriteriaScore;
-        // Updated second-half AI protocol window: 46′–84′ for every second-half trigger.
-        // Independent first-half exception: 8+ combined match SOT by minute 34.
+        // Standard AI windows: first half 1′–34′ and second half 46′–84′.
+        // The independent cumulative 20+ SOT trigger has its own 1′–65′ window;
+        // the separate 8+ combined-SOT trigger remains first-half-only through 34′.
         const aiMinute = parseLiveMinute(getMatchMinute(match));
         const eligibleMinute = isAiMinuteEligible(aiMinute, statusForEligibility);
         const firstHalfSotWindow = isFirstHalfSotMinute(aiMinute, statusForEligibility);
@@ -4594,7 +4595,7 @@ const server = http.createServer(async (req, res) => {
         const isAiGoal = scoreAvailable && qualifiedAiTriggers.length > 0;
         // Keep the first 16 general samples, but never omit an eligible 46′–84′ second-half match.
         // This makes the scanner diagnostics useful when late matches dominate feed ordering.
-        if (eligibleMinute || firstHalfSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
+        if (eligibleMinute || firstHalfSotWindow || cumulativeSotWindow || aiSignalDiagnostics.length < 16) aiSignalDiagnostics.push({
           home: String(match.home || ""),
           away: String(match.away || ""),
           minute: Number.isFinite(aiMinute) ? aiMinute : null,
@@ -4636,7 +4637,7 @@ const server = http.createServer(async (req, res) => {
           eligibleMinute,
           qualifies: isAiGoal,
           qualifiedTriggerIds: qualifiedAiTriggers.map(trigger => trigger.id),
-          rejection: !scoreAvailable ? "score_missing" : qualifiedAiTriggers.length ? "qualified_independent_triggers" : sotSignalQualifies && !confirmedSotSignal ? "awaiting_independent_sot_confirmation" : !eligibleMinute && !firstHalfSotWindow ? "minute_outside_approved_ai_window" : "no_independent_trigger_qualified"
+          rejection: !scoreAvailable ? "score_missing" : qualifiedAiTriggers.length ? "qualified_independent_triggers" : sotSignalQualifies && !confirmedSotSignal ? "awaiting_independent_sot_confirmation" : !eligibleMinute && !firstHalfSotWindow && !cumulativeSotWindow ? "minute_outside_approved_ai_window" : "no_independent_trigger_qualified"
         });
         const isVip = false; // VIP alerts are selected manually from HI ACTIVITY in the frontend.
         const levels = isAiGoal ? qualifiedAiTriggers.map(trigger => ({ level: "AI", triggerId: trigger.id })) : [];
