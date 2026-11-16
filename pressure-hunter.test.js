@@ -54,6 +54,16 @@ test("second window activates on one SOT without a total-shots threshold", () =>
   assert.equal(result.evidence.secondEightMinutes.shotsOnTargetAtSignal, 1);
 });
 
+test("total shots and off-target counts cannot satisfy or block Hunter thresholds", () => {
+  const input = fixture({ first: [1, 0], second: [1, 0] });
+  input.windows.firstEightMinutes.teams[0].totalShots = 100;
+  input.windows.firstEightMinutes.teams[0].shotsOffTarget = 99;
+  input.windows.secondEightMinutes.teams[0].totalShots = 100;
+  input.windows.secondEightMinutes.teams[0].shotsOffTarget = 99;
+  const result = evaluatePressureHunter(input);
+  assert.equal(result.triggered, false);
+  assert.equal(result.reason, "first_8m_sot_threshold_not_met");
+});
 test("missing SOT counts fail closed", () => {
   const input = fixture();
   input.windows.firstEightMinutes.teams[0].shotsOnTarget = null;
