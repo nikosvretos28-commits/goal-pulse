@@ -10,6 +10,7 @@ function sotTriggerConfirmationKey(eventId, triggerId) {
 function buildIndependentAiTriggers({
   eligibleMinute,
   firstHalfSotWindow,
+  cumulativeSotWindow,
   recentSotQualifies,
   cumulativeSotQualifies,
   firstHalfEightSotQualifies,
@@ -23,7 +24,7 @@ function buildIndependentAiTriggers({
   if ((eligibleMinute || firstHalfSotWindow) && recentSotQualifies && confirmed.has("recent_sot_pressure")) {
     triggers.push({ id: "recent_sot_pressure" });
   }
-  if (inApprovedAiWindow && cumulativeSotQualifies && confirmed.has("cumulative_20_sot")) {
+  if (cumulativeSotWindow && cumulativeSotQualifies && confirmed.has("cumulative_20_sot")) {
     triggers.push({ id: "cumulative_20_sot" });
   }
   if (firstHalfSotWindow && firstHalfEightSotQualifies && confirmed.has("first_half_8_sot")) {
