@@ -28,11 +28,19 @@ function isFirstHalfSotMinute(minute, status = "") {
 }
 
 function isCumulativeSotMinute(minute, status = "") {
-  // The cumulative 20+ combined-SOT trigger is limited to match minutes 1–65:
-  // first-half minutes 1–34 and second-half minutes 46–65. Other AI triggers
-  // retain their own eligible windows; this limit applies only to the 20+ SOT path.
-  return isFirstHalfSotMinute(minute, status) ||
-    (Number.isInteger(minute) && minute <= 65 && isAiMinuteEligible(minute, status));
+  if (!Number.isInteger(minute) || minute < 1 || minute > 65) return false;
+  const period = String(status || "").trim().toLowerCase();
+  // The 20+ combined-SOT trigger spans both halves, independently of the
+  // narrower minute windows used by other AI triggers.
+  if (/\b(?:finished|full\s*time|ended|complete|completed|ft|aet|ht|half[\s-]*time|halftime)\b/.test(period) ||
+      /ολοκληρώθηκε|τελικό\s*σφύριγμα|λήξη\s*αγώνα|ανάπαυλα/.test(period)) return false;
+  if (minute <= 45) {
+    if (/\b(?:2h|2nd\s*half|second\s*half|second_half)\b/.test(period) ||
+        /δεύτερο\s*ημίχρονο|2ο\s*ημίχρονο/.test(period)) return false;
+    return !period || /\b(?:live|in|1h|1st\s*half|first\s*half|first_half)\b/.test(period) ||
+      /1ο\s*ημίχρονο|πρώτο\s*ημίχρονο/.test(period);
+  }
+  return isAiMinuteEligible(minute, status);
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.
