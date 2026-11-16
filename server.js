@@ -2468,6 +2468,98 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Read-only, manually invoked Soccer Data diagnostic. It never feeds live scanners or alerts.
+  if (url.pathname === "/api/diagnostics/soccer-data" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    const apiKey = String(process.env.SOCCER_DATA_KEY || "");
+    if (!apiKey) return send(res, 503, { ok: false, error: "SOCCER_DATA_KEY is not configured" });
+
+    const date = athensDateKey();
+    const targets = [
+      { home: "Hannam University", away: "Songho College" },
+      { home: "Salaam FC", away: "Akon Buoi FC" },
+      { home: "Bangkok University Rangsit", away: "Dhurakij Pundit University U21" }
+    ];
+    const normalize = value => String(value || "").normalize("NFD").replace(/\p{M}/gu, "")
+      .toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+    const requestJson = async endpoint => {
+      const response = await fetch("https://api.soccer-data.co/v1" + endpoint, {
+        headers: { "Accept": "application/json", "X-Api-Key": apiKey },
+        signal: AbortSignal.timeout(10000)
+      });
+      let payload = {};
+      try { payload = await response.json(); } catch {}
+      return { response, payload };
+    };
+
+    try {
+      const query = new URLSearchParams({ date_from: date, date_to: date, per_page: "100", page: "1" });
+      const listing = await requestJson("/matches?" + query.toString());
+      if (!listing.response.ok) {
+        return send(res, 200, {
+          ok: false, readOnly: true, provider: "Soccer Data", date,
+          stage: "match-list", httpStatus: listing.response.status,
+          providerError: listing.payload?.error?.code || listing.payload?.error?.message || "Provider request failed"
+        });
+      }
+      const fixtures = Array.isArray(listing.payload?.data) ? listing.payload.data : [];
+      const results = [];
+      for (const target of targets) {
+        const homeKey = normalize(target.home), awayKey = normalize(target.away);
+        const match = fixtures.find(item =>
+          normalize(item?.home_team?.name) === homeKey && normalize(item?.away_team?.name) === awayKey
+        );
+        if (!match) {
+          results.push({ ...target, found: false, shotsOnTarget: null, note: "Fixture not present in today's Soccer Data catalogue" });
+          continue;
+        }
+        const result = {
+          ...target, found: true, matchId: String(match.id || ""),
+          providerHome: match.home_team?.name || null, providerAway: match.away_team?.name || null,
+          status: match.status || null, shotsOnTarget: null
+        };
+        if (String(match.status || "").toLowerCase() !== "live" || !match.id) {
+          result.note = "Match is not currently live; live SOT endpoint was not requested";
+          results.push(result);
+          continue;
+        }
+        const live = await requestJson("/matches/" + encodeURIComponent(String(match.id)) + "/live-stats");
+        result.liveStatsHttpStatus = live.response.status;
+        if (live.response.ok) {
+          const stats = live.payload?.data?.stats || {};
+          const sot = stats.shots_on_target?.all || null;
+          const home = sot?.home;
+          const away = sot?.away;
+          result.shotsOnTarget = {
+            home: home == null || !Number.isFinite(Number(home)) ? null : Number(home),
+            away: away == null || !Number.isFinite(Number(away)) ? null : Number(away)
+          };
+          result.sotFieldPresent = Boolean(sot && (home != null || away != null));
+          result.elapsedMinutes = live.payload?.data?.meta?.elapsed_minutes ?? null;
+          result.note = result.sotFieldPresent
+            ? "Explicit shots_on_target values received"
+            : "Provider response has no explicit shots_on_target field";
+        } else {
+          result.note = live.payload?.error?.code || live.payload?.error?.message || "Live stats unavailable";
+        }
+        results.push(result);
+      }
+      return send(res, 200, {
+        ok: true, readOnly: true, provider: "Soccer Data", date,
+        catalogueMatches: fixtures.length, catalogueTotal: listing.payload?.meta?.total ?? null,
+        requestsUsedByDiagnostic: 1 + results.filter(item => item.found && item.status === "live" && item.matchId).length,
+        results,
+        note: "Diagnostic only. Values are read-only and are not passed into GoalMatrix scanners, alerts, or protocols."
+      });
+    } catch (error) {
+      console.error("[Soccer Data diagnostic] request failed:", String(error.message || error).slice(0, 180));
+      return send(res, 503, { ok: false, readOnly: true, provider: "Soccer Data", error: "Diagnostic request failed" });
+    }
+  }
+
   if (url.pathname === "/api/protocol-analyst/alerts" && req.method === "POST") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     const auth = await authorizePrivateAdminRequest(req);
