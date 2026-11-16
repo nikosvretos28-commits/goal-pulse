@@ -6,7 +6,7 @@ function sotTriggerConfirmationKey(eventId, triggerId) {
 
 // Return one candidate per independently satisfied protocol trigger.
 // Each SOT trigger requires confirmation under its own trigger ID; xG remains
-// an independent second-half alternative and never borrows SOT confirmation.
+// an independent eligible-half alternative and never borrows SOT confirmation.
 function buildIndependentAiTriggers({
   eligibleMinute,
   firstHalfSotWindow,
