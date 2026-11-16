@@ -4581,6 +4581,7 @@ const server = http.createServer(async (req, res) => {
         const qualifiedAiTriggers = buildIndependentAiTriggers({
           eligibleMinute,
           firstHalfSotWindow,
+          cumulativeSotWindow,
           recentSotQualifies,
           cumulativeSotQualifies,
           firstHalfEightSotQualifies,
