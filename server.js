@@ -7125,7 +7125,7 @@ const server = http.createServer(async (req, res) => {
       // SOT is read exclusively from the provider's explicit shots_on_target field.
       if (SOCCER_DATA_KEY && matches.length) {
         const soccerNow = Date.now();
-        const soccerDate = date.slice(0, 4) + "-" + date.slice(4, 6) + "-" + date.slice(6, 8);
+        const soccerDate = athensDateKey();
         let usage = soccerDataDailyUsage.get(soccerDate);
         if (!usage) { usage = { count: 0 }; soccerDataDailyUsage.set(soccerDate, usage); }
         for (const key of soccerDataDailyUsage.keys()) if (key !== soccerDate) soccerDataDailyUsage.delete(key);
@@ -7146,10 +7146,10 @@ const server = http.createServer(async (req, res) => {
         if ((!catalogue || soccerNow - catalogue.at >= SOCCER_DATA_CATALOGUE_REFRESH_MS) &&
             usage.count < SOCCER_DATA_DAILY_BUDGET) {
           try {
-            const query = new URLSearchParams({ status: "live", date_from: soccerDate, date_to: soccerDate, per_page: "100", page: "1" });
+            const query = new URLSearchParams({ date_from: soccerDate, date_to: soccerDate, per_page: "100", page: "1" });
             const result = await requestSoccerData("/matches?" + query.toString());
             if (result.response?.ok && Array.isArray(result.payload?.data)) {
-              catalogue = { at: soccerNow, rows: result.payload.data };
+              catalogue = { at: soccerNow, rows: result.payload.data.filter(item => String(item?.status || "").toLowerCase() === "live") };
               soccerDataLiveCatalogueCache.set(soccerDate, catalogue);
               console.log("[Soccer Data] live catalogue:", JSON.stringify({ date: soccerDate, fixtures: catalogue.rows.length, requestsUsedToday: usage.count }));
             } else if (result.response) {
