@@ -14,6 +14,7 @@ test("all independently qualified triggers are returned separately", () => {
   const triggers = buildIndependentAiTriggers({
     eligibleMinute: true,
     firstHalfSotWindow: true,
+    cumulativeSotWindow: true,
     recentSotQualifies: true,
     cumulativeSotQualifies: true,
     firstHalfEightSotQualifies: true,
@@ -57,6 +58,7 @@ test("xG remains independent of SOT confirmation", () => {
 test("first-half window admits all approved non-Hunter AI trigger families", () => {
   const firstHalf = buildIndependentAiTriggers({
     firstHalfSotWindow: true,
+    cumulativeSotWindow: true,
     recentSotQualifies: true,
     firstHalfEightSotQualifies: true,
     cumulativeSotQualifies: true,
@@ -78,6 +80,7 @@ test("all non-Hunter AI protocols accept first-half and second-half approved win
   const firstHalf = buildIndependentAiTriggers({
     eligibleMinute: false,
     firstHalfSotWindow: true,
+    cumulativeSotWindow: true,
     recentSotQualifies: false,
     cumulativeSotQualifies: true,
     firstHalfEightSotQualifies: false,
