@@ -28,9 +28,11 @@ function isFirstHalfSotMinute(minute, status = "") {
 }
 
 function isCumulativeSotMinute(minute, status = "") {
-  // The cumulative 20+ combined-SOT trigger follows the same approved AI
-  // windows as every other protocol: 1′–34′ and 46′–84′. Hunter is separate.
-  return isFirstHalfSotMinute(minute, status) || isAiMinuteEligible(minute, status);
+  // The cumulative 20+ combined-SOT trigger is limited to match minutes 1–65:
+  // first-half minutes 1–34 and second-half minutes 46–65. Other AI triggers
+  // retain their own eligible windows; this limit applies only to the 20+ SOT path.
+  return isFirstHalfSotMinute(minute, status) ||
+    (Number.isInteger(minute) && minute <= 65 && isAiMinuteEligible(minute, status));
 }
 
 // Independent first-half AI trigger: 8+ combined match SOT by minute 34.
