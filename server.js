@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
+const { normalizeLiveMinute } = require("./live-minute");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow, formatEspnMonth } = require("./competition-history");
@@ -6589,7 +6590,14 @@ const server = http.createServer(async (req, res) => {
               eventId: String(event.id), statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
-              minute: event.status?.displayClock || event.competitions?.[0]?.status?.displayClock || "",
+              minute: normalizeLiveMinute(
+                event.status?.displayClock,
+                event.competitions?.[0]?.status?.displayClock,
+                event.status?.shortDetail,
+                event.competitions?.[0]?.status?.shortDetail,
+                event.status?.detail,
+                event.competitions?.[0]?.status?.detail
+              ) || "",
               statsAvailable: values.length >= 2 && values.slice(0, 2).some(v => ["shotsOnTarget", "totalShots", "shotsOffTarget", "shotsInBox", "shotsOnTargetInsideBox", "bigChances", "corners", "attacks", "dangerousAttacks", "possession", "xG"].some(key => v[key] !== null)),
               teams: values
             });
