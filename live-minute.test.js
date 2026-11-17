@@ -13,6 +13,8 @@ test("normalizes regular provider clocks", () => {
 test("preserves stoppage-time base minute and added time", () => {
   assert.equal(normalizeLiveMinute("45+2'"), "45+2′");
   assert.equal(normalizeLiveMinute("90 + 5′"), "90+5′");
+  assert.equal(normalizeLiveMinute("45+"), "45+′");
+  assert.equal(normalizeLiveMinute("90+"), "90+′");
 });
 
 test("uses the first explicit clock when earlier status fields are labels", () => {
