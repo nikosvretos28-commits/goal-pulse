@@ -6305,6 +6305,112 @@ nav a:hover{color:var(--gm-brand-lime);text-shadow:0 0 15px rgba(183,255,70,.14)
  #allLivePowerRankingRows .gm-goal-flash-label{animation:none}
 }
 </style>
+<style id="gm-global-brand-polish-2026">
+/* GoalMatrix global-brand visual finish.
+   CSS ONLY: no markup, script, data, alert or protocol change.
+   Delete this whole block to revert to the previous look. */
+:root{
+ --gmx-ink:#050f19;
+ --gmx-hair:rgba(168,208,224,.13);
+ --gmx-hair-strong:rgba(168,208,224,.26);
+ --gmx-emerald:#4be5aa;
+ --gmx-gold:#e8c987;
+ --gmx-radius:18px;
+ --gmx-ease:cubic-bezier(.2,.7,.2,1);
+}
+html{background:var(--gmx-ink)}
+body{
+ background:
+  radial-gradient(1100px 520px at 10% -10%,rgba(75,229,170,.08),transparent 62%),
+  radial-gradient(900px 480px at 94% -6%,rgba(102,212,240,.075),transparent 64%),
+  linear-gradient(180deg,#07131f 0%,#050f19 100%);
+ -webkit-font-smoothing:antialiased;
+ text-rendering:optimizeLegibility;
+ font-variant-numeric:tabular-nums;
+}
+::selection{background:rgba(75,229,170,.28);color:#fff}
+*{scrollbar-width:thin;scrollbar-color:#2b4c61 transparent}
+
+/* Header: hairline fade, calmer lockup */
+header{border-bottom:1px solid transparent;border-image:linear-gradient(90deg,transparent,var(--gmx-hair-strong) 18%,var(--gmx-hair-strong) 82%,transparent) 1}
+.brand-name{letter-spacing:-.025em;font-weight:900}
+.brand-tagline{letter-spacing:.26em;opacity:.78}
+header nav a{letter-spacing:.045em;transition:color .22s var(--gmx-ease)}
+.live-badge{border-radius:999px;letter-spacing:.14em;font-weight:800}
+
+/* Section buttons: tidy 4-column grid, refined cards, restrained accents */
+#gpSectionButtons{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0 24px}
+#gpSectionButtons .gp-section-button{
+ min-height:54px;padding:13px 16px;border:1px solid var(--gmx-hair);border-radius:14px;
+ font-size:11.5px;font-weight:800;letter-spacing:.07em;line-height:1.35;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 8px 22px rgba(0,0,0,.2);
+ transition:transform .22s var(--gmx-ease),border-color .22s var(--gmx-ease),box-shadow .22s var(--gmx-ease);
+}
+#gpSectionButtons .gp-section-button:hover,
+#gpSectionButtons .gp-section-button[aria-expanded="true"]{
+ transform:translateY(-1px);border-color:rgba(75,229,170,.46);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 14px 30px rgba(0,0,0,.28),0 0 0 1px rgba(75,229,170,.08);
+}
+#gpSectionButtons .gp-section-button:focus-visible{outline:2px solid var(--gmx-emerald);outline-offset:2px}
+/* Earlier rules pin the first 11 buttons to fixed grid cells; release them so the grid flows naturally. */
+#gpSectionButtons>.gp-section-button:nth-child(n){grid-column:auto;grid-row:auto}
+#gpSectionButtons .gp-vip-button{
+ border-color:rgba(232,201,135,.32)!important;
+ background:linear-gradient(160deg,rgba(232,201,135,.13),rgba(9,26,40,.92) 72%)!important;
+}
+#gpSectionButtons .gp-vip-button .gp-button-count{background:rgba(232,201,135,.14)!important;color:#f0d9a2!important}
+#gpSectionButtons .gp-vip-button:hover{border-color:rgba(232,201,135,.62)!important}
+#gpSectionButtons .gp-hunter-button,
+#gpSectionButtons .gp-matrix-analytics-button,
+#gpSectionButtons .gp-elite-analyst-button{
+ border-color:rgba(102,212,240,.26);
+ background:linear-gradient(160deg,rgba(102,212,240,.10),rgba(9,26,40,.92) 70%);
+}
+#gpSectionButtons .gp-button-count{border-radius:999px;padding:3px 9px;letter-spacing:.07em;font-weight:800}
+#gpSectionButtons>.gp-prematch-button.gp-section-button{grid-column:1/-1;justify-content:center;min-height:46px;letter-spacing:.18em}
+
+/* Panels and cards: one consistent surface language */
+.top-ai-alerts,.top-vip-alerts,.panel,.side-live,.gp-live-ranking,.notification-optin{
+ border:1px solid var(--gmx-hair);border-radius:var(--gmx-radius);
+ background:linear-gradient(165deg,rgba(17,41,59,.84),rgba(8,24,37,.94));
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 18px 44px rgba(0,0,0,.24);
+}
+.match{
+ border:1px solid var(--gmx-hair);border-radius:15px;
+ background:linear-gradient(160deg,rgba(18,44,63,.88),rgba(9,26,40,.96));
+ transition:border-color .22s var(--gmx-ease),box-shadow .22s var(--gmx-ease);
+}
+.match:hover{border-color:var(--gmx-hair-strong);box-shadow:0 14px 30px rgba(0,0,0,.3)}
+.gp-ranking-row{border-radius:14px}
+.stat{border-radius:9px}
+
+/* Notification opt-in: compact, aligned, quiet */
+.notification-optin{padding:20px 22px}
+.notification-optin>strong{display:block;margin-bottom:4px;font-size:15px;font-weight:800;letter-spacing:.02em}
+.notification-optin-row{gap:10px;margin-top:10px}
+.notification-optin .login{
+ border:1px solid var(--gmx-hair-strong);border-radius:12px;font-weight:700;letter-spacing:.015em;
+ transition:border-color .22s var(--gmx-ease),background .22s var(--gmx-ease),transform .22s var(--gmx-ease);
+}
+.notification-optin .login:hover{border-color:rgba(75,229,170,.5);transform:translateY(-1px)}
+.notification-optin .login:focus-visible{outline:2px solid var(--gmx-emerald);outline-offset:2px}
+
+/* Live Score title */
+.scoreboard-title{border-radius:var(--gmx-radius)}
+.scoreboard-title .eyebrow{letter-spacing:.26em;color:var(--gmx-gold)}
+.scoreboard-title h1{letter-spacing:-.03em;font-weight:850}
+
+@media(max-width:1100px){#gpSectionButtons{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){
+ #gpSectionButtons{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0 20px}
+ #gpSectionButtons .gp-section-button{padding:11px 11px;font-size:10.5px;letter-spacing:.05em}
+ .notification-optin{padding:16px}
+}
+@media(prefers-reduced-motion:reduce){
+ #gpSectionButtons .gp-section-button,.notification-optin .login,.match,header nav a{transition:none}
+ #gpSectionButtons .gp-section-button:hover,.notification-optin .login:hover{transform:none}
+}
+</style>
 <script id="gm-goal-impact-flash-script">
 (function(){
  'use strict';
