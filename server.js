@@ -6358,7 +6358,7 @@ const server = http.createServer(async (req, res) => {
             const summary = await response.json();
             const teams = summary?.boxscore?.teams || [];
             if (!espnRawStatsShapeLogged && teams.some(team => Array.isArray(team.statistics) && team.statistics.length)) {
-              const relevantStatPattern = /shot|chance|expected|\\bxg\\b|attack|corner|possession|goal/i;
+              const relevantStatPattern = /shot|chance|expected|\bxg\b|attack|corner|possession|goal/i;
               const rawStatsShape = {
                 eventId: String(event.id),
                 leagueCode: String(item.leagueCode || ""),
@@ -7105,10 +7105,10 @@ const server = http.createServer(async (req, res) => {
             competition.name || competition.shortName || competition.abbreviation ||
             event.league?.name || item.leagueCode || "unknown competition"
           ).trim();
-          const youthMatch = competitionName.match(/\\bU[\\s-]?(16|17|18|19|20|21)\\b/i) ||
-            String(event.name || "").match(/\\bU[\\s-]?(16|17|18|19|20|21)\\b/i);
+          const youthMatch = competitionName.match(/\bU[\s-]?(16|17|18|19|20|21)\b/i) ||
+            String(event.name || "").match(/\bU[\s-]?(16|17|18|19|20|21)\b/i);
           const ageGroup = youthMatch ? "U" + youthMatch[1] :
-            (/\\bU[\\s-]?\\d{1,2}\\b|youth|junior|academy|reserve/i.test(competitionName + " " + String(event.name || "")) ? "other-youth" : "senior-or-unspecified");
+            (/\bU[\s-]?\d{1,2}\b|youth|junior|academy|reserve/i.test(competitionName + " " + String(event.name || "")) ? "other-youth" : "senior-or-unspecified");
           const key = competitionName + "|" + ageGroup;
           if (!groups.has(key)) groups.set(key, {
             competition: competitionName, ageGroup, liveFixtures: 0, checkedFixtures: 0,
