@@ -57,6 +57,6 @@ A provider passes only if the required fields exist for the target leagues and t
 
 ## Recommendation
 
-For the exact ambition of Goal Pulse—live match context plus chance quality and team attack/defence profiles—**run a short Sportmonks xG Advanced trial first**, but only after checking target-league coverage and actual live responses. It is the clearest documented match for live xG/xGOT and pressure data, but the published price is materially higher. If that cost is not acceptable, evaluate API-Football Pro against the same test matrix and launch with only the fields it demonstrably supplies. Use StatsBomb Open Data for offline research and backtesting, not as the live feed.
+For the exact ambition of Goal Pulse—live match context plus chance quality and team attack/defence profiles—**run a short Sportmonks xG Advanced trial first**, but only after checking target-league coverage and actual live responses. It is the clearest documented match for live xG/xGOT and pressure data, but the published price is materially higher. If that cost is not acceptable, evaluate another live provider against the same test matrix and launch with only the fields it demonstrably supplies. Use StatsBomb Open Data for offline research and backtesting, not as the live feed.
 
 This is a research recommendation, not a claim that any paid provider is already connected.
