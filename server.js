@@ -7092,8 +7092,55 @@ const server = http.createServer(async (req, res) => {
       const trendHistory = highActivityOnly ? "isolated in-memory high-activity rolling history; AI/VIP history untouched; resets on service restart" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
       const diagnosticFields = ["shotsOnTarget","shotsInBox","bigChances","dangerousAttacks","corners","possession","xG"];
+      // Read-only competition coverage: reuse the already-fetched live catalogue and stats.
+      // This is diagnostic only; it never filters fixtures, changes provider budgets, or affects alerts.
+      const workEventIds = new Set(work.map(item => String(item.event?.id || "")));
+      const matchByEventId = new Map(matches.map(match => [String(match.eventId || ""), match]));
+      const competitionCoverage = (() => {
+        const groups = new Map();
+        for (const item of liveEvents) {
+          const event = item.event || {};
+          const competition = event.competitions?.[0] || {};
+          const competitionName = String(
+            competition.name || competition.shortName || competition.abbreviation ||
+            event.league?.name || item.leagueCode || "unknown competition"
+          ).trim();
+          const youthMatch = competitionName.match(/\\bU[\\s-]?(16|17|18|19|20|21)\\b/i) ||
+            String(event.name || "").match(/\\bU[\\s-]?(16|17|18|19|20|21)\\b/i);
+          const ageGroup = youthMatch ? "U" + youthMatch[1] :
+            (/\\bU[\\s-]?\\d{1,2}\\b|youth|junior|academy|reserve/i.test(competitionName + " " + String(event.name || "")) ? "other-youth" : "senior-or-unspecified");
+          const key = competitionName + "|" + ageGroup;
+          if (!groups.has(key)) groups.set(key, {
+            competition: competitionName, ageGroup, liveFixtures: 0, checkedFixtures: 0,
+            returnedMatches: 0, bothTeamsSot: 0, oneOrMoreTeamsSot: 0,
+            noTeamSot: 0, notReturned: 0
+          });
+          const row = groups.get(key);
+          row.liveFixtures++;
+          const eventId = String(event.id || "");
+          if (!workEventIds.has(eventId)) continue;
+          row.checkedFixtures++;
+          const match = matchByEventId.get(eventId);
+          if (!match || !Array.isArray(match.teams) || match.teams.length < 2) {
+            row.notReturned++;
+            continue;
+          }
+          row.returnedMatches++;
+          const sotSides = match.teams.slice(0, 2).filter(team =>
+            team.shotsOnTarget != null && Number.isFinite(Number(team.shotsOnTarget))
+          ).length;
+          if (sotSides === 2) row.bothTeamsSot++;
+          else if (sotSides === 1) row.oneOrMoreTeamsSot++;
+          else row.noTeamSot++;
+        }
+        return [...groups.values()].sort((a, b) =>
+          a.competition.localeCompare(b.competition) || a.ageGroup.localeCompare(b.ageGroup)
+        );
+      })();
       const liveMetricsAudit = {
         scope: highActivityOnly ? "high-activity" : "default",
+        competitionCoverage,
+
         totalLiveEvents: liveEvents.length,
         checkedEvents: work.length,
         returnedMatches: matches.length,
