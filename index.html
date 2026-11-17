@@ -3492,7 +3492,7 @@ const liveStatsStorageKey=()=> 'goalMatrixLiveStats:'+selectedMatchDate;
 const liveTrailStorageKey=()=> 'goalMatrixSignalTrails:'+selectedMatchDate;
 const highActivityTrailStorageKey=()=> 'goalMatrixHighActivityTrails:'+selectedMatchDate;
 const LIVE_STATS_RESTORE_TTL=120000;
-const LIVE_TRAIL_RETENTION=11*60*1000;
+const LIVE_TRAIL_RETENTION=15*60*1000;
 function persistLiveMetricsState(){
  try{
   const now=Date.now();
@@ -5078,7 +5078,7 @@ async function runSignalCheck(){
    let trail=signalTrails.get(key)||[];
    if(hasComparableSot){
     trail.push({values,at:now});
-    while(trail.length&&now-trail[0].at>Math.max(10*60*1000,windowMs+30000))trail.shift();
+    while(trail.length&&now-trail[0].at>Math.max(LIVE_TRAIL_RETENTION,windowMs+30000))trail.shift();
     signalTrails.set(key,trail);
     updateIntervalStats(m,trail,values,now);
     signalSnapshots.set(key,{values,at:now});
