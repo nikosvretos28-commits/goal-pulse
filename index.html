@@ -2499,68 +2499,318 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 }
 </style>
 
-<style id="neon-terminal-theme">
-/* === GOALMATRIX · NEON TERMINAL THEME === */
-/* Visual-only overrides. No scripts, markup, data, providers or alert logic. */
+
+<style id="gm-neon-terminal-hub">
+/* ==========================================================================
+   GOAL MATRIX · NEON TERMINAL THEME & MOBILE HUB LAYOUT
+   Preserves all existing triggers, IDs, bot protocols and metrics intact.
+   ========================================================================== */
 :root {
-  --bg: #040910 !important;
-  --panel: #07131e !important;
-  --panel2: #0b1c2b !important;
-  --line: #163247 !important;
-  --text: #f0f7fb !important;
-  --muted: #8aa4b8 !important;
-  --green: #2eed98 !important;
-  --cyan: #00e5ff !important;
-  --red: #ff3366 !important;
-  --gold: #ffbe3b !important;
+  --gm-canvas: #060a12;
+  --gm-surface: #0a1120;
+  --gm-card: #0c1424;
+  --gm-card-hover: #111c32;
+  --gm-border: rgba(0, 242, 254, 0.16);
+  --gm-border-hover: rgba(0, 242, 254, 0.38);
+  --gm-cyan: #00f2fe;
+  --gm-cyan-glow: rgba(0, 242, 254, 0.28);
+  --gm-emerald: #00ff87;
+  --gm-emerald-glow: rgba(0, 255, 135, 0.25);
+  --gm-gold: #ffb800;
+  --gm-gold-glow: rgba(255, 184, 0, 0.3);
+  --gm-text-main: #f0f6fc;
+  --gm-text-sub: #8b9bb4;
 }
+
 body {
-  background: radial-gradient(circle at 50% 0%, #0a1e30 0%, #040910 70%) !important;
-  color: var(--text) !important;
+  background-color: var(--gm-canvas) !important;
+  color: var(--gm-text-main) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  background-image: radial-gradient(circle at 50% 0%, rgba(0, 242, 254, 0.04) 0%, transparent 60%) !important;
+  background-attachment: fixed !important;
 }
-.match, .scoreboard-top, .panel, .top-ai-alerts {
-  background: linear-gradient(145deg, rgba(9, 23, 37, 0.94), rgba(6, 14, 24, 0.98)) !important;
-  border: 1px solid rgba(0, 229, 255, 0.18) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+
+/* Header Enhancements */
+header {
+  background: rgba(10, 17, 32, 0.85) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border-bottom: 1px solid var(--gm-border) !important;
+  padding: 10px 14px !important;
+}
+
+.brand-name {
+  color: #ffffff !important;
+  letter-spacing: 0.08em !important;
+  font-weight: 900 !important;
+}
+.brand-name span {
+  color: var(--gm-cyan) !important;
+  text-shadow: 0 0 12px var(--gm-cyan-glow) !important;
+}
+.brand-tagline {
+  color: var(--gm-text-sub) !important;
+  letter-spacing: 0.1em !important;
+  font-weight: 700 !important;
+}
+
+.live-badge {
+  background: rgba(0, 255, 135, 0.12) !important;
+  border: 1px solid rgba(0, 255, 135, 0.4) !important;
+  color: var(--gm-emerald) !important;
+  box-shadow: 0 0 14px var(--gm-emerald-glow) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  border-radius: 999px !important;
+}
+
+.pulse-dot {
+  background: var(--gm-emerald) !important;
+  box-shadow: 0 0 8px var(--gm-emerald) !important;
+}
+
+/* Mobile Hub Buttons Container */
+.gm-hub-container {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  margin: 14px 0 18px !important;
+}
+
+.gm-primary-alerts {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+.gm-primary-alerts .gp-ai-button {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.16) 0%, rgba(12, 20, 36, 0.95) 100%) !important;
+  border: 1px solid rgba(0, 242, 254, 0.45) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 16px rgba(0, 242, 254, 0.15) !important;
+  font-weight: 900 !important;
+  font-size: 11px !important;
+  letter-spacing: 0.06em !important;
+  min-height: 48px !important;
+  border-radius: 12px !important;
+}
+
+.gm-primary-alerts .gp-ai-button .gp-button-count {
+  background: var(--gm-cyan) !important;
+  color: #060a12 !important;
+  font-weight: 900 !important;
+  box-shadow: 0 0 10px var(--gm-cyan-glow) !important;
+}
+
+.gm-primary-alerts .gp-vip-button {
+  background: linear-gradient(135deg, rgba(255, 184, 0, 0.16) 0%, rgba(12, 20, 36, 0.95) 100%) !important;
+  border: 1px solid rgba(255, 184, 0, 0.45) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 16px rgba(255, 184, 0, 0.15) !important;
+  font-weight: 900 !important;
+  font-size: 11px !important;
+  letter-spacing: 0.06em !important;
+  min-height: 48px !important;
+  border-radius: 12px !important;
+}
+
+.gm-primary-alerts .gp-vip-button .gp-button-count {
+  background: var(--gm-gold) !important;
+  color: #060a12 !important;
+  font-weight: 900 !important;
+  box-shadow: 0 0 10px var(--gm-gold-glow) !important;
+}
+
+/* Tools Hub Collapsible Toggle */
+.gp-hub-toggle {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  min-height: 44px !important;
+  padding: 10px 14px !important;
+  background: rgba(14, 22, 40, 0.75) !important;
+  border: 1px dashed rgba(0, 242, 254, 0.35) !important;
+  border-radius: 12px !important;
+  color: var(--gm-cyan) !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.06em !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.gp-hub-toggle:hover {
+  background: rgba(0, 242, 254, 0.12) !important;
+  border-color: var(--gm-cyan) !important;
+  box-shadow: 0 0 14px var(--gm-cyan-glow) !important;
+}
+
+.gp-hub-toggle .gp-button-count {
+  background: rgba(0, 242, 254, 0.15) !important;
+  color: var(--gm-cyan) !important;
+  border: 1px solid rgba(0, 242, 254, 0.3) !important;
+  border-radius: 999px !important;
+  padding: 3px 9px !important;
+  font-weight: 800 !important;
+}
+
+/* Tools Collapsed Grid */
+.gm-tools-collapse {
+  display: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  padding: 12px !important;
+  background: rgba(10, 17, 32, 0.7) !important;
+  border: 1px solid var(--gm-border) !important;
   border-radius: 14px !important;
 }
+
+.gm-tools-collapse.gm-open {
+  display: grid !important;
+  animation: gmFadeSlide 0.25s ease !important;
+}
+
+@media (min-width: 900px) {
+  .gm-tools-collapse {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@keyframes gmFadeSlide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.gm-tools-collapse .gp-section-button {
+  background: rgba(12, 20, 36, 0.9) !important;
+  border: 1px solid var(--gm-border) !important;
+  border-radius: 10px !important;
+  color: var(--gm-text-main) !important;
+  font-size: 10.5px !important;
+  font-weight: 750 !important;
+  padding: 10px 10px !important;
+  min-height: 42px !important;
+  transition: all 0.2s ease !important;
+}
+
+.gm-tools-collapse .gp-section-button:hover {
+  background: var(--gm-card-hover) !important;
+  border-color: var(--gm-cyan) !important;
+  box-shadow: 0 0 12px var(--gm-cyan-glow) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Panels (AI Alerts, Trends, etc.) */
+.top-ai-alerts, .panel, .gp-trend-panel, .scoreboard-top {
+  background: var(--gm-surface) !important;
+  border: 1px solid var(--gm-border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+.top-ai-alerts-head h2, .gp-trend-head h2 {
+  color: var(--gm-cyan) !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* Match Cards · High-Tech Neon Terminal Design */
+.match {
+  background: var(--gm-card) !important;
+  border: 1px solid var(--gm-border) !important;
+  border-radius: 14px !important;
+  padding: 14px 14px !important;
+  margin-bottom: 12px !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
 .match:hover {
-  border-color: rgba(0, 229, 255, 0.4) !important;
-  box-shadow: 0 10px 28px rgba(0, 229, 255, 0.12) !important;
+  border-color: var(--gm-border-hover) !important;
+  box-shadow: 0 8px 26px rgba(0, 242, 254, 0.12) !important;
+  transform: translateY(-2px) !important;
 }
-.live-inline-stat {
-  background: rgba(11, 28, 43, 0.75) !important;
-  border: 1px solid rgba(0, 229, 255, 0.14) !important;
-  border-radius: 8px !important;
-  padding: 6px 4px !important;
-  text-align: center !important;
+
+.match-meta {
+  color: var(--gm-text-sub) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  font-weight: 700 !important;
 }
-.live-inline-stat span {
+
+.match-live {
+  color: var(--gm-emerald) !important;
+  font-weight: 850 !important;
+}
+
+.teams {
+  gap: 8px !important;
+  margin: 8px 0 !important;
+}
+
+.team {
+  font-size: 13.5px !important;
+  font-weight: 750 !important;
+  color: #ffffff !important;
+}
+
+.match-score {
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  color: #ffffff !important;
+  letter-spacing: 0.04em !important;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Stats Matrix Box */
+.stats {
+  background: rgba(6, 10, 18, 0.65) !important;
+  border: 1px solid rgba(0, 242, 254, 0.12) !important;
+  border-radius: 10px !important;
+  padding: 7px 8px !important;
+  gap: 6px !important;
+  margin: 10px 0 !important;
+}
+
+.stats .stat {
+  background: rgba(14, 22, 40, 0.6) !important;
+  border: 1px solid rgba(0, 242, 254, 0.1) !important;
+  border-radius: 7px !important;
+  padding: 6px 7px !important;
+  color: var(--gm-text-main) !important;
   font-size: 10px !important;
   font-weight: 700 !important;
-  color: #79a2bc !important;
-  letter-spacing: 0.5px !important;
-  text-transform: uppercase !important;
 }
-.live-inline-stat b {
-  font-size: 13px !important;
-  font-weight: 800 !important;
-  color: #00e5ff !important;
-}
-.live-inline-stat.shot b { color: #2eed98 !important; }
-.live-inline-stat.corner b { color: #ffbe3b !important; }
 
-/* Native CSS cannot select a button by its text. Use the app's real VIP classes. */
-[data-action="vip"], .btn-vip, .gp-vip-button {
-  background: linear-gradient(135deg, rgba(0, 229, 255, 0.18), rgba(46, 237, 152, 0.18)) !important;
-  border: 1px solid #00e5ff !important;
-  color: #ffffff !important;
-  font-weight: 800 !important;
-  box-shadow: 0 0 16px rgba(0, 229, 255, 0.25) !important;
-  border-radius: 10px !important;
+.stats .stat b {
+  color: var(--gm-cyan) !important;
+  font-weight: 850 !important;
+}
+
+/* Match Card Action Bottom (VIP Button, etc.) */
+.match-bottom {
+  margin-top: 10px !important;
+  padding-top: 8px !important;
+  border-top: 1px solid rgba(0, 242, 254, 0.08) !important;
+}
+
+.vip-btn, .match-vip-action {
+  background: linear-gradient(135deg, rgba(255, 184, 0, 0.14) 0%, rgba(12, 20, 36, 0.95) 100%) !important;
+  border: 1px solid rgba(255, 184, 0, 0.38) !important;
+  color: var(--gm-gold) !important;
+  font-weight: 850 !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+}
+
+.vip-btn:hover, .match-vip-action:hover {
+  background: rgba(255, 184, 0, 0.22) !important;
+  border-color: var(--gm-gold) !important;
+  box-shadow: 0 0 14px var(--gm-gold-glow) !important;
 }
 </style>
-
 </head>
 <body>
 <div class="wrap">
@@ -2573,20 +2823,28 @@ body {
 <div class="header-actions"><span class="live-badge"><i class="pulse-dot"></i>LIVE</span></div>
 </header>
 
-<div class="gp-section-buttons" id="gpSectionButtons" aria-label="Ενότητες GoalMatrix">
- <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
- <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
- <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
- <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
- <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerRankingHistory" id="powerRankingHistoryToggle">🏆 POWER RANKING HISTORY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
- <button type="button" class="gp-section-button gp-elite-analyst-button" id="eliteFiveBotsToggle">🧠 ELITE AI ANALYST <span class="gp-button-count">DAILY REPORT</span></button>
-  <button type="button" class="gp-section-button gp-hunter-button" data-gp-toggle="hunterPanel" id="hunterPanelToggle">🎯 PRESSURE HUNTER <span class="gp-button-count" id="hunterAlertCount">HISTORY</span></button>
- <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
- <button type="button" class="gp-section-button" data-gp-toggle="mieAlertLab">🔬 MIE ALERT LAB <span class="gp-button-count">ΕΛΕΓΧΟΣ</span></button>
- <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
- <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
- <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
- <button type="button" class="gp-section-button gp-prematch-button" id="preMatchToggle" aria-controls="preMatchPanel" aria-expanded="false">PRE MATCH</button>
+<div class="gp-section-buttons gm-hub-container" id="gpSectionButtons" aria-label="Ενότητες GoalMatrix">
+ <div class="gm-primary-alerts">
+   <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="topAiAlerts">⚡ AI ALERTS <span class="gp-button-count" id="gpAiAlertsCount">0</span></button>
+   <button type="button" class="gp-section-button gp-vip-button" data-gp-toggle="topVipAlerts">◆ VIP ALERTS <span class="gp-button-count" id="gpVipAlertsCount">0</span></button>
+ </div>
+ <button type="button" class="gp-section-button gp-hub-toggle" id="gmToolsHubToggle" aria-expanded="false" aria-controls="gmToolsCollapse">
+   <span class="gm-hub-label">🛠️ ΕΡΓΑΛΕΙΑ &amp; LABS</span>
+   <span class="gp-button-count" id="gmHubCount">▾ ΕΜΦΑΝΙΣΗ (11)</span>
+ </button>
+ <div class="gm-tools-collapse" id="gmToolsCollapse">
+   <button type="button" class="gp-section-button" data-gp-toggle="trends">↗ TRENDS <span class="gp-button-count" id="gpTrendsCount">ΑΝΟΙΓΜΑ</span></button>
+   <button type="button" class="gp-section-button" data-gp-toggle="topTrends">★ TOP TRENDS <span class="gp-button-count" id="gpTopTrendsCount">ΑΝΟΙΓΜΑ</span></button>
+   <button type="button" class="gp-section-button gp-power-button" data-gp-toggle="powerRankingHistory" id="powerRankingHistoryToggle">🏆 POWER RANKING HISTORY <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
+   <button type="button" class="gp-section-button gp-elite-analyst-button" id="eliteFiveBotsToggle">🧠 ELITE AI ANALYST <span class="gp-button-count">DAILY REPORT</span></button>
+   <button type="button" class="gp-section-button gp-hunter-button" data-gp-toggle="hunterPanel" id="hunterPanelToggle">🎯 PRESSURE HUNTER <span class="gp-button-count" id="hunterAlertCount">HISTORY</span></button>
+   <button type="button" class="gp-section-button" data-gp-toggle="protocolAnalyst">🧠 AI PROTOCOL ANALYST <span class="gp-button-count">ΑΝΑΛΥΣΗ</span></button>
+   <button type="button" class="gp-section-button" data-gp-toggle="mieAlertLab">🔬 MIE ALERT LAB <span class="gp-button-count">ΕΛΕΓΧΟΣ</span></button>
+   <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="matrixAnalytics" id="matrixAnalyticsToggle">📊 MATRIX ANALYTICS <span class="gp-button-count">ΑΝΟΙΓΜΑ</span></button>
+   <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
+   <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
+   <button type="button" class="gp-section-button gp-prematch-button" id="preMatchToggle" aria-controls="preMatchPanel" aria-expanded="false">PRE MATCH</button>
+ </div>
 </div>
 
 <section class="top-ai-alerts protocol-analyst-panel gp-elite-analyst-panel" id="eliteFiveBotsPanel" hidden aria-labelledby="eliteFiveBotsTitle">
@@ -6681,318 +6939,3 @@ header nav a{letter-spacing:.045em;transition:color .22s var(--gmx-ease)}
  refresh?.addEventListener('click',()=>void loadEliteFiveBotDailyReport());
 })();
 </script>
-
-<style id="gm-neon-terminal-theme">
-/* GoalMatrix — design-only extraction from the supplied Lovable file.
-   CSS only. No JavaScript, HTML, protocol logic, API, or data changes. */
-
-/* ==========================================================================
-   GOAL MATRIX · NEON TERMINAL THEME & MOBILE HUB LAYOUT
-   Preserves all existing triggers, IDs, bot protocols and metrics intact.
-   ========================================================================== */
-:root {
-  --gm-canvas: #060a12;
-  --gm-surface: #0a1120;
-  --gm-card: #0c1424;
-  --gm-card-hover: #111c32;
-  --gm-border: rgba(0, 242, 254, 0.16);
-  --gm-border-hover: rgba(0, 242, 254, 0.38);
-  --gm-cyan: #00f2fe;
-  --gm-cyan-glow: rgba(0, 242, 254, 0.28);
-  --gm-emerald: #00ff87;
-  --gm-emerald-glow: rgba(0, 255, 135, 0.25);
-  --gm-gold: #ffb800;
-  --gm-gold-glow: rgba(255, 184, 0, 0.3);
-  --gm-text-main: #f0f6fc;
-  --gm-text-sub: #8b9bb4;
-}
-
-body {
-  background-color: var(--gm-canvas) !important;
-  color: var(--gm-text-main) !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-  background-image: radial-gradient(circle at 50% 0%, rgba(0, 242, 254, 0.04) 0%, transparent 60%) !important;
-  background-attachment: fixed !important;
-}
-
-/* Header Enhancements */
-header {
-  background: rgba(10, 17, 32, 0.85) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border-bottom: 1px solid var(--gm-border) !important;
-  padding: 10px 14px !important;
-}
-
-.brand-name {
-  color: #ffffff !important;
-  letter-spacing: 0.08em !important;
-  font-weight: 900 !important;
-}
-.brand-name span {
-  color: var(--gm-cyan) !important;
-  text-shadow: 0 0 12px var(--gm-cyan-glow) !important;
-}
-.brand-tagline {
-  color: var(--gm-text-sub) !important;
-  letter-spacing: 0.1em !important;
-  font-weight: 700 !important;
-}
-
-.live-badge {
-  background: rgba(0, 255, 135, 0.12) !important;
-  border: 1px solid rgba(0, 255, 135, 0.4) !important;
-  color: var(--gm-emerald) !important;
-  box-shadow: 0 0 14px var(--gm-emerald-glow) !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.08em !important;
-  border-radius: 999px !important;
-}
-
-.pulse-dot {
-  background: var(--gm-emerald) !important;
-  box-shadow: 0 0 8px var(--gm-emerald) !important;
-}
-
-/* Mobile Hub Buttons Container */
-.gm-hub-container {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 10px !important;
-  margin: 14px 0 18px !important;
-}
-
-.gm-primary-alerts {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 10px !important;
-  width: 100% !important;
-}
-
-.gm-primary-alerts .gp-ai-button {
-  background: linear-gradient(135deg, rgba(0, 242, 254, 0.16) 0%, rgba(12, 20, 36, 0.95) 100%) !important;
-  border: 1px solid rgba(0, 242, 254, 0.45) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 16px rgba(0, 242, 254, 0.15) !important;
-  font-weight: 900 !important;
-  font-size: 11px !important;
-  letter-spacing: 0.06em !important;
-  min-height: 48px !important;
-  border-radius: 12px !important;
-}
-
-.gm-primary-alerts .gp-ai-button .gp-button-count {
-  background: var(--gm-cyan) !important;
-  color: #060a12 !important;
-  font-weight: 900 !important;
-  box-shadow: 0 0 10px var(--gm-cyan-glow) !important;
-}
-
-.gm-primary-alerts .gp-vip-button {
-  background: linear-gradient(135deg, rgba(255, 184, 0, 0.16) 0%, rgba(12, 20, 36, 0.95) 100%) !important;
-  border: 1px solid rgba(255, 184, 0, 0.45) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 16px rgba(255, 184, 0, 0.15) !important;
-  font-weight: 900 !important;
-  font-size: 11px !important;
-  letter-spacing: 0.06em !important;
-  min-height: 48px !important;
-  border-radius: 12px !important;
-}
-
-.gm-primary-alerts .gp-vip-button .gp-button-count {
-  background: var(--gm-gold) !important;
-  color: #060a12 !important;
-  font-weight: 900 !important;
-  box-shadow: 0 0 10px var(--gm-gold-glow) !important;
-}
-
-/* Tools Hub Collapsible Toggle */
-.gp-hub-toggle {
-  width: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  min-height: 44px !important;
-  padding: 10px 14px !important;
-  background: rgba(14, 22, 40, 0.75) !important;
-  border: 1px dashed rgba(0, 242, 254, 0.35) !important;
-  border-radius: 12px !important;
-  color: var(--gm-cyan) !important;
-  font-size: 11px !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.06em !important;
-  cursor: pointer !important;
-  transition: all 0.2s ease !important;
-}
-
-.gp-hub-toggle:hover {
-  background: rgba(0, 242, 254, 0.12) !important;
-  border-color: var(--gm-cyan) !important;
-  box-shadow: 0 0 14px var(--gm-cyan-glow) !important;
-}
-
-.gp-hub-toggle .gp-button-count {
-  background: rgba(0, 242, 254, 0.15) !important;
-  color: var(--gm-cyan) !important;
-  border: 1px solid rgba(0, 242, 254, 0.3) !important;
-  border-radius: 999px !important;
-  padding: 3px 9px !important;
-  font-weight: 800 !important;
-}
-
-/* Tools Collapsed Grid */
-.gm-tools-collapse {
-  display: none;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 8px !important;
-  padding: 12px !important;
-  background: rgba(10, 17, 32, 0.7) !important;
-  border: 1px solid var(--gm-border) !important;
-  border-radius: 14px !important;
-}
-
-.gm-tools-collapse.gm-open {
-  display: grid !important;
-  animation: gmFadeSlide 0.25s ease !important;
-}
-
-@media (min-width: 900px) {
-  .gm-tools-collapse {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  }
-}
-
-@keyframes gmFadeSlide {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.gm-tools-collapse .gp-section-button {
-  background: rgba(12, 20, 36, 0.9) !important;
-  border: 1px solid var(--gm-border) !important;
-  border-radius: 10px !important;
-  color: var(--gm-text-main) !important;
-  font-size: 10.5px !important;
-  font-weight: 750 !important;
-  padding: 10px 10px !important;
-  min-height: 42px !important;
-  transition: all 0.2s ease !important;
-}
-
-.gm-tools-collapse .gp-section-button:hover {
-  background: var(--gm-card-hover) !important;
-  border-color: var(--gm-cyan) !important;
-  box-shadow: 0 0 12px var(--gm-cyan-glow) !important;
-  transform: translateY(-1px) !important;
-}
-
-/* Panels (AI Alerts, Trends, etc.) */
-.top-ai-alerts, .panel, .gp-trend-panel, .scoreboard-top {
-  background: var(--gm-surface) !important;
-  border: 1px solid var(--gm-border) !important;
-  border-radius: 16px !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
-}
-
-.top-ai-alerts-head h2, .gp-trend-head h2 {
-  color: var(--gm-cyan) !important;
-  letter-spacing: 0.05em !important;
-}
-
-/* Match Cards · High-Tech Neon Terminal Design */
-.match {
-  background: var(--gm-card) !important;
-  border: 1px solid var(--gm-border) !important;
-  border-radius: 14px !important;
-  padding: 14px 14px !important;
-  margin-bottom: 12px !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
-}
-
-.match:hover {
-  border-color: var(--gm-border-hover) !important;
-  box-shadow: 0 8px 26px rgba(0, 242, 254, 0.12) !important;
-  transform: translateY(-2px) !important;
-}
-
-.match-meta {
-  color: var(--gm-text-sub) !important;
-  font-size: 10px !important;
-  letter-spacing: 0.06em !important;
-  text-transform: uppercase !important;
-  font-weight: 700 !important;
-}
-
-.match-live {
-  color: var(--gm-emerald) !important;
-  font-weight: 850 !important;
-}
-
-.teams {
-  gap: 8px !important;
-  margin: 8px 0 !important;
-}
-
-.team {
-  font-size: 13.5px !important;
-  font-weight: 750 !important;
-  color: #ffffff !important;
-}
-
-.match-score {
-  font-size: 20px !important;
-  font-weight: 900 !important;
-  color: #ffffff !important;
-  letter-spacing: 0.04em !important;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.25) !important;
-}
-
-/* Stats Matrix Box */
-.stats {
-  background: rgba(6, 10, 18, 0.65) !important;
-  border: 1px solid rgba(0, 242, 254, 0.12) !important;
-  border-radius: 10px !important;
-  padding: 7px 8px !important;
-  gap: 6px !important;
-  margin: 10px 0 !important;
-}
-
-.stats .stat {
-  background: rgba(14, 22, 40, 0.6) !important;
-  border: 1px solid rgba(0, 242, 254, 0.1) !important;
-  border-radius: 7px !important;
-  padding: 6px 7px !important;
-  color: var(--gm-text-main) !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-}
-
-.stats .stat b {
-  color: var(--gm-cyan) !important;
-  font-weight: 850 !important;
-}
-
-/* Match Card Action Bottom (VIP Button, etc.) */
-.match-bottom {
-  margin-top: 10px !important;
-  padding-top: 8px !important;
-  border-top: 1px solid rgba(0, 242, 254, 0.08) !important;
-}
-
-.vip-btn, .match-vip-action {
-  background: linear-gradient(135deg, rgba(255, 184, 0, 0.14) 0%, rgba(12, 20, 36, 0.95) 100%) !important;
-  border: 1px solid rgba(255, 184, 0, 0.38) !important;
-  color: var(--gm-gold) !important;
-  font-weight: 850 !important;
-  border-radius: 8px !important;
-  transition: all 0.2s ease !important;
-}
-
-.vip-btn:hover, .match-vip-action:hover {
-  background: rgba(255, 184, 0, 0.22) !important;
-  border-color: var(--gm-gold) !important;
-  box-shadow: 0 0 14px var(--gm-gold-glow) !important;
-}
-</style>
