@@ -1262,7 +1262,7 @@ function send(res, status, body, type = "application/json; charset=utf-8") {
 
 function pitchLeagueAliases(code) {
   const aliases = {
-    "eng.1":["premier league"],"eng.2":["championship"],"eng.3":["league one"],"eng.4":["league two"],
+    "eng.1":["premier league"],"eng.2":["championship"],"eng.3":["league one"],"eng.4":["league two"],"eng.5":["national league"],"eng.w.1":["women\u0027s super league","barclays women\u0027s super league","fa women\u0027s super league"],
     "esp.1":["laliga","la liga"],"esp.2":["laliga 2","segunda division"],
     "ita.1":["serie a"],"ita.2":["serie b"],"ita.3":["serie c"],
     "ger.1":["bundesliga"],"ger.2":["2. bundesliga"],"ger.3":["3. liga"],
