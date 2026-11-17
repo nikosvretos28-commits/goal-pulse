@@ -2499,6 +2499,68 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 }
 </style>
 
+<style id="neon-terminal-theme">
+/* === GOALMATRIX · NEON TERMINAL THEME === */
+/* Visual-only overrides. No scripts, markup, data, providers or alert logic. */
+:root {
+  --bg: #040910 !important;
+  --panel: #07131e !important;
+  --panel2: #0b1c2b !important;
+  --line: #163247 !important;
+  --text: #f0f7fb !important;
+  --muted: #8aa4b8 !important;
+  --green: #2eed98 !important;
+  --cyan: #00e5ff !important;
+  --red: #ff3366 !important;
+  --gold: #ffbe3b !important;
+}
+body {
+  background: radial-gradient(circle at 50% 0%, #0a1e30 0%, #040910 70%) !important;
+  color: var(--text) !important;
+}
+.match, .scoreboard-top, .panel, .top-ai-alerts {
+  background: linear-gradient(145deg, rgba(9, 23, 37, 0.94), rgba(6, 14, 24, 0.98)) !important;
+  border: 1px solid rgba(0, 229, 255, 0.18) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  border-radius: 14px !important;
+}
+.match:hover {
+  border-color: rgba(0, 229, 255, 0.4) !important;
+  box-shadow: 0 10px 28px rgba(0, 229, 255, 0.12) !important;
+}
+.live-inline-stat {
+  background: rgba(11, 28, 43, 0.75) !important;
+  border: 1px solid rgba(0, 229, 255, 0.14) !important;
+  border-radius: 8px !important;
+  padding: 6px 4px !important;
+  text-align: center !important;
+}
+.live-inline-stat span {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #79a2bc !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+}
+.live-inline-stat b {
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  color: #00e5ff !important;
+}
+.live-inline-stat.shot b { color: #2eed98 !important; }
+.live-inline-stat.corner b { color: #ffbe3b !important; }
+
+/* Native CSS cannot select a button by its text. Use the app's real VIP classes. */
+[data-action="vip"], .btn-vip, .gp-vip-button {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.18), rgba(46, 237, 152, 0.18)) !important;
+  border: 1px solid #00e5ff !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.25) !important;
+  border-radius: 10px !important;
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
