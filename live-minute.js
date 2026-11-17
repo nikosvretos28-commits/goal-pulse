@@ -11,8 +11,8 @@ function normalizeLiveMinute(...candidates) {
     const value = String(candidate).trim();
     if (!value) continue;
 
-    let match = value.match(/(?:^|\b)(\d{1,3})\s*\+\s*(\d{1,2})(?:\s*['′’]|\s*(?:min|minute)s?)?/i);
-    if (match) return Number(match[1]) + "+" + Number(match[2]) + "′";
+    let match = value.match(/(?:^|\b)(\d{1,3})\s*\+\s*(\d{1,2})?(?:\s*['′’]|\s*(?:min|minute)s?)?/i);
+    if (match) return Number(match[1]) + "+" + (match[2] === undefined ? "" : Number(match[2])) + "′";
 
     match = value.match(/(?:^|\b)(\d{1,3}):\d{2}\b/);
     if (match) return Number(match[1]) + "′";
