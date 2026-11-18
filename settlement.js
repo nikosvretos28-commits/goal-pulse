@@ -154,6 +154,12 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
   return sameTeamsAndDate.length === 1 ? sameTeamsAndDate[0] : null;
 }
 
+function rotatePendingSettlementRows(rows, startIndex = 0) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const offset = ((Math.trunc(Number(startIndex) || 0) % rows.length) + rows.length) % rows.length;
+  return rows.slice(offset).concat(rows.slice(0, offset));
+}
+
 module.exports = {
   scoreNumber,
   getPeriodSettlementScore,
@@ -162,5 +168,6 @@ module.exports = {
   canSettleOverWithoutStartScore,
   normalizeFixtureName,
   getProviderFixtureId,
-  findUniqueCompletedFixture
+  findUniqueCompletedFixture,
+  rotatePendingSettlementRows
 };
