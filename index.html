@@ -5341,25 +5341,15 @@ async function runSignalCheck(){
  signalBusy=true;
  try{
   const date=selectedMatchDate.replace(/-/g,'');
-  // Start the Hi Activity request independently, before the AI/VIP metrics request.
-  // A failure in the default scanner must not prevent Hi Activity from refreshing.
-  void (async()=>{
-   try{
-    const hiResponse=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date+'&scope=high-activity',{signal:AbortSignal.timeout(20000)});
-    if(hiResponse.ok){
-     const hiData=await hiResponse.json();
-     setLiveMetricsCache(hiData.matches||[]);
-     captureHighActivitySotSnapshots();
-     renderHighActivityMatches();
-    }
-   }catch(hiError){console.warn('Hi Activity isolated metrics temporarily unavailable:',hiError?.message||hiError)}
-  })();
+  // One shared live-metrics request feeds AI/VIP and Hi Activity.
+  // Keep Hi Activity's own SOT snapshots and rendering, but do not run a second
+  // isolated stats collection or provider request for the same refresh.
   const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
-  // Always update the existing AI/VIP metrics cache from its original endpoint,
-  // regardless of whether the isolated Hi Activity request succeeds.
   setLiveMetricsCache(data.matches||[]);
+  captureHighActivitySotSnapshots();
+  renderHighActivityMatches();
   void reconcileHistoricalAlertSettlements();
   const liveMatches=allMatches.filter(m=>m.state==='in');
 
