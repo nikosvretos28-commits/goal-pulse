@@ -3,14 +3,31 @@ self.addEventListener('activate',event=>{event.waitUntil(self.clients.claim())})
 self.addEventListener('push',event=>{
  let data={title:'GoalMatrix · AI Alert',body:'Νέα live ένδειξη'};
  try{if(event.data)data={...data,...event.data.json()}}catch{try{if(event.data)data.body=event.data.text()}catch{}}
- event.waitUntil(self.registration.showNotification(data.title||'GoalMatrix · AI Alert',{
-  body:data.body||'Νέα live ένδειξη',
-  icon:'/goalmatrix-icon.svg',
-  badge:'/goalmatrix-icon.svg',
-  tag:data.tag||'goal-pulse-push',
-  data:{url:data.url||'/'},
-  requireInteraction:false
- }));
+ const reportPushResult=async(stage,error)=>{
+  try{
+   await fetch('/api/push/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    stage,
+    tag:String(data.tag||'').slice(0,120),
+    error:stage==='show_failed'?String(error&&error.message||error||'showNotification failed').slice(0,140):undefined
+   })});
+  }catch{}
+ };
+ event.waitUntil((async()=>{
+  try{
+   await self.registration.showNotification(data.title||'GoalMatrix · AI Alert',{
+    body:data.body||'Νέα live ένδειξη',
+    icon:'/goalmatrix-icon.svg',
+    badge:'/goalmatrix-icon.svg',
+    tag:data.tag||'goal-pulse-push',
+    data:{url:data.url||'/'},
+    requireInteraction:false
+   });
+   await reportPushResult('shown');
+  }catch(error){
+   await reportPushResult('show_failed',error);
+   throw error;
+  }
+ })());
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();
