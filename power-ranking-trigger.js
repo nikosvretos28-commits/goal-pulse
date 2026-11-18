@@ -45,16 +45,14 @@ function calculatePowerRankingScore({ teams, trend } = {}) {
   const dangerous10 = windowTotal(trend?.window10m, teamDangerousAttacks, 9.5, 10.5);
   const attacks10 = windowTotal(trend?.window10m, teamAttacks, 9.5, 10.5);
   const components = [totalSot, totalXg, sot5, sot10, dangerous10, attacks10];
-  if (!components.some(value => value !== null)) return null;
-  // Missing inputs are omitted, not converted to zero; available components
-  // retain their original weights and caps.
+  if (!components.every(value => value !== null)) return null;
   const score = Math.round(
-    (totalSot === null ? 0 : Math.min(25, totalSot * 2.5)) +
-    (sot5 === null ? 0 : Math.min(15, sot5 * 5)) +
-    (sot10 === null ? 0 : Math.min(10, sot10 * 2)) +
-    (totalXg === null ? 0 : Math.min(24, totalXg * 6)) +
-    (dangerous10 === null ? 0 : Math.min(15, dangerous10)) +
-    (attacks10 === null ? 0 : Math.min(10, attacks10 * 0.25))
+    Math.min(25, totalSot * 2.5) +
+    Math.min(15, sot5 * 5) +
+    Math.min(10, sot10 * 2) +
+    Math.min(24, totalXg * 6) +
+    Math.min(15, dangerous10) +
+    Math.min(10, attacks10 * 0.25)
   );
   return Math.max(0, Math.min(100, score));
 }
