@@ -3419,6 +3419,8 @@ const server = http.createServer(async (req, res) => {
                       // the match. Fall back once per date to that complete feed, then apply
                       // the same strict team/date/league matching below.
                       let matches = historicalResponse.ok ? extractFixtureArray(body) : [];
+                      const teamFixtureCount = matches.length;
+                      let fallbackMeta = null;
                       if (historicalResponse.ok && !matches.length) {
                         const allKey = lookupDate + "|__all_finished__";
                         let allCached = historicalTeamResultCache.get(allKey);
@@ -3430,6 +3432,12 @@ const server = http.createServer(async (req, res) => {
                             rootKeys: allBody && typeof allBody === "object" ? Object.keys(allBody).slice(0, 20) : [] };
                           historicalTeamResultCache.set(allKey, allCached);
                         }
+                        fallbackMeta = {
+                          httpStatus: allCached.httpStatus ?? null,
+                          fixtureCount: allCached.matches.length,
+                          rootKeys: allCached.rootKeys || [],
+                          used: Boolean(allCached.matches.length)
+                        };
                         if (allCached.matches.length) {
                           matches = allCached.matches;
                           console.info("[settlement] SportScore used date-wide finished-fixture fallback:", JSON.stringify({
@@ -3442,6 +3450,71 @@ const server = http.createServer(async (req, res) => {
                             fallbackHttpStatus: allCached.httpStatus, fallbackRootKeys: allCached.rootKeys
                           }));
                         }
+                      }
+                      // Targeted, bounded SportScore diagnostics for two unresolved historical fixtures.
+                      // 3glrw7h4w59eqdy is the ID recorded on the pending alert; 3glrw7h4w55eqdy
+                      // is the ID shown on the public Paysandu/Ponte Nova fixture page. Keep both
+                      // visible until the provider response confirms which identifier is canonical.
+                      const settlementDiagnosticTargetIds = new Set([
+                        "6ypq3nhvjz52md7",
+                        "3glrw7h4w59eqdy",
+                        "3glrw7h4w55eqdy"
+                      ]);
+                      const diagnosticEventId = String(alert.eventId || row.event_id || "").replace(/^sportscore:/, "");
+                      const diagnosticProjection = match => ({
+                        id: getProviderFixtureId(match) || null,
+                        home: match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || null,
+                        away: match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || null,
+                        date: match.date || match.match_date || match.fixture_date || null,
+                        status: match.status ?? match.status_text ?? match.statusText ?? match.state ?? match.fixture?.status ?? null,
+                        finalScoreFields: {
+                          home_score: match.home_score ?? null,
+                          away_score: match.away_score ?? null,
+                          homeScore: match.homeScore ?? null,
+                          awayScore: match.awayScore ?? null,
+                          scores_home: match.scores?.home ?? null,
+                          scores_away: match.scores?.away ?? null,
+                          score_home: match.score?.home ?? null,
+                          score_away: match.score?.away ?? null
+                        },
+                        halfTimeScoreFields: {
+                          home_ht_score: match.home_ht_score ?? null,
+                          away_ht_score: match.away_ht_score ?? null,
+                          homeHtScore: match.homeHtScore ?? null,
+                          awayHtScore: match.awayHtScore ?? null,
+                          half_time_score_home: match.half_time_score?.home ?? null,
+                          half_time_score_away: match.half_time_score?.away ?? null,
+                          halfTimeScore_home: match.halfTimeScore?.home ?? null,
+                          halfTimeScore_away: match.halfTimeScore?.away ?? null,
+                          scores_half_time_home: match.scores?.half_time?.home ?? null,
+                          scores_half_time_away: match.scores?.half_time?.away ?? null,
+                          scores_halftime_home: match.scores?.halftime?.home ?? null,
+                          scores_halftime_away: match.scores?.halftime?.away ?? null,
+                          period_scores_first_half_home: match.period_scores?.first_half?.home ?? null,
+                          period_scores_first_half_away: match.period_scores?.first_half?.away ?? null,
+                          periods_first_half_home: match.periods?.first_half?.home ?? null,
+                          periods_first_half_away: match.periods?.first_half?.away ?? null
+                        }
+                      });
+                      const targetIdMatches = matches
+                        .filter(match => settlementDiagnosticTargetIds.has(String(getProviderFixtureId(match) || "")))
+                        .map(diagnosticProjection);
+                      if (settlementDiagnosticTargetIds.has(diagnosticEventId) || targetIdMatches.length) {
+                        console.info("[settlement][target-fixture-diagnostic]:", JSON.stringify({
+                          alertEventId: diagnosticEventId || null,
+                          targetIds: [...settlementDiagnosticTargetIds],
+                          requestedTeams: { home: alertHome, away: alertAway },
+                          requestedDate: alertDate,
+                          lookupDate,
+                          teamSlug: slug,
+                          teamHttpStatus: historicalResponse.status,
+                          teamRootKeys: body && typeof body === "object" ? Object.keys(body).slice(0, 20) : [],
+                          teamFixtureCount,
+                          fallback: fallbackMeta,
+                          candidateCountAfterFallback: matches.length,
+                          targetIdMatches,
+                          candidateSamples: matches.slice(0, 8).map(diagnosticProjection)
+                        }));
                       }
                       cached = { at: Date.now(), matches, httpStatus: historicalResponse.status,
                         rootKeys: body && typeof body === "object" ? Object.keys(body).slice(0, 20) : [] };
