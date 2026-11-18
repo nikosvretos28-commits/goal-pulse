@@ -3974,17 +3974,21 @@ function findLiveMatchForAlert(alert){
  const matches=allMatches.filter(identityMatches);
  return matches.length===1?matches[0]:null;
 }
+// One-time Live cleanup boundary: older AI alerts stay in History but are not re-listed in Live.
+const AI_LIVE_ARCHIVE_BEFORE = Date.parse('2026-11-18T08:00:00Z');
+function isVipAlert(a){return String(a?.level||'').trim().toUpperCase()==='VIP'}
 function isAlertExpiredFromLive(a){
  const settled=['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
  const result=Boolean(a?.manualOutcome)||(Boolean(a?.outcome)&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
  const match=findLiveMatchForAlert(a);
  if(settled||result)return true;
+ const createdAt=Number(a?.createdAt);
+ if(!isVipAlert(a)&&Number.isFinite(createdAt)&&createdAt>0&&createdAt<AI_LIVE_ARCHIVE_BEFORE)return true;
  // A verified completed fixture may leave Live, but a missing feed row is not completion.
  if(match&&String(match.state||'').toLowerCase()==='post')return true;
  // VIP pending alerts move to History after 48h, without being marked VOID.
  // AI alerts remain visible until verified settlement or an explicit manual result.
- if(a?.level==='VIP'){
-  const createdAt=Number(a?.createdAt);
+ if(isVipAlert(a)){
   return Number.isFinite(createdAt)&&createdAt>0&&Date.now()-createdAt>=48*60*60*1000;
  }
  return false;
@@ -4007,8 +4011,8 @@ function renderTopAiAlerts(){
   if(!shown.length){host.innerHTML='<div class="top-ai-alert-empty">'+emptyText+'</div>';return}
   host.innerHTML=shown.map((a,i)=>{const match=matchForAlert(a);const isMinuteValue=value=>/^\s*(?:\d{1,3}\s*(?:['′’]|min)?(?:\s*\+)?|HT|FT|LIVE|ΗΜΙΧΡΟΝΟ|ΤΕΛΟΣ)\s*$/i.test(String(value||''));const validCompetition=value=>{const text=String(value||'').trim();return Boolean(text)&&!isMinuteValue(text)&&!/^(?:διοργάνωση|competition|league|international|διεθνής|άλλη διοργάνωση)$/i.test(text)};const competition=[a.country,match&&match.country,match&&match.league,a.league].find(validCompetition)||'Άλλη διοργάνωση';const minuteCandidate=a.minute||match&&match.clock||'LIVE';const minute=isMinuteValue(minuteCandidate)?String(minuteCandidate).trim():(match&&match.clock)||'LIVE';const market=String(a.market||'Live signal');const marketPeriodLabel=alertMarketPeriodLabel(a);const issuedAt=new Date(Number(a.createdAt));const issuedTime=Number.isFinite(issuedAt.getTime())?issuedAt.toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'ώρα άγνωστη';return '<button type="button" class="top-ai-alert-card" data-top-alert="'+prefix+'" data-alert-index="'+i+'"><span class="alert-card-kicker"><span>'+prefix+' '+esc(a.level||'AI')+' ALERT</span><span>'+esc(a.time||issuedTime)+'</span></span><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">Πρωτάθλημα: '+esc(competition)+' · '+esc(minute)+'</div><div class="alert-card-market">'+esc(market)+' · '+esc(marketPeriodLabel)+'</div></button>';}).join('');
  };
- render('topAiAlertList','topAiAlertCount',all.filter(a=>a.level!=='VIP'),'ALERTS','Δεν υπάρχει αυτή τη στιγμή νέα ένδειξη AI.','⚡');
- render('topVipAlertList','topVipAlertCount',all.filter(a=>a.level==='VIP'),'VIP','Δεν υπάρχει αυτή τη στιγμή νέα VIP ένδειξη.','◆');
+ render('topAiAlertList','topAiAlertCount',all.filter(a=>!isVipAlert(a)),'ALERTS','Δεν υπάρχει αυτή τη στιγμή νέα ένδειξη AI.','⚡');
+ render('topVipAlertList','topVipAlertCount',all.filter(isVipAlert),'VIP','Δεν υπάρχει αυτή τη στιγμή νέα VIP ένδειξη.','◆');
 }
 
 function autoSettleFinishedOverBets(){
@@ -5576,7 +5580,7 @@ async function runSignalCheck(){
 
 ['topAiAlertList','topVipAlertList'].forEach(id=>document.getElementById(id).addEventListener('click',event=>{
  const card=event.target.closest('button[data-top-alert]');if(!card)return;let recent=[];try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))recent=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()>=Number(a.createdAt))}catch{}
- const isVip=card.dataset.topAlert==='◆';const matches=recent.filter(a=>isVip?a.level==='VIP':a.level!=='VIP').sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).filter(a=>{
+ const isVip=card.dataset.topAlert==='◆';const matches=recent.filter(a=>isVip?isVipAlert(a):!isVipAlert(a)).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).filter(a=>{
   return !isAlertExpiredFromLive(a);
  });
  const alert=matches[Number(card.dataset.alertIndex)];if(!alert)return;const modal=document.getElementById('analysisModal');
