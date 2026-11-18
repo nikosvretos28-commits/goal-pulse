@@ -3949,15 +3949,13 @@ function liveAlertTimestamp(value){
 }
 function findLiveMatchForAlert(alert){
  if(!Array.isArray(allMatches))return null;
- const idMatch=allMatches.find(match=>String(match?.id)===String(alert?.eventId));
- if(idMatch)return idMatch;
  const home=normalizeLiveAlertTeam(alert?.home||alert?.teams?.[0]);
  const away=normalizeLiveAlertTeam(alert?.away||alert?.teams?.[1]);
  if(!home||!away)return null;
  const alertKickoff=liveAlertTimestamp(alert?.kickoffAt||alert?.matchKickoffAt||alert?.scheduledAt||alert?.matchDateTime);
  const alertDate=String(alert?.kickoffAt||alert?.matchDate||alert?.fixtureDate||'').slice(0,10)||
   (Number.isFinite(Number(alert?.createdAt))?new Date(Number(alert.createdAt)).toISOString().slice(0,10):'');
- const matches=allMatches.filter(match=>{
+ const identityMatches=match=>{
   if(normalizeLiveAlertTeam(liveAlertTeamName(match,'home'))!==home||
      normalizeLiveAlertTeam(liveAlertTeamName(match,'away'))!==away)return false;
   const matchDate=String(match?.date||match?.time||match?.start_time||match?.starting_at||'').slice(0,10);
@@ -3968,22 +3966,24 @@ function findLiveMatchForAlert(alert){
   const matchKickoff=liveAlertTimestamp(match?.date||match?.time||match?.start_time||match?.starting_at||match?.kickoff);
   if(alertKickoff!==null&&matchKickoff!==null&&Math.abs(alertKickoff-matchKickoff)>4*60*60*1000)return false;
   return true;
- });
+ };
+ // A provider event ID is a hint, not sufficient identity: verify ordered teams,
+ // date and kickoff before using it to decide that an alert's fixture is finished.
+ const idMatches=allMatches.filter(match=>String(match?.id)===String(alert?.eventId)&&identityMatches(match));
+ if(idMatches.length===1)return idMatches[0];
+ const matches=allMatches.filter(identityMatches);
  return matches.length===1?matches[0]:null;
 }
 function isAlertExpiredFromLive(a){
  const settled=['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
  const result=Boolean(a?.manualOutcome)||(Boolean(a?.outcome)&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
  const match=findLiveMatchForAlert(a);
- // Keep VIP Live-card behaviour exactly as it was; this repair is AI-only.
+ // Keep VIP Live-card behaviour exactly as it was.
  if(a?.level==='VIP')return settled||result||(Boolean(match)&&match.state!=='in');
- // A missing live-feed row is not proof that the fixture ended. Keep fresh
- // alerts visible through temporary feed gaps. After 48 hours, move an
- // unresolved AI alert to History as pending verification (never VOID);
- // server-side reconciliation continues searching for a verified result.
- const createdAt=Number(a?.createdAt);
- const pendingHistoryCutoff=Number.isFinite(createdAt)&&Date.now()-createdAt>=48*60*60*1000;
- return settled||result||(Boolean(match)&&String(match.state||'').toLowerCase()==='post')||pendingHistoryCutoff;
+ // AI alerts leave Live only after the server has saved a verified settlement
+ // (or an explicit manual result). Feed disappearance, a bare POST status,
+ // refreshes and alert age are not proof of the required period score.
+ return settled||result;
 }
 if('serviceWorker' in navigator){
  navigator.serviceWorker.addEventListener('message',event=>{
