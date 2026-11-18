@@ -5810,31 +5810,37 @@ const server = http.createServer(async (req, res) => {
       if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
         return send(res, 503, { error: "Live scoreboard feed unavailable; retry shortly", matches: [] });
       }
-      const isHighActivityLiveEvent = event => {
-        // ESPN/provider payloads can contain both event-level and competition-level
-        // status objects. The event-level value is sometimes stale ("pre") while
-        // the competition-level value already says "in"; inspect both instead of
-        // letting the first non-empty object mask the actual live state.
+      // One shared live-state recognizer for AI Alerts, VIP and Hi Activity.
+      // Providers may put the current state on the event OR on any competition;
+      // state can also be expressed as a code (1H/2H) or a human-readable label.
+      // Do not infer "live" from a clock alone: pre-match and finished fixtures
+      // must never enter the live metrics pipeline.
+      const isLiveEvent = event => {
         const competitions = Array.isArray(event.competitions) ? event.competitions : [];
         const statusTypes = [
           event.status?.type,
           ...competitions.map(competition => competition?.status?.type)
         ].filter(status => status && typeof status === "object");
-        const states = statusTypes.map(status => String(status.state || "").trim().toLowerCase());
-        const labels = [
-          ...statusTypes.flatMap(status => [status.name, status.description, status.detail, status.shortDetail]),
-          event.status?.displayClock,
-          ...competitions.map(competition => competition?.status?.displayClock)
-        ].filter(value => value != null).join(" ").trim().toLowerCase();
-        return states.some(state => /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/.test(state))
-          || /\b(?:live|playing|in progress|first half|second half|half time|1st half|2nd half)\b/.test(labels);
+        const normalizeStatus = value => String(value || "").trim().toLowerCase()
+          .replace(/[\\s-]+/g, "_");
+        const liveStates = new Set([
+          "in", "live", "playing", "inplay", "in_play", "in_progress",
+          "1h", "2h", "first_half", "second_half", "halftime", "half_time", "ht",
+          "extra_time", "extratime", "et", "penalties", "penalty_shootout",
+          "shootout", "overtime", "first_period", "second_period", "third_period",
+          "fourth_period", "period_1", "period_2", "period_3", "period_4",
+          "q1", "q2", "q3", "q4"
+        ]);
+        const states = statusTypes.map(status => normalizeStatus(status.state));
+        const labels = statusTypes.flatMap(status =>
+          [status.name, status.description, status.detail, status.shortDetail]
+        ).filter(value => value != null).map(normalizeStatus);
+        const liveLabelPattern = /(?:^|_)(?:live|playing|in_progress|inplay|in_play|first_half|second_half|half_time|halftime|1st_half|2nd_half|1h|2h|extra_time|extratime|penalties|penalty_shootout|shootout|overtime|first_period|second_period|third_period|fourth_period|period_[1-4]|q[1-4])(?:_|$)|(?:^|_)status_(?:in_progress|halftime)(?:_|$)/;
+        return states.some(state => liveStates.has(state))
+          || labels.some(label => liveLabelPattern.test(label));
       };
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
-        .filter(event => {
-          // Keep the AI/VIP default feed's exact original state check unchanged.
-          const state = String(event.status?.type?.state || event.competitions?.[0]?.status?.type?.state || "").trim().toLowerCase();
-          return highActivityOnly ? isHighActivityLiveEvent(event) : state === "in";
-        })
+        .filter(event => isLiveEvent(event))
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();
