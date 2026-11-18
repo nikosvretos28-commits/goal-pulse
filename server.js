@@ -5789,8 +5789,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/live-metrics") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
-      // High Activity uses an isolated cache and broader LIVE-state recognition.
-      // The default endpoint remains unchanged for AI/VIP scanners.
+      // Keep Hi Activity's isolated cache/history scope, but use the same live-state
+      // recognizer and provider metrics collection for AI/VIP and Hi Activity.
       const highActivityOnly = url.searchParams.get("scope") === "high-activity";
       const cacheKey = (highActivityOnly ? "high-activity-metrics:" : "live-metrics:") + date;
       const cachedMetrics = cache.get(cacheKey);
