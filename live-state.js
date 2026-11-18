@@ -36,4 +36,6 @@ function isLiveEvent(event) {
   return values.some(value => LIVE_STATES.has(value));
 }
 
-module.exports = { isLiveEvent, normalizeStatus };
+const liveStateApi = { isLiveEvent, normalizeStatus };
+if (typeof module !== "undefined" && module.exports) module.exports = liveStateApi;
+if (typeof window !== "undefined") window.GoalMatrixLiveState = liveStateApi;
