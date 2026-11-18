@@ -154,6 +154,16 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
   return sameTeamsAndDate.length === 1 ? sameTeamsAndDate[0] : null;
 }
 
+
+// Rotate the first settlement candidate on each scan so a global provider
+// rate limit cannot let the oldest row monopolize every lookup opportunity.
+function rotateSettlementRows(rows, offset = 0) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length < 2) return list.slice();
+  const start = ((Math.trunc(Number(offset) || 0) % list.length) + list.length) % list.length;
+  return list.slice(start).concat(list.slice(0, start));
+}
+
 module.exports = {
   scoreNumber,
   getPeriodSettlementScore,
@@ -162,5 +172,6 @@ module.exports = {
   canSettleOverWithoutStartScore,
   normalizeFixtureName,
   getProviderFixtureId,
-  findUniqueCompletedFixture
+  findUniqueCompletedFixture,
+  rotateSettlementRows
 };

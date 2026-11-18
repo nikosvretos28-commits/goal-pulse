@@ -150,3 +150,12 @@ test('fixture fallback keeps strict team/date matching when kickoff is missing',
     kickoffAt: '2026-11-07T18:00:00Z'
   }).id, 'no-time');
 });
+
+
+test('settlement retry queue rotates first opportunity fairly across pending rows', () => {
+  const { rotateSettlementRows } = require('./settlement');
+  const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  assert.deepEqual([0, 1, 2].map(offset => rotateSettlementRows(rows, offset)[0].id), ['a', 'b', 'c']);
+  assert.deepEqual(rotateSettlementRows(rows, 4).map(row => row.id), ['b', 'c', 'a']);
+  assert.deepEqual(rotateSettlementRows([], 10), []);
+});
