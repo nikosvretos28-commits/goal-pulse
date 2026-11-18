@@ -89,7 +89,11 @@ function calendarDayDistance(left, right) {
 function kickoffTimestamp(value) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value < 1e12 ? value * 1000 : value;
-  const parsed = Date.parse(String(value));
+  const text = String(value).trim();
+  // A calendar date is not a kickoff timestamp. Treat it as missing metadata,
+  // rather than silently converting midnight into a false time comparison.
+  if (!/[T ]\d{2}:\d{2}/.test(text)) return null;
+  const parsed = Date.parse(text);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
