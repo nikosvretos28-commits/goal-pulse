@@ -784,8 +784,15 @@ async function sendPushToSubscribers(payload) {
   let sent = 0, failed = 0;
   await Promise.all(subscriptions.map(async subscription => {
     try {
-      await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 300, urgency: "high" });
+      const pushResponse = await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 300, urgency: "high" });
       sent++;
+      console.info("GoalMatrix push service accepted notification:", JSON.stringify({
+        statusCode: Number(pushResponse?.statusCode || pushResponse?.status || 0),
+        providerResponseReceived: true,
+        ttlSeconds: 300,
+        urgency: "high",
+        endpointHost: (() => { try { return new URL(subscription.endpoint).host; } catch { return "invalid"; } })()
+      }));
     } catch (error) {
       failed++;
       console.error("Goal Pulse push delivery failed:", JSON.stringify({
@@ -3073,6 +3080,23 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, { error: error.message || "Could not unsubscribe" });
     }
   }
+  if (url.pathname === "/api/push/ack" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    try {
+      const body = await readJsonBody(req, 2000);
+      const stage = body.stage === "shown" ? "shown" : body.stage === "show_failed" ? "show_failed" : "";
+      if (!stage) return send(res, 400, { error: "Invalid push acknowledgement stage" });
+      console.info("GoalMatrix push client acknowledgement:", JSON.stringify({
+        stage,
+        tag: String(body.tag || "").slice(0, 120),
+        error: stage === "show_failed" ? String(body.error || "showNotification failed").slice(0, 140) : undefined
+      }));
+      return send(res, 200, { ok: true });
+    } catch (error) {
+      return send(res, 400, { error: error.message || "Push acknowledgement failed" });
+    }
+  }
+
   if (url.pathname === "/api/push/test" && req.method === "POST") {
     if (!pushRequestAllowed(req, res)) return;
     try {
