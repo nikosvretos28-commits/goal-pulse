@@ -3977,9 +3977,13 @@ function isAlertExpiredFromLive(a){
  const match=findLiveMatchForAlert(a);
  // Keep VIP Live-card behaviour exactly as it was; this repair is AI-only.
  if(a?.level==='VIP')return settled||result||(Boolean(match)&&match.state!=='in');
- // A missing live-feed row is not proof that the fixture ended. Keep the
- // alert visible until the server confirms a result or a finished fixture.
- return settled||result||(Boolean(match)&&String(match.state||'').toLowerCase()==='post');
+ // A missing live-feed row is not proof that the fixture ended. Keep fresh
+ // alerts visible through temporary feed gaps. After 48 hours, move an
+ // unresolved AI alert to History as pending verification (never VOID);
+ // server-side reconciliation continues searching for a verified result.
+ const createdAt=Number(a?.createdAt);
+ const pendingHistoryCutoff=Number.isFinite(createdAt)&&Date.now()-createdAt>=48*60*60*1000;
+ return settled||result||(Boolean(match)&&String(match.state||'').toLowerCase()==='post')||pendingHistoryCutoff;
 }
 if('serviceWorker' in navigator){
  navigator.serviceWorker.addEventListener('message',event=>{
