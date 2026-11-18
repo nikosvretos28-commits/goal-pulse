@@ -3,7 +3,7 @@ const webpush = require("web-push");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
-const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
+const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture, rotatePendingSettlementRows } = require("./settlement");
 const { normalizeLiveMinute } = require("./live-minute");
 const { isLiveEvent } = require("./live-state");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
@@ -220,6 +220,8 @@ const historicalTeamResultCache = new Map();
 // Keep historical settlement lookups from competing with the live-stat detail feed.
 let lastSportScoreSettlementLookupAt = 0;
 const SPORT_SCORE_SETTLEMENT_LOOKUP_GAP_MS = 60 * 1000;
+// Rotate the first pending alert on each scan so the shared historical-request cap cannot starve later rows.
+let settlementPendingStartIndex = 0;
 const pushScanLastAlert = new Map();
 // Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
@@ -3324,6 +3326,11 @@ const server = http.createServer(async (req, res) => {
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
           const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, "").trim();
           const completedScoreboardFixtures = [];
+          // Every unresolved row remains in the database and is reconsidered on the next scan.
+          // Rotate the starting point so one old alert cannot monopolize the one-request/minute
+          // SportScore budget on every scan while live-stat traffic keeps priority.
+          const settlementRows = rotatePendingSettlementRows(pending.rows, settlementPendingStartIndex);
+          if (pending.rows.length) settlementPendingStartIndex = (settlementPendingStartIndex + 1) % pending.rows.length;
           for (const event of scoreboardEvents) {
             const competition = event.competitions?.[0];
             const competitors = competition?.competitors || [];
@@ -3343,7 +3350,7 @@ const server = http.createServer(async (req, res) => {
             completedScoreboardFixtures.push({ id: event.id == null ? "" : String(event.id), date: fixtureDate, kickoffAt: event.date || null, league: leagueName,
               home: home.team.displayName, away: away.team.displayName, result: completedResult });
           }
-          for (const row of pending.rows) {
+          for (const row of settlementRows) {
             const alert = row.payload || {};
             const minuteMatch = String(alert.minuteNumber ?? alert.minute ?? "").match(/(\d{1,3})/);
             const signalMinute = Number(alert.minuteNumber ?? (minuteMatch ? minuteMatch[1] : NaN));
