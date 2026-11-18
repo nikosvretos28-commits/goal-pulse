@@ -30,9 +30,9 @@ function totalForTwoTeams(teams, getter) {
 
 function windowTotal(window, getter, minMinutes, maxMinutes) {
   const age = Number(window?.sampleMinutes);
-  if (!window?.available || !Array.isArray(window.teams) || window.teams.length !== 2 ||
+  if (!window?.available || !Array.isArray(window.teams) || window.teams.length < 2 ||
       !Number.isFinite(age) || age < minMinutes || age > maxMinutes) return null;
-  const values = window.teams.map(getter);
+  const values = window.teams.slice(0, 2).map(getter);
   return values.every(value => value !== null) ? values[0] + values[1] : null;
 }
 
@@ -40,19 +40,17 @@ function windowTotal(window, getter, minMinutes, maxMinutes) {
 function calculatePowerRankingScore({ teams, trend } = {}) {
   const totalSot = totalForTwoTeams(teams, teamSot);
   const totalXg = totalForTwoTeams(teams, teamXg);
-  const sot5 = windowTotal(trend?.window5m, teamSot, 4.5, 5.5);
-  const sot10 = windowTotal(trend?.window10m, teamSot, 9.5, 10.5);
-  const dangerous10 = windowTotal(trend?.window10m, teamDangerousAttacks, 9.5, 10.5);
-  const attacks10 = windowTotal(trend?.window10m, teamAttacks, 9.5, 10.5);
-  const components = [totalSot, totalXg, sot5, sot10, dangerous10, attacks10];
-  if (!components.every(value => value !== null)) return null;
+  const sot5 = windowTotal(trend?.window5m, teamSot, 4.5, 8);
+  const sot10 = windowTotal(trend?.window10m, teamSot, 8, 13);
+  const dangerous10 = windowTotal(trend?.window10m, teamDangerousAttacks, 8, 13);
+  const attacks10 = windowTotal(trend?.window10m, teamAttacks, 8, 13);
   const score = Math.round(
-    Math.min(25, totalSot * 2.5) +
-    Math.min(15, sot5 * 5) +
-    Math.min(10, sot10 * 2) +
-    Math.min(24, totalXg * 6) +
-    Math.min(15, dangerous10) +
-    Math.min(10, attacks10 * 0.25)
+    Math.min(25, (totalSot || 0) * 2.5) +
+    Math.min(15, (sot5 || 0) * 5) +
+    Math.min(10, (sot10 || 0) * 2) +
+    Math.min(24, (totalXg || 0) * 6) +
+    Math.min(15, (dangerous10 || 0)) +
+    Math.min(10, (attacks10 || 0) * 0.25)
   );
   return Math.max(0, Math.min(100, score));
 }
@@ -73,7 +71,7 @@ function isPowerRankingMinuteEligible(minute, status = "") {
 const AUTONOMOUS_POWER_RANKING_THRESHOLD = 65;
 
 function shouldEmitAutonomousPowerRankingAlert({ score, eligible } = {}) {
-  const numericScore = score == null || score === "" ? NaN : Number(score);
+  const numericScore = Number(score);
   // The autonomous trigger depends on the live Power Ranking score and its
   // minute/period eligibility only. Match scoreboard goals are not a trigger gate.
   return eligible === true && Number.isFinite(numericScore) &&
