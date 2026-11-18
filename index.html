@@ -3978,11 +3978,9 @@ function isAlertExpiredFromLive(a){
  const settled=['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
  const result=Boolean(a?.manualOutcome)||(Boolean(a?.outcome)&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
  const match=findLiveMatchForAlert(a);
- // Keep VIP Live-card behaviour exactly as it was.
- if(a?.level==='VIP')return settled||result||(Boolean(match)&&match.state!=='in');
- // AI alerts leave Live only after the server has saved a verified settlement
- // (or an explicit manual result). Feed disappearance, a bare POST status,
- // refreshes and alert age are not proof of the required period score.
+ // VIP and AI alerts use the same safe visibility rule: only a saved
+ // settlement or explicit manual result removes a card from Live.
+ // A missing feed row or a bare POST state is not proof of a verified result.
  return settled||result;
 }
 if('serviceWorker' in navigator){
@@ -4026,7 +4024,9 @@ function autoSettleFinishedOverBets(){
     if(!lineMatch)continue;
     const line=Number(lineMatch[1].replace(',','.'));
     if(!Number.isFinite(line)||!Number.isInteger(line*2)||Math.abs(line*2-Math.round(line*2))>1e-8||Math.abs(line-Math.round(line))<1e-8)continue;
-    const match=allMatches.find(m=>String(m.id)===String(alert.eventId));
+    // Use the same strict ordered-team/date/kickoff identity check as the Live cards.
+    // Never settle a VIP record from an event ID alone when provider IDs can differ.
+    const match=findLiveMatchForAlert(alert);
     if(!match)continue;
     const finishSignals=[match.state,match.status,match.statusText,match.shortStatus,match.matchStatus,match.clock,match.period].map(v=>String(v||'').trim().toLowerCase()).filter(Boolean);
     const isFinished=finishSignals.some(v=>['post','finished','finish','ft','full time','full-time','aet','after extra time','after-extra-time','pen','penalties','ended','complete','completed'].includes(v)||/^(?:ft|aet|pen)\b/.test(v)||/\b(?:full time|full-time|match ended|finished|ended|completed)\b/.test(v));
@@ -5572,10 +5572,7 @@ async function runSignalCheck(){
 
 ['topAiAlertList','topVipAlertList'].forEach(id=>document.getElementById(id).addEventListener('click',event=>{
  const card=event.target.closest('button[data-top-alert]');if(!card)return;let recent=[];try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))recent=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()>=Number(a.createdAt))}catch{}
- const isVip=card.dataset.topAlert==='◆';const matches=recent.filter(a=>isVip?a.level==='VIP':a.level!=='VIP').sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).filter(a=>{
-  if(isVip){const settled=['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase());const result=Boolean(a.manualOutcome)||(Boolean(a.outcome)&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;return !(settled||result||(match&&match.state==='post'))}
-  return !isAlertExpiredFromLive(a);
- });
+ const isVip=card.dataset.topAlert==='◆';const matches=recent.filter(a=>isVip?a.level==='VIP':a.level!=='VIP').sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).filter(a=>!isAlertExpiredFromLive(a));
  const alert=matches[Number(card.dataset.alertIndex)];if(!alert)return;const modal=document.getElementById('analysisModal');
  document.getElementById('analysisTitle').textContent=(alert.level||'AI')+' ALERT · '+(alert.market||'Live signal');
  document.getElementById('analysisSubtitle').textContent=(alert.home||'')+' – '+(alert.away||'')+' · '+(alert.league||'')+' · '+(alert.minute||'LIVE')+' · '+alertMarketPeriodLabel(alert);
