@@ -72,8 +72,10 @@ test("Power Ranking rolling windows accept only the agreed ±30-second tolerance
   });
   for (const age of [4.5, 5, 5.5]) assert.notEqual(calculatePowerRankingScore({ teams, trend: makeTrend(age, 10) }), null);
   for (const age of [9.5, 10, 10.5]) assert.notEqual(calculatePowerRankingScore({ teams, trend: makeTrend(5, age) }), null);
-  assert.equal(calculatePowerRankingScore({ teams, trend: makeTrend(5.51, 10) }), null);
-  assert.equal(calculatePowerRankingScore({ teams, trend: makeTrend(5, 10.51) }), null);
+  // Out-of-tolerance windows contribute nothing, while cumulative stats still score.
+  const cumulativeOnly = calculatePowerRankingScore({ teams, trend: {} });
+  assert.equal(calculatePowerRankingScore({ teams, trend: makeTrend(5.51, 10) }), cumulativeOnly);
+  assert.equal(calculatePowerRankingScore({ teams, trend: makeTrend(5, 10.51) }), cumulativeOnly);
 });
 
 test("Power Ranking first-half window is 1–34 inclusive", () => {
