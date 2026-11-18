@@ -5,6 +5,7 @@ const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
 const { normalizeLiveMinute } = require("./live-minute");
+const { isLiveEvent } = require("./live-state");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
 const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirstHalfEightSotMinute } = require("./ai-minute-window");
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow, formatEspnMonth } = require("./competition-history");
@@ -5788,8 +5789,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/live-metrics") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
-      // High Activity uses an isolated cache and broader LIVE-state recognition.
-      // The default endpoint remains unchanged for AI/VIP scanners.
+      // Keep Hi Activity's isolated cache/history scope, but use the same live-state
+      // recognizer and provider metrics collection for AI/VIP and Hi Activity.
       const highActivityOnly = url.searchParams.get("scope") === "high-activity";
       const cacheKey = (highActivityOnly ? "high-activity-metrics:" : "live-metrics:") + date;
       const cachedMetrics = cache.get(cacheKey);
@@ -5810,31 +5811,9 @@ const server = http.createServer(async (req, res) => {
       if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
         return send(res, 503, { error: "Live scoreboard feed unavailable; retry shortly", matches: [] });
       }
-      const isHighActivityLiveEvent = event => {
-        // ESPN/provider payloads can contain both event-level and competition-level
-        // status objects. The event-level value is sometimes stale ("pre") while
-        // the competition-level value already says "in"; inspect both instead of
-        // letting the first non-empty object mask the actual live state.
-        const competitions = Array.isArray(event.competitions) ? event.competitions : [];
-        const statusTypes = [
-          event.status?.type,
-          ...competitions.map(competition => competition?.status?.type)
-        ].filter(status => status && typeof status === "object");
-        const states = statusTypes.map(status => String(status.state || "").trim().toLowerCase());
-        const labels = [
-          ...statusTypes.flatMap(status => [status.name, status.description, status.detail, status.shortDetail]),
-          event.status?.displayClock,
-          ...competitions.map(competition => competition?.status?.displayClock)
-        ].filter(value => value != null).join(" ").trim().toLowerCase();
-        return states.some(state => /^(?:in|live|1h|2h|first_half|second_half|playing|inplay|in_play|in_progress|in-progress|in progress)$/.test(state))
-          || /\b(?:live|playing|in progress|first half|second half|half time|1st half|2nd half)\b/.test(labels);
-      };
+      // One shared live-state recognizer for AI Alerts, VIP and Hi Activity.
       const liveEvents = scoreboard.body.feeds.flatMap(feed => (feed.events || [])
-        .filter(event => {
-          // Keep the AI/VIP default feed's exact original state check unchanged.
-          const state = String(event.status?.type?.state || event.competitions?.[0]?.status?.type?.state || "").trim().toLowerCase();
-          return highActivityOnly ? isHighActivityLiveEvent(event) : state === "in";
-        })
+        .filter(event => isLiveEvent(event))
         .map(event => ({ event, leagueCode: feed.code })));
       const sportScoreLiveExists = liveEvents.some(item => String(item.event.id).startsWith("sportscore:"));
       const sportScoreLiveStatsByPair = new Map();

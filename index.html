@@ -3083,6 +3083,7 @@ header {
 </div>
 <div class="competition-modal" id="competitionModal" role="dialog" aria-modal="true" aria-labelledby="competitionTitle"><div class="competition-box"><div class="competition-hero"><div><div class="insight-label">GOALMATRIX · COMPETITION INTELLIGENCE</div><h2 id="competitionTitle">Ανάλυση διοργάνωσης</h2><div id="competitionSubtitle" class="subtle">Πραγματικά δεδομένα διαθέσιμων αγώνων</div></div><button type="button" class="analysis-close" id="closeCompetition">Κλείσιμο ✕</button></div><div id="competitionContent"><p class="subtle">Φόρτωση ανάλυσης…</p></div></div></div>
 <div class="analysis-modal" id="analysisModal" role="dialog" aria-modal="true" aria-labelledby="analysisTitle"><div class="analysis-box"><div class="analysis-top"><div><h2 id="analysisTitle">Ανάλυση αγώνα</h2><div class="subtle" id="analysisSubtitle">Φόρτωση δεδομένων…</div></div><button class="analysis-close" type="button" onclick="closeAnalysis()">Κλείσιμο ✕</button></div><div id="analysisContent"><p class="analysis-note">Αναζήτηση διαθέσιμων δεδομένων…</p></div></div></div>
+<script src="/live-state.js"></script>
 <script>
 (function(){
  function showGoalPulseError(message){
@@ -3474,9 +3475,10 @@ async function loadScores(){
    const isIgnoredClockPhase=/\b(extra[ -]?time|extratime|penalt(?:y|ies)|shootout|aet)\b/i.test(stateText)||(Number.isFinite(statusPeriod)&&statusPeriod>2);
    const normalizedStates=statusTypes.map(x=>String(x.state||'').toLowerCase());
    const rawState=normalizedStates.find(x=>x);
-   const hasLiveState=normalizedStates.some(x=>['in','live','in_progress','in-play'].includes(x));
-   const hasFinishedState=normalizedStates.some(x=>['post','finished','complete'].includes(x));
-   const state=hasLiveState||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(stateText)?'in':hasFinishedState||/\b(full time|finished|ended|ft|aet|penalties)\b/.test(stateText)?'post':(rawState||'pre');
+   const hasLiveState=window.GoalMatrixLiveState?.isLiveEvent(e)===true;
+   const finishedStatusValues=statusTypes.flatMap(x=>[x.state,x.name,x.description,x.shortDetail,x.detail]).filter(Boolean).map(x=>window.GoalMatrixLiveState?.normalizeStatus(x)||String(x).trim().toLowerCase().replace(/[ -]+/g,'_'));
+   const hasFinishedState=finishedStatusValues.some(x=>['post','finished','complete','full_time','ft','aet'].includes(x));
+   const state=hasLiveState?'in':hasFinishedState?'post':(rawState||'pre');
    const st=statusTypes.find(x=>x.state===state)||statusTypes[0]||{};
    const kickoff=e.date?new Date(e.date):null;
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
@@ -5341,25 +5343,15 @@ async function runSignalCheck(){
  signalBusy=true;
  try{
   const date=selectedMatchDate.replace(/-/g,'');
-  // Start the Hi Activity request independently, before the AI/VIP metrics request.
-  // A failure in the default scanner must not prevent Hi Activity from refreshing.
-  void (async()=>{
-   try{
-    const hiResponse=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date+'&scope=high-activity',{signal:AbortSignal.timeout(20000)});
-    if(hiResponse.ok){
-     const hiData=await hiResponse.json();
-     setLiveMetricsCache(hiData.matches||[]);
-     captureHighActivitySotSnapshots();
-     renderHighActivityMatches();
-    }
-   }catch(hiError){console.warn('Hi Activity isolated metrics temporarily unavailable:',hiError?.message||hiError)}
-  })();
+  // One shared live-metrics request feeds AI/VIP and Hi Activity.
+  // Keep Hi Activity's own SOT snapshots and rendering, but do not run a second
+  // isolated stats collection or provider request for the same refresh.
   const response=await fetch(ANALYTICS_API+'/api/live-metrics?date='+date,{signal:AbortSignal.timeout(12000)});
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||'Live στατιστικά προσωρινά μη διαθέσιμα');
-  // Always update the existing AI/VIP metrics cache from its original endpoint,
-  // regardless of whether the isolated Hi Activity request succeeds.
   setLiveMetricsCache(data.matches||[]);
+  captureHighActivitySotSnapshots();
+  renderHighActivityMatches();
   void reconcileHistoricalAlertSettlements();
   const liveMatches=allMatches.filter(m=>m.state==='in');
 
