@@ -3476,7 +3476,8 @@ async function loadScores(){
    const normalizedStates=statusTypes.map(x=>String(x.state||'').toLowerCase());
    const rawState=normalizedStates.find(x=>x);
    const hasLiveState=window.GoalMatrixLiveState?.isLiveEvent(e)===true;
-   const hasFinishedState=normalizedStates.some(x=>['post','finished','complete'].includes(x))||/\\b(full time|finished|ended|ft|aet)\\b/.test(stateText);
+   const finishedStatusValues=statusTypes.flatMap(x=>[x.state,x.name,x.description,x.shortDetail,x.detail]).filter(Boolean).map(x=>window.GoalMatrixLiveState?.normalizeStatus(x)||String(x).trim().toLowerCase().replace(/[ -]+/g,'_'));
+   const hasFinishedState=finishedStatusValues.some(x=>['post','finished','complete','full_time','ft','aet'].includes(x));
    const state=hasLiveState?'in':hasFinishedState?'post':(rawState||'pre');
    const st=statusTypes.find(x=>x.state===state)||statusTypes[0]||{};
    const kickoff=e.date?new Date(e.date):null;
