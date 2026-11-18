@@ -2702,7 +2702,10 @@ const server = http.createServer(async (req, res) => {
             const league = String(candidate.league?.name || candidate.league_name || candidate.competition?.name || candidate.competition_name || candidate.tournament?.name || "");
             const fixtureDate = String(candidate.date || candidate.match_date || candidate.fixture_date || date).slice(0, 10);
             const id = String(candidate.id || candidate.fixture_id || candidate.event_id || "");
-            candidateByKey.set(id ? "id:" + id : JSON.stringify(candidate), { id, date: fixtureDate, home, away, league, raw: candidate });
+            candidateByKey.set(id ? "id:" + id : JSON.stringify(candidate), {
+              id, date: fixtureDate, kickoffAt: candidate.time || candidate.start_time || candidate.starting_at || candidate.date || candidate.kickoff || null,
+              home, away, league, raw: candidate
+            });
           }
         }
         const fixture = findUniqueCompletedFixture([...candidateByKey.values()], {
@@ -3360,7 +3363,8 @@ const server = http.createServer(async (req, res) => {
             // goals for a missing half-time score.
             const alertHome = alert.home || (Array.isArray(alert.teams) ? alert.teams[0] : "");
             const alertAway = alert.away || (Array.isArray(alert.teams) ? alert.teams[1] : "");
-            const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+            const alertDate = String(alert.kickoffAt || alert.matchDate || alert.fixtureDate || "").slice(0, 10) ||
+              (row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "");
             const matchedCompletedFixture = findUniqueCompletedFixture(completedScoreboardFixtures, {
               eventId: row.event_id || alert.eventId, home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1,
               kickoffAt: alert.kickoffAt || alert.matchKickoffAt || alert.scheduledAt || alert.matchDateTime || null, kickoffToleranceHours: 4
@@ -4322,6 +4326,7 @@ const server = http.createServer(async (req, res) => {
               const rawMinute = String(formatPushMinute(match));
               const alertRecord = {
                 alertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
+                kickoffAt: match.date || match.time || match.start_time || match.starting_at || match.kickoff || null,
                 home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
                 league: match.league || match.competition || "", country: match.country || match.countryName || null,
                 minute: rawMinute, minuteNumber: powerRankingMinute,
@@ -4420,6 +4425,7 @@ const server = http.createServer(async (req, res) => {
               const autonomousRawMinute = String(formatPushMinute(match));
               const autonomousRecord = {
                 alertId: autonomousAlertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
+                kickoffAt: match.date || match.time || match.start_time || match.starting_at || match.kickoff || null,
                 home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
                 league: match.league || match.competition || "", country: match.country || match.countryName || null,
                 minute: autonomousRawMinute, minuteNumber: powerRankingMinute,
