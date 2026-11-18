@@ -3981,13 +3981,11 @@ function isAlertExpiredFromLive(a){
  if(settled||result)return true;
  // A verified completed fixture may leave Live, but a missing feed row is not completion.
  if(match&&String(match.state||'').toLowerCase()==='post')return true;
- // VIP pending alerts move to History after 48h, without being marked VOID.
- // AI alerts remain visible until verified settlement or an explicit manual result.
- if(a?.level==='VIP'){
-  const createdAt=Number(a?.createdAt);
-  return Number.isFinite(createdAt)&&createdAt>0&&Date.now()-createdAt>=48*60*60*1000;
- }
- return false;
+ // Pending AI and VIP alerts move out of Live after 48h, but remain
+ // untouched in their respective History lists and are never auto-settled here.
+ const rawCreatedAt=a?.createdAt;
+ const createdAt=typeof rawCreatedAt==='number'?rawCreatedAt:Date.parse(rawCreatedAt);
+ return Number.isFinite(createdAt)&&createdAt>0&&Date.now()-createdAt>=48*60*60*1000;
 }
 if('serviceWorker' in navigator){
  navigator.serviceWorker.addEventListener('message',event=>{
