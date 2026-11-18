@@ -27,40 +27,20 @@ test("Power Ranking score matches the displayed weighted formula and rounds to a
   assert.equal(score, 91);
 });
 
-test("missing inputs are omitted while every available component still contributes", () => {
+test("missing cumulative or rolling statistics remain unavailable, never zero", () => {
   assert.equal(calculatePowerRankingScore({ teams: [], trend: {} }), null);
-
-  // Missing cumulative SOT does not erase available xG and rolling components.
   assert.equal(calculatePowerRankingScore({
-    teams: [{ shotsOnTarget: null, xG: 1 }, { shotsOnTarget: null, xG: 2 }],
-    trend: {
-      window5m: makeWindow(5, [{ shotsOnTarget: 2 }, { shotsOnTarget: 1 }]),
-      window10m: makeWindow(10, [
-        { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 },
-        { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 }
-      ])
-    }
-  }), 46);
-
-  // Missing xG omits only the xG contribution; other components remain scored.
+    teams: [{ shotsOnTarget: 5, xG: 1 }, { shotsOnTarget: null, xG: 2 }],
+    trend: { window5m: makeWindow(5, [{ shotsOnTarget: 1 }, { shotsOnTarget: 1 }]), window10m: makeWindow(10, [
+      { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 },
+      { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 }
+    ]) }
+  }), null);
   assert.equal(calculatePowerRankingScore({
-    teams: [{ shotsOnTarget: 5, xG: null }, { shotsOnTarget: 4, xG: null }],
-    trend: {
-      window5m: makeWindow(5, [{ shotsOnTarget: 2 }, { shotsOnTarget: 1 }]),
-      window10m: makeWindow(10, [
-        { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 },
-        { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 }
-      ])
-    }
-  }), 51);
-
-  // If every scoring component is unavailable, no score is fabricated.
-  assert.equal(calculatePowerRankingScore({
-    teams: [{ shotsOnTarget: null, xG: null }, { shotsOnTarget: null, xG: null }],
+    teams: [{ shotsOnTarget: 5, xG: 1 }, { shotsOnTarget: 4, xG: 2 }],
     trend: {}
   }), null);
 });
-
 test("Power Ranking rolling windows accept only the agreed ±30-second tolerance", () => {
   const teams = [{ shotsOnTarget: 5, xG: 1.8 }, { shotsOnTarget: 4, xG: 1.4 }];
   const makeTrend = (age5, age10) => ({
