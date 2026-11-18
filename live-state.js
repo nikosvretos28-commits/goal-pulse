@@ -5,7 +5,7 @@
 const LIVE_STATES = new Set([
   "in", "live", "playing", "inplay", "in_play", "in_progress", "inprogress",
   "1h", "2h", "1st_half", "2nd_half", "first_half", "second_half",
-  "ht", "halftime", "half_time", "break", "interval", "int",
+  "ht", "halftime", "half_time", "break", "break_time", "bt", "interval", "int", "p", "pen",
   "et", "extra_time", "extratime",
   "penalties", "penalty_shootout", "shootout",
   "overtime", "first_period", "second_period", "third_period", "fourth_period",
