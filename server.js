@@ -4311,7 +4311,7 @@ const server = http.createServer(async (req, res) => {
         const powerRankingEligible = isPowerRankingMinuteEligible(powerRankingMinute, statusForEligibility);
         const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
         if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && !pushScanPowerRankingAlerts.has(id)) {
-          const alertId = "push:" + id + ":AI:power-ranking-59";
+          const alertId = "push:" + id + ":AI:power-ranking-59:" + now;
           try {
             if (await ensureAlertHistoryDb()) {
               const periodAtSignal = powerRankingMinute <= 34 ? "first_half" : "second_half";
