@@ -27,17 +27,34 @@ test("Power Ranking score matches the displayed weighted formula and rounds to a
   assert.equal(score, 91);
 });
 
-test("missing or stale statistics contribute zero and never fabricate a score", () => {
-  assert.equal(calculatePowerRankingScore({ teams: [], trend: {} }), 0);
-  // Missing SOT on one side must not be imputed; valid xG still contributes its own points.
+test("missing cumulative or rolling statistics remain unavailable, never zero", () => {
+  assert.equal(calculatePowerRankingScore({ teams: [], trend: {} }), null);
   assert.equal(calculatePowerRankingScore({
     teams: [{ shotsOnTarget: 5, xG: 1 }, { shotsOnTarget: null, xG: 2 }],
-    trend: { window5m: makeWindow(20, [{ shotsOnTarget: 5 }, { shotsOnTarget: 5 }]) }
-  }), 18);
+    trend: { window5m: makeWindow(5, [{ shotsOnTarget: 1 }, { shotsOnTarget: 1 }]), window10m: makeWindow(10, [
+      { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 },
+      { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 }
+    ]) }
+  }), null);
   assert.equal(calculatePowerRankingScore({
-    teams: [{ shotsOnTarget: null, xG: null }, { shotsOnTarget: null, xG: null }],
+    teams: [{ shotsOnTarget: 5, xG: 1 }, { shotsOnTarget: 4, xG: 2 }],
     trend: {}
-  }), 0);
+  }), null);
+});
+
+test("Power Ranking rolling windows accept only the agreed ±30-second tolerance", () => {
+  const teams = [{ shotsOnTarget: 5, xG: 1.8 }, { shotsOnTarget: 4, xG: 1.4 }];
+  const makeTrend = (age5, age10) => ({
+    window5m: makeWindow(age5, [{ shotsOnTarget: 2 }, { shotsOnTarget: 1 }]),
+    window10m: makeWindow(age10, [
+      { shotsOnTarget: 3, dangerousAttacks: 9, attacks: 20 },
+      { shotsOnTarget: 2, dangerousAttacks: 8, attacks: 18 }
+    ])
+  });
+  for (const age of [4.5, 5, 5.5]) assert.notEqual(calculatePowerRankingScore({ teams, trend: makeTrend(age, 10) }), null);
+  for (const age of [9.5, 10, 10.5]) assert.notEqual(calculatePowerRankingScore({ teams, trend: makeTrend(5, age) }), null);
+  assert.equal(calculatePowerRankingScore({ teams, trend: makeTrend(5.51, 10) }), null);
+  assert.equal(calculatePowerRankingScore({ teams, trend: makeTrend(5, 10.51) }), null);
 });
 
 test("Power Ranking first-half window is 1–34 inclusive", () => {
