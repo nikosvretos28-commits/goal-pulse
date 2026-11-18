@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const vm = require("node:vm");
 const { isLiveEvent, normalizeStatus } = require("./live-state");
 
 test("normalizes provider status codes, spaces and hyphens", () => {
@@ -55,4 +56,12 @@ test("does not infer live state from a clock or unrelated text", () => {
   assert.equal(isLiveEvent({ status: { displayClock: "45:00", type: { state: "pre" } } }), false);
   assert.equal(isLiveEvent({ status: { type: { state: "unknown", description: "Live coverage starts soon" } } }), false);
   assert.equal(isLiveEvent(null), false);
+});
+
+test("exposes the same recognizer to the browser frontend", () => {
+  const source = require("node:fs").readFileSync(require.resolve("./live-state"), "utf8");
+  const browserWindow = {};
+  vm.runInNewContext(source, { window: browserWindow });
+  assert.equal(typeof browserWindow.GoalMatrixLiveState.isLiveEvent, "function");
+  assert.equal(browserWindow.GoalMatrixLiveState.isLiveEvent({ status: { type: { state: "2H" } } }), true);
 });
