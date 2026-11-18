@@ -3279,7 +3279,7 @@ const server = http.createServer(async (req, res) => {
           );
           if (repairedHalftime.rowCount) console.warn("Goal Pulse history repaired: reopened halftime alerts misgraded against first-half score", JSON.stringify({ repaired: repairedHalftime.rowCount }));
           const pending = await analyticsPool.query(
-            "SELECT alert_id,payload,created_at FROM alert_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND ((payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') OR (NULLIF(trim(payload->>'market'),'') IS NULL AND payload->>'source'='server-push' AND payload->>'startScore' IS NOT NULL AND ((NULLIF(trim(payload->>'home'),'') IS NOT NULL AND NULLIF(trim(payload->>'away'),'') IS NOT NULL) OR (jsonb_typeof(payload->'teams')='array' AND jsonb_array_length(payload->'teams') >= 2)))) AND COALESCE(payload->>'market','') NOT ILIKE '%ασιατ%' AND COALESCE(payload->>'market','') NOT ILIKE '%asian%' AND COALESCE(payload->>'market','') NOT ILIKE '%corner%' AND COALESCE(payload->>'market','') NOT ILIKE '%κόρνερ%' AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 2000"
+            "SELECT alert_id,payload,created_at FROM alert_history WHERE (lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές') OR lower(trim(COALESCE(payload->>'betOutcome',''))) IN ('','εκκρεμεί','pending','σε εκκρεμότητα','εκκρεμές')) AND COALESCE(payload->>'level','AI') IN ('AI','VIP') AND ((payload->>'market' ILIKE '%goal%' OR payload->>'market' ILIKE '%γκολ%' OR payload->>'market' ILIKE '%over%') OR (NULLIF(trim(payload->>'market'),'') IS NULL AND payload->>'source'='server-push' AND payload->>'startScore' IS NOT NULL AND ((NULLIF(trim(payload->>'home'),'') IS NOT NULL AND NULLIF(trim(payload->>'away'),'') IS NOT NULL) OR (jsonb_typeof(payload->'teams')='array' AND jsonb_array_length(payload->'teams') >= 2)))) AND COALESCE(payload->>'market','') NOT ILIKE '%ασιατ%' AND COALESCE(payload->>'market','') NOT ILIKE '%asian%' AND COALESCE(payload->>'market','') NOT ILIKE '%corner%' AND COALESCE(payload->>'market','') NOT ILIKE '%κόρνερ%' ORDER BY created_at ASC"
           );
           // Fetch historical scoreboard dates only when unresolved alerts actually need them.
           // This extends reconciliation beyond the previous fixed 2-day window without
@@ -3771,7 +3771,7 @@ const server = http.createServer(async (req, res) => {
       if (await ensurePressureHunterDb()) {
         try {
           const pendingHunterRows = (await analyticsPool.query(
-            "SELECT alert_id,event_id,payload,created_at FROM pressure_hunter_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending') AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at ASC LIMIT 1000"
+            "SELECT alert_id,event_id,payload,created_at FROM pressure_hunter_history WHERE lower(trim(COALESCE(payload->>'outcome',''))) IN ('','εκκρεμεί','pending') ORDER BY created_at ASC"
           )).rows;
           const todayHunterUtc = new Date().toISOString().slice(0, 10).replace(/-/g, "");
           const hunterDates = new Set();
@@ -3833,10 +3833,100 @@ const server = http.createServer(async (req, res) => {
             const hunter = row.payload || {};
             const date = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
             if (!date || !hunter.home || !hunter.away) continue;
-            const matched = findUniqueCompletedFixture(hunterCompletedFixtures, {
+            let matched = findUniqueCompletedFixture(hunterCompletedFixtures, {
               eventId: row.event_id || hunter.eventId, home: hunter.home, away: hunter.away,
               league: hunter.league, date, dateToleranceDays: 1
             });
+
+            // Pressure Hunter also uses SportScore for historical fixtures that ESPN
+            // does not cover. Keep the same strict ordered-team/date/league uniqueness
+            // checks; never grade from a score-only or ambiguous candidate.
+            if (!matched?.result) {
+              const hunterSlug = value => normalizeFixtureName(value).replace(/\s+/g, "-");
+              const parseHunterScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+              const hunterDatesToCheck = [date, ...[-1, 1].map(offset =>
+                new Date(Date.parse(date + "T00:00:00Z") + offset * 86400000).toISOString().slice(0, 10)
+              )];
+              const toHunterCompleted = match => {
+                const homeName = String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || "").trim();
+                const awayName = String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || "").trim();
+                if (normalizeFixtureName(homeName) !== normalizeFixtureName(hunter.home) ||
+                    normalizeFixtureName(awayName) !== normalizeFixtureName(hunter.away)) return null;
+                const homeFinal = parseHunterScore(match.home_score ?? match.homeScore ?? match.scores?.home ?? match.score?.home);
+                const awayFinal = parseHunterScore(match.away_score ?? match.awayScore ?? match.scores?.away ?? match.score?.away);
+                if (homeFinal == null || awayFinal == null) return null;
+                const homeHt = parseHunterScore(match.home_ht_score ?? match.homeHtScore ??
+                  match.half_time_score?.home ?? match.halfTimeScore?.home ??
+                  match.scores?.half_time?.home ?? match.scores?.halftime?.home ??
+                  match.period_scores?.first_half?.home ?? match.periods?.first_half?.home);
+                const awayHt = parseHunterScore(match.away_ht_score ?? match.awayHtScore ??
+                  match.half_time_score?.away ?? match.halfTimeScore?.away ??
+                  match.scores?.half_time?.away ?? match.scores?.halftime?.away ??
+                  match.period_scores?.first_half?.away ?? match.periods?.first_half?.away);
+                return {
+                  status: "post", statusText: "finished", homeScore: homeFinal, awayScore: awayFinal,
+                  halfTimeHomeScore: homeHt, halfTimeAwayScore: awayHt,
+                  settlementProvider: "SportScore", settlementFixtureId: getProviderFixtureId(match),
+                  settlementFixtureDate: String(match.date || match.match_date || match.fixture_date || date).slice(0, 10),
+                  settlementLeague: String(match.league?.name || match.league_name || match.competition?.name || match.competition_name || match.tournament?.name || "")
+                };
+              };
+              hunterLookup: for (const lookupDate of hunterDatesToCheck) {
+                for (const teamName of [hunter.home, hunter.away]) {
+                  const slug = hunterSlug(teamName);
+                  if (!slug) continue;
+                  const cacheKey = lookupDate + "|" + slug;
+                  let cached = historicalTeamResultCache.get(cacheKey);
+                  const ttl = cached?.matches?.length ? 15 * 60 * 1000 : 2 * 60 * 1000;
+                  if (!cached || Date.now() - cached.at > ttl) {
+                    if (Date.now() - lastSportScoreSettlementLookupAt < SPORT_SCORE_SETTLEMENT_LOOKUP_GAP_MS) continue;
+                    lastSportScoreSettlementLookupAt = Date.now();
+                    try {
+                      const response = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
+                        encodeURIComponent(lookupDate) + "&status=finished&team=" + encodeURIComponent(slug) +
+                        "&limit=200&src=goal-pulse", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+                      const body = response.ok ? await response.json() : {};
+                      let matches = response.ok ? extractFixtureArray(body) : [];
+                      if (response.ok && !matches.length) {
+                        const allKey = lookupDate + "|__all_finished__";
+                        let allCached = historicalTeamResultCache.get(allKey);
+                        if (!allCached || Date.now() - allCached.at > 15 * 60 * 1000) {
+                          const allResponse = await fetch("https://sportscore.com/api/v1/fixtures/?sport=football&date=" +
+                            encodeURIComponent(lookupDate) + "&status=finished&limit=200&src=goal-pulse",
+                            { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+                          const allBody = allResponse.ok ? await allResponse.json() : {};
+                          allCached = { at: Date.now(), matches: allResponse.ok ? extractFixtureArray(allBody) : [] };
+                          historicalTeamResultCache.set(allKey, allCached);
+                        }
+                        if (allCached.matches.length) matches = allCached.matches;
+                      }
+                      cached = { at: Date.now(), matches };
+                      historicalTeamResultCache.set(cacheKey, cached);
+                    } catch (lookupError) {
+                      cached = { at: Date.now(), matches: [] };
+                      historicalTeamResultCache.set(cacheKey, cached);
+                    }
+                  }
+                  const candidates = cached.matches.map(match => {
+                    const result = toHunterCompleted(match);
+                    if (!result || !result.settlementFixtureId) return null;
+                    return {
+                      id: result.settlementFixtureId, date: result.settlementFixtureDate,
+                      league: result.settlementLeague,
+                      home: String(match.home || match.home_name || match.home_team?.name || match.homeTeam?.name || ""),
+                      away: String(match.away || match.away_name || match.away_team?.name || match.awayTeam?.name || ""),
+                      result, raw: match
+                    };
+                  }).filter(Boolean);
+                  const unique = [...new Map(candidates.map(candidate => [candidate.id, candidate])).values()];
+                  matched = findUniqueCompletedFixture(unique, {
+                    home: hunter.home, away: hunter.away, league: hunter.league,
+                    date: lookupDate, dateToleranceDays: 1
+                  });
+                  if (matched?.result) break hunterLookup;
+                }
+              }
+            }
             if (!matched?.result) continue;
             const settled = settlePressureHunterRecord(hunter, matched.result, now);
             if (!settled) continue;
