@@ -138,7 +138,14 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
     const candidateDate = String(candidate.date || '').slice(0, 10);
     if (!candidateDate) return false;
     const distance = calendarDayDistance(date, candidateDate);
-    return distance !== null && distance <= dateToleranceDays;
+    if (distance === null || distance > dateToleranceDays) return false;
+    const candidateKickoff = kickoffTimestamp(candidate.kickoffAt ?? candidate.matchKickoffAt ?? candidate.scheduledAt ??
+      candidate.raw?.date ?? candidate.raw?.match_date ?? candidate.raw?.fixture_date);
+    // Apply the same kickoff guard to the league-label fallback; never let that
+    // fallback re-admit a fixture rejected by the time check above.
+    if (alertKickoff !== null && candidateKickoff !== null &&
+        Math.abs(candidateKickoff - alertKickoff) > kickoffToleranceHours * 60 * 60 * 1000) return false;
+    return true;
   });
   return sameTeamsAndDate.length === 1 ? sameTeamsAndDate[0] : null;
 }
