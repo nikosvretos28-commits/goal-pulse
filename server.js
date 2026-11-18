@@ -3,7 +3,7 @@ const webpush = require("web-push");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
-const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture } = require("./settlement");
+const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture, rotateSettlementRows } = require("./settlement");
 const { normalizeLiveMinute } = require("./live-minute");
 const { isLiveEvent } = require("./live-state");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
@@ -220,6 +220,8 @@ const historicalTeamResultCache = new Map();
 // Keep historical settlement lookups from competing with the live-stat detail feed.
 let lastSportScoreSettlementLookupAt = 0;
 const SPORT_SCORE_SETTLEMENT_LOOKUP_GAP_MS = 60 * 1000;
+// Advance the first pending AI alert checked on each scan to prevent starvation.
+let aiSettlementScanCursor = 0;
 const pushScanLastAlert = new Map();
 // Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
@@ -3343,7 +3345,11 @@ const server = http.createServer(async (req, res) => {
             completedScoreboardFixtures.push({ id: event.id == null ? "" : String(event.id), date: fixtureDate, kickoffAt: event.date || null, league: leagueName,
               home: home.team.displayName, away: away.team.displayName, result: completedResult });
           }
-          for (const row of pending.rows) {
+          const settlementRows = Array.isArray(pending.rows) ? pending.rows : [];
+          const settlementOffset = settlementRows.length ? aiSettlementScanCursor % settlementRows.length : 0;
+          const orderedSettlementRows = rotateSettlementRows(settlementRows, settlementOffset);
+          if (settlementRows.length) aiSettlementScanCursor = (settlementOffset + 1) % settlementRows.length;
+          for (const row of orderedSettlementRows) {
             const alert = row.payload || {};
             const minuteMatch = String(alert.minuteNumber ?? alert.minute ?? "").match(/(\d{1,3})/);
             const signalMinute = Number(alert.minuteNumber ?? (minuteMatch ? minuteMatch[1] : NaN));
