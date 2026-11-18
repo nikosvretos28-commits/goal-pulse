@@ -4248,7 +4248,7 @@ function liveMatchLine(m,highActivity=false,activityLevel=0){
   // Only accept a local baseline close to the requested window. An older
   // snapshot must never be mislabeled as a 5m/10m delta.
   const minAge=minutes===5?4.5:9.5;
-  const maxAge=minutes===5?8:13;
+  const maxAge=minutes===5?5.5:10.5;
   const base=[...trail].reverse().find(item=>{
    const age=(now-Number(item.at))/60000;
    return Number.isFinite(age)&&age>=minAge&&age<=maxAge;
@@ -4917,8 +4917,8 @@ function renderHighActivityMatches(){
    highActivityTrails.set(trailKey,trail);
    persistLiveMetricsState();
   }
-  const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=8*60*1000);
-  const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
+  const baseline=[...trail].reverse().find(item=>now-item.at>=4.5*60*1000&&now-item.at<=5.5*60*1000);
+  const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=10.5*60*1000);
   // Calculate Hi Activity SOT windows independently from the general stats delta.
   // Other stats being present must not prevent a valid SOT trend from being used.
   const readSotValue=team=>{
@@ -4946,8 +4946,8 @@ function renderHighActivityMatches(){
    }
    return best;
   };
-  const hiActivitySot5m=independentSotWindow(baseline,stats.trend?.window5m,4.5,8);
-  const hiActivitySot10m=independentSotWindow(baseline10,stats.trend?.window10m,8,13);
+  const hiActivitySot5m=independentSotWindow(baseline,stats.trend?.window5m,4.5,5.5);
+  const hiActivitySot10m=independentSotWindow(baseline10,stats.trend?.window10m,9.5,10.5);
   // Per-team SOT deltas are required: an aggregate match total cannot prove
   // that BOTH teams were active. Missing values never count as zero.
   const perTeamSotWindow=(savedBaseline,trend,minAge,maxAge)=>{
@@ -4966,8 +4966,8 @@ function renderHighActivityMatches(){
    }
    return values;
   };
-  const dualTeamSot5=perTeamSotWindow(baseline,stats.trend?.window5m,4.5,8);
-  const dualTeamSot10=perTeamSotWindow(baseline10,stats.trend?.window10m,8,13);
+  const dualTeamSot5=perTeamSotWindow(baseline,stats.trend?.window5m,4.5,5.5);
+  const dualTeamSot10=perTeamSotWindow(baseline10,stats.trend?.window10m,9.5,10.5);
   const dualTeamSotPressure=teams.slice(0,2).length===2&&
    teams.slice(0,2).every(team=>readSotValue(team)!==null&&readSotValue(team)>=4)&&
    Array.isArray(dualTeamSot5)&&dualTeamSot5.length===2&&dualTeamSot5.every(value=>value!==null&&value>=1)&&
@@ -4987,10 +4987,10 @@ function renderHighActivityMatches(){
    }
    return values;
   };
-  const sotPressure5=perTeamMetricWindow(readSotValue,'shotsOnTarget',baseline,stats.trend?.window5m,4.5,8);
-  const sotPressure10=perTeamMetricWindow(readSotValue,'shotsOnTarget',baseline10,stats.trend?.window10m,8,13);
-  const dangerousAttacks5=perTeamMetricWindow(readDangerousValue,'dangerousAttacks',baseline,stats.trend?.window5m,4.5,8);
-  const dangerousAttacks10=perTeamMetricWindow(readDangerousValue,'dangerousAttacks',baseline10,stats.trend?.window10m,8,13);
+  const sotPressure5=perTeamMetricWindow(readSotValue,'shotsOnTarget',baseline,stats.trend?.window5m,4.5,5.5);
+  const sotPressure10=perTeamMetricWindow(readSotValue,'shotsOnTarget',baseline10,stats.trend?.window10m,9.5,10.5);
+  const dangerousAttacks5=perTeamMetricWindow(readDangerousValue,'dangerousAttacks',baseline,stats.trend?.window5m,4.5,5.5);
+  const dangerousAttacks10=perTeamMetricWindow(readDangerousValue,'dangerousAttacks',baseline10,stats.trend?.window10m,9.5,10.5);
   const redCardValues=teams.slice(0,2).map(team=>{const value=team.redCards??team.red_cards??team.redCard??team.red_card;return value==null||value===''||!Number.isFinite(Number(value))?null:Number(value);});
   const redCardSideIndex=redCardValues.length===2&&redCardValues.every(value=>value!==null)
    ?(redCardValues[0]>redCardValues[1]?0:redCardValues[1]>redCardValues[0]?1:-1):-1;
@@ -5485,7 +5485,7 @@ async function runSignalCheck(){
    if(minuteMode==='early'&&(minute===null||minute>30)||minuteMode==='middle'&&(minute===null||minute<31||minute>60)||minuteMode==='late'&&(minute===null||minute<61)||scannerLeague.value!=='all'&&m.leagueCode!==scannerLeague.value)continue;
    const windowMinutes=Number(signalWindow.value);
    const baseline=[...trail].reverse().find(item=>now-item.at>=windowMinutes*60*1000);
-   const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=11*60*1000);
+   const baseline10=[...trail].reverse().find(item=>now-item.at>=9.5*60*1000&&now-item.at<=10.5*60*1000);
    const serverTrend=windowMinutes===10?live.trend?.window10m:windowMinutes===5?live.trend?.window5m:null;
    const serverTrend10=live.trend?.window10m;
    if(!baseline&&!serverTrend?.available)continue;
