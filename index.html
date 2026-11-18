@@ -3083,6 +3083,7 @@ header {
 </div>
 <div class="competition-modal" id="competitionModal" role="dialog" aria-modal="true" aria-labelledby="competitionTitle"><div class="competition-box"><div class="competition-hero"><div><div class="insight-label">GOALMATRIX · COMPETITION INTELLIGENCE</div><h2 id="competitionTitle">Ανάλυση διοργάνωσης</h2><div id="competitionSubtitle" class="subtle">Πραγματικά δεδομένα διαθέσιμων αγώνων</div></div><button type="button" class="analysis-close" id="closeCompetition">Κλείσιμο ✕</button></div><div id="competitionContent"><p class="subtle">Φόρτωση ανάλυσης…</p></div></div></div>
 <div class="analysis-modal" id="analysisModal" role="dialog" aria-modal="true" aria-labelledby="analysisTitle"><div class="analysis-box"><div class="analysis-top"><div><h2 id="analysisTitle">Ανάλυση αγώνα</h2><div class="subtle" id="analysisSubtitle">Φόρτωση δεδομένων…</div></div><button class="analysis-close" type="button" onclick="closeAnalysis()">Κλείσιμο ✕</button></div><div id="analysisContent"><p class="analysis-note">Αναζήτηση διαθέσιμων δεδομένων…</p></div></div></div>
+<script src="/live-state.js"></script>
 <script>
 (function(){
  function showGoalPulseError(message){
@@ -3474,9 +3475,9 @@ async function loadScores(){
    const isIgnoredClockPhase=/\b(extra[ -]?time|extratime|penalt(?:y|ies)|shootout|aet)\b/i.test(stateText)||(Number.isFinite(statusPeriod)&&statusPeriod>2);
    const normalizedStates=statusTypes.map(x=>String(x.state||'').toLowerCase());
    const rawState=normalizedStates.find(x=>x);
-   const hasLiveState=normalizedStates.some(x=>['in','live','in_progress','in-play'].includes(x));
-   const hasFinishedState=normalizedStates.some(x=>['post','finished','complete'].includes(x));
-   const state=hasLiveState||/\b(live|in play|in progress|playing|first half|second half|half time|1st half|2nd half)\b/.test(stateText)?'in':hasFinishedState||/\b(full time|finished|ended|ft|aet|penalties)\b/.test(stateText)?'post':(rawState||'pre');
+   const hasLiveState=window.GoalMatrixLiveState?.isLiveEvent(e)===true;
+   const hasFinishedState=normalizedStates.some(x=>['post','finished','complete'].includes(x))||/\\b(full time|finished|ended|ft|aet)\\b/.test(stateText);
+   const state=hasLiveState?'in':hasFinishedState?'post':(rawState||'pre');
    const st=statusTypes.find(x=>x.state===state)||statusTypes[0]||{};
    const kickoff=e.date?new Date(e.date):null;
    const validKickoff=kickoff&&!Number.isNaN(kickoff.getTime());
