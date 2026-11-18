@@ -23,6 +23,10 @@ self.addEventListener('push',event=>{
     requireInteraction:false
    });
    await reportPushResult('shown');
+   try{
+    const openClients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const client of openClients)client.postMessage({type:'GOAL_PULSE_ALERT_PUSH',tag:String(data.tag||'').slice(0,120)});
+   }catch{}
   }catch(error){
    await reportPushResult('show_failed',error);
    throw error;
