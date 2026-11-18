@@ -3978,12 +3978,16 @@ function isAlertExpiredFromLive(a){
  const settled=['won','lost','void','push'].includes(String(a?.betOutcome||'').toLowerCase());
  const result=Boolean(a?.manualOutcome)||(Boolean(a?.outcome)&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));
  const match=findLiveMatchForAlert(a);
- // Keep VIP Live-card behaviour exactly as it was.
- if(a?.level==='VIP')return settled||result||(Boolean(match)&&match.state!=='in');
- // AI alerts leave Live only after the server has saved a verified settlement
- // (or an explicit manual result). Feed disappearance, a bare POST status,
- // refreshes and alert age are not proof of the required period score.
- return settled||result;
+ if(settled||result)return true;
+ // A verified completed fixture may leave Live, but a missing feed row is not completion.
+ if(match&&String(match.state||'').toLowerCase()==='post')return true;
+ // VIP pending alerts move to History after 48h, without being marked VOID.
+ // AI alerts remain visible until verified settlement or an explicit manual result.
+ if(a?.level==='VIP'){
+  const createdAt=Number(a?.createdAt);
+  return Number.isFinite(createdAt)&&createdAt>0&&Date.now()-createdAt>=48*60*60*1000;
+ }
+ return false;
 }
 if('serviceWorker' in navigator){
  navigator.serviceWorker.addEventListener('message',event=>{
@@ -5573,7 +5577,6 @@ async function runSignalCheck(){
 ['topAiAlertList','topVipAlertList'].forEach(id=>document.getElementById(id).addEventListener('click',event=>{
  const card=event.target.closest('button[data-top-alert]');if(!card)return;let recent=[];try{const raw=JSON.parse(localStorage.getItem('goalPulseAlertHistory')||'[]');if(Array.isArray(raw))recent=raw.filter(a=>a&&Number.isFinite(Number(a.createdAt))&&Date.now()>=Number(a.createdAt))}catch{}
  const isVip=card.dataset.topAlert==='◆';const matches=recent.filter(a=>isVip?a.level==='VIP':a.level!=='VIP').sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).filter(a=>{
-  if(isVip){const settled=['won','lost','void','push'].includes(String(a.betOutcome||'').toLowerCase());const result=Boolean(a.manualOutcome)||(Boolean(a.outcome)&&a.outcome!=='εκκρεμεί'&&!String(a.outcome).includes('εκκρεμεί'));const match=Array.isArray(allMatches)?allMatches.find(m=>String(m.id)===String(a.eventId)):null;return !(settled||result||(match&&match.state==='post'))}
   return !isAlertExpiredFromLive(a);
  });
  const alert=matches[Number(card.dataset.alertIndex)];if(!alert)return;const modal=document.getElementById('analysisModal');

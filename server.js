@@ -3681,29 +3681,9 @@ const server = http.createServer(async (req, res) => {
               rule: alert.evaluationRule
             }));
           }
-          // Keep the existing 48-hour unverified-void policy for VIP only.
-          // AI alerts remain pending until a provider supplies a verifiable result;
-          // absence of a result is never converted into a fabricated settlement.
-          const staleUnverified = await analyticsPool.query(
-            `UPDATE alert_history
-                SET payload = payload || jsonb_build_object(
-                  'betOutcome', 'void',
-                  'outcome', 'Μη επαληθεύτηκε · έκλεισε χωρίς αξιόπιστο σκορ',
-                  'betSettlementLabel', 'Μη επαληθευμένο · ακυρώθηκε',
-                  'betSettlementReason', 'Δεν βρέθηκε επαληθεύσιμο σκορ από πάροχο εντός 48 ωρών',
-                  'betSettledAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
-                  'evaluatedAt', (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
-                  'evaluationRule', 'unverified_after_48h'
-                ),
-                updated_at = NOW()
-              WHERE created_at < NOW() - INTERVAL '48 hours'
-                AND COALESCE(payload->>'level', 'AI') = 'VIP'
-                AND lower(trim(COALESCE(payload->>'betOutcome', ''))) IN ('', 'pending', 'εκκρεμεί', 'σε εκκρεμότητα')
-              RETURNING alert_id`
-          );
-          if (staleUnverified.rowCount) {
-            console.warn("[settlement] Closed stale alerts as unverified voids:", JSON.stringify({ count: staleUnverified.rowCount, ageHours: 48 }));
-          }
+          // Unverified VIP alerts stay pending in persistent history indefinitely.
+          // The browser moves them out of the Live card after 48h; missing scores
+          // must never be converted into an automatic VOID.
         } catch (evaluationError) {
           console.error("AI alert halftime outcome evaluation failed:", evaluationError.message);
         }
