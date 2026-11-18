@@ -21,7 +21,7 @@ function normalizeStatus(value) {
     .normalize("NFKC")
     .trim()
     .toLowerCase()
-    .replace(/[\\s-]+/g, "_")
+    .replace(/[\s-]+/g, "_")
     .replace(/^status_/, "");
 }
 
