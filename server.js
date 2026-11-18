@@ -2702,7 +2702,10 @@ const server = http.createServer(async (req, res) => {
             const league = String(candidate.league?.name || candidate.league_name || candidate.competition?.name || candidate.competition_name || candidate.tournament?.name || "");
             const fixtureDate = String(candidate.date || candidate.match_date || candidate.fixture_date || date).slice(0, 10);
             const id = String(candidate.id || candidate.fixture_id || candidate.event_id || "");
-            candidateByKey.set(id ? "id:" + id : JSON.stringify(candidate), { id, date: fixtureDate, home, away, league, raw: candidate });
+            candidateByKey.set(id ? "id:" + id : JSON.stringify(candidate), {
+              id, date: fixtureDate, kickoffAt: candidate.time || candidate.start_time || candidate.starting_at || candidate.date || candidate.kickoff || null,
+              home, away, league, raw: candidate
+            });
           }
         }
         const fixture = findUniqueCompletedFixture([...candidateByKey.values()], {
@@ -3336,7 +3339,7 @@ const server = http.createServer(async (req, res) => {
             const completedResult = { status: "post", statusText: "finished", homeScore: home.score, awayScore: away.score,
               homeHtScore: Number.isFinite(homeFirstPeriod) ? homeFirstPeriod : null, awayHtScore: Number.isFinite(awayFirstPeriod) ? awayFirstPeriod : null,
               settlementProvider: "ESPN", settlementFixtureId: String(event.id || ""), settlementFixtureDate: fixtureDate, settlementLeague: leagueName };
-            completedScoreboardFixtures.push({ id: event.id == null ? "" : String(event.id), date: fixtureDate, league: leagueName,
+            completedScoreboardFixtures.push({ id: event.id == null ? "" : String(event.id), date: fixtureDate, kickoffAt: event.date || null, league: leagueName,
               home: home.team.displayName, away: away.team.displayName, result: completedResult });
           }
           for (const row of pending.rows) {
@@ -3360,9 +3363,11 @@ const server = http.createServer(async (req, res) => {
             // goals for a missing half-time score.
             const alertHome = alert.home || (Array.isArray(alert.teams) ? alert.teams[0] : "");
             const alertAway = alert.away || (Array.isArray(alert.teams) ? alert.teams[1] : "");
-            const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
+            const alertDate = String(alert.kickoffAt || alert.matchDate || alert.fixtureDate || "").slice(0, 10) ||
+              (row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "");
             const matchedCompletedFixture = findUniqueCompletedFixture(completedScoreboardFixtures, {
-              eventId: row.event_id || alert.eventId, home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
+              eventId: row.event_id || alert.eventId, home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1,
+              kickoffAt: alert.kickoffAt || alert.matchKickoffAt || alert.scheduledAt || alert.matchDateTime || null, kickoffToleranceHours: 4
             });
             let completed = matchedCompletedFixture?.result || null;
             // The public day endpoint caps finished fixtures at 200. For a specific
@@ -3537,7 +3542,8 @@ const server = http.createServer(async (req, res) => {
                     candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.raw), candidate
                   ])).values()];
                   const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
-                    home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
+                    home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1,
+                    kickoffAt: alert.kickoffAt || alert.matchKickoffAt || alert.scheduledAt || alert.matchDateTime || null, kickoffToleranceHours: 4
                   });
                   if (exactMatch) {
                     const sportScoreHasHalfTime = exactMatch.result.homeHtScore != null && exactMatch.result.awayHtScore != null;
@@ -3675,9 +3681,9 @@ const server = http.createServer(async (req, res) => {
               rule: alert.evaluationRule
             }));
           }
-          // Never leave an old alert pending forever. After 48 hours, if the
-          // completed fixture/period still has no verifiable provider score,
-          // close it as void (unverified), never as a win or loss.
+          // Keep the existing 48-hour unverified-void policy for VIP only.
+          // AI alerts remain pending until a provider supplies a verifiable result;
+          // absence of a result is never converted into a fabricated settlement.
           const staleUnverified = await analyticsPool.query(
             `UPDATE alert_history
                 SET payload = payload || jsonb_build_object(
@@ -3691,7 +3697,7 @@ const server = http.createServer(async (req, res) => {
                 ),
                 updated_at = NOW()
               WHERE created_at < NOW() - INTERVAL '48 hours'
-                AND COALESCE(payload->>'level', 'AI') IN ('AI', 'VIP')
+                AND COALESCE(payload->>'level', 'AI') = 'VIP'
                 AND lower(trim(COALESCE(payload->>'betOutcome', ''))) IN ('', 'pending', 'εκκρεμεί', 'σε εκκρεμότητα')
               RETURNING alert_id`
           );
@@ -4311,7 +4317,7 @@ const server = http.createServer(async (req, res) => {
         const powerRankingEligible = isPowerRankingMinuteEligible(powerRankingMinute, statusForEligibility);
         const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
         if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && !pushScanPowerRankingAlerts.has(id)) {
-          const alertId = "push:" + id + ":AI:power-ranking-59";
+          const alertId = "push:" + id + ":AI:power-ranking-59:" + now;
           try {
             if (await ensureAlertHistoryDb()) {
               const periodAtSignal = powerRankingMinute <= 34 ? "first_half" : "second_half";
@@ -4320,6 +4326,7 @@ const server = http.createServer(async (req, res) => {
               const rawMinute = String(formatPushMinute(match));
               const alertRecord = {
                 alertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
+                kickoffAt: match.date || match.time || match.start_time || match.starting_at || match.kickoff || null,
                 home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
                 league: match.league || match.competition || "", country: match.country || match.countryName || null,
                 minute: rawMinute, minuteNumber: powerRankingMinute,
@@ -4418,6 +4425,7 @@ const server = http.createServer(async (req, res) => {
               const autonomousRawMinute = String(formatPushMinute(match));
               const autonomousRecord = {
                 alertId: autonomousAlertId, source: "server-push", eventId: id, level: "AI", createdAt: now,
+                kickoffAt: match.date || match.time || match.start_time || match.starting_at || match.kickoff || null,
                 home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
                 league: match.league || match.competition || "", country: match.country || match.countryName || null,
                 minute: autonomousRawMinute, minuteNumber: powerRankingMinute,

@@ -86,6 +86,17 @@ function calendarDayDistance(left, right) {
   return Math.round(Math.abs(a - b) / 86400000);
 }
 
+function kickoffTimestamp(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value < 1e12 ? value * 1000 : value;
+  const text = String(value).trim();
+  // A calendar date is not a kickoff timestamp. Treat it as missing metadata,
+  // rather than silently converting midnight into a false time comparison.
+  if (!/[T ]\d{2}:\d{2}/.test(text)) return null;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function findUniqueCompletedFixture(candidates, alert = {}) {
   const rows = Array.isArray(candidates) ? candidates : [];
   const home = normalizeFixtureName(alert.home);
@@ -94,8 +105,16 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
   const league = normalizeFixtureName(alert.league);
   const date = String(alert.date || '').slice(0, 10);
   const dateToleranceDays = Math.max(0, Math.min(1, Number(alert.dateToleranceDays) || 0));
+  const alertKickoff = kickoffTimestamp(alert.kickoffAt ?? alert.matchKickoffAt ?? alert.scheduledAt ?? alert.matchDateTime);
+  const kickoffToleranceHours = Math.max(0, Math.min(12, Number(alert.kickoffToleranceHours) || 4));
   const identityMatches = candidate => {
     if (normalizeFixtureName(candidate.home) !== home || normalizeFixtureName(candidate.away) !== away) return false;
+    const candidateKickoff = kickoffTimestamp(candidate.kickoffAt ?? candidate.matchKickoffAt ?? candidate.scheduledAt ??
+      candidate.raw?.date ?? candidate.raw?.match_date ?? candidate.raw?.fixture_date);
+    // When both sides expose kickoff timestamps, require them to be within four hours.
+    // If either provider omits the time, retain the strict team/date/league uniqueness checks.
+    if (alertKickoff !== null && candidateKickoff !== null &&
+        Math.abs(candidateKickoff - alertKickoff) > kickoffToleranceHours * 60 * 60 * 1000) return false;
     const candidateDate = String(candidate.date || '').slice(0, 10);
     if (date && candidateDate) {
       const distance = calendarDayDistance(date, candidateDate);
@@ -123,7 +142,14 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
     const candidateDate = String(candidate.date || '').slice(0, 10);
     if (!candidateDate) return false;
     const distance = calendarDayDistance(date, candidateDate);
-    return distance !== null && distance <= dateToleranceDays;
+    if (distance === null || distance > dateToleranceDays) return false;
+    const candidateKickoff = kickoffTimestamp(candidate.kickoffAt ?? candidate.matchKickoffAt ?? candidate.scheduledAt ??
+      candidate.raw?.date ?? candidate.raw?.match_date ?? candidate.raw?.fixture_date);
+    // Apply the same kickoff guard to the league-label fallback; never let that
+    // fallback re-admit a fixture rejected by the time check above.
+    if (alertKickoff !== null && candidateKickoff !== null &&
+        Math.abs(candidateKickoff - alertKickoff) > kickoffToleranceHours * 60 * 60 * 1000) return false;
+    return true;
   });
   return sameTeamsAndDate.length === 1 ? sameTeamsAndDate[0] : null;
 }

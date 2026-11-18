@@ -118,3 +118,35 @@ test('valid Over markets can be settled without a saved start score', () => {
   assert.equal(canSettleOverWithoutStartScore('Under 2.5'), false);
   assert.equal(canSettleOverWithoutStartScore('Over'), false);
 });
+
+test('fixture fallback uses kickoff time when both alert and provider expose it', () => {
+  const candidates = [
+    { id: 'same-day-wrong-time', date: '2026-11-07', kickoffAt: '2026-11-07T10:00:00Z', home: 'Alpha', away: 'Beta', league: 'League' },
+    { id: 'right-kickoff', date: '2026-11-07', kickoffAt: '2026-11-07T18:00:00Z', home: 'Alpha', away: 'Beta', league: 'League' }
+  ];
+  const match = findUniqueCompletedFixture(candidates, {
+    home: 'Alpha', away: 'Beta', league: 'League', date: '2026-11-07',
+    kickoffAt: '2026-11-07T18:15:00Z'
+  });
+  assert.equal(match.id, 'right-kickoff');
+});
+
+test('fixture fallback rejects kickoff mismatch beyond the four-hour tolerance', () => {
+  const candidates = [
+    { id: 'wrong-time', date: '2026-11-07', kickoffAt: '2026-11-07T10:00:00Z', home: 'Alpha', away: 'Beta', league: 'League' }
+  ];
+  assert.equal(findUniqueCompletedFixture(candidates, {
+    home: 'Alpha', away: 'Beta', league: 'League', date: '2026-11-07',
+    kickoffAt: '2026-11-07T18:00:00Z'
+  }), null);
+});
+
+test('fixture fallback keeps strict team/date matching when kickoff is missing', () => {
+  const candidates = [
+    { id: 'no-time', date: '2026-11-07', home: 'Alpha', away: 'Beta', league: 'League' }
+  ];
+  assert.equal(findUniqueCompletedFixture(candidates, {
+    home: 'Alpha', away: 'Beta', league: 'League', date: '2026-11-07',
+    kickoffAt: '2026-11-07T18:00:00Z'
+  }).id, 'no-time');
+});
