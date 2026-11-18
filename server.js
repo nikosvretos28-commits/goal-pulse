@@ -3842,7 +3842,7 @@ const server = http.createServer(async (req, res) => {
             // does not cover. Keep the same strict ordered-team/date/league uniqueness
             // checks; never grade from a score-only or ambiguous candidate.
             if (!matched?.result) {
-              const hunterSlug = value => normalizeFixtureName(value).replace(/\\s+/g, "-");
+              const hunterSlug = value => normalizeFixtureName(value).replace(/\s+/g, "-");
               const parseHunterScore = value => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
               const hunterDatesToCheck = [date, ...[-1, 1].map(offset =>
                 new Date(Date.parse(date + "T00:00:00Z") + offset * 86400000).toISOString().slice(0, 10)
