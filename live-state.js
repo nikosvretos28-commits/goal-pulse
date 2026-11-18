@@ -14,7 +14,7 @@ const LIVE_STATES = new Set([
   "q1", "q2", "q3", "q4"
 ]);
 
-const LIVE_LABEL_PATTERN = /(?:^|_)(?:live|playing|in_progress|inprogress|inplay|in_play|first_half|second_half|1st_half|2nd_half|half_time|halftime|1h|2h|extra_time|extratime|penalties|penalty_shootout|shootout|overtime|first_period|second_period|third_period|fourth_period|period_[1-4]|q[1-4])(?:_|$)/;
+const LIVE_LABEL_PATTERN = /(?:^|_)(?:in_progress|inprogress|inplay|in_play|first_half|second_half|1st_half|2nd_half|half_time|halftime|1h|2h|extra_time|extratime|penalties|penalty_shootout|shootout|overtime|first_period|second_period|third_period|fourth_period|period_[1-4]|q[1-4])(?:_|$)/;
 
 function normalizeStatus(value) {
   return String(value ?? "")
