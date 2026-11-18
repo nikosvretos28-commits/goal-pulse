@@ -14,7 +14,7 @@ test("recognizes common live football states and aliases", () => {
   for (const state of [
     "in", "IN", "live", "playing", "inplay", "in_play", "in_progress",
     "STATUS_IN_PROGRESS", "1H", "2H", "1st Half", "2nd Half",
-    "HT", "Halftime", "Half Time", "ET", "Extra Time",
+    "HT", "Halftime", "Half Time", "ET", "Extra Time", "BT", "Break Time", "P",
     "pen", "pens", "penalties", "penalty_shootout", "shootout"
   ]) {
     assert.equal(isLiveEvent({ status: { type: { state } } }), true, state);
@@ -43,7 +43,7 @@ test("recognizes provider human-readable status labels", () => {
 test("does not classify scheduled, postponed, suspended or finished events as live", () => {
   for (const state of [
     "pre", "scheduled", "not_started", "post", "finished", "final",
-    "full_time", "FT", "cancelled", "postponed", "suspended", "delayed"
+    "full_time", "FT", "AET", "cancelled", "postponed", "suspended", "delayed"
   ]) {
     assert.equal(isLiveEvent({ status: { type: { state } } }), false, state);
   }
