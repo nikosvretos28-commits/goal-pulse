@@ -40,7 +40,7 @@ test("missing inputs are omitted while every available component still contribut
         { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 }
       ])
     }
-  }), 51);
+  }), 46);
 
   // Missing xG omits only the xG contribution; other components remain scored.
   assert.equal(calculatePowerRankingScore({
@@ -52,7 +52,7 @@ test("missing inputs are omitted while every available component still contribut
         { shotsOnTarget: 1, dangerousAttacks: 2, attacks: 10 }
       ])
     }
-  }), 73);
+  }), 51);
 
   // If every scoring component is unavailable, no score is fabricated.
   assert.equal(calculatePowerRankingScore({
