@@ -3336,7 +3336,7 @@ const server = http.createServer(async (req, res) => {
             const completedResult = { status: "post", statusText: "finished", homeScore: home.score, awayScore: away.score,
               homeHtScore: Number.isFinite(homeFirstPeriod) ? homeFirstPeriod : null, awayHtScore: Number.isFinite(awayFirstPeriod) ? awayFirstPeriod : null,
               settlementProvider: "ESPN", settlementFixtureId: String(event.id || ""), settlementFixtureDate: fixtureDate, settlementLeague: leagueName };
-            completedScoreboardFixtures.push({ id: event.id == null ? "" : String(event.id), date: fixtureDate, league: leagueName,
+            completedScoreboardFixtures.push({ id: event.id == null ? "" : String(event.id), date: fixtureDate, kickoffAt: event.date || null, league: leagueName,
               home: home.team.displayName, away: away.team.displayName, result: completedResult });
           }
           for (const row of pending.rows) {
@@ -3362,7 +3362,8 @@ const server = http.createServer(async (req, res) => {
             const alertAway = alert.away || (Array.isArray(alert.teams) ? alert.teams[1] : "");
             const alertDate = row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : "";
             const matchedCompletedFixture = findUniqueCompletedFixture(completedScoreboardFixtures, {
-              eventId: row.event_id || alert.eventId, home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
+              eventId: row.event_id || alert.eventId, home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1,
+              kickoffAt: alert.kickoffAt || alert.matchKickoffAt || alert.scheduledAt || alert.matchDateTime || null, kickoffToleranceHours: 4
             });
             let completed = matchedCompletedFixture?.result || null;
             // The public day endpoint caps finished fixtures at 200. For a specific
@@ -3537,7 +3538,8 @@ const server = http.createServer(async (req, res) => {
                     candidate.id ? "id:" + candidate.id : JSON.stringify(candidate.raw), candidate
                   ])).values()];
                   const exactMatch = findUniqueCompletedFixture(uniqueCandidates, {
-                    home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1
+                    home: alertHome, away: alertAway, league: alert.league, date: alertDate, dateToleranceDays: 1,
+                    kickoffAt: alert.kickoffAt || alert.matchKickoffAt || alert.scheduledAt || alert.matchDateTime || null, kickoffToleranceHours: 4
                   });
                   if (exactMatch) {
                     const sportScoreHasHalfTime = exactMatch.result.homeHtScore != null && exactMatch.result.awayHtScore != null;
