@@ -3675,9 +3675,9 @@ const server = http.createServer(async (req, res) => {
               rule: alert.evaluationRule
             }));
           }
-          // Never leave an old alert pending forever. After 48 hours, if the
-          // completed fixture/period still has no verifiable provider score,
-          // close it as void (unverified), never as a win or loss.
+          // Keep the existing 48-hour unverified-void policy for VIP only.
+          // AI alerts remain pending until a provider supplies a verifiable result;
+          // absence of a result is never converted into a fabricated settlement.
           const staleUnverified = await analyticsPool.query(
             `UPDATE alert_history
                 SET payload = payload || jsonb_build_object(
@@ -3691,7 +3691,7 @@ const server = http.createServer(async (req, res) => {
                 ),
                 updated_at = NOW()
               WHERE created_at < NOW() - INTERVAL '48 hours'
-                AND COALESCE(payload->>'level', 'AI') IN ('AI', 'VIP')
+                AND COALESCE(payload->>'level', 'AI') = 'VIP'
                 AND lower(trim(COALESCE(payload->>'betOutcome', ''))) IN ('', 'pending', 'εκκρεμεί', 'σε εκκρεμότητα')
               RETURNING alert_id`
           );
@@ -4311,7 +4311,7 @@ const server = http.createServer(async (req, res) => {
         const powerRankingEligible = isPowerRankingMinuteEligible(powerRankingMinute, statusForEligibility);
         const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
         if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && !pushScanPowerRankingAlerts.has(id)) {
-          const alertId = "push:" + id + ":AI:power-ranking-59";
+          const alertId = "push:" + id + ":AI:power-ranking-59:" + now;
           try {
             if (await ensureAlertHistoryDb()) {
               const periodAtSignal = powerRankingMinute <= 34 ? "first_half" : "second_half";
