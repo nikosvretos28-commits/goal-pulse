@@ -6,7 +6,8 @@ const {
   parseOverLine,
   gradeOverMarket,
   getProviderFixtureId,
-  findUniqueCompletedFixture
+  findUniqueCompletedFixture,
+  rotatePendingSettlementRows
 } = require('./settlement');
 
 test('first-half settlement uses confirmed half-time score, never full-time score', () => {
@@ -149,4 +150,19 @@ test('fixture fallback keeps strict team/date matching when kickoff is missing',
     home: 'Alpha', away: 'Beta', league: 'League', date: '2026-11-07',
     kickoffAt: '2026-11-07T18:00:00Z'
   }).id, 'no-time');
+});
+
+
+test('pending settlement rows rotate fairly without mutating the original queue', () => {
+  const rows = [{ alert_id: 'oldest' }, { alert_id: 'middle' }, { alert_id: 'newest' }];
+  assert.deepEqual(rotatePendingSettlementRows(rows, 0).map(row => row.alert_id), ['oldest', 'middle', 'newest']);
+  assert.deepEqual(rotatePendingSettlementRows(rows, 1).map(row => row.alert_id), ['middle', 'newest', 'oldest']);
+  assert.deepEqual(rotatePendingSettlementRows(rows, 2).map(row => row.alert_id), ['newest', 'oldest', 'middle']);
+  assert.deepEqual(rotatePendingSettlementRows(rows, 4).map(row => row.alert_id), ['middle', 'newest', 'oldest']);
+  assert.deepEqual(rows.map(row => row.alert_id), ['oldest', 'middle', 'newest']);
+});
+
+test('pending settlement rotation safely handles empty and invalid queues', () => {
+  assert.deepEqual(rotatePendingSettlementRows([], 10), []);
+  assert.deepEqual(rotatePendingSettlementRows(null, 10), []);
 });
