@@ -17,6 +17,7 @@ const { evaluatePressureHunter } = require("./pressure-hunter");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
 const { validateTriggerAudit, buildTriggerAuditReversal } = require("./trigger-activation-audit");
+const { validateLedgerEvent, validateLedgerTransition, reduceLedgerEvents } = require("./universal-settlement-ledger");
 const { isVerifiedSecondHalfMieRecord } = require("./mie-alert-verification");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
@@ -316,6 +317,36 @@ async function ensureTriggerActivationAuditDb() {
     return false;
   });
   return triggerActivationAuditDbInit;
+}
+let universalSettlementLedgerDbInit = null;
+async function ensureUniversalSettlementLedgerDb() {
+  if (!analyticsPool) return false;
+  if (!universalSettlementLedgerDbInit) universalSettlementLedgerDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS universal_settlement_ledger (
+      ledger_event_id TEXT PRIMARY KEY,
+      settlement_id TEXT NOT NULL,
+      source_category TEXT NOT NULL,
+      source_record_id TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      status TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      reason TEXT,
+      evidence JSONB,
+      evaluation JSONB,
+      idempotency_key TEXT UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS universal_settlement_ledger_settlement_idx
+      ON universal_settlement_ledger(settlement_id, created_at ASC, ledger_event_id ASC);
+    CREATE INDEX IF NOT EXISTS universal_settlement_ledger_source_idx
+      ON universal_settlement_ledger(source_category, source_record_id, created_at DESC);
+  `).then(() => true).catch(error => {
+    universalSettlementLedgerDbInit = null;
+    console.error("[universal-settlement-ledger] database unavailable:", error.message);
+    return false;
+  });
+  return universalSettlementLedgerDbInit;
 }
 async function ensureAlertHistoryDb() {
   if (!analyticsPool) return false;
@@ -2366,6 +2397,72 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       console.error("[trigger-audit] request failed:", error.message);
       return send(res, 500, { ok: false, error: "Trigger audit request failed" });
+    }
+  }
+
+  if (url.pathname === "/api/settlement/ledger" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    if (!await ensureUniversalSettlementLedgerDb()) return send(res, 503, { ok: false, error: "Settlement ledger database unavailable" });
+    const body = auth.body || {};
+    try {
+      if (body.action === "list") {
+        const settlementId = String(body.settlementId || "").trim().slice(0, 180);
+        const sourceRecordId = String(body.sourceRecordId || "").trim().slice(0, 180);
+        if (!settlementId && !sourceRecordId) return send(res, 400, { ok: false, error: "settlementId or sourceRecordId is required" });
+        const result = await analyticsPool.query(
+          "SELECT ledger_event_id, settlement_id, source_category, source_record_id, event_id, action, status, actor, reason, evidence, evaluation, idempotency_key, created_at FROM universal_settlement_ledger WHERE ($1 = '' OR settlement_id = $1) AND ($2 = '' OR source_record_id = $2) ORDER BY created_at ASC, ledger_event_id ASC LIMIT 1000",
+          [settlementId, sourceRecordId]
+        );
+        return send(res, 200, { ok: true, appendOnly: true, count: result.rowCount, events: result.rows, states: reduceLedgerEvents(result.rows) });
+      }
+      if (body.action !== "append") return send(res, 400, { ok: false, error: "Unsupported ledger action" });
+      const checked = validateLedgerEvent(body.event || {});
+      if (!checked.ok) return send(res, 400, { ok: false, error: checked.reason });
+      const event = checked.event;
+      const client = await analyticsPool.connect();
+      try {
+        await client.query("BEGIN");
+        if (event.idempotencyKey) {
+          const duplicate = await client.query("SELECT ledger_event_id FROM universal_settlement_ledger WHERE idempotency_key = $1", [event.idempotencyKey]);
+          if (duplicate.rowCount) {
+            await client.query("COMMIT");
+            return send(res, 200, { ok: true, duplicate: true, ledgerEventId: duplicate.rows[0].ledger_event_id });
+          }
+        }
+        const prior = await client.query(
+          "SELECT status FROM universal_settlement_ledger WHERE settlement_id = $1 ORDER BY created_at DESC, ledger_event_id DESC LIMIT 1 FOR UPDATE",
+          [event.settlementId]
+        );
+        const transition = validateLedgerTransition(prior.rows[0]?.status || "pending", event);
+        if (!transition.ok) {
+          await client.query("ROLLBACK");
+          return send(res, 409, { ok: false, error: transition.reason });
+        }
+        const source = event.sourceCategory === "hi_activity"
+          ? await client.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [event.sourceRecordId])
+          : event.sourceCategory === "pressure_hunter"
+            ? await client.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [event.sourceRecordId])
+            : await client.query("SELECT event_id FROM alert_history WHERE alert_id = $1", [event.sourceRecordId]);
+        if (!source.rowCount || String(source.rows[0].event_id) !== event.eventId) {
+          await client.query("ROLLBACK");
+          return send(res, 409, { ok: false, error: "Source history record does not match the supplied event" });
+        }
+        const id = require("node:crypto").randomUUID();
+        const inserted = await client.query(
+          "INSERT INTO universal_settlement_ledger (ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12) RETURNING ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,created_at",
+          [id,event.settlementId,event.sourceCategory,event.sourceRecordId,event.eventId,event.action,transition.status,event.actor,event.reason,JSON.stringify(event.evidence),JSON.stringify(event.evaluation),event.idempotencyKey]
+        );
+        await client.query("COMMIT");
+        return send(res, 201, { ok: true, appended: true, event: inserted.rows[0] });
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw error;
+      } finally { client.release(); }
+    } catch (error) {
+      console.error("[universal-settlement-ledger] request failed:", error.message);
+      return send(res, 500, { ok: false, error: "Settlement ledger request failed" });
     }
   }
 
