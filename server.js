@@ -2355,9 +2355,21 @@ const server = http.createServer(async (req, res) => {
       const entry = checked.entry;
       if (entry.category === "ai" || entry.category === "vip") {
         if (!await ensureAlertHistoryDb()) return send(res, 503, { ok: false, error: "Alert history source unavailable" });
-        const linked = await analyticsPool.query("SELECT event_id, level FROM alert_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
+        const linked = await analyticsPool.query("SELECT event_id, level, payload FROM alert_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
         const expectedLevel = entry.category === "vip" ? "VIP" : "AI";
-        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId || linked.rows[0].level !== expectedLevel) return send(res, 409, { ok: false, error: "Linked AI/VIP history record does not match event and category" });
+        const linkedPayload = linked.rows[0]?.payload || {};
+        const linkedTriggerIds = Array.isArray(linkedPayload.triggerIds) ? linkedPayload.triggerIds : [];
+        const isPowerGamesRecord = linkedPayload.source === "manual-power-games";
+        const isPowerRankingRecord = linkedPayload.source === "manual-power-ranking" ||
+          String(linkedPayload.alertType || "").startsWith("power_ranking_") ||
+          linkedTriggerIds.some(value => String(value).startsWith("power_ranking_"));
+        const categoryMatches = entry.category === "vip"
+          ? !isPowerGamesRecord && !isPowerRankingRecord
+          : !isPowerRankingRecord;
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId ||
+            linked.rows[0].level !== expectedLevel || !categoryMatches) {
+          return send(res, 409, { ok: false, error: "Linked AI/VIP history record does not match event and category" });
+        }
       } else if (entry.category === "hi_activity") {
         if (!await ensureHighActivityHistoryDb()) return send(res, 503, { ok: false, error: "HI Activity history source unavailable" });
         const linked = await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [entry.sourceRecordId]);
@@ -2452,7 +2464,7 @@ const server = http.createServer(async (req, res) => {
           record = source.rows[0].payload || {};
           const ids = Array.isArray(record.triggerIds) ? record.triggerIds : [];
           const categoryMatches = sourceCategory === "hi_activity" || sourceCategory === "pressure_hunter" ||
-            (sourceCategory === "ai_alert" && source.rows[0].level === "AI" && record.source !== "manual-power-ranking" && record.alertType !== "power_ranking_signal" && !ids.some(value => String(value).startsWith("power_ranking_"))) ||
+            (sourceCategory === "ai_alert" && source.rows[0].level === "AI" && record.source !== "manual-power-ranking" && !String(record.alertType || "").startsWith("power_ranking_") && !ids.some(value => String(value).startsWith("power_ranking_"))) ||
             (sourceCategory === "vip_alert" && source.rows[0].level === "VIP" && !["manual-power-games","manual-power-ranking"].includes(record.source)) ||
             (sourceCategory === "power_games" && source.rows[0].level === "VIP" && record.source === "manual-power-games") ||
             (sourceCategory === "power_ranking" && (record.source === "manual-power-ranking" || String(record.alertType || "").startsWith("power_ranking_") || ids.some(value => String(value).startsWith("power_ranking_"))));
