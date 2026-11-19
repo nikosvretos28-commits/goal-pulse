@@ -38,7 +38,7 @@ function validateTriggerAudit(input = {}) {
       !["log", "trace", "screenshot", "provider_record", "user_supplied"].includes(evidenceType)) {
     return { ok: false, reason: "incomplete_trigger_audit" };
   }
-  if (category === "ai" || category === "vip" || category === "hi_activity" || category === "pressure_hunter") {
+  if (category === "ai" || category === "vip" || category === "hi_activity" || category === "pressure_hunter" || category === "power_games" || category === "power_ranking") {
     if (!sourceRecordId && !alertId) return { ok: false, reason: "missing_history_link" };
   }
   return { ok: true, entry: {
