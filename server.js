@@ -2573,7 +2573,8 @@ const server = http.createServer(async (req, res) => {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
     const auth = await authorizePrivateAdminRequest(req);
     if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
-    const limit = Math.max(1, Math.min(5000, Math.trunc(Number(auth.body.limit) || 1000)));
+    const limit = Math.max(100, Math.min(1000, Math.trunc(Number(auth.body.limit) || 1000)));
+    const cursor = Math.max(0, Math.min(1000000, Math.trunc(Number(auth.body.cursor) || 0)));
     const sources = {
       aiVip: { available: false, count: 0 },
       powerGames: { available: false, count: 0 },
@@ -2581,48 +2582,64 @@ const server = http.createServer(async (req, res) => {
       hiActivity: { available: false, count: 0 },
       pressureHunter: { available: false, count: 0 }
     };
+    let more = false;
     try {
       const alertsReady = await ensureAlertHistoryDb();
       if (alertsReady) {
-        const result = await analyticsPool.query(
-          "SELECT alert_id, event_id, level, created_at, payload FROM alert_history ORDER BY created_at DESC, alert_id DESC LIMIT 5000"
-        );
-        sources.aiVip = { available: true, count: result.rowCount };
-        sources.powerGames = { available: true, count: result.rows.filter(row => row.payload?.source === "manual-power-games").length };
-        sources.powerRanking = { available: true, count: result.rows.filter(row => {
+        const [page, count] = await Promise.all([
+          analyticsPool.query(
+            "SELECT alert_id, event_id, level, created_at, payload FROM alert_history ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2",
+            [limit + 1, cursor]
+          ),
+          analyticsPool.query("SELECT COUNT(*)::bigint AS count FROM alert_history")
+        ]);
+        more = more || page.rowCount > limit;
+        var alertRows = page.rows.slice(0, limit);
+        sources.aiVip = { available: true, count: Number(count.rows[0]?.count || 0) };
+        sources.powerGames.count = alertRows.filter(row => row.payload?.source === "manual-power-games").length;
+        sources.powerRanking.count = alertRows.filter(row => {
           const payload = row.payload || {};
           const ids = Array.isArray(payload.triggerIds) ? payload.triggerIds : [];
-          return payload.source === "manual-power-ranking" || payload.alertType === "power_ranking_signal" ||
-            ids.includes("power_ranking_59") || ids.includes("power_ranking_autonomous_65");
-        }).length };
-        var alertRows = result.rows;
+          return payload.source === "manual-power-ranking" || String(payload.alertType || "").startsWith("power_ranking_") ||
+            ids.some(value => String(value).startsWith("power_ranking_"));
+        }).length;
+        sources.powerGames.available = true;
+        sources.powerRanking.available = true;
       }
       const hiReady = await ensureHighActivityHistoryDb();
       if (hiReady) {
-        const result = await highActivityHistoryPool.query(
-          "SELECT observation_id, event_id, created_at, payload FROM high_activity_history ORDER BY created_at DESC, observation_id DESC LIMIT 5000"
-        );
-        sources.hiActivity = { available: true, count: result.rowCount };
-        var hiRows = result.rows;
+        const [page, count] = await Promise.all([
+          highActivityHistoryPool.query(
+            "SELECT observation_id, event_id, created_at, payload FROM high_activity_history ORDER BY created_at DESC, observation_id DESC LIMIT $1 OFFSET $2",
+            [limit + 1, cursor]
+          ),
+          highActivityHistoryPool.query("SELECT COUNT(*)::bigint AS count FROM high_activity_history")
+        ]);
+        more = more || page.rowCount > limit;
+        var hiRows = page.rows.slice(0, limit);
+        sources.hiActivity = { available: true, count: Number(count.rows[0]?.count || 0) };
       }
       const hunterReady = await ensurePressureHunterDb();
       if (hunterReady) {
-        const result = await analyticsPool.query(
-          "SELECT alert_id, event_id, created_at, payload FROM pressure_hunter_history ORDER BY created_at DESC, alert_id DESC LIMIT 5000"
-        );
-        sources.pressureHunter = { available: true, count: result.rowCount };
-        var hunterRows = result.rows;
+        const [page, count] = await Promise.all([
+          analyticsPool.query(
+            "SELECT alert_id, event_id, created_at, payload FROM pressure_hunter_history ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2",
+            [limit + 1, cursor]
+          ),
+          analyticsPool.query("SELECT COUNT(*)::bigint AS count FROM pressure_hunter_history")
+        ]);
+        more = more || page.rowCount > limit;
+        var hunterRows = page.rows.slice(0, limit);
+        sources.pressureHunter = { available: true, count: Number(count.rows[0]?.count || 0) };
       }
       const queue = buildUniversalSettlementQueue({
-        alerts: alertRows || [],
-        hiActivity: hiRows || [],
-        pressureHunter: hunterRows || []
-      }, limit);
+        alerts: alertRows || [], hiActivity: hiRows || [], pressureHunter: hunterRows || []
+      }, Math.min(5000, limit * 3));
       const unavailable = Object.entries(sources).filter(([, value]) => !value.available).map(([key]) => key);
       return send(res, 200, {
         ok: true, readOnly: true, generatedAt: new Date().toISOString(),
-        complete: unavailable.length === 0, unavailableSources: unavailable,
-        sources, ...queue
+        complete: unavailable.length === 0 && !more, unavailableSources: unavailable,
+        sources, cursor, nextCursor: more ? cursor + limit : null, hasMore: more, ...queue
       });
     } catch (error) {
       console.error("[universal-settlement] Queue read failed:", error.message);
