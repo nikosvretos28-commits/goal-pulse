@@ -1,0 +1,60 @@
+"use strict";
+
+const TERMINAL_ALERT = new Set(["won", "lost", "push", "void"]);
+const TERMINAL_ACTIVITY = new Set(["won", "lost", "push", "void", "confirmed", "not_confirmed"]);
+const TERMINAL_HUNTER = new Set(["confirmed", "not_confirmed", "won", "lost", "push", "void"]);
+
+function isPending(value, terminal) {
+  return !terminal.has(String(value ?? "").trim().toLowerCase());
+}
+
+function buildUniversalSettlementQueue(input = {}, limit = 1000) {
+  const records = [];
+  const push = (category, id, eventId, createdAt, payload, pending) => {
+    if (!pending || !payload || typeof payload !== "object") return;
+    records.push({
+      category, id: String(id || ""), eventId: String(eventId || ""),
+      createdAt: createdAt ?? payload.createdAt ?? null, payload
+    });
+  };
+
+  for (const row of Array.isArray(input.alerts) ? input.alerts : []) {
+    const payload = row.payload || {};
+    push(
+      String(row.level || payload.level || "AI").toUpperCase() === "VIP" ? "VIP_ALERT" : "AI_ALERT",
+      row.alert_id || payload.alertId, row.event_id || payload.eventId, row.created_at || payload.createdAt,
+      payload, isPending(payload.betOutcome, TERMINAL_ALERT)
+    );
+  }
+  for (const row of Array.isArray(input.hiActivity) ? input.hiActivity : []) {
+    const payload = row.payload || {};
+    push("HI_ACTIVITY", row.observation_id || payload.observationId, row.event_id || payload.eventId,
+      row.created_at || payload.createdAt, payload, isPending(payload.outcome, TERMINAL_ACTIVITY));
+  }
+  for (const row of Array.isArray(input.pressureHunter) ? input.pressureHunter : []) {
+    const payload = row.payload || {};
+    const settled = TERMINAL_HUNTER.has(String(payload.outcomeStatus || "").trim().toLowerCase()) ||
+      TERMINAL_HUNTER.has(String(payload.outcome || "").trim().toLowerCase());
+    push("PRESSURE_HUNTER", row.alert_id || payload.alertId, row.event_id || payload.eventId,
+      row.created_at || payload.createdAt, payload, !settled);
+  }
+
+  records.sort((a, b) => {
+    const left = Date.parse(a.createdAt || 0) || Number(a.createdAt) || 0;
+    const right = Date.parse(b.createdAt || 0) || Number(b.createdAt) || 0;
+    return right - left || a.category.localeCompare(b.category) || a.id.localeCompare(b.id);
+  });
+  const safeLimit = Math.max(1, Math.min(5000, Math.trunc(Number(limit) || 1000)));
+  return {
+    totalPending: records.length,
+    returned: Math.min(records.length, safeLimit),
+    truncated: records.length > safeLimit,
+    counts: records.reduce((acc, item) => {
+      acc[item.category] = (acc[item.category] || 0) + 1;
+      return acc;
+    }, {}),
+    records: records.slice(0, safeLimit)
+  };
+}
+
+module.exports = { buildUniversalSettlementQueue };
