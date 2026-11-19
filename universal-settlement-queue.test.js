@@ -51,3 +51,20 @@ test("recognizes legacy Greek settled labels instead of reopening them", () => {
   assert.equal(result.totalPending, 2);
   assert.deepEqual(new Set(result.records.map(x => x.id)), new Set(["pending-gr", "hunter-pending"]));
 });
+
+
+test("separates Power Games and Power Ranking from their shared AI/VIP history stores", () => {
+  const result = buildUniversalSettlementQueue({
+    alerts: [
+      { alert_id: "pg1", event_id: "e1", level: "VIP", payload: { source: "manual-power-games", betOutcome: "pending" } },
+      { alert_id: "pr1", event_id: "e2", level: "VIP", payload: { source: "manual-power-ranking", betOutcome: "pending" } },
+      { alert_id: "pr2", event_id: "e3", level: "AI", payload: { alertType: "power_ranking_signal", betOutcome: "pending" } },
+      { alert_id: "hi1", event_id: "e4", level: "VIP", payload: { source: "manual-high-activity", betOutcome: "pending" } },
+      { alert_id: "vip1", event_id: "e5", level: "VIP", payload: { betOutcome: "pending" } }
+    ]
+  });
+  assert.deepEqual(result.counts, {
+    POWER_GAMES: 1, POWER_RANKING: 2, HI_ACTIVITY: 1, VIP_ALERT: 1
+  });
+  assert.equal(result.totalPending, 5);
+});
