@@ -38,7 +38,7 @@ function buildUniversalSettlementQueue(input = {}, limit = 1000) {
       String(row.level || payload.level || "AI").toUpperCase() === "VIP" ? "VIP_ALERT" : "AI_ALERT";
     push(
       category, row.alert_id || payload.alertId, row.event_id || payload.eventId, row.created_at || payload.createdAt,
-      payload, isPending(payload.betOutcome, TERMINAL_ALERT)
+      payload, isPending(payload.betOutcome ?? payload.outcomeStatus ?? payload.settlementStatus ?? payload.outcome ?? payload.status, TERMINAL_ALERT)
     );
   }
   for (const row of Array.isArray(input.hiActivity) ? input.hiActivity : []) {
