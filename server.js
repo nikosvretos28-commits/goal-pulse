@@ -2591,18 +2591,13 @@ const server = http.createServer(async (req, res) => {
             "SELECT alert_id, event_id, level, created_at, payload FROM alert_history ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2",
             [limit + 1, cursor]
           ),
-          analyticsPool.query("SELECT COUNT(*)::bigint AS count FROM alert_history")
+          analyticsPool.query("SELECT COUNT(*)::bigint AS count, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-games')::bigint AS power_games, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-ranking' OR payload->>'alertType' LIKE 'power_ranking_%')::bigint AS power_ranking FROM alert_history")
         ]);
         more = more || page.rowCount > limit;
         var alertRows = page.rows.slice(0, limit);
         sources.aiVip = { available: true, count: Number(count.rows[0]?.count || 0) };
-        sources.powerGames.count = alertRows.filter(row => row.payload?.source === "manual-power-games").length;
-        sources.powerRanking.count = alertRows.filter(row => {
-          const payload = row.payload || {};
-          const ids = Array.isArray(payload.triggerIds) ? payload.triggerIds : [];
-          return payload.source === "manual-power-ranking" || String(payload.alertType || "").startsWith("power_ranking_") ||
-            ids.some(value => String(value).startsWith("power_ranking_"));
-        }).length;
+        sources.powerGames.count = Number(count.rows[0]?.power_games || 0);
+        sources.powerRanking.count = Number(count.rows[0]?.power_ranking || 0);
         sources.powerGames.available = true;
         sources.powerRanking.available = true;
       }
