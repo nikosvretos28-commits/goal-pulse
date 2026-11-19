@@ -2591,7 +2591,7 @@ const server = http.createServer(async (req, res) => {
             "SELECT alert_id, event_id, level, created_at, payload FROM alert_history ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2",
             [limit + 1, cursor]
           ),
-          analyticsPool.query("SELECT COUNT(*)::bigint AS count, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-games')::bigint AS power_games, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-ranking' OR payload->>'alertType' LIKE 'power_ranking_%')::bigint AS power_ranking FROM alert_history")
+          analyticsPool.query("SELECT COUNT(*)::bigint AS count, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-games')::bigint AS power_games, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-ranking' OR payload->>'alertType' LIKE 'power_ranking_%' OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS trigger_id WHERE trigger_id LIKE 'power_ranking_%'))::bigint AS power_ranking FROM alert_history")
         ]);
         more = more || page.rowCount > limit;
         var alertRows = page.rows.slice(0, limit);
