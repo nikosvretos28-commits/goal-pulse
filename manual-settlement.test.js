@@ -18,7 +18,7 @@ test('repairs only allowlisted first-half AI alerts and grades Over using the su
   assert.equal(settled.betFinalScore, '7-1');
   assert.equal(settled.betHalfTimeScore, '7-1');
   assert.equal(settled.betScoreScope, 'first_half');
-  assert.equal(settled.betOutcome, 'lost');
+  assert.equal(settled.betOutcome, 'won');
   assert.equal(settled.evaluationRule, 'manual_verified_half_time_score');
   assert.equal(settled.manualSettlementAudit.overLine, 7.5);
 });
