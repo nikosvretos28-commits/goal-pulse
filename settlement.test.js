@@ -67,6 +67,13 @@ test('fixture fallback requires exact date, orientation, league and a unique mat
   }), null);
 });
 
+test('normalizes club suffixes used by historical settlement providers', () => {
+  const { normalizeFixtureName } = require('./settlement');
+  assert.equal(normalizeFixtureName('Puerto Rico Surf SC'), 'puerto rico surf');
+  assert.equal(normalizeFixtureName('Academia Quintana'), 'academia quintana');
+  assert.equal(normalizeFixtureName('FC Puerto Rico Surf'), 'puerto rico surf');
+});
+
 test('normalizes common club prefixes', () => {
   assert.equal(findUniqueCompletedFixture([{id:'x',date:'2026-11-07',home:'Alpha FC',away:'Beta SC',league:'League'}], {
     home:'Alpha',away:'Beta',league:'League',date:'2026-11-07'
