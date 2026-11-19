@@ -5732,7 +5732,7 @@ function setSettlementLedgerEnabled(enabled){['appendSettlementLedger','loadSett
 document.getElementById('appendSettlementLedger')?.addEventListener('click',async()=>{
  const value=id=>String(document.getElementById(id)?.value||'').trim(),status=document.getElementById('settlementLedgerStatus'),out=document.getElementById('settlementLedgerOutput');
  const action=value('ledgerAction');let evidence=null;
- if(action==='evidence_attached'){try{evidence=JSON.parse(value('ledgerEvidence'));}catch{if(status)status.textContent='Το αποδεικτικό πρέπει να είναι έγκυρο JSON.';return;}}
+ if(action==='evidence_attached'||action==='settle'){try{evidence=JSON.parse(value('ledgerEvidence'));}catch{if(status)status.textContent='Το αποδεικτικό πρέπει να είναι έγκυρο JSON.';return;}}
  const event={settlementId:value('ledgerSettlementId'),sourceCategory:value('ledgerSourceCategory'),sourceRecordId:value('ledgerSourceRecordId'),eventId:value('ledgerEventId'),action,actor:value('ledgerActor')||'owner',reason:value('ledgerReason'),evidence,idempotencyKey:value('ledgerIdempotency')||null};
  try{if(status)status.textContent=action==='settle'?'Έλεγχος αγώνα και ασφαλής αξιολόγηση…':'Έλεγχος σύνδεσης και append…';const data=await settlementLedgerRequest({action:action==='settle'?'settle':'append',event});if(out)out.textContent=JSON.stringify(data,null,2);if(status)status.textContent=data.duplicate?'Η ίδια ενέργεια υπάρχει ήδη.':data.finalized?'Επαληθεύτηκε και οριστικοποιήθηκε από τον server: '+data.outcome:'Το γεγονός προστέθηκε στο append-only ledger.';}
  catch(error){if(status)status.textContent='Δεν καταχωρίστηκε: '+String(error.message||error).slice(0,180);}
