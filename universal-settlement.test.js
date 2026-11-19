@@ -44,12 +44,22 @@ test("first-half alert uses half-time score, not full-time score", () => {
   assert.equal(result.settlement.evaluationScore, "1-0");
 });
 
-test("second-half alert uses full-time score", () => {
+test("second-half alert grades only goals scored after half-time", () => {
   const result = resolveAlertSettlement({
-    home: "Alpha FC", away: "Beta SC", periodAtSignal: "second_half", market: "Over 2.5"
+    home: "Alpha FC", away: "Beta SC", periodAtSignal: "second_half", market: "Over 3.5"
   }, evidence);
   assert.equal(result.ok, true);
-  assert.equal(result.settlement.evaluationScore, "3-1");
+  assert.equal(result.settlement.evaluationPeriod, "second_half");
+  assert.equal(result.settlement.evaluationScore, "2-1");
+  assert.equal(result.settlement.outcome, "lost");
+});
+
+test("second-half alert remains unresolved when half-time score is missing", () => {
+  const result = resolveAlertSettlement({
+    home: "Alpha FC", away: "Beta SC", periodAtSignal: "second_half", market: "Over 0.5"
+  }, { ...evidence, homeHtScore: null });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "required_period_score_missing");
 });
 
 test("missing half-time score remains unresolved for first-half signals", () => {
