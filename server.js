@@ -3,7 +3,7 @@ const webpush = require("web-push");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
-const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture, rotateSettlementRows } = require("./settlement");
+const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture, rotateSettlementRows, prioritizeSettlementRows } = require("./settlement");
 const { normalizeLiveMinute } = require("./live-minute");
 const { isLiveEvent } = require("./live-state");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
@@ -3345,7 +3345,10 @@ const server = http.createServer(async (req, res) => {
             completedScoreboardFixtures.push({ id: event.id == null ? "" : String(event.id), date: fixtureDate, kickoffAt: event.date || null, league: leagueName,
               home: home.team.displayName, away: away.team.displayName, result: completedResult });
           }
-          const settlementRows = Array.isArray(pending.rows) ? pending.rows : [];
+          // The SportScore historical lookup is globally rate-limited. Process recent pending
+          // alerts first so a large backlog cannot consume every lookup opportunity
+          // before newly-created alerts are examined; rotation below preserves fairness.
+          const settlementRows = prioritizeSettlementRows(pending.rows);
           const settlementOffset = settlementRows.length ? aiSettlementScanCursor % settlementRows.length : 0;
           const orderedSettlementRows = rotateSettlementRows(settlementRows, settlementOffset);
           if (settlementRows.length) aiSettlementScanCursor = (settlementOffset + 1) % settlementRows.length;
