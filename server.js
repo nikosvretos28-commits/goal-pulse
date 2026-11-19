@@ -2334,6 +2334,17 @@ const server = http.createServer(async (req, res) => {
         if (!await ensurePressureHunterDb()) return send(res, 503, { ok: false, error: "Pressure Hunter history source unavailable" });
         const linked = await analyticsPool.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
         if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked Pressure Hunter record does not match event" });
+      } else if (entry.category === "power_ranking") {
+        if (!entry.alertId) return send(res, 400, { ok: false, error: "Power Ranking requires its original alert ID" });
+        if (!await ensureAlertHistoryDb()) return send(res, 503, { ok: false, error: "Power Ranking alert history unavailable" });
+        const linked = await analyticsPool.query("SELECT event_id, level, payload FROM alert_history WHERE alert_id = $1", [entry.alertId]);
+        const payload = linked.rows[0]?.payload || {};
+        const triggerIds = Array.isArray(payload.triggerIds) ? payload.triggerIds : [];
+        const isPowerRanking = payload.alertType === "power_ranking_signal" ||
+          triggerIds.includes("power_ranking_59") || triggerIds.includes("power_ranking_autonomous_65");
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId || linked.rows[0].level !== "AI" || !isPowerRanking) {
+          return send(res, 409, { ok: false, error: "Linked Power Ranking alert does not match event and trigger" });
+        }
       } else {
         return send(res, 409, { ok: false, error: "This category has no verified canonical history source yet" });
       }
