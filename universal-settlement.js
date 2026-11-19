@@ -63,7 +63,7 @@ function validateEvidence(input = {}) {
 function evaluationPeriod(record = {}) {
   const period = clean(record.periodAtSignal, 30).toLowerCase();
   if (period === "first_half" || period === "1h" || period === "first") return "first_half";
-  if (period === "second_half" || period === "2h" || period === "second") return "full_time";
+  if (period === "second_half" || period === "2h" || period === "second") return "second_half";
   return null;
 }
 function parseGoalMarket(market) {
@@ -104,16 +104,17 @@ function resolveAlertSettlement(record = {}, evidenceInput = {}, settledAt = new
   if (recordLeague && evidenceLeague && recordLeague !== evidenceLeague) return { ok: false, reason: "fixture_league_mismatch" };
   const scope = evaluationPeriod(record);
   if (!scope) return { ok: false, reason: "unknown_signal_period" };
+  const hasHalfTimeScore = evidence.homeHtScore !== null && evidence.awayHtScore !== null;
   const total = scope === "first_half"
-    ? evidence.homeHtScore === null || evidence.awayHtScore === null ? null : evidence.homeHtScore + evidence.awayHtScore
-    : evidence.homeScore + evidence.awayScore;
-  if (total === null) return { ok: false, reason: "required_period_score_missing" };
+    ? hasHalfTimeScore ? evidence.homeHtScore + evidence.awayHtScore : null
+    : !hasHalfTimeScore ? null : (evidence.homeScore - evidence.homeHtScore) + (evidence.awayScore - evidence.awayHtScore);
+  if (total === null || total < 0) return { ok: false, reason: "required_period_score_missing" };
   const outcome = gradeGoalMarket(total, record.market);
   if (!outcome) return { ok: false, reason: "unsupported_market" };
   return { ok: true, settlement: {
     outcome, evaluationPeriod: scope, evaluationScore: scope === "first_half"
       ? evidence.homeHtScore + "-" + evidence.awayHtScore
-      : evidence.homeScore + "-" + evidence.awayScore,
+      : (evidence.homeScore - evidence.homeHtScore) + "-" + (evidence.awayScore - evidence.awayHtScore),
     finalScore: evidence.homeScore + "-" + evidence.awayScore,
     settledAt, settlementMethod: "verified_manual",
     settlementEvidence: evidence
