@@ -2945,7 +2945,14 @@ header {
  <div class="notification-optin-row"><label for="privateAiPin">Admin PIN</label><input id="privateAiPin" type="password" autocomplete="current-password" inputmode="numeric" placeholder="Εισαγωγή PIN" style="max-width:220px"><button type="button" class="login" id="privateAiUnlock">ΞΕΚΛΕΙΔΩΜΑ</button><span id="privateAiStatus" class="subtle" aria-live="polite">Απαιτείται προσωπικό PIN.</span></div>
 <div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="runManualSettlementRepair" disabled>🛠 ΧΕΙΡΟΚΙΝΗΤΟΣ ΔΙΑΚΑΝΟΝΙΣΜΟΣ · 4 ΕΚΚΡΕΜΗ</button><span id="manualSettlementRepairStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div>
 <div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="loadUniversalSettlementQueue" disabled>📚 ΟΛΑ ΤΑ ΙΣΤΟΡΙΚΑ · ΕΚΚΡΕΜΟΤΗΤΕΣ</button><span id="universalSettlementQueueStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div>
-<pre id="universalSettlementQueueResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:460px;overflow:auto"></pre>
+<section id="universalSettlementCenter" class="top-ai-alerts" aria-labelledby="universalSettlementCenterTitle" style="margin-top:14px">
+ <div class="top-ai-alerts-head"><div><h3 id="universalSettlementCenterTitle">⚖ UNIVERSAL SETTLEMENT CENTER</h3><p>Κεντρική ουρά εκκρεμοτήτων από τις πραγματικές αποθήκες ιστορικού. Η προβολή είναι μόνο για ανάγνωση.</p></div><span class="pulse-status" id="settlementCenterCount">ΑΝΑΜΟΝΗ</span></div>
+ <div id="settlementCenterSummary" class="signal-summary" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0"></div>
+ <div id="settlementCenterSources" class="subtle" aria-live="polite">Φόρτωσε την ουρά για έλεγχο διαθεσιμότητας πηγών.</div>
+ <div id="settlementCenterRecords" style="display:grid;gap:8px;margin-top:12px"></div>
+ <div id="settlementCenterSelection" class="top-ai-alert-empty" aria-live="polite" style="margin-top:12px">Επίλεξε μία εκκρεμή εγγραφή για να δεις τα αποθηκευμένα στοιχεία της.</div>
+</section>
+<pre id="universalSettlementQueueResult" hidden></pre>
 <section class="top-ai-alerts" aria-labelledby="triggerAuditTitle" style="margin-top:14px">
  <h3 id="triggerAuditTitle">TRIGGER ACTIVATION AUDIT · APPEND-ONLY</h3>
  <p class="top-ai-alert-privacy">Οι χειροκίνητες ανακατασκευές σημειώνονται ρητά ως manual και δεν θεωρούνται αυτόματες ενεργοποιήσεις. Απαιτείται σύνδεση με υπάρχουσα εγγραφή ιστορικού και αποδεικτικό log/trace.</p>
@@ -5648,19 +5655,31 @@ document.getElementById('loadUniversalSettlementQueue')?.addEventListener('click
   const response=await fetch(ANALYTICS_API+'/api/settlement/universal-queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin,limit:5000}),cache:'no-store'});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));
-  const labels={AI_ALERT:'AI Alerts',VIP_ALERT:'VIP Alerts',HI_ACTIVITY:'HI Activity',PRESSURE_HUNTER:'Pressure Hunter'};
-  const counts=Object.entries(data.counts||{}).map(([key,value])=>(labels[key]||key)+': '+value).join(' · ')||'Δεν βρέθηκαν εκκρεμότητες';
+  const labels={AI_ALERT:'AI Alerts',VIP_ALERT:'VIP Alerts',HI_ACTIVITY:'HI Activity',PRESSURE_HUNTER:'Pressure Hunter',POWER_GAMES:'Power Games',POWER_RANKING:'Power Ranking'};
   const records=Array.isArray(data.records)?data.records:[];
-  const lines=records.map((item,index)=>{
-   const p=item.payload||{};
-   const teams=[p.home||p.homeTeam||'',p.away||p.awayTeam||''].filter(Boolean).join(' – ')||'Αγώνας χωρίς αποθηκευμένα ονόματα';
-   const market=p.market||p.alertType||'—';
-   const minute=p.minuteNumber??p.minute??'—';
-   const when=item.createdAt?new Date(item.createdAt).toLocaleString('el-GR',{timeZone:'Europe/Athens'}):'—';
-   return (index+1)+'. ['+(labels[item.category]||item.category)+'] '+teams+' | '+market+' | '+minute+' | '+when+' | ID: '+(item.id||'—');
-  });
-  const sourceLines=Object.entries(data.sources||{}).map(([key,value])=>(labels[key]||key)+': '+(value.available?'διαθέσιμο ('+value.count+')':'ΜΗ ΔΙΑΘΕΣΙΜΟ')).join('\n');
-  if(output)output.textContent='Εκκρεμότητες: '+data.totalPending+'\n'+counts+'\n'+(data.complete?'Όλες οι αποθήκες απαντούν.':'ΠΡΟΣΟΧΗ: ελλιπής εικόνα — '+(data.unavailableSources||[]).join(', '))+'\n\nΠΗΓΕΣ\n'+sourceLines+'\n\nΕΓΓΡΑΦΕΣ\n'+lines.join('\n');
+  const summary=document.getElementById('settlementCenterSummary'),sources=document.getElementById('settlementCenterSources');
+  const host=document.getElementById('settlementCenterRecords'),count=document.getElementById('settlementCenterCount'),selection=document.getElementById('settlementCenterSelection');
+  if(count)count.textContent=String(data.totalPending||0)+' ΕΚΚΡΕΜΗ';
+  if(summary)summary.replaceChildren(...Object.entries(data.counts||{}).map(([key,value])=>{const chip=document.createElement('span');chip.className='count';chip.textContent=(labels[key]||key)+': '+value;return chip;}));
+  if(sources)sources.textContent=Object.entries(data.sources||{}).map(([key,value])=>(labels[key]||key)+': '+(value.available?'διαθέσιμο ('+value.count+')':'ΜΗ ΔΙΑΘΕΣΙΜΟ')).join(' · ')+' · '+(data.complete?'Πλήρης κάλυψη πηγών':'ΠΡΟΣΟΧΗ: λείπουν πηγές '+(data.unavailableSources||[]).join(', '));
+  if(host){
+   host.replaceChildren();
+   if(!records.length){const empty=document.createElement('div');empty.className='top-ai-alert-empty';empty.textContent='Δεν υπάρχουν καταχωρισμένες εκκρεμότητες στις διαθέσιμες πηγές.';host.append(empty);}
+   records.forEach((item,index)=>{
+    const p=item.payload||{},teams=[p.home||p.homeTeam||'',p.away||p.awayTeam||''].filter(Boolean).join(' – ')||'Αγώνας χωρίς ονόματα';
+    const card=document.createElement('button');card.type='button';card.className='login';card.style.cssText='text-align:left;white-space:normal;padding:12px;width:100%';
+    const meta=[labels[item.category]||item.category,p.market||p.alertType||'—','Λεπτό '+(p.minuteNumber??p.minute??'—'),'ID '+(item.id||'—')].join(' · ');
+    card.textContent=(index+1)+'. '+teams+'\n'+meta;
+    card.addEventListener('click',()=>{
+     if(!selection)return;selection.replaceChildren();
+     const title=document.createElement('strong');title.textContent='ΕΠΙΛΕΓΜΕΝΗ ΕΚΚΡΕΜΟΤΗΤΑ · '+(labels[item.category]||item.category);
+     const details=document.createElement('pre');details.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:320px;overflow:auto';
+     details.textContent=JSON.stringify({id:item.id,eventId:item.eventId,createdAt:item.createdAt,payload:item.payload},null,2);
+     selection.append(title,details);
+    });
+    host.append(card);
+   });
+  }
   if(status)status.textContent=(data.complete?'Πλήρης ανάγνωση':'Μερική ανάγνωση')+' · '+data.returned+'/'+data.totalPending+' εγγραφές'+(data.truncated?' · απαιτείται επόμενη σελίδα':'');
  }catch(error){if(status)status.textContent='Αποτυχία ανάγνωσης: '+String(error.message||error).slice(0,160);}
  finally{button.disabled=false;}
