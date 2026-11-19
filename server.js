@@ -2431,6 +2431,7 @@ const server = http.createServer(async (req, res) => {
             return send(res, 200, { ok: true, duplicate: true, ledgerEventId: duplicate.rows[0].ledger_event_id });
           }
         }
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [event.settlementId]);
         const prior = await client.query(
           "SELECT status FROM universal_settlement_ledger WHERE settlement_id = $1 ORDER BY created_at DESC, ledger_event_id DESC LIMIT 1 FOR UPDATE",
           [event.settlementId]
@@ -2440,14 +2441,30 @@ const server = http.createServer(async (req, res) => {
           await client.query("ROLLBACK");
           return send(res, 409, { ok: false, error: transition.reason });
         }
-        const source = event.sourceCategory === "hi_activity"
-          ? await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [event.sourceRecordId])
-          : event.sourceCategory === "pressure_hunter"
-            ? await client.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [event.sourceRecordId])
-            : await client.query("SELECT event_id FROM alert_history WHERE alert_id = $1", [event.sourceRecordId]);
-        if (!source.rowCount || String(source.rows[0].event_id) !== event.eventId) {
+        let source;
+        let categoryMatches = false;
+        if (event.sourceCategory === "hi_activity") {
+          if (!await ensureHighActivityHistoryDb()) throw new Error("HI Activity history unavailable");
+          source = await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [event.sourceRecordId]);
+          categoryMatches = true;
+        } else if (event.sourceCategory === "pressure_hunter") {
+          if (!await ensurePressureHunterDb()) throw new Error("Pressure Hunter history unavailable");
+          source = await client.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [event.sourceRecordId]);
+          categoryMatches = true;
+        } else {
+          if (!await ensureAlertHistoryDb()) throw new Error("Alert history unavailable");
+          source = await client.query("SELECT event_id, level, payload FROM alert_history WHERE alert_id = $1", [event.sourceRecordId]);
+          const payload = source.rows[0]?.payload || {};
+          const ids = Array.isArray(payload.triggerIds) ? payload.triggerIds : [];
+          categoryMatches =
+            (event.sourceCategory === "ai_alert" && source.rows[0]?.level === "AI" && payload.source !== "manual-power-ranking" && payload.alertType !== "power_ranking_signal" && !ids.some(value => String(value).startsWith("power_ranking_"))) ||
+            (event.sourceCategory === "vip_alert" && source.rows[0]?.level === "VIP" && payload.source !== "manual-power-games" && payload.source !== "manual-power-ranking") ||
+            (event.sourceCategory === "power_games" && source.rows[0]?.level === "VIP" && payload.source === "manual-power-games") ||
+            (event.sourceCategory === "power_ranking" && (payload.source === "manual-power-ranking" || payload.alertType === "power_ranking_signal" || ids.some(value => String(value).startsWith("power_ranking_"))));
+        }
+        if (!source?.rowCount || String(source.rows[0].event_id) !== event.eventId || !categoryMatches) {
           await client.query("ROLLBACK");
-          return send(res, 409, { ok: false, error: "Source history record does not match the supplied event" });
+          return send(res, 409, { ok: false, error: "Source history record does not match the supplied event and category" });
         }
         const id = require("node:crypto").randomUUID();
         const inserted = await client.query(
