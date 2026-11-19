@@ -2946,6 +2946,25 @@ header {
 <div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="runManualSettlementRepair" disabled>🛠 ΧΕΙΡΟΚΙΝΗΤΟΣ ΔΙΑΚΑΝΟΝΙΣΜΟΣ · 4 ΕΚΚΡΕΜΗ</button><span id="manualSettlementRepairStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div>
 <div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="loadUniversalSettlementQueue" disabled>📚 ΟΛΑ ΤΑ ΙΣΤΟΡΙΚΑ · ΕΚΚΡΕΜΟΤΗΤΕΣ</button><span id="universalSettlementQueueStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div>
 <pre id="universalSettlementQueueResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:460px;overflow:auto"></pre>
+<section class="top-ai-alerts" aria-labelledby="triggerAuditTitle" style="margin-top:14px">
+ <h3 id="triggerAuditTitle">TRIGGER ACTIVATION AUDIT · APPEND-ONLY</h3>
+ <p class="top-ai-alert-privacy">Οι χειροκίνητες ανακατασκευές σημειώνονται ρητά ως manual και δεν θεωρούνται αυτόματες ενεργοποιήσεις. Απαιτείται σύνδεση με υπάρχουσα εγγραφή ιστορικού και αποδεικτικό log/trace.</p>
+ <div class="notification-optin-row"><label for="triggerAuditEventId">Event ID</label><input id="triggerAuditEventId" placeholder="Ακριβές event ID"><label for="triggerAuditAlertId">Alert ID (AI/VIP/Pressure)</label><input id="triggerAuditAlertId" placeholder="Alert ID"></div>
+ <div class="notification-optin-row"><button type="button" class="login" id="loadTriggerAudit" disabled>ΑΝΑΖΗΤΗΣΗ AUDIT</button><span id="triggerAuditStatus" class="subtle" aria-live="polite">Απαιτείται ξεκλείδωμα PIN.</span></div>
+ <pre id="triggerAuditEntries" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:300px;overflow:auto"></pre>
+ <h4>ΝΕΑ ΧΕΙΡΟΚΙΝΗΤΗ ΑΝΑΚΑΤΑΣΚΕΥΗ</h4>
+ <div class="notification-optin-row"><label for="triggerAuditCategory">Κατηγορία</label><select id="triggerAuditCategory"><option value="ai">AI Alert</option><option value="vip">VIP Alert</option><option value="hi_activity">HI Activity</option><option value="pressure_hunter">Pressure Hunter</option></select><label for="triggerAuditSourceId">Source record ID (υποχρεωτικό για HI)</label><input id="triggerAuditSourceId" placeholder="Observation ID / Alert ID"></div>
+ <div class="notification-optin-row"><label for="triggerAuditTriggerId">Trigger ID</label><input id="triggerAuditTriggerId" placeholder="Πραγματικό trigger ID"><label for="triggerAuditTriggerName">Trigger name</label><input id="triggerAuditTriggerName" placeholder="Πραγματική ονομασία"></div>
+ <div class="notification-optin-row"><label for="triggerAuditProtocolId">Protocol ID</label><input id="triggerAuditProtocolId" placeholder="Protocol ID"><label for="triggerAuditMinute">Λεπτό</label><input id="triggerAuditMinute" type="number" min="0" max="150" placeholder="67"><label for="triggerAuditPeriod">Περίοδος</label><select id="triggerAuditPeriod"><option value="first_half">1ο ημίχρονο</option><option value="second_half">2ο ημίχρονο</option><option value="extra_time">Παράταση</option><option value="unknown">Άγνωστη</option></select></div>
+ <div class="notification-optin-row"><label for="triggerAuditSnapshot">SOT/xG snapshot (JSON)</label><textarea id="triggerAuditSnapshot" rows="3" placeholder='{"sot":8,"homeSot":5,"awaySot":3,"xg":2.4}'></textarea></div>
+ <div class="notification-optin-row"><label for="triggerAuditEvidenceType">Evidence</label><select id="triggerAuditEvidenceType"><option value="log">Log</option><option value="trace">Trace</option><option value="screenshot">Screenshot</option><option value="provider_record">Provider record</option><option value="user_supplied">User supplied</option></select><label for="triggerAuditEvidenceRef">Evidence reference</label><input id="triggerAuditEvidenceRef" placeholder="Log query / screenshot reference"></div>
+ <div class="notification-optin-row"><label for="triggerAuditNotes">Notes</label><input id="triggerAuditNotes" placeholder="Τι αποδεικνύει το στοιχείο"><label for="triggerAuditIdempotency">Idempotency key</label><input id="triggerAuditIdempotency" placeholder="Προαιρετικό μοναδικό κλειδί"></div>
+ <div class="notification-optin-row"><button type="button" class="login" id="appendTriggerAudit" disabled>ΚΑΤΑΧΩΡΙΣΗ MANUAL AUDIT</button></div>
+ <h4>ΑΝΑΣΤΡΟΦΗ ΕΓΓΡΑΦΗΣ (χωρίς διαγραφή)</h4>
+ <div class="notification-optin-row"><label for="triggerAuditReverseId">Audit ID</label><input id="triggerAuditReverseId" placeholder="Audit ID για αναστροφή"><label for="triggerAuditReverseReason">Αιτιολογία</label><input id="triggerAuditReverseReason" placeholder="Γιατί αναστρέφεται"></div>
+ <div class="notification-optin-row"><button type="button" class="login" id="reverseTriggerAudit" disabled>ΠΡΟΣΘΗΚΗ REVERSAL EVENT</button></div>
+ <pre id="triggerAuditActionResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:260px;overflow:auto"></pre>
+</section>
  <pre id="manualSettlementRepairResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:320px;overflow:auto"></pre>
 <div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="runSoccerDataDiagnostic" disabled>🔎 ΕΛΕΓΧΟΣ SOCCER DATA</button><span id="soccerDataDiagnosticStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div><pre id="soccerDataDiagnosticResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:420px;overflow:auto"></pre>
   <div class="top-ai-alert-list" id="privateAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Κλειδωμένο.</div></div>
@@ -5599,7 +5618,7 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
  try{
   const response=await fetch(ANALYTICS_API+'/api/alerts/history/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,limit:1000,period:'all'})});
   const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));privateAiAdminPin=pin;
-  const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=false;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=false;
+  const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=false;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=false;setTriggerAuditEnabled(true);
   const soccerDiagnosticButton=document.getElementById('runSoccerDataDiagnostic');if(soccerDiagnosticButton)soccerDiagnosticButton.disabled=false;
   const soccerDiagnosticStatus=document.getElementById('soccerDataDiagnosticStatus');if(soccerDiagnosticStatus)soccerDiagnosticStatus.textContent='Πρόσβαση επιβεβαιώθηκε · μπορείς να εκτελέσεις τον έλεγχο.';
   void loadProtocolAnalyst();
@@ -5614,7 +5633,7 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
    return '<article class="top-ai-alert-card"><div class="alert-card-kicker"><strong>PRIVATE AI ALERT</strong><span>'+esc(a.minute||'LIVE')+'</span></div><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">Πρωτάθλημα: '+esc((a.country?a.country+' · ':'')+(a.league||'—'))+' · '+esc(a.market||'—')+' · '+esc(alertMarketPeriodLabel(a))+'</div><p><strong>Ενεργοποιήθηκαν:</strong> '+esc(numbered.length?numbered.join(' + '):'Δεν υπάρχει αποθηκευμένο trigger ID')+'</p>'+(support?'<p><strong>Υποστήριξη:</strong> '+esc(support)+'</p>':'')+'<p><strong>Εσωτερική αιτιολόγηση:</strong> '+esc(a.reason||'—')+'</p><details><summary>Πλήρη δεδομένα κατά την ενεργοποίηση</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px">'+esc(stats)+'</pre></details></article>';
   }).join('');
   if(status)status.textContent='Πρόσβαση επιβεβαιώθηκε · '+rows.length+' ενεργά AI alerts.';
- }catch(error){privateAiAdminPin='';const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=true;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=true;if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
+ }catch(error){privateAiAdminPin='';const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=true;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=true;setTriggerAuditEnabled(false);if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
  finally{button.disabled=false;}
 });
 
@@ -5645,6 +5664,36 @@ document.getElementById('loadUniversalSettlementQueue')?.addEventListener('click
   if(status)status.textContent=(data.complete?'Πλήρης ανάγνωση':'Μερική ανάγνωση')+' · '+data.returned+'/'+data.totalPending+' εγγραφές'+(data.truncated?' · απαιτείται επόμενη σελίδα':'');
  }catch(error){if(status)status.textContent='Αποτυχία ανάγνωσης: '+String(error.message||error).slice(0,160);}
  finally{button.disabled=false;}
+});
+
+// Owner-only append-only trigger activation audit controls.
+function triggerAuditRequest(body){return fetch(ANALYTICS_API+'/api/settlement/trigger-audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,pin:privateAiAdminPin}),cache:'no-store'}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));return data;});}
+function setTriggerAuditEnabled(enabled){['loadTriggerAudit','appendTriggerAudit','reverseTriggerAudit'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=!enabled;});}
+document.getElementById('loadTriggerAudit')?.addEventListener('click',async()=>{
+ const status=document.getElementById('triggerAuditStatus'),out=document.getElementById('triggerAuditEntries');
+ const eventId=String(document.getElementById('triggerAuditEventId')?.value||'').trim(),alertId=String(document.getElementById('triggerAuditAlertId')?.value||'').trim();
+ if(!eventId&&!alertId){if(status)status.textContent='Συμπλήρωσε Event ID ή Alert ID.';return;}
+ try{if(status)status.textContent='Ανάγνωση audit…';const data=await triggerAuditRequest({action:'list',eventId,alertId});if(out)out.textContent=JSON.stringify(data.entries||[],null,2);if(status)status.textContent='Append-only εγγραφές: '+data.count;}
+ catch(error){if(status)status.textContent='Αποτυχία: '+String(error.message||error).slice(0,160);}
+});
+document.getElementById('appendTriggerAudit')?.addEventListener('click',async()=>{
+ const value=id=>String(document.getElementById(id)?.value||'').trim();
+ const status=document.getElementById('triggerAuditStatus'),out=document.getElementById('triggerAuditActionResult');
+ let snapshot;try{snapshot=JSON.parse(value('triggerAuditSnapshot'));}catch{if(status)status.textContent='Το snapshot πρέπει να είναι έγκυρο JSON.';return;}
+ const category=value('triggerAuditCategory'),sourceRecordId=value('triggerAuditSourceId'),alertId=value('triggerAuditAlertId');
+ const body={category,eventId:value('triggerAuditEventId'),sourceRecordId,alertId,triggerId:value('triggerAuditTriggerId'),triggerName:value('triggerAuditTriggerName'),protocolId:value('triggerAuditProtocolId'),minute:Number(value('triggerAuditMinute')),period:value('triggerAuditPeriod'),snapshot,evidenceType:value('triggerAuditEvidenceType'),evidenceRef:value('triggerAuditEvidenceRef'),notes:value('triggerAuditNotes'),idempotencyKey:value('triggerAuditIdempotency'),actor:'owner'};
+ if(category==='hi_activity'&&!sourceRecordId){if(status)status.textContent='HI Activity απαιτεί Observation ID στο Source record ID.';return;}
+ if((category==='ai'||category==='vip'||category==='pressure_hunter')&&!alertId&&!sourceRecordId){if(status)status.textContent='Απαιτείται Alert ID ή Source record ID.';return;}
+ try{if(status)status.textContent='Έλεγχος σύνδεσης και καταχώριση…';const data=await triggerAuditRequest(body);if(out)out.textContent=JSON.stringify(data,null,2);if(status)status.textContent=data.duplicate?'Υπάρχει ήδη ίδια εγγραφή (idempotent).':'Καταχωρίστηκε ως MANUAL RECONSTRUCTION · όχι αυτόματο trigger.';}
+ catch(error){if(status)status.textContent='Δεν καταχωρίστηκε: '+String(error.message||error).slice(0,180);}
+});
+document.getElementById('reverseTriggerAudit')?.addEventListener('click',async()=>{
+ const value=id=>String(document.getElementById(id)?.value||'').trim(),auditId=value('triggerAuditReverseId'),reason=value('triggerAuditReverseReason');
+ if(!auditId||!reason){const status=document.getElementById('triggerAuditStatus');if(status)status.textContent='Audit ID και αιτιολογία είναι υποχρεωτικά.';return;}
+ if(!window.confirm('Θα προστεθεί νέα εγγραφή αναστροφής. Η αρχική εγγραφή δεν θα διαγραφεί. Συνέχεια;'))return;
+ const status=document.getElementById('triggerAuditStatus'),out=document.getElementById('triggerAuditActionResult');
+ try{if(status)status.textContent='Προσθήκη reversal event…';const data=await triggerAuditRequest({action:'reverse',auditId,reason,actor:'owner',evidenceRef:'owner-requested reversal'});if(out)out.textContent=JSON.stringify(data,null,2);if(status)status.textContent='Η αναστροφή προστέθηκε· η αρχική εγγραφή διατηρείται.';}
+ catch(error){if(status)status.textContent='Αποτυχία αναστροφής: '+String(error.message||error).slice(0,160);}
 });
 
 // Owner-only, one-time repair for the four explicitly allowlisted historical AI alerts.
