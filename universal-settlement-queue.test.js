@@ -86,6 +86,7 @@ test("classifies all Power Ranking trigger IDs and alert types independently fro
 test("uses alternate persisted settlement status fields for alert history", () => {
   const result = buildUniversalSettlementQueue({ alerts: [
     { alert_id: "settled", level: "AI", payload: { outcomeStatus: "won" } },
+    { alert_id: "settled-empty", level: "AI", payload: { betOutcome: "", settlementStatus: "lost" } },
     { alert_id: "pending", level: "AI", payload: { settlementStatus: "pending" } }
   ] });
   assert.deepEqual(result.records.map(row => row.id), ["pending"]);
