@@ -36,3 +36,18 @@ test("queue sorts newest first and reports truncation", () => {
   assert.equal(result.truncated, true);
   assert.equal(result.records[0].id, "new");
 });
+
+test("recognizes legacy Greek settled labels instead of reopening them", () => {
+  const result = buildUniversalSettlementQueue({
+    hiActivity: [
+      { observation_id: "settled-gr", payload: { outcome: "Επιβεβαιώθηκε · μπήκε γκολ μετά το σήμα" } },
+      { observation_id: "pending-gr", payload: { outcome: "εκκρεμεί" } }
+    ],
+    pressureHunter: [
+      { alert_id: "hunter-settled", payload: { outcomeStatus: "not_confirmed" } },
+      { alert_id: "hunter-pending", payload: { outcome: "εκκρεμεί" } }
+    ]
+  });
+  assert.equal(result.totalPending, 2);
+  assert.deepEqual(new Set(result.records.map(x => x.id)), new Set(["pending-gr", "hunter-pending"]));
+});
