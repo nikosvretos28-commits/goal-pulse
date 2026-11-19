@@ -15,6 +15,7 @@ const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterFor
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
+const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
 const { isVerifiedSecondHalfMieRecord } = require("./mie-alert-verification");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
@@ -2247,6 +2248,58 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     } catch (error) {
       return send(res, 400, { ok: false, error: "Invalid request" });
+    }
+  }
+
+  if (url.pathname === "/api/settlement/universal-queue" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    const limit = Math.max(1, Math.min(5000, Math.trunc(Number(auth.body.limit) || 1000)));
+    const sources = {
+      aiVip: { available: false, count: 0 },
+      hiActivity: { available: false, count: 0 },
+      pressureHunter: { available: false, count: 0 }
+    };
+    try {
+      const alertsReady = await ensureAlertHistoryDb();
+      if (alertsReady) {
+        const result = await analyticsPool.query(
+          "SELECT alert_id, event_id, level, created_at, payload FROM alert_history ORDER BY created_at DESC, alert_id DESC LIMIT 5000"
+        );
+        sources.aiVip = { available: true, count: result.rowCount };
+        var alertRows = result.rows;
+      }
+      const hiReady = await ensureHighActivityHistoryDb();
+      if (hiReady) {
+        const result = await highActivityHistoryPool.query(
+          "SELECT observation_id, event_id, created_at, payload FROM high_activity_history ORDER BY created_at DESC, observation_id DESC LIMIT 5000"
+        );
+        sources.hiActivity = { available: true, count: result.rowCount };
+        var hiRows = result.rows;
+      }
+      const hunterReady = await ensurePressureHunterDb();
+      if (hunterReady) {
+        const result = await analyticsPool.query(
+          "SELECT alert_id, event_id, created_at, payload FROM pressure_hunter_history ORDER BY created_at DESC, alert_id DESC LIMIT 5000"
+        );
+        sources.pressureHunter = { available: true, count: result.rowCount };
+        var hunterRows = result.rows;
+      }
+      const queue = buildUniversalSettlementQueue({
+        alerts: alertRows || [],
+        hiActivity: hiRows || [],
+        pressureHunter: hunterRows || []
+      }, limit);
+      const unavailable = Object.entries(sources).filter(([, value]) => !value.available).map(([key]) => key);
+      return send(res, 200, {
+        ok: true, readOnly: true, generatedAt: new Date().toISOString(),
+        complete: unavailable.length === 0, unavailableSources: unavailable,
+        sources, ...queue
+      });
+    } catch (error) {
+      console.error("[universal-settlement] Queue read failed:", error.message);
+      return send(res, 503, { ok: false, error: "Could not build the universal settlement queue" });
     }
   }
 
