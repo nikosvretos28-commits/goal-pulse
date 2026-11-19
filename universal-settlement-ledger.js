@@ -18,7 +18,7 @@ function validateLedgerEvent(input = {}) {
   const reason = clean(input.reason, 1000);
   const idempotencyKey = clean(input.idempotencyKey, 180) || null;
   if (!settlementId || !sourceRecordId || !eventId || !actor ||
-      !["ai_alert", "vip_alert", "hi_activity", "pressure_hunter"].includes(sourceCategory) ||
+      !["ai_alert", "vip_alert", "hi_activity", "pressure_hunter", "power_games", "power_ranking"].includes(sourceCategory) ||
       !ACTIONS.has(action)) return { ok: false, reason: "invalid_ledger_event" };
   if (["disputed", "reversed"].includes(action) && !reason) return { ok: false, reason: "reason_required" };
   if (action === "finalized" && input.evaluatorVerified !== true) return { ok: false, reason: "verified_evaluator_result_required" };
