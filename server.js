@@ -2421,6 +2421,9 @@ const server = http.createServer(async (req, res) => {
       const checked = validateLedgerEvent(body.event || {});
       if (!checked.ok) return send(res, 400, { ok: false, error: checked.reason });
       const event = checked.event;
+      if (["verified", "finalized"].includes(event.action)) {
+        return send(res, 409, { ok: false, error: "Server-side evidence verification and market grading are not wired yet; fail-closed, no settlement was finalized" });
+      }
       const client = await analyticsPool.connect();
       try {
         await client.query("BEGIN");
