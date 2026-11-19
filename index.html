@@ -5636,7 +5636,7 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
  try{
   const response=await fetch(ANALYTICS_API+'/api/alerts/history/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,limit:1000,period:'all'})});
   const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));privateAiAdminPin=pin;
-  const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=false;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=false;setTriggerAuditEnabled(true);
+  const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=false;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=false;setTriggerAuditEnabled(true);setSettlementLedgerEnabled(true);
   const soccerDiagnosticButton=document.getElementById('runSoccerDataDiagnostic');if(soccerDiagnosticButton)soccerDiagnosticButton.disabled=false;
   const soccerDiagnosticStatus=document.getElementById('soccerDataDiagnosticStatus');if(soccerDiagnosticStatus)soccerDiagnosticStatus.textContent='Πρόσβαση επιβεβαιώθηκε · μπορείς να εκτελέσεις τον έλεγχο.';
   void loadProtocolAnalyst();
@@ -5651,7 +5651,7 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
    return '<article class="top-ai-alert-card"><div class="alert-card-kicker"><strong>PRIVATE AI ALERT</strong><span>'+esc(a.minute||'LIVE')+'</span></div><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">Πρωτάθλημα: '+esc((a.country?a.country+' · ':'')+(a.league||'—'))+' · '+esc(a.market||'—')+' · '+esc(alertMarketPeriodLabel(a))+'</div><p><strong>Ενεργοποιήθηκαν:</strong> '+esc(numbered.length?numbered.join(' + '):'Δεν υπάρχει αποθηκευμένο trigger ID')+'</p>'+(support?'<p><strong>Υποστήριξη:</strong> '+esc(support)+'</p>':'')+'<p><strong>Εσωτερική αιτιολόγηση:</strong> '+esc(a.reason||'—')+'</p><details><summary>Πλήρη δεδομένα κατά την ενεργοποίηση</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px">'+esc(stats)+'</pre></details></article>';
   }).join('');
   if(status)status.textContent='Πρόσβαση επιβεβαιώθηκε · '+rows.length+' ενεργά AI alerts.';
- }catch(error){privateAiAdminPin='';const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=true;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=true;setTriggerAuditEnabled(false);if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
+ }catch(error){privateAiAdminPin='';const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=true;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=true;setTriggerAuditEnabled(false);setSettlementLedgerEnabled(false);if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
  finally{button.disabled=false;}
 });
 
