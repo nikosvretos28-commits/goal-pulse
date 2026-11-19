@@ -2421,6 +2421,7 @@ const server = http.createServer(async (req, res) => {
             !["ai_alert","vip_alert","hi_activity","pressure_hunter","power_games","power_ranking"].includes(sourceCategory) ||
             !evidenceCheck.ok) return send(res, 400, { ok: false, error: evidenceCheck.reason || "invalid_settlement_identity" });
         const evidence = evidenceCheck.evidence;
+        if (evidence.provider === "user_supplied" || !evidence.sourceUrl) return send(res, 400, { ok: false, error: "Settlement requires independently attributable provider evidence with a source URL" });
         const client = await analyticsPool.connect();
         try {
           await client.query("BEGIN");
@@ -2458,18 +2459,8 @@ const server = http.createServer(async (req, res) => {
           if (!categoryMatches) { await client.query("ROLLBACK"); return send(res, 409, { ok: false, error: "Canonical record does not belong to the selected category" }); }
           let evaluated;
           if (sourceCategory === "hi_activity") evaluated = resolveGoalAfterSignal(record, evidence);
-          else if (sourceCategory === "pressure_hunter") {
-            const result = settlePressureHunterRecord(record, {
-              result: {
-                homeScore: evidence.homeScore, awayScore: evidence.awayScore,
-                halfTimeHomeScore: evidence.homeHtScore, halfTimeAwayScore: evidence.awayHtScore,
-                settlementProvider: evidence.provider, settlementFixtureId: evidence.fixtureId,
-                settlementFixtureDate: evidence.date, settlementLeague: evidence.league,
-                status: "post", statusText: "finished"
-              }
-            });
-            evaluated = result ? { ok: true, settlement: { outcome: result.outcomeStatus, ...result } } : { ok: false, reason: "pressure_hunter_evaluation_unresolved" };
-          } else evaluated = resolveAlertSettlement(record, evidence);
+          else if (sourceCategory === "pressure_hunter") evaluated = resolveGoalAfterSignal(record, evidence);
+          else evaluated = resolveAlertSettlement(record, evidence);
           if (!evaluated?.ok || !evaluated.settlement?.outcome) {
             await client.query("ROLLBACK");
             return send(res, 422, { ok: false, error: evaluated?.reason || "settlement_evaluation_unresolved", noSettlementWritten: true });
