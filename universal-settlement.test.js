@@ -83,3 +83,28 @@ test("pending classification distinguishes terminal and unresolved records", () 
   assert.equal(isPendingRecord({ outcome: "confirmed" }, "activity"), false);
 });
 
+
+
+test("evidence source host must match the declared provider", () => {
+  assert.equal(validateEvidence({ ...evidence, sourceUrl: "https://example.com/match/123" }).reason, "source_provider_mismatch");
+});
+
+test("fixture date and league mismatches fail closed", () => {
+  const base = { home: "Alpha FC", away: "Beta SC", periodAtSignal: "first_half", market: "Over 0.5" };
+  assert.equal(resolveAlertSettlement({ ...base, date: "2026-11-17" }, evidence).reason, "fixture_date_mismatch");
+  assert.equal(resolveAlertSettlement({ ...base, league: "Different League" }, evidence).reason, "fixture_league_mismatch");
+});
+
+test("team matching tolerates accents and common club suffixes but preserves home-away order", () => {
+  const result = resolveAlertSettlement({
+    home: "Álpha", away: "Beta", periodAtSignal: "first_half", market: "Over 0.5"
+  }, evidence);
+  assert.equal(result.ok, true);
+  assert.equal(resolveAlertSettlement({
+    home: "Beta", away: "Alpha", periodAtSignal: "first_half", market: "Over 0.5"
+  }, evidence).reason, "fixture_identity_mismatch");
+});
+
+test("invalid calendar dates are rejected", () => {
+  assert.equal(validateEvidence({ ...evidence, date: "2026-02-31" }).reason, "incomplete_fixture_evidence");
+});
