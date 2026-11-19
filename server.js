@@ -16,6 +16,7 @@ const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAuto
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
+const { validateTriggerAudit, buildTriggerAuditReversal } = require("./trigger-activation-audit");
 const { isVerifiedSecondHalfMieRecord } = require("./mie-alert-verification");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
@@ -279,6 +280,42 @@ async function ensurePushDb() {
     )
   `).then(() => true).catch(error => { pushDbInit = null; console.error("Push subscription database unavailable:", error.message); return false; });
   return pushDbInit;
+}
+let triggerActivationAuditDbInit = null;
+async function ensureTriggerActivationAuditDb() {
+  if (!analyticsPool) return false;
+  if (!triggerActivationAuditDbInit) triggerActivationAuditDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS trigger_activation_audit (
+      audit_id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      source_record_id TEXT,
+      alert_id TEXT,
+      trigger_id TEXT NOT NULL,
+      trigger_name TEXT NOT NULL,
+      protocol_id TEXT NOT NULL,
+      minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 150),
+      period TEXT NOT NULL,
+      snapshot JSONB NOT NULL,
+      evidence_type TEXT NOT NULL,
+      evidence_ref TEXT NOT NULL,
+      entry_mode TEXT NOT NULL,
+      verification_status TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      notes TEXT,
+      idempotency_key TEXT UNIQUE,
+      reverses_audit_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS trigger_activation_audit_event_idx ON trigger_activation_audit(event_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS trigger_activation_audit_alert_idx ON trigger_activation_audit(alert_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS trigger_activation_audit_category_idx ON trigger_activation_audit(category, created_at DESC);
+  `).then(() => true).catch(error => {
+    triggerActivationAuditDbInit = null;
+    console.error("[trigger-audit] database unavailable:", error.message);
+    return false;
+  });
+  return triggerActivationAuditDbInit;
 }
 async function ensureAlertHistoryDb() {
   if (!analyticsPool) return false;
@@ -2248,6 +2285,65 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     } catch (error) {
       return send(res, 400, { ok: false, error: "Invalid request" });
+    }
+  }
+
+  if (url.pathname === "/api/settlement/trigger-audit" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    if (!await ensureTriggerActivationAuditDb()) return send(res, 503, { ok: false, error: "Trigger audit database unavailable" });
+    const body = auth.body || {};
+    try {
+      if (body.action === "list") {
+        const eventId = String(body.eventId || "").trim().slice(0, 180);
+        const alertId = String(body.alertId || "").trim().slice(0, 180);
+        if (!eventId && !alertId) return send(res, 400, { ok: false, error: "eventId or alertId is required" });
+        const result = await analyticsPool.query(
+          "SELECT audit_id, event_id, category, source_record_id, alert_id, trigger_id, trigger_name, protocol_id, minute, period, snapshot, evidence_type, evidence_ref, entry_mode, verification_status, actor, notes, reverses_audit_id, created_at FROM trigger_activation_audit WHERE ($1 = '' OR event_id = $1) AND ($2 = '' OR alert_id = $2) ORDER BY created_at ASC LIMIT 500",
+          [eventId, alertId]
+        );
+        return send(res, 200, { ok: true, appendOnly: true, count: result.rowCount, entries: result.rows });
+      }
+      if (body.action === "reverse") {
+        const reversal = buildTriggerAuditReversal(body.auditId, { reason: body.reason, actor: body.actor });
+        if (!reversal.ok) return send(res, 400, { ok: false, error: reversal.reason });
+        const original = await analyticsPool.query("SELECT audit_id, event_id, category, source_record_id, alert_id FROM trigger_activation_audit WHERE audit_id = $1", [body.auditId]);
+        if (!original.rowCount) return send(res, 404, { ok: false, error: "Original audit entry not found" });
+        const row = original.rows[0];
+        const id = require("crypto").randomUUID();
+        await analyticsPool.query(
+          "INSERT INTO trigger_activation_audit (audit_id,event_id,category,source_record_id,alert_id,trigger_id,trigger_name,protocol_id,minute,period,snapshot,evidence_type,evidence_ref,entry_mode,verification_status,actor,notes,reverses_audit_id) VALUES ($1,$2,$3,$4,$5,'REVERSAL','Audit reversal','audit_reversal',0,'unknown','{}'::jsonb,'user_supplied',$6,'manual_reversal','reversed',$7,$8,$9)",
+          [id,row.event_id,row.category,row.source_record_id,row.alert_id,String(body.evidenceRef || 'manual reversal').slice(0,1000),reversal.entry.actor,reversal.entry.reason,row.audit_id]
+        );
+        return send(res, 201, { ok: true, appended: true, auditId: id, reversesAuditId: row.audit_id });
+      }
+      const checked = validateTriggerAudit(body);
+      if (!checked.ok) return send(res, 400, { ok: false, error: checked.reason });
+      const entry = checked.entry;
+      if (entry.category === "ai" || entry.category === "vip") {
+        const linked = await analyticsPool.query("SELECT event_id FROM alert_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked alert history record does not match event" });
+      } else if (entry.category === "hi_activity") {
+        const linked = await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [entry.sourceRecordId]);
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked HI Activity record does not match event" });
+      } else if (entry.category === "pressure_hunter") {
+        const linked = await analyticsPool.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked Pressure Hunter record does not match event" });
+      }
+      const id = require("crypto").randomUUID();
+      const result = await analyticsPool.query(
+        "INSERT INTO trigger_activation_audit (audit_id,event_id,category,source_record_id,alert_id,trigger_id,trigger_name,protocol_id,minute,period,snapshot,evidence_type,evidence_ref,entry_mode,verification_status,actor,notes,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (idempotency_key) DO NOTHING RETURNING audit_id, event_id, category, alert_id, trigger_id, trigger_name, protocol_id, minute, period, snapshot, evidence_type, evidence_ref, entry_mode, verification_status, actor, notes, created_at",
+        [id,entry.eventId,entry.category,entry.sourceRecordId,entry.alertId,entry.triggerId,entry.triggerName,entry.protocolId,entry.minute,entry.period,JSON.stringify(entry.snapshot),entry.evidenceType,entry.evidenceRef,entry.entryMode,entry.verificationStatus,entry.actor,entry.notes,entry.idempotencyKey]
+      );
+      if (!result.rowCount && entry.idempotencyKey) {
+        const existing = await analyticsPool.query("SELECT audit_id FROM trigger_activation_audit WHERE idempotency_key = $1", [entry.idempotencyKey]);
+        return send(res, 200, { ok: true, duplicate: true, auditId: existing.rows[0]?.audit_id || null });
+      }
+      return send(res, 201, { ok: true, appended: true, audit: result.rows[0] });
+    } catch (error) {
+      console.error("[trigger-audit] request failed:", error.message);
+      return send(res, 500, { ok: false, error: "Trigger audit request failed" });
     }
   }
 
