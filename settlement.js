@@ -155,6 +155,17 @@ function findUniqueCompletedFixture(candidates, alert = {}) {
 }
 
 
+// Give newly-created pending alerts the first opportunity to use the globally
+// rate-limited historical provider lookup. Rotation is applied afterwards, so
+// older unresolved rows still receive a turn instead of being starved.
+function prioritizeSettlementRows(rows) {
+  return (Array.isArray(rows) ? rows : []).slice().sort((a, b) => {
+    const left = Date.parse(a?.created_at ?? a?.createdAt ?? 0) || 0;
+    const right = Date.parse(b?.created_at ?? b?.createdAt ?? 0) || 0;
+    return right - left;
+  });
+}
+
 // Rotate the first settlement candidate on each scan so a global provider
 // rate limit cannot let the oldest row monopolize every lookup opportunity.
 function rotateSettlementRows(rows, offset = 0) {
@@ -173,5 +184,6 @@ module.exports = {
   normalizeFixtureName,
   getProviderFixtureId,
   findUniqueCompletedFixture,
-  rotateSettlementRows
+  rotateSettlementRows,
+  prioritizeSettlementRows
 };

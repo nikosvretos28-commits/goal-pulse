@@ -67,6 +67,13 @@ test('fixture fallback requires exact date, orientation, league and a unique mat
   }), null);
 });
 
+test('normalizes club suffixes used by historical settlement providers', () => {
+  const { normalizeFixtureName } = require('./settlement');
+  assert.equal(normalizeFixtureName('Puerto Rico Surf SC'), 'puerto rico surf');
+  assert.equal(normalizeFixtureName('Academia Quintana'), 'academia quintana');
+  assert.equal(normalizeFixtureName('FC Puerto Rico Surf'), 'puerto rico surf');
+});
+
 test('normalizes common club prefixes', () => {
   assert.equal(findUniqueCompletedFixture([{id:'x',date:'2026-11-07',home:'Alpha FC',away:'Beta SC',league:'League'}], {
     home:'Alpha',away:'Beta',league:'League',date:'2026-11-07'
@@ -151,6 +158,20 @@ test('fixture fallback keeps strict team/date matching when kickoff is missing',
   }).id, 'no-time');
 });
 
+
+test('newest pending settlement rows get first provider lookup opportunity', () => {
+  const { prioritizeSettlementRows, rotateSettlementRows } = require('./settlement');
+  const rows = [
+    { id: 'old', created_at: '2026-11-01T00:00:00Z' },
+    { id: 'new', created_at: '2026-11-19T03:30:00Z' },
+    { id: 'middle', created_at: '2026-11-10T00:00:00Z' }
+  ];
+  const prioritized = prioritizeSettlementRows(rows);
+  assert.deepEqual(prioritized.map(row => row.id), ['new', 'middle', 'old']);
+  assert.deepEqual(rotateSettlementRows(prioritized, 0).map(row => row.id), ['new', 'middle', 'old']);
+  assert.deepEqual(rotateSettlementRows(prioritized, 1).map(row => row.id), ['middle', 'old', 'new']);
+  assert.deepEqual(prioritizeSettlementRows(null), []);
+});
 
 test('settlement retry queue rotates first opportunity fairly across pending rows', () => {
   const { rotateSettlementRows } = require('./settlement');
