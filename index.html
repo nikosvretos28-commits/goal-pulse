@@ -5659,24 +5659,34 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
 document.getElementById('loadUniversalSettlementQueue')?.addEventListener('click',async()=>{
  const button=document.getElementById('loadUniversalSettlementQueue');
  const status=document.getElementById('universalSettlementQueueStatus');
- const output=document.getElementById('universalSettlementQueueResult');
  if(!privateAiAdminPin){if(status)status.textContent='Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.';return;}
- button.disabled=true;if(status)status.textContent='Ανάγνωση όλων των ιστορικών…';if(output)output.textContent='';
+ button.disabled=true;
+ const allRecords=[],counts={};let cursor=0,totalPending=0,returned=0,finalData=null,pages=0;
  try{
-  const response=await fetch(ANALYTICS_API+'/api/settlement/universal-queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin,limit:5000}),cache:'no-store'});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));
+  do{
+   const response=await fetch(ANALYTICS_API+'/api/settlement/universal-queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin,limit:1000,cursor}),cache:'no-store'});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));
+   finalData=data;pages++;totalPending+=Number(data.totalPending||0);returned+=Number(data.returned||0);
+   allRecords.push(...(Array.isArray(data.records)?data.records:[]));
+   for(const [key,value] of Object.entries(data.counts||{}))counts[key]=(counts[key]||0)+Number(value||0);
+   if(status)status.textContent='Ανάγνωση σελίδας '+pages+' · '+returned+' εγγραφές…';
+   if(!data.hasMore)break;
+   if(!Number.isFinite(Number(data.nextCursor))||Number(data.nextCursor)<=cursor)throw new Error('Μη έγκυρος δείκτης επόμενης σελίδας.');
+   cursor=Number(data.nextCursor);
+   if(pages>=1000)throw new Error('Το όριο ασφαλούς ανάγνωσης σελίδων ξεπεράστηκε.');
+  }while(true);
   const labels={AI_ALERT:'AI Alerts',VIP_ALERT:'VIP Alerts',HI_ACTIVITY:'HI Activity',PRESSURE_HUNTER:'Pressure Hunter',POWER_GAMES:'Power Games',POWER_RANKING:'Power Ranking'};
-  const records=Array.isArray(data.records)?data.records:[];
+  allRecords.sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
   const summary=document.getElementById('settlementCenterSummary'),sources=document.getElementById('settlementCenterSources');
   const host=document.getElementById('settlementCenterRecords'),count=document.getElementById('settlementCenterCount'),selection=document.getElementById('settlementCenterSelection');
-  if(count)count.textContent=String(data.totalPending||0)+' ΕΚΚΡΕΜΗ';
-  if(summary)summary.replaceChildren(...Object.entries(data.counts||{}).map(([key,value])=>{const chip=document.createElement('span');chip.className='count';chip.textContent=(labels[key]||key)+': '+value;return chip;}));
-  if(sources)sources.textContent=Object.entries(data.sources||{}).map(([key,value])=>(labels[key]||key)+': '+(value.available?'διαθέσιμο ('+value.count+')':'ΜΗ ΔΙΑΘΕΣΙΜΟ')).join(' · ')+' · '+(data.complete?'Πλήρης κάλυψη πηγών':'ΠΡΟΣΟΧΗ: λείπουν πηγές '+(data.unavailableSources||[]).join(', '));
+  if(count)count.textContent=String(totalPending)+' ΕΚΚΡΕΜΗ';
+  if(summary)summary.replaceChildren(...Object.entries(counts).map(([key,value])=>{const chip=document.createElement('span');chip.className='count';chip.textContent=(labels[key]||key)+': '+value;return chip;}));
+  if(sources)sources.textContent=Object.entries(finalData.sources||{}).map(([key,value])=>(labels[key]||key)+': '+(value.available?'διαθέσιμο ('+value.count+')':'ΜΗ ΔΙΑΘΕΣΙΜΟ')).join(' · ')+' · '+(finalData.complete?'Πλήρης κάλυψη όλων των σελίδων':'ΠΡΟΣΟΧΗ: λείπουν πηγές '+(finalData.unavailableSources||[]).join(', '));
   if(host){
    host.replaceChildren();
-   if(!records.length){const empty=document.createElement('div');empty.className='top-ai-alert-empty';empty.textContent='Δεν υπάρχουν καταχωρισμένες εκκρεμότητες στις διαθέσιμες πηγές.';host.append(empty);}
-   records.forEach((item,index)=>{
+   if(!allRecords.length){const empty=document.createElement('div');empty.className='top-ai-alert-empty';empty.textContent='Δεν υπάρχουν καταχωρισμένες εκκρεμότητες στις διαθέσιμες πηγές.';host.append(empty);}
+   allRecords.forEach((item,index)=>{
     const p=item.payload||{},teams=[p.home||p.homeTeam||'',p.away||p.awayTeam||''].filter(Boolean).join(' – ')||'Αγώνας χωρίς ονόματα';
     const card=document.createElement('button');card.type='button';card.className='login';card.style.cssText='text-align:left;white-space:normal;padding:12px;width:100%';
     const meta=[labels[item.category]||item.category,p.market||p.alertType||'—','Λεπτό '+(p.minuteNumber??p.minute??'—'),'ID '+(item.id||'—')].join(' · ');
@@ -5691,11 +5701,10 @@ document.getElementById('loadUniversalSettlementQueue')?.addEventListener('click
     host.append(card);
    });
   }
-  if(status)status.textContent=(data.complete?'Πλήρης ανάγνωση':'Μερική ανάγνωση')+' · '+data.returned+'/'+data.totalPending+' εγγραφές'+(data.truncated?' · απαιτείται επόμενη σελίδα':'');
- }catch(error){if(status)status.textContent='Αποτυχία ανάγνωσης: '+String(error.message||error).slice(0,160);}
+  if(status)status.textContent='Πλήρης ανάγνωση '+pages+' σελίδων · '+returned+'/'+totalPending+' εγγραφές.';
+ }catch(error){if(status)status.textContent='Αποτυχία ανάγνωσης: '+String(error.message||error).slice(0,180);}
  finally{button.disabled=false;}
 });
-
 // Owner-only append-only trigger activation audit controls.
 function triggerAuditRequest(body){return fetch(ANALYTICS_API+'/api/settlement/trigger-audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,pin:privateAiAdminPin}),cache:'no-store'}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));return data;});}
 function setTriggerAuditEnabled(enabled){['loadTriggerAudit','appendTriggerAudit','reverseTriggerAudit'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=!enabled;});}
