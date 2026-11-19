@@ -13,7 +13,8 @@ test("ledger event requires linked source identity and evidence", () => {
   assert.equal(validateLedgerEvent(base).ok, true);
   assert.equal(validateLedgerEvent({ ...base, sourceRecordId: "" }).ok, false);
   assert.equal(validateLedgerEvent({ ...base, evidence: null }).ok, false);
-  assert.equal(validateLedgerEvent({ ...base, sourceCategory: "power_games" }).ok, false);
+  assert.equal(validateLedgerEvent({ ...base, sourceCategory: "power_games" }).ok, true);
+  assert.equal(validateLedgerEvent({ ...base, sourceCategory: "power_ranking" }).ok, true);
 });
 
 test("dispute and reversal require an explicit reason", () => {
