@@ -2376,8 +2376,8 @@ const server = http.createServer(async (req, res) => {
           linked.rows[0]?.level === "VIP" && payload.source === "manual-power-games";
         const isPowerRanking = entry.category === "power_ranking" && (
           (linked.rows[0]?.level === "VIP" && payload.source === "manual-power-ranking") ||
-          (linked.rows[0]?.level === "AI" && (payload.alertType === "power_ranking_signal" ||
-            triggerIds.includes("power_ranking_59") || triggerIds.includes("power_ranking_autonomous_65")))
+          (linked.rows[0]?.level === "AI" && (String(payload.alertType || "").startsWith("power_ranking_") ||
+            triggerIds.some(value => String(value).startsWith("power_ranking_"))))
         );
         if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId || (!isPowerGames && !isPowerRanking)) {
           return send(res, 409, { ok: false, error: "Linked Power Games/Ranking history record does not match event and source" });
@@ -2546,7 +2546,7 @@ const server = http.createServer(async (req, res) => {
             (event.sourceCategory === "ai_alert" && source.rows[0]?.level === "AI" && payload.source !== "manual-power-ranking" && payload.alertType !== "power_ranking_signal" && !ids.some(value => String(value).startsWith("power_ranking_"))) ||
             (event.sourceCategory === "vip_alert" && source.rows[0]?.level === "VIP" && payload.source !== "manual-power-games" && payload.source !== "manual-power-ranking") ||
             (event.sourceCategory === "power_games" && source.rows[0]?.level === "VIP" && payload.source === "manual-power-games") ||
-            (event.sourceCategory === "power_ranking" && (payload.source === "manual-power-ranking" || payload.alertType === "power_ranking_signal" || ids.some(value => String(value).startsWith("power_ranking_"))));
+            (event.sourceCategory === "power_ranking" && (payload.source === "manual-power-ranking" || String(payload.alertType || "").startsWith("power_ranking_") || ids.some(value => String(value).startsWith("power_ranking_"))));
         }
         if (!source?.rowCount || String(source.rows[0].event_id) !== event.eventId || !categoryMatches) {
           await client.query("ROLLBACK");
