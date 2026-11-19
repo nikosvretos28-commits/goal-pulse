@@ -118,3 +118,14 @@ test("team matching tolerates accents and common club suffixes but preserves hom
 test("invalid calendar dates are rejected", () => {
   assert.equal(validateEvidence({ ...evidence, date: "2026-02-31" }).reason, "incomplete_fixture_evidence");
 });
+
+
+test("Power Games Asian Over 2.0 grades the second-half goal total with an exact push", () => {
+  const record = { home: "Alpha FC", away: "Beta SC", periodAtSignal: "second_half", market: "Ασιατικό Over 2.0 (2ο ημίχρονο)" };
+  const twoGoals = { ...evidence, homeScore: 2, awayScore: 1, homeHtScore: 1, awayHtScore: 0 };
+  const threeGoals = { ...evidence, homeScore: 3, awayScore: 1, homeHtScore: 1, awayHtScore: 0 };
+  const oneGoal = { ...evidence, homeScore: 2, awayScore: 0, homeHtScore: 1, awayHtScore: 0 };
+  assert.equal(resolveAlertSettlement(record, twoGoals).settlement.outcome, "push");
+  assert.equal(resolveAlertSettlement(record, threeGoals).settlement.outcome, "won");
+  assert.equal(resolveAlertSettlement(record, oneGoal).settlement.outcome, "lost");
+});
