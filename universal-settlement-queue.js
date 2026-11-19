@@ -5,7 +5,12 @@ const TERMINAL_ACTIVITY = new Set(["won", "lost", "push", "void", "confirmed", "
 const TERMINAL_HUNTER = new Set(["confirmed", "not_confirmed", "won", "lost", "push", "void"]);
 
 function isPending(value, terminal) {
-  return !terminal.has(String(value ?? "").trim().toLowerCase());
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized || normalized === "pending" || normalized === "εκκρεμεί" || normalized === "εκκρεμει") return true;
+  if (terminal.has(normalized)) return false;
+  // Older HI/Pressure records use human-readable Greek labels rather than enum values.
+  if (/επιβεβαιώθηκε|επιβεβαιωθηκε|δεν επιβεβαιώθηκε|δεν επιβεβαιωθηκε|κερδισμένο|κερδισμενο|χαμένο|χαμενο|επιστροφή|επιστροφη|void|cancelled|canceled/.test(normalized)) return false;
+  return true;
 }
 
 function buildUniversalSettlementQueue(input = {}, limit = 1000) {
@@ -28,15 +33,15 @@ function buildUniversalSettlementQueue(input = {}, limit = 1000) {
   }
   for (const row of Array.isArray(input.hiActivity) ? input.hiActivity : []) {
     const payload = row.payload || {};
+    const status = payload.outcomeStatus || payload.outcome || payload.settlementStatus || payload.status;
     push("HI_ACTIVITY", row.observation_id || payload.observationId, row.event_id || payload.eventId,
-      row.created_at || payload.createdAt, payload, isPending(payload.outcome, TERMINAL_ACTIVITY));
+      row.created_at || payload.createdAt, payload, isPending(status, TERMINAL_ACTIVITY));
   }
   for (const row of Array.isArray(input.pressureHunter) ? input.pressureHunter : []) {
     const payload = row.payload || {};
-    const settled = TERMINAL_HUNTER.has(String(payload.outcomeStatus || "").trim().toLowerCase()) ||
-      TERMINAL_HUNTER.has(String(payload.outcome || "").trim().toLowerCase());
+    const status = payload.outcomeStatus || payload.outcome || payload.settlementStatus || payload.status;
     push("PRESSURE_HUNTER", row.alert_id || payload.alertId, row.event_id || payload.eventId,
-      row.created_at || payload.createdAt, payload, !settled);
+      row.created_at || payload.createdAt, payload, isPending(status, TERMINAL_HUNTER));
   }
 
   records.sort((a, b) => {
