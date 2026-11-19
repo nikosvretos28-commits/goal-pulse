@@ -2441,7 +2441,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 409, { ok: false, error: transition.reason });
         }
         const source = event.sourceCategory === "hi_activity"
-          ? await client.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [event.sourceRecordId])
+          ? await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [event.sourceRecordId])
           : event.sourceCategory === "pressure_hunter"
             ? await client.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [event.sourceRecordId])
             : await client.query("SELECT event_id FROM alert_history WHERE alert_id = $1", [event.sourceRecordId]);
