@@ -2322,14 +2322,20 @@ const server = http.createServer(async (req, res) => {
       if (!checked.ok) return send(res, 400, { ok: false, error: checked.reason });
       const entry = checked.entry;
       if (entry.category === "ai" || entry.category === "vip") {
-        const linked = await analyticsPool.query("SELECT event_id FROM alert_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
-        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked alert history record does not match event" });
+        if (!await ensureAlertHistoryDb()) return send(res, 503, { ok: false, error: "Alert history source unavailable" });
+        const linked = await analyticsPool.query("SELECT event_id, level FROM alert_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
+        const expectedLevel = entry.category === "vip" ? "VIP" : "AI";
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId || linked.rows[0].level !== expectedLevel) return send(res, 409, { ok: false, error: "Linked AI/VIP history record does not match event and category" });
       } else if (entry.category === "hi_activity") {
+        if (!await ensureHighActivityHistoryDb()) return send(res, 503, { ok: false, error: "HI Activity history source unavailable" });
         const linked = await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [entry.sourceRecordId]);
         if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked HI Activity record does not match event" });
       } else if (entry.category === "pressure_hunter") {
+        if (!await ensurePressureHunterDb()) return send(res, 503, { ok: false, error: "Pressure Hunter history source unavailable" });
         const linked = await analyticsPool.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
         if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked Pressure Hunter record does not match event" });
+      } else {
+        return send(res, 409, { ok: false, error: "This category has no verified canonical history source yet" });
       }
       const id = require("crypto").randomUUID();
       const result = await analyticsPool.query(
