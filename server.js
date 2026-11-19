@@ -3324,7 +3324,10 @@ const server = http.createServer(async (req, res) => {
             }
           }
           const metricById = new Map((metrics.matches || []).map(item => [String(item.eventId), item]));
-          const normalizeTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:(?:cd|fc|cf|sc|ac|afc)\s+|club deportivo\s+|deportivo\s+)/, "").trim();
+          // Use the same club-name normalization as fixture matching. In particular, strip
+          // suffixes such as SC/FC as well as prefixes, so provider lookup and candidate
+          // validation agree (e.g. 'Puerto Rico Surf SC' vs 'Puerto Rico Surf').
+          const normalizeTeam = normalizeFixtureName;
           const completedScoreboardFixtures = [];
           for (const event of scoreboardEvents) {
             const competition = event.competitions?.[0];
