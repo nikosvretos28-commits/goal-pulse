@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { getPeriodSettlementScore, parseOverLine, gradeOverMarket, canSettleOverWithoutStartScore, normalizeFixtureName, getProviderFixtureId, findUniqueCompletedFixture, rotateSettlementRows, prioritizeSettlementRows } = require("./settlement");
+const { REPAIR: MANUAL_SETTLEMENT_REPAIR, buildManualFirstHalfSettlement } = require("./manual-settlement");
 const { normalizeLiveMinute } = require("./live-minute");
 const { isLiveEvent } = require("./live-state");
 const { validateRollingSot, confirmSotSignal, readExactSotStat } = require("./sot-integrity");
@@ -2246,6 +2247,66 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     } catch (error) {
       return send(res, 400, { ok: false, error: "Invalid request" });
+    }
+  }
+
+  if (url.pathname === "/api/alerts/settlement/manual-repair" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    if (!analyticsPool || !await ensureAlertHistoryDb()) {
+      return send(res, 503, { ok: false, error: "Persistent alert history database unavailable" });
+    }
+    let client;
+    try {
+      client = await analyticsPool.connect();
+      await client.query("BEGIN");
+      const selected = await client.query(
+        "SELECT alert_id, event_id, level, payload FROM alert_history WHERE alert_id = ANY($1::text[]) ORDER BY alert_id FOR UPDATE",
+        [MANUAL_SETTLEMENT_REPAIR.alertIds]
+      );
+      if (selected.rowCount !== MANUAL_SETTLEMENT_REPAIR.alertIds.length) {
+        throw new Error("Repair aborted: not all four approved alert rows exist");
+      }
+      const byId = new Map(selected.rows.map(row => [row.alert_id, row]));
+      const orderedRows = MANUAL_SETTLEMENT_REPAIR.alertIds.map(id => byId.get(id));
+      if (orderedRows.some(row => !row)) throw new Error("Repair aborted: approved alert set is incomplete");
+      const settledAt = new Date().toISOString();
+      const updates = orderedRows.map(row => ({
+        alertId: row.alert_id,
+        eventId: row.event_id,
+        payload: buildManualFirstHalfSettlement(row, settledAt)
+      }));
+      for (const update of updates) {
+        const result = await client.query(
+          "UPDATE alert_history SET payload = $1::jsonb, updated_at = NOW() WHERE alert_id = $2 AND event_id = $3 AND (payload->>'betOutcome' IS NULL OR LOWER(payload->>'betOutcome') NOT IN ('won','lost','push','void'))",
+          [JSON.stringify(update.payload), update.alertId, update.eventId]
+        );
+        if (result.rowCount !== 1) throw new Error("Repair aborted: an alert changed or was settled concurrently");
+      }
+      await client.query("COMMIT");
+      return send(res, 200, {
+        ok: true,
+        repaired: updates.length,
+        eventId: MANUAL_SETTLEMENT_REPAIR.eventId,
+        scoreScope: "first_half",
+        halfTimeScore: "7-1",
+        evidence: "user_supplied_sofascore_screenshot",
+        results: updates.map(update => ({
+          alertId: update.alertId,
+          market: update.payload.market,
+          outcome: update.payload.betOutcome,
+          overLine: update.payload.manualSettlementAudit.overLine
+        }))
+      });
+    } catch (error) {
+      if (client) {
+        try { await client.query("ROLLBACK"); } catch {}
+      }
+      console.error("Targeted manual AI alert settlement repair failed:", String(error.message || error));
+      return send(res, 409, { ok: false, error: String(error.message || "Manual settlement repair failed") });
+    } finally {
+      if (client) client.release();
     }
   }
 
