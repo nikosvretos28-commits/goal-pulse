@@ -25,9 +25,19 @@ function buildUniversalSettlementQueue(input = {}, limit = 1000) {
 
   for (const row of Array.isArray(input.alerts) ? input.alerts : []) {
     const payload = row.payload || {};
+    const source = String(payload.source || "").toLowerCase();
+    const alertType = String(payload.alertType || "").toLowerCase();
+    const triggerIds = Array.isArray(payload.triggerIds) ? payload.triggerIds.map(value => String(value).toLowerCase()) : [];
+    const isPowerGames = source === "manual-power-games";
+    const isPowerRanking = source === "manual-power-ranking" ||
+      alertType.startsWith("power_ranking_") || alertType === "power_ranking_signal" ||
+      triggerIds.some(value => value.startsWith("power_ranking_"));
+    const isManualHiActivity = source === "manual-high-activity";
+    const category = isPowerGames ? "POWER_GAMES" : isPowerRanking ? "POWER_RANKING" :
+      isManualHiActivity ? "HI_ACTIVITY" :
+      String(row.level || payload.level || "AI").toUpperCase() === "VIP" ? "VIP_ALERT" : "AI_ALERT";
     push(
-      String(row.level || payload.level || "AI").toUpperCase() === "VIP" ? "VIP_ALERT" : "AI_ALERT",
-      row.alert_id || payload.alertId, row.event_id || payload.eventId, row.created_at || payload.createdAt,
+      category, row.alert_id || payload.alertId, row.event_id || payload.eventId, row.created_at || payload.createdAt,
       payload, isPending(payload.betOutcome, TERMINAL_ALERT)
     );
   }
