@@ -15,6 +15,10 @@ const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterFor
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
+const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
+const { validateTriggerAudit, buildTriggerAuditReversal } = require("./trigger-activation-audit");
+const { validateLedgerEvent, validateLedgerTransition, reduceLedgerEvents } = require("./universal-settlement-ledger");
+const { validateEvidence, resolveAlertSettlement, resolveGoalAfterSignal } = require("./universal-settlement");
 const { isVerifiedSecondHalfMieRecord } = require("./mie-alert-verification");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
@@ -278,6 +282,72 @@ async function ensurePushDb() {
     )
   `).then(() => true).catch(error => { pushDbInit = null; console.error("Push subscription database unavailable:", error.message); return false; });
   return pushDbInit;
+}
+let triggerActivationAuditDbInit = null;
+async function ensureTriggerActivationAuditDb() {
+  if (!analyticsPool) return false;
+  if (!triggerActivationAuditDbInit) triggerActivationAuditDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS trigger_activation_audit (
+      audit_id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      source_record_id TEXT,
+      alert_id TEXT,
+      trigger_id TEXT NOT NULL,
+      trigger_name TEXT NOT NULL,
+      protocol_id TEXT NOT NULL,
+      minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 150),
+      period TEXT NOT NULL,
+      snapshot JSONB NOT NULL,
+      evidence_type TEXT NOT NULL,
+      evidence_ref TEXT NOT NULL,
+      entry_mode TEXT NOT NULL,
+      verification_status TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      notes TEXT,
+      idempotency_key TEXT UNIQUE,
+      reverses_audit_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS trigger_activation_audit_event_idx ON trigger_activation_audit(event_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS trigger_activation_audit_alert_idx ON trigger_activation_audit(alert_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS trigger_activation_audit_category_idx ON trigger_activation_audit(category, created_at DESC);
+  `).then(() => true).catch(error => {
+    triggerActivationAuditDbInit = null;
+    console.error("[trigger-audit] database unavailable:", error.message);
+    return false;
+  });
+  return triggerActivationAuditDbInit;
+}
+let universalSettlementLedgerDbInit = null;
+async function ensureUniversalSettlementLedgerDb() {
+  if (!analyticsPool) return false;
+  if (!universalSettlementLedgerDbInit) universalSettlementLedgerDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS universal_settlement_ledger (
+      ledger_event_id TEXT PRIMARY KEY,
+      settlement_id TEXT NOT NULL,
+      source_category TEXT NOT NULL,
+      source_record_id TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      status TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      reason TEXT,
+      evidence JSONB,
+      evaluation JSONB,
+      idempotency_key TEXT UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS universal_settlement_ledger_settlement_idx
+      ON universal_settlement_ledger(settlement_id, created_at ASC, ledger_event_id ASC);
+    CREATE INDEX IF NOT EXISTS universal_settlement_ledger_source_idx
+      ON universal_settlement_ledger(source_category, source_record_id, created_at DESC);
+  `).then(() => true).catch(error => {
+    universalSettlementLedgerDbInit = null;
+    console.error("[universal-settlement-ledger] database unavailable:", error.message);
+    return false;
+  });
+  return universalSettlementLedgerDbInit;
 }
 async function ensureAlertHistoryDb() {
   if (!analyticsPool) return false;
@@ -2247,6 +2317,340 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     } catch (error) {
       return send(res, 400, { ok: false, error: "Invalid request" });
+    }
+  }
+
+  if (url.pathname === "/api/settlement/trigger-audit" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    if (!await ensureTriggerActivationAuditDb()) return send(res, 503, { ok: false, error: "Trigger audit database unavailable" });
+    const body = auth.body || {};
+    try {
+      if (body.action === "list") {
+        const eventId = String(body.eventId || "").trim().slice(0, 180);
+        const alertId = String(body.alertId || "").trim().slice(0, 180);
+        if (!eventId && !alertId) return send(res, 400, { ok: false, error: "eventId or alertId is required" });
+        const result = await analyticsPool.query(
+          "SELECT audit_id, event_id, category, source_record_id, alert_id, trigger_id, trigger_name, protocol_id, minute, period, snapshot, evidence_type, evidence_ref, entry_mode, verification_status, actor, notes, reverses_audit_id, created_at FROM trigger_activation_audit WHERE ($1 = '' OR event_id = $1) AND ($2 = '' OR alert_id = $2) ORDER BY created_at ASC LIMIT 500",
+          [eventId, alertId]
+        );
+        return send(res, 200, { ok: true, appendOnly: true, count: result.rowCount, entries: result.rows });
+      }
+      if (body.action === "reverse") {
+        const reversal = buildTriggerAuditReversal(body.auditId, { reason: body.reason, actor: body.actor });
+        if (!reversal.ok) return send(res, 400, { ok: false, error: reversal.reason });
+        const original = await analyticsPool.query("SELECT audit_id, event_id, category, source_record_id, alert_id FROM trigger_activation_audit WHERE audit_id = $1", [body.auditId]);
+        if (!original.rowCount) return send(res, 404, { ok: false, error: "Original audit entry not found" });
+        const row = original.rows[0];
+        const id = require("crypto").randomUUID();
+        await analyticsPool.query(
+          "INSERT INTO trigger_activation_audit (audit_id,event_id,category,source_record_id,alert_id,trigger_id,trigger_name,protocol_id,minute,period,snapshot,evidence_type,evidence_ref,entry_mode,verification_status,actor,notes,reverses_audit_id) VALUES ($1,$2,$3,$4,$5,'REVERSAL','Audit reversal','audit_reversal',0,'unknown','{}'::jsonb,'user_supplied',$6,'manual_reversal','reversed',$7,$8,$9)",
+          [id,row.event_id,row.category,row.source_record_id,row.alert_id,String(body.evidenceRef || 'manual reversal').slice(0,1000),reversal.entry.actor,reversal.entry.reason,row.audit_id]
+        );
+        return send(res, 201, { ok: true, appended: true, auditId: id, reversesAuditId: row.audit_id });
+      }
+      const checked = validateTriggerAudit(body);
+      if (!checked.ok) return send(res, 400, { ok: false, error: checked.reason });
+      const entry = checked.entry;
+      if (entry.category === "ai" || entry.category === "vip") {
+        if (!await ensureAlertHistoryDb()) return send(res, 503, { ok: false, error: "Alert history source unavailable" });
+        const linked = await analyticsPool.query("SELECT event_id, level, payload FROM alert_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
+        const expectedLevel = entry.category === "vip" ? "VIP" : "AI";
+        const linkedPayload = linked.rows[0]?.payload || {};
+        const linkedTriggerIds = Array.isArray(linkedPayload.triggerIds) ? linkedPayload.triggerIds : [];
+        const isPowerGamesRecord = linkedPayload.source === "manual-power-games";
+        const isPowerRankingRecord = linkedPayload.source === "manual-power-ranking" ||
+          String(linkedPayload.alertType || "").startsWith("power_ranking_") ||
+          linkedTriggerIds.some(value => String(value).startsWith("power_ranking_"));
+        const categoryMatches = entry.category === "vip"
+          ? !isPowerGamesRecord && !isPowerRankingRecord
+          : !isPowerRankingRecord;
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId ||
+            linked.rows[0].level !== expectedLevel || !categoryMatches) {
+          return send(res, 409, { ok: false, error: "Linked AI/VIP history record does not match event and category" });
+        }
+      } else if (entry.category === "hi_activity") {
+        if (!await ensureHighActivityHistoryDb()) return send(res, 503, { ok: false, error: "HI Activity history source unavailable" });
+        const linked = await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [entry.sourceRecordId]);
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked HI Activity record does not match event" });
+      } else if (entry.category === "pressure_hunter") {
+        if (!await ensurePressureHunterDb()) return send(res, 503, { ok: false, error: "Pressure Hunter history source unavailable" });
+        const linked = await analyticsPool.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [entry.alertId || entry.sourceRecordId]);
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId) return send(res, 409, { ok: false, error: "Linked Pressure Hunter record does not match event" });
+      } else if (entry.category === "power_games" || entry.category === "power_ranking") {
+        if (!entry.alertId) return send(res, 400, { ok: false, error: "Power category requires its original alert ID" });
+        if (!await ensureAlertHistoryDb()) return send(res, 503, { ok: false, error: "Power alert history unavailable" });
+        const linked = await analyticsPool.query("SELECT event_id, level, payload FROM alert_history WHERE alert_id = $1", [entry.alertId]);
+        const payload = linked.rows[0]?.payload || {};
+        const triggerIds = Array.isArray(payload.triggerIds) ? payload.triggerIds : [];
+        const isPowerGames = entry.category === "power_games" &&
+          linked.rows[0]?.level === "VIP" && payload.source === "manual-power-games";
+        const isPowerRanking = entry.category === "power_ranking" && (
+          (linked.rows[0]?.level === "VIP" && payload.source === "manual-power-ranking") ||
+          (linked.rows[0]?.level === "AI" && (String(payload.alertType || "").startsWith("power_ranking_") ||
+            triggerIds.some(value => String(value).startsWith("power_ranking_"))))
+        );
+        if (!linked.rowCount || linked.rows[0].event_id !== entry.eventId || (!isPowerGames && !isPowerRanking)) {
+          return send(res, 409, { ok: false, error: "Linked Power Games/Ranking history record does not match event and source" });
+        }
+      } else {
+        return send(res, 409, { ok: false, error: "This category has no verified canonical history source yet" });
+      }
+      const id = require("crypto").randomUUID();
+      const result = await analyticsPool.query(
+        "INSERT INTO trigger_activation_audit (audit_id,event_id,category,source_record_id,alert_id,trigger_id,trigger_name,protocol_id,minute,period,snapshot,evidence_type,evidence_ref,entry_mode,verification_status,actor,notes,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (idempotency_key) DO NOTHING RETURNING audit_id, event_id, category, alert_id, trigger_id, trigger_name, protocol_id, minute, period, snapshot, evidence_type, evidence_ref, entry_mode, verification_status, actor, notes, created_at",
+        [id,entry.eventId,entry.category,entry.sourceRecordId,entry.alertId,entry.triggerId,entry.triggerName,entry.protocolId,entry.minute,entry.period,JSON.stringify(entry.snapshot),entry.evidenceType,entry.evidenceRef,entry.entryMode,entry.verificationStatus,entry.actor,entry.notes,entry.idempotencyKey]
+      );
+      if (!result.rowCount && entry.idempotencyKey) {
+        const existing = await analyticsPool.query("SELECT audit_id FROM trigger_activation_audit WHERE idempotency_key = $1", [entry.idempotencyKey]);
+        return send(res, 200, { ok: true, duplicate: true, auditId: existing.rows[0]?.audit_id || null });
+      }
+      return send(res, 201, { ok: true, appended: true, audit: result.rows[0] });
+    } catch (error) {
+      console.error("[trigger-audit] request failed:", error.message);
+      return send(res, 500, { ok: false, error: "Trigger audit request failed" });
+    }
+  }
+
+  if (url.pathname === "/api/settlement/ledger" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    if (!await ensureUniversalSettlementLedgerDb()) return send(res, 503, { ok: false, error: "Settlement ledger database unavailable" });
+    const body = auth.body || {};
+    try {
+      if (body.action === "settle") {
+        const request = body.event || {};
+        const sourceCategory = String(request.sourceCategory || "").trim().toLowerCase();
+        const sourceRecordId = String(request.sourceRecordId || "").trim().slice(0, 180);
+        const eventId = String(request.eventId || "").trim().slice(0, 180);
+        const settlementId = String(request.settlementId || "").trim().slice(0, 180);
+        const actor = String(request.actor || "owner").trim().slice(0, 120);
+        const idempotencyKey = String(request.idempotencyKey || require("node:crypto").randomUUID()).trim().slice(0, 180);
+        const evidenceCheck = validateEvidence(request.evidence || {});
+        if (!settlementId || !sourceRecordId || !eventId || !actor ||
+            !["ai_alert","vip_alert","hi_activity","pressure_hunter","power_games","power_ranking"].includes(sourceCategory) ||
+            !evidenceCheck.ok) return send(res, 400, { ok: false, error: evidenceCheck.reason || "invalid_settlement_identity" });
+        const evidence = evidenceCheck.evidence;
+        if (evidence.provider === "user_supplied" || !evidence.sourceUrl) return send(res, 400, { ok: false, error: "Settlement requires independently attributable provider evidence with a source URL" });
+        const client = await analyticsPool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [settlementId]);
+          const duplicate = await client.query("SELECT ledger_event_id FROM universal_settlement_ledger WHERE idempotency_key = ANY($1::text[]) ORDER BY created_at DESC LIMIT 1", [[idempotencyKey+":evidence",idempotencyKey+":verified",idempotencyKey+":finalized"]]);
+          if (duplicate.rowCount) { await client.query("COMMIT"); return send(res, 200, { ok: true, duplicate: true, ledgerEventId: duplicate.rows[0].ledger_event_id }); }
+          const latest = await client.query("SELECT status FROM universal_settlement_ledger WHERE settlement_id=$1 ORDER BY created_at DESC,ledger_event_id DESC LIMIT 1", [settlementId]);
+          const currentStatus = latest.rows[0]?.status || "pending";
+          if (!["pending","disputed"].includes(currentStatus)) {
+            await client.query("ROLLBACK");
+            return send(res, 409, { ok: false, error: "Only pending or disputed settlements can be evaluated; existing verified/finalized state is preserved" });
+          }
+          let source, record;
+          if (sourceCategory === "hi_activity") {
+            if (!await ensureHighActivityHistoryDb()) throw new Error("HI Activity history unavailable");
+            source = await highActivityHistoryPool.query("SELECT event_id,payload FROM high_activity_history WHERE observation_id=$1", [sourceRecordId]);
+          } else if (sourceCategory === "pressure_hunter") {
+            if (!await ensurePressureHunterDb()) throw new Error("Pressure Hunter history unavailable");
+            source = await client.query("SELECT event_id,payload FROM pressure_hunter_history WHERE alert_id=$1", [sourceRecordId]);
+          } else {
+            if (!await ensureAlertHistoryDb()) throw new Error("Alert history unavailable");
+            source = await client.query("SELECT event_id,level,payload FROM alert_history WHERE alert_id=$1", [sourceRecordId]);
+          }
+          if (!source?.rowCount || String(source.rows[0].event_id) !== eventId) {
+            await client.query("ROLLBACK");
+            return send(res, 409, { ok: false, error: "Canonical source record/event mismatch" });
+          }
+          record = source.rows[0].payload || {};
+          const ids = Array.isArray(record.triggerIds) ? record.triggerIds : [];
+          const categoryMatches = sourceCategory === "hi_activity" || sourceCategory === "pressure_hunter" ||
+            (sourceCategory === "ai_alert" && source.rows[0].level === "AI" && record.source !== "manual-power-ranking" && !String(record.alertType || "").startsWith("power_ranking_") && !ids.some(value => String(value).startsWith("power_ranking_"))) ||
+            (sourceCategory === "vip_alert" && source.rows[0].level === "VIP" && !["manual-power-games","manual-power-ranking"].includes(record.source)) ||
+            (sourceCategory === "power_games" && source.rows[0].level === "VIP" && record.source === "manual-power-games") ||
+            (sourceCategory === "power_ranking" && (record.source === "manual-power-ranking" || String(record.alertType || "").startsWith("power_ranking_") || ids.some(value => String(value).startsWith("power_ranking_"))));
+          if (!categoryMatches) { await client.query("ROLLBACK"); return send(res, 409, { ok: false, error: "Canonical record does not belong to the selected category" }); }
+          let evaluated;
+          if (sourceCategory === "hi_activity") evaluated = resolveGoalAfterSignal(record, evidence);
+          else if (sourceCategory === "pressure_hunter") evaluated = resolveGoalAfterSignal(record, evidence);
+          else evaluated = resolveAlertSettlement(record, evidence);
+          if (!evaluated?.ok || !evaluated.settlement?.outcome) {
+            await client.query("ROLLBACK");
+            return send(res, 422, { ok: false, error: evaluated?.reason || "settlement_evaluation_unresolved", noSettlementWritten: true });
+          }
+          const sequence = [
+            { action: "evidence_attached", status: "pending", evidence, evaluation: null, key: idempotencyKey+":evidence" },
+            { action: "verified", status: "verified", evidence: null, evaluation: null, key: idempotencyKey+":verified" },
+            { action: "finalized", status: "finalized", evidence: null, evaluation: evaluated.settlement, key: idempotencyKey+":finalized" }
+          ];
+          let previous = currentStatus, finalRow = null;
+          for (const item of sequence) {
+            const event = { action: item.action, status: item.status };
+            const transition = validateLedgerTransition(previous, event);
+            if (!transition.ok) throw new Error(transition.reason);
+            const ledgerId = require("node:crypto").randomUUID();
+            const inserted = await client.query(
+              "INSERT INTO universal_settlement_ledger (ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12) RETURNING ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,created_at",
+              [ledgerId,settlementId,sourceCategory,sourceRecordId,eventId,item.action,item.status,actor,item.action==="finalized"?"server_evaluated":null,item.evidence?JSON.stringify(item.evidence):null,item.evaluation?JSON.stringify(item.evaluation):null,item.key]
+            );
+            finalRow = inserted.rows[0]; previous = item.status;
+          }
+          await client.query("COMMIT");
+          return send(res, 201, { ok: true, finalized: true, outcome: evaluated.settlement.outcome, evaluation: evaluated.settlement, ledgerEventsAppended: 3, event: finalRow });
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => {});
+          console.error("[universal-settlement-ledger] evaluation failed:", error.message);
+          return send(res, 500, { ok: false, error: "Settlement evaluation failed; no partial ledger write was committed" });
+        } finally { client.release(); }
+      }
+      if (body.action === "list") {
+        const settlementId = String(body.settlementId || "").trim().slice(0, 180);
+        const sourceRecordId = String(body.sourceRecordId || "").trim().slice(0, 180);
+        if (!settlementId && !sourceRecordId) return send(res, 400, { ok: false, error: "settlementId or sourceRecordId is required" });
+        const result = await analyticsPool.query(
+          "SELECT ledger_event_id, settlement_id, source_category, source_record_id, event_id, action, status, actor, reason, evidence, evaluation, idempotency_key, created_at FROM universal_settlement_ledger WHERE ($1 = '' OR settlement_id = $1) AND ($2 = '' OR source_record_id = $2) ORDER BY created_at ASC, ledger_event_id ASC LIMIT 1000",
+          [settlementId, sourceRecordId]
+        );
+        return send(res, 200, { ok: true, appendOnly: true, count: result.rowCount, events: result.rows, states: reduceLedgerEvents(result.rows) });
+      }
+      if (body.action !== "append") return send(res, 400, { ok: false, error: "Unsupported ledger action" });
+      const checked = validateLedgerEvent(body.event || {});
+      if (!checked.ok) return send(res, 400, { ok: false, error: checked.reason });
+      const event = checked.event;
+      if (["verified", "finalized"].includes(event.action)) {
+        return send(res, 409, { ok: false, error: "Server-side evidence verification and market grading are not wired yet; fail-closed, no settlement was finalized" });
+      }
+      const client = await analyticsPool.connect();
+      try {
+        await client.query("BEGIN");
+        if (event.idempotencyKey) {
+          const duplicate = await client.query("SELECT ledger_event_id FROM universal_settlement_ledger WHERE idempotency_key = $1", [event.idempotencyKey]);
+          if (duplicate.rowCount) {
+            await client.query("COMMIT");
+            return send(res, 200, { ok: true, duplicate: true, ledgerEventId: duplicate.rows[0].ledger_event_id });
+          }
+        }
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [event.settlementId]);
+        const prior = await client.query(
+          "SELECT status FROM universal_settlement_ledger WHERE settlement_id = $1 ORDER BY created_at DESC, ledger_event_id DESC LIMIT 1 FOR UPDATE",
+          [event.settlementId]
+        );
+        const transition = validateLedgerTransition(prior.rows[0]?.status || "pending", event);
+        if (!transition.ok) {
+          await client.query("ROLLBACK");
+          return send(res, 409, { ok: false, error: transition.reason });
+        }
+        let source;
+        let categoryMatches = false;
+        if (event.sourceCategory === "hi_activity") {
+          if (!await ensureHighActivityHistoryDb()) throw new Error("HI Activity history unavailable");
+          source = await highActivityHistoryPool.query("SELECT event_id FROM high_activity_history WHERE observation_id = $1", [event.sourceRecordId]);
+          categoryMatches = true;
+        } else if (event.sourceCategory === "pressure_hunter") {
+          if (!await ensurePressureHunterDb()) throw new Error("Pressure Hunter history unavailable");
+          source = await client.query("SELECT event_id FROM pressure_hunter_history WHERE alert_id = $1", [event.sourceRecordId]);
+          categoryMatches = true;
+        } else {
+          if (!await ensureAlertHistoryDb()) throw new Error("Alert history unavailable");
+          source = await client.query("SELECT event_id, level, payload FROM alert_history WHERE alert_id = $1", [event.sourceRecordId]);
+          const payload = source.rows[0]?.payload || {};
+          const ids = Array.isArray(payload.triggerIds) ? payload.triggerIds : [];
+          categoryMatches =
+            (event.sourceCategory === "ai_alert" && source.rows[0]?.level === "AI" && payload.source !== "manual-power-ranking" && payload.alertType !== "power_ranking_signal" && !ids.some(value => String(value).startsWith("power_ranking_"))) ||
+            (event.sourceCategory === "vip_alert" && source.rows[0]?.level === "VIP" && payload.source !== "manual-power-games" && payload.source !== "manual-power-ranking") ||
+            (event.sourceCategory === "power_games" && source.rows[0]?.level === "VIP" && payload.source === "manual-power-games") ||
+            (event.sourceCategory === "power_ranking" && (payload.source === "manual-power-ranking" || String(payload.alertType || "").startsWith("power_ranking_") || ids.some(value => String(value).startsWith("power_ranking_"))));
+        }
+        if (!source?.rowCount || String(source.rows[0].event_id) !== event.eventId || !categoryMatches) {
+          await client.query("ROLLBACK");
+          return send(res, 409, { ok: false, error: "Source history record does not match the supplied event and category" });
+        }
+        const id = require("node:crypto").randomUUID();
+        const inserted = await client.query(
+          "INSERT INTO universal_settlement_ledger (ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12) RETURNING ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,created_at",
+          [id,event.settlementId,event.sourceCategory,event.sourceRecordId,event.eventId,event.action,transition.status,event.actor,event.reason,JSON.stringify(event.evidence),JSON.stringify(event.evaluation),event.idempotencyKey]
+        );
+        await client.query("COMMIT");
+        return send(res, 201, { ok: true, appended: true, event: inserted.rows[0] });
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw error;
+      } finally { client.release(); }
+    } catch (error) {
+      console.error("[universal-settlement-ledger] request failed:", error.message);
+      return send(res, 500, { ok: false, error: "Settlement ledger request failed" });
+    }
+  }
+
+  if (url.pathname === "/api/settlement/universal-queue" && req.method === "POST") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { ok: false, error: "Origin not allowed" });
+    const auth = await authorizePrivateAdminRequest(req);
+    if (!auth.ok) return send(res, auth.status, { ok: false, error: auth.error });
+    const limit = Math.max(100, Math.min(1000, Math.trunc(Number(auth.body.limit) || 1000)));
+    const cursor = Math.max(0, Math.min(1000000, Math.trunc(Number(auth.body.cursor) || 0)));
+    const sources = {
+      aiVip: { available: false, count: 0 },
+      powerGames: { available: false, count: 0 },
+      powerRanking: { available: false, count: 0 },
+      hiActivity: { available: false, count: 0 },
+      pressureHunter: { available: false, count: 0 }
+    };
+    let more = false;
+    try {
+      const alertsReady = await ensureAlertHistoryDb();
+      if (alertsReady) {
+        const [page, count] = await Promise.all([
+          analyticsPool.query(
+            "SELECT alert_id, event_id, level, created_at, payload FROM alert_history ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2",
+            [limit + 1, cursor]
+          ),
+          analyticsPool.query("SELECT COUNT(*)::bigint AS count, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-games')::bigint AS power_games, COUNT(*) FILTER (WHERE payload->>'source'='manual-power-ranking' OR payload->>'alertType' LIKE 'power_ranking_%' OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(payload->'triggerIds')='array' THEN payload->'triggerIds' ELSE '[]'::jsonb END) AS trigger_id WHERE trigger_id LIKE 'power_ranking_%'))::bigint AS power_ranking FROM alert_history")
+        ]);
+        more = more || page.rowCount > limit;
+        var alertRows = page.rows.slice(0, limit);
+        sources.aiVip = { available: true, count: Number(count.rows[0]?.count || 0) };
+        sources.powerGames.count = Number(count.rows[0]?.power_games || 0);
+        sources.powerRanking.count = Number(count.rows[0]?.power_ranking || 0);
+        sources.powerGames.available = true;
+        sources.powerRanking.available = true;
+      }
+      const hiReady = await ensureHighActivityHistoryDb();
+      if (hiReady) {
+        const [page, count] = await Promise.all([
+          highActivityHistoryPool.query(
+            "SELECT observation_id, event_id, created_at, payload FROM high_activity_history ORDER BY created_at DESC, observation_id DESC LIMIT $1 OFFSET $2",
+            [limit + 1, cursor]
+          ),
+          highActivityHistoryPool.query("SELECT COUNT(*)::bigint AS count FROM high_activity_history")
+        ]);
+        more = more || page.rowCount > limit;
+        var hiRows = page.rows.slice(0, limit);
+        sources.hiActivity = { available: true, count: Number(count.rows[0]?.count || 0) };
+      }
+      const hunterReady = await ensurePressureHunterDb();
+      if (hunterReady) {
+        const [page, count] = await Promise.all([
+          analyticsPool.query(
+            "SELECT alert_id, event_id, created_at, payload FROM pressure_hunter_history ORDER BY created_at DESC, alert_id DESC LIMIT $1 OFFSET $2",
+            [limit + 1, cursor]
+          ),
+          analyticsPool.query("SELECT COUNT(*)::bigint AS count FROM pressure_hunter_history")
+        ]);
+        more = more || page.rowCount > limit;
+        var hunterRows = page.rows.slice(0, limit);
+        sources.pressureHunter = { available: true, count: Number(count.rows[0]?.count || 0) };
+      }
+      const queue = buildUniversalSettlementQueue({
+        alerts: alertRows || [], hiActivity: hiRows || [], pressureHunter: hunterRows || []
+      }, Math.min(5000, limit * 3));
+      const unavailable = Object.entries(sources).filter(([, value]) => !value.available).map(([key]) => key);
+      return send(res, 200, {
+        ok: true, readOnly: true, generatedAt: new Date().toISOString(),
+        complete: unavailable.length === 0 && !more, unavailableSources: unavailable,
+        sources, cursor, nextCursor: more ? cursor + limit : null, hasMore: more, ...queue
+      });
+    } catch (error) {
+      console.error("[universal-settlement] Queue read failed:", error.message);
+      return send(res, 503, { ok: false, error: "Could not build the universal settlement queue" });
     }
   }
 

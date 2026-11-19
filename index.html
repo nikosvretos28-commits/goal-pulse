@@ -2944,6 +2944,45 @@ header {
  <div class="top-ai-alerts-head"><div><h2 id="privateAiAlertsTitle">🔒 PRIVATE AI ALERTS · OWNER VIEW</h2><p>Πλήρης εσωτερική εικόνα των ενεργών AI alerts, μόνο μετά από PIN.</p></div><button type="button" class="login" id="privateAiAlertsClose">ΚΛΕΙΣΙΜΟ</button></div>
  <div class="notification-optin-row"><label for="privateAiPin">Admin PIN</label><input id="privateAiPin" type="password" autocomplete="current-password" inputmode="numeric" placeholder="Εισαγωγή PIN" style="max-width:220px"><button type="button" class="login" id="privateAiUnlock">ΞΕΚΛΕΙΔΩΜΑ</button><span id="privateAiStatus" class="subtle" aria-live="polite">Απαιτείται προσωπικό PIN.</span></div>
 <div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="runManualSettlementRepair" disabled>🛠 ΧΕΙΡΟΚΙΝΗΤΟΣ ΔΙΑΚΑΝΟΝΙΣΜΟΣ · 4 ΕΚΚΡΕΜΗ</button><span id="manualSettlementRepairStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div>
+<div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="loadUniversalSettlementQueue" disabled>📚 ΟΛΑ ΤΑ ΙΣΤΟΡΙΚΑ · ΕΚΚΡΕΜΟΤΗΤΕΣ</button><span id="universalSettlementQueueStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div>
+<section id="universalSettlementCenter" class="top-ai-alerts" aria-labelledby="universalSettlementCenterTitle" style="margin-top:14px">
+ <div class="top-ai-alerts-head"><div><h3 id="universalSettlementCenterTitle">⚖ UNIVERSAL SETTLEMENT CENTER</h3><p>Κεντρική ουρά εκκρεμοτήτων από τις πραγματικές αποθήκες ιστορικού. Η προβολή είναι μόνο για ανάγνωση.</p></div><span class="pulse-status" id="settlementCenterCount">ΑΝΑΜΟΝΗ</span></div>
+ <div id="settlementCenterSummary" class="signal-summary" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0"></div>
+ <div id="settlementCenterSources" class="subtle" aria-live="polite">Φόρτωσε την ουρά για έλεγχο διαθεσιμότητας πηγών.</div>
+ <div id="settlementCenterRecords" style="display:grid;gap:8px;margin-top:12px"></div>
+ <div id="settlementCenterSelection" class="top-ai-alert-empty" aria-live="polite" style="margin-top:12px">Επίλεξε μία εκκρεμή εγγραφή για να δεις τα αποθηκευμένα στοιχεία της.</div>
+</section>
+<pre id="universalSettlementQueueResult" hidden></pre>
+<section class="top-ai-alerts" aria-labelledby="triggerAuditTitle" style="margin-top:14px">
+ <h3 id="triggerAuditTitle">TRIGGER ACTIVATION AUDIT · APPEND-ONLY</h3>
+ <p class="top-ai-alert-privacy">Οι χειροκίνητες ανακατασκευές σημειώνονται ρητά ως manual και δεν θεωρούνται αυτόματες ενεργοποιήσεις. Απαιτείται σύνδεση με υπάρχουσα εγγραφή ιστορικού και αποδεικτικό log/trace.</p>
+ <div class="notification-optin-row"><label for="triggerAuditEventId">Event ID</label><input id="triggerAuditEventId" placeholder="Ακριβές event ID"><label for="triggerAuditAlertId">Alert ID (AI/VIP/Pressure/Power)</label><input id="triggerAuditAlertId" placeholder="Alert ID"></div>
+ <div class="notification-optin-row"><button type="button" class="login" id="loadTriggerAudit" disabled>ΑΝΑΖΗΤΗΣΗ AUDIT</button><span id="triggerAuditStatus" class="subtle" aria-live="polite">Απαιτείται ξεκλείδωμα PIN.</span></div>
+ <pre id="triggerAuditEntries" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:300px;overflow:auto"></pre>
+ <h4>ΝΕΑ ΧΕΙΡΟΚΙΝΗΤΗ ΑΝΑΚΑΤΑΣΚΕΥΗ</h4>
+ <div class="notification-optin-row"><label for="triggerAuditCategory">Κατηγορία</label><select id="triggerAuditCategory"><option value="ai">AI Alert</option><option value="vip">VIP Alert</option><option value="hi_activity">HI Activity</option><option value="pressure_hunter">Pressure Hunter</option><option value="power_games">Power Games</option><option value="power_ranking">Power Ranking</option></select><label for="triggerAuditSourceId">Source record ID (υποχρεωτικό για HI)</label><input id="triggerAuditSourceId" placeholder="Observation ID / Alert ID"></div>
+ <div class="notification-optin-row"><label for="triggerAuditTriggerId">Trigger ID</label><input id="triggerAuditTriggerId" placeholder="Πραγματικό trigger ID"><label for="triggerAuditTriggerName">Trigger name</label><input id="triggerAuditTriggerName" placeholder="Πραγματική ονομασία"></div>
+ <div class="notification-optin-row"><label for="triggerAuditProtocolId">Protocol ID</label><input id="triggerAuditProtocolId" placeholder="Protocol ID"><label for="triggerAuditMinute">Λεπτό</label><input id="triggerAuditMinute" type="number" min="0" max="150" placeholder="67"><label for="triggerAuditPeriod">Περίοδος</label><select id="triggerAuditPeriod"><option value="first_half">1ο ημίχρονο</option><option value="second_half">2ο ημίχρονο</option><option value="extra_time">Παράταση</option><option value="unknown">Άγνωστη</option></select></div>
+ <div class="notification-optin-row"><label for="triggerAuditSnapshot">SOT/xG snapshot (JSON)</label><textarea id="triggerAuditSnapshot" rows="3" placeholder='{"sot":8,"homeSot":5,"awaySot":3,"xg":2.4}'></textarea></div>
+ <div class="notification-optin-row"><label for="triggerAuditEvidenceType">Evidence</label><select id="triggerAuditEvidenceType"><option value="log">Log</option><option value="trace">Trace</option><option value="screenshot">Screenshot</option><option value="provider_record">Provider record</option><option value="user_supplied">User supplied</option></select><label for="triggerAuditEvidenceRef">Evidence reference</label><input id="triggerAuditEvidenceRef" placeholder="Log query / screenshot reference"></div>
+ <div class="notification-optin-row"><label for="triggerAuditNotes">Notes</label><input id="triggerAuditNotes" placeholder="Τι αποδεικνύει το στοιχείο"><label for="triggerAuditIdempotency">Idempotency key</label><input id="triggerAuditIdempotency" placeholder="Προαιρετικό μοναδικό κλειδί"></div>
+ <div class="notification-optin-row"><button type="button" class="login" id="appendTriggerAudit" disabled>ΚΑΤΑΧΩΡΙΣΗ MANUAL AUDIT</button></div>
+ <h4>ΑΝΑΣΤΡΟΦΗ ΕΓΓΡΑΦΗΣ (χωρίς διαγραφή)</h4>
+ <div class="notification-optin-row"><label for="triggerAuditReverseId">Audit ID</label><input id="triggerAuditReverseId" placeholder="Audit ID για αναστροφή"><label for="triggerAuditReverseReason">Αιτιολογία</label><input id="triggerAuditReverseReason" placeholder="Γιατί αναστρέφεται"></div>
+ <div class="notification-optin-row"><button type="button" class="login" id="reverseTriggerAudit" disabled>ΠΡΟΣΘΗΚΗ REVERSAL EVENT</button></div>
+ <pre id="triggerAuditActionResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:260px;overflow:auto"></pre>
+</section>
+<section class="top-ai-alerts" aria-labelledby="settlementLedgerTitle" style="margin-top:14px">
+ <h3 id="settlementLedgerTitle">SETTLEMENT LEDGER · APPEND-ONLY HISTORY</h3>
+ <p class="top-ai-alert-privacy">Κάθε ενέργεια προστίθεται ως νέο γεγονός. Δεν τροποποιούνται οι αρχικές εγγραφές. Η οριστικοποίηση απαιτεί ανεξάρτητη επαλήθευση και δεν ενεργοποιείται αυτόματα.</p>
+ <div class="notification-optin-row"><label for="ledgerSettlementId">Settlement ID</label><input id="ledgerSettlementId" placeholder="Μοναδικό ID υπόθεσης"><label for="ledgerSourceCategory">Κατηγορία</label><select id="ledgerSourceCategory"><option value="ai_alert">AI Alert</option><option value="vip_alert">VIP Alert</option><option value="hi_activity">HI Activity</option><option value="pressure_hunter">Pressure Hunter</option><option value="power_games">Power Games</option><option value="power_ranking">Power Ranking</option></select></div>
+ <div class="notification-optin-row"><label for="ledgerSourceRecordId">Source record ID</label><input id="ledgerSourceRecordId" placeholder="Alert ID / Observation ID"><label for="ledgerEventId">Event ID</label><input id="ledgerEventId" placeholder="Ακριβές Event ID"></div>
+ <div class="notification-optin-row"><label for="ledgerAction">Ενέργεια</label><select id="ledgerAction"><option value="evidence_attached">Προσθήκη αποδεικτικού</option><option value="disputed">Αμφισβήτηση</option><option value="reversed">Αναστροφή (append-only)</option><option value="settle">Επαλήθευση & οριστικοποίηση</option></select><label for="ledgerActor">Χειριστής</label><input id="ledgerActor" value="owner"></div>
+ <div class="notification-optin-row"><label for="ledgerReason">Αιτιολογία</label><input id="ledgerReason" placeholder="Υποχρεωτική για αμφισβήτηση"><label for="ledgerEvidence">Αποδεικτικό (JSON)</label><textarea id="ledgerEvidence" rows="3" placeholder='{"provider":"nowgoal","fixtureId":"...","sourceUrl":"https://..."}'></textarea></div>
+ <div class="notification-optin-row"><label for="ledgerIdempotency">Idempotency key</label><input id="ledgerIdempotency" placeholder="Μοναδικό κλειδί"></div>
+ <div class="notification-optin-row"><button type="button" class="login" id="appendSettlementLedger" disabled>ΠΡΟΣΘΗΚΗ ΣΤΟ LEDGER</button><button type="button" class="login" id="loadSettlementLedger" disabled>ΑΝΑΓΝΩΣΗ ΙΣΤΟΡΙΚΟΥ</button><span id="settlementLedgerStatus" class="subtle" aria-live="polite">Απαιτείται ξεκλείδωμα PIN.</span></div>
+ <pre id="settlementLedgerOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:320px;overflow:auto"></pre>
+</section>
  <pre id="manualSettlementRepairResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:320px;overflow:auto"></pre>
 <div class="notification-optin-row" style="margin-top:12px"><button type="button" class="login" id="runSoccerDataDiagnostic" disabled>🔎 ΕΛΕΓΧΟΣ SOCCER DATA</button><span id="soccerDataDiagnosticStatus" class="subtle" aria-live="polite">Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.</span></div><pre id="soccerDataDiagnosticResult" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:420px;overflow:auto"></pre>
   <div class="top-ai-alert-list" id="privateAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Κλειδωμένο.</div></div>
@@ -5597,7 +5636,7 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
  try{
   const response=await fetch(ANALYTICS_API+'/api/alerts/history/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,limit:1000,period:'all'})});
   const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));privateAiAdminPin=pin;
-  const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=false;
+  const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=false;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=false;setTriggerAuditEnabled(true);setSettlementLedgerEnabled(true);
   const soccerDiagnosticButton=document.getElementById('runSoccerDataDiagnostic');if(soccerDiagnosticButton)soccerDiagnosticButton.disabled=false;
   const soccerDiagnosticStatus=document.getElementById('soccerDataDiagnosticStatus');if(soccerDiagnosticStatus)soccerDiagnosticStatus.textContent='Πρόσβαση επιβεβαιώθηκε · μπορείς να εκτελέσεις τον έλεγχο.';
   void loadProtocolAnalyst();
@@ -5612,8 +5651,134 @@ document.getElementById('privateAiUnlock')?.addEventListener('click',async()=>{
    return '<article class="top-ai-alert-card"><div class="alert-card-kicker"><strong>PRIVATE AI ALERT</strong><span>'+esc(a.minute||'LIVE')+'</span></div><div class="alert-card-match">'+esc(a.home||'')+' – '+esc(a.away||'')+'</div><div class="alert-card-league">Πρωτάθλημα: '+esc((a.country?a.country+' · ':'')+(a.league||'—'))+' · '+esc(a.market||'—')+' · '+esc(alertMarketPeriodLabel(a))+'</div><p><strong>Ενεργοποιήθηκαν:</strong> '+esc(numbered.length?numbered.join(' + '):'Δεν υπάρχει αποθηκευμένο trigger ID')+'</p>'+(support?'<p><strong>Υποστήριξη:</strong> '+esc(support)+'</p>':'')+'<p><strong>Εσωτερική αιτιολόγηση:</strong> '+esc(a.reason||'—')+'</p><details><summary>Πλήρη δεδομένα κατά την ενεργοποίηση</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px">'+esc(stats)+'</pre></details></article>';
   }).join('');
   if(status)status.textContent='Πρόσβαση επιβεβαιώθηκε · '+rows.length+' ενεργά AI alerts.';
- }catch(error){privateAiAdminPin='';const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=true;if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
+ }catch(error){privateAiAdminPin='';const manualRepairButton=document.getElementById('runManualSettlementRepair');if(manualRepairButton)manualRepairButton.disabled=true;const queueButton=document.getElementById('loadUniversalSettlementQueue');if(queueButton)queueButton.disabled=true;setTriggerAuditEnabled(false);setSettlementLedgerEnabled(false);if(input)input.value='';if(status)status.textContent='Δεν δόθηκε πρόσβαση: '+String(error.message||error).slice(0,140);if(host)host.innerHTML='<div class="top-ai-alert-empty">Κλειδωμένο.</div>';}
  finally{button.disabled=false;}
+});
+
+// Owner-only, read-only inventory of pending records across persistent history stores.
+document.getElementById('loadUniversalSettlementQueue')?.addEventListener('click',async()=>{
+ const button=document.getElementById('loadUniversalSettlementQueue');
+ const status=document.getElementById('universalSettlementQueueStatus');
+ if(!privateAiAdminPin){if(status)status.textContent='Ξεκλείδωσε πρώτα το PRIVATE AI ALERTS.';return;}
+ button.disabled=true;
+ const allRecords=[],counts={};let cursor=0,totalPending=0,returned=0,finalData=null,pages=0;
+ try{
+  do{
+   const response=await fetch(ANALYTICS_API+'/api/settlement/universal-queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:privateAiAdminPin,limit:1000,cursor}),cache:'no-store'});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));
+   finalData=data;pages++;totalPending+=Number(data.totalPending||0);returned+=Number(data.returned||0);
+   allRecords.push(...(Array.isArray(data.records)?data.records:[]));
+   for(const [key,value] of Object.entries(data.counts||{}))counts[key]=(counts[key]||0)+Number(value||0);
+   if(status)status.textContent='Ανάγνωση σελίδας '+pages+' · '+returned+' εγγραφές…';
+   if(!data.hasMore)break;
+   if(!Number.isFinite(Number(data.nextCursor))||Number(data.nextCursor)<=cursor)throw new Error('Μη έγκυρος δείκτης επόμενης σελίδας.');
+   cursor=Number(data.nextCursor);
+   if(pages>=1000)throw new Error('Το όριο ασφαλούς ανάγνωσης σελίδων ξεπεράστηκε.');
+  }while(true);
+  const labels={AI_ALERT:'AI Alerts',VIP_ALERT:'VIP Alerts',HI_ACTIVITY:'HI Activity',PRESSURE_HUNTER:'Pressure Hunter',POWER_GAMES:'Power Games',POWER_RANKING:'Power Ranking'};
+  allRecords.sort((a,b)=>(Date.parse(b.createdAt||0)||0)-(Date.parse(a.createdAt||0)||0));
+  const summary=document.getElementById('settlementCenterSummary'),sources=document.getElementById('settlementCenterSources');
+  const host=document.getElementById('settlementCenterRecords'),count=document.getElementById('settlementCenterCount'),selection=document.getElementById('settlementCenterSelection');
+  if(count)count.textContent=String(totalPending)+' ΕΚΚΡΕΜΗ';
+  if(summary)summary.replaceChildren(...Object.entries(counts).map(([key,value])=>{const chip=document.createElement('span');chip.className='count';chip.textContent=(labels[key]||key)+': '+value;return chip;}));
+  if(sources)sources.textContent=Object.entries(finalData.sources||{}).map(([key,value])=>(labels[key]||key)+': '+(value.available?'διαθέσιμο ('+value.count+')':'ΜΗ ΔΙΑΘΕΣΙΜΟ')).join(' · ')+' · '+(finalData.complete?'Πλήρης κάλυψη όλων των σελίδων':'ΠΡΟΣΟΧΗ: λείπουν πηγές '+(finalData.unavailableSources||[]).join(', '));
+  if(host){
+   host.replaceChildren();
+   if(!allRecords.length){const empty=document.createElement('div');empty.className='top-ai-alert-empty';empty.textContent='Δεν υπάρχουν καταχωρισμένες εκκρεμότητες στις διαθέσιμες πηγές.';host.append(empty);}
+   allRecords.forEach((item,index)=>{
+    const p=item.payload||{},teams=[p.home||p.homeTeam||'',p.away||p.awayTeam||''].filter(Boolean).join(' – ')||'Αγώνας χωρίς ονόματα';
+    const card=document.createElement('button');card.type='button';card.className='login';card.style.cssText='text-align:left;white-space:normal;padding:12px;width:100%';
+    const meta=[labels[item.category]||item.category,p.market||p.alertType||'—','Λεπτό '+(p.minuteNumber??p.minute??'—'),'ID '+(item.id||'—')].join(' · ');
+    card.textContent=(index+1)+'. '+teams+'\n'+meta;
+    card.addEventListener('click',()=>{
+     if(!selection)return;selection.replaceChildren();
+     const title=document.createElement('strong');title.textContent='ΕΠΙΛΕΓΜΕΝΗ ΕΚΚΡΕΜΟΤΗΤΑ · '+(labels[item.category]||item.category);
+     const details=document.createElement('pre');details.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:320px;overflow:auto';
+     details.textContent=JSON.stringify({id:item.id,eventId:item.eventId,createdAt:item.createdAt,payload:item.payload},null,2);
+     const auditButton=document.createElement('button');auditButton.type='button';auditButton.className='login';auditButton.textContent='ΣΥΝΔΕΣΗ ΕΓΓΡΑΦΗΣ ΜΕ TRIGGER AUDIT';
+     auditButton.addEventListener('click',()=>{
+      const set=(id,value)=>{const field=document.getElementById(id);if(field)field.value=value==null?'':String(value);};
+      const categoryMap={AI_ALERT:'ai',VIP_ALERT:'vip',HI_ACTIVITY:'hi_activity',PRESSURE_HUNTER:'pressure_hunter',POWER_GAMES:'power_games',POWER_RANKING:'power_ranking'};
+      const category=categoryMap[item.category]||'ai';
+      set('triggerAuditEventId',item.eventId);
+      set('triggerAuditAlertId',category==='hi_activity'?'':item.id);
+      set('triggerAuditSourceId',item.id);
+      set('triggerAuditCategory',category);
+      set('triggerAuditMinute',p.minuteNumber??p.minute??'');
+      const period=String(p.periodAtSignal||p.period||'').toLowerCase();
+      set('triggerAuditPeriod',period.includes('second')||period.includes('2')?'second_half':period.includes('first')||period.includes('1')?'first_half':'unknown');
+      const snapshot={};
+      for(const key of ['sot','homeSot','awaySot','sotLast5','sotLast10','homeSotLast5','awaySotLast5','homeSotLast10','awaySotLast10','xg','homeXg','awayXg','minute','homeScore','awayScore']){
+       if(p[key]!==undefined&&p[key]!==null)snapshot[key]=p[key];
+      }
+      set('triggerAuditSnapshot',Object.keys(snapshot).length?JSON.stringify(snapshot,null,2):'{}');
+      set('triggerAuditTriggerId',Array.isArray(p.triggerIds)?p.triggerIds.join(', '):(p.triggerId||p.alertType||''));
+      set('triggerAuditTriggerName',p.triggerName||p.alertType||p.market||'');
+      set('triggerAuditProtocolId',p.protocolId||p.protocol||'');
+      document.getElementById('triggerAuditTitle')?.scrollIntoView({behavior:'smooth',block:'start'});
+      const status=document.getElementById('triggerAuditStatus'),auditOut=document.getElementById('triggerAuditEntries');
+      if(status)status.textContent='Φόρτωση audit της επιλεγμένης εγγραφής…';
+      triggerAuditRequest({action:'list',eventId:item.eventId,alertId:category==='hi_activity'?'':item.id})
+       .then(data=>{if(auditOut)auditOut.textContent=JSON.stringify(data.entries||[],null,2);if(status)status.textContent='Συμπληρώθηκαν τα στοιχεία · υπάρχουσες append-only εγγραφές: '+data.count+'. Έλεγξε trigger και αποδεικτικό πριν από χειροκίνητη καταχώριση.';})
+       .catch(error=>{if(status)status.textContent='Τα στοιχεία συμπληρώθηκαν, αλλά η ανάγνωση audit απέτυχε: '+String(error.message||error).slice(0,140);});
+     });
+     selection.append(title,details,auditButton);
+    });
+    host.append(card);
+   });
+  }
+  if(status)status.textContent='Πλήρης ανάγνωση '+pages+' σελίδων · '+returned+'/'+totalPending+' εγγραφές.';
+ }catch(error){if(status)status.textContent='Αποτυχία ανάγνωσης: '+String(error.message||error).slice(0,180);}
+ finally{button.disabled=false;}
+});
+// Owner-only append-only trigger activation audit controls.
+function triggerAuditRequest(body){return fetch(ANALYTICS_API+'/api/settlement/trigger-audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,pin:privateAiAdminPin}),cache:'no-store'}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));return data;});}
+function setTriggerAuditEnabled(enabled){['loadTriggerAudit','appendTriggerAudit','reverseTriggerAudit'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=!enabled;});}
+document.getElementById('loadTriggerAudit')?.addEventListener('click',async()=>{
+ const status=document.getElementById('triggerAuditStatus'),out=document.getElementById('triggerAuditEntries');
+ const eventId=String(document.getElementById('triggerAuditEventId')?.value||'').trim(),alertId=String(document.getElementById('triggerAuditAlertId')?.value||'').trim();
+ if(!eventId&&!alertId){if(status)status.textContent='Συμπλήρωσε Event ID ή Alert ID.';return;}
+ try{if(status)status.textContent='Ανάγνωση audit…';const data=await triggerAuditRequest({action:'list',eventId,alertId});if(out)out.textContent=JSON.stringify(data.entries||[],null,2);if(status)status.textContent='Append-only εγγραφές: '+data.count;}
+ catch(error){if(status)status.textContent='Αποτυχία: '+String(error.message||error).slice(0,160);}
+});
+document.getElementById('appendTriggerAudit')?.addEventListener('click',async()=>{
+ const value=id=>String(document.getElementById(id)?.value||'').trim();
+ const status=document.getElementById('triggerAuditStatus'),out=document.getElementById('triggerAuditActionResult');
+ let snapshot;try{snapshot=JSON.parse(value('triggerAuditSnapshot'));}catch{if(status)status.textContent='Το snapshot πρέπει να είναι έγκυρο JSON.';return;}
+ const category=value('triggerAuditCategory'),sourceRecordId=value('triggerAuditSourceId'),alertId=value('triggerAuditAlertId');
+ const body={category,eventId:value('triggerAuditEventId'),sourceRecordId,alertId,triggerId:value('triggerAuditTriggerId'),triggerName:value('triggerAuditTriggerName'),protocolId:value('triggerAuditProtocolId'),minute:Number(value('triggerAuditMinute')),period:value('triggerAuditPeriod'),snapshot,evidenceType:value('triggerAuditEvidenceType'),evidenceRef:value('triggerAuditEvidenceRef'),notes:value('triggerAuditNotes'),idempotencyKey:value('triggerAuditIdempotency'),actor:'owner'};
+ if(category==='hi_activity'&&!sourceRecordId){if(status)status.textContent='HI Activity απαιτεί Observation ID στο Source record ID.';return;}
+ if((category==='ai'||category==='vip'||category==='pressure_hunter'||category==='power_games'||category==='power_ranking')&&!alertId&&!sourceRecordId){if(status)status.textContent='Απαιτείται Alert ID ή Source record ID.';return;}
+ try{if(status)status.textContent='Έλεγχος σύνδεσης και καταχώριση…';const data=await triggerAuditRequest(body);if(out)out.textContent=JSON.stringify(data,null,2);if(status)status.textContent=data.duplicate?'Υπάρχει ήδη ίδια εγγραφή (idempotent).':'Καταχωρίστηκε ως MANUAL RECONSTRUCTION · όχι αυτόματο trigger.';}
+ catch(error){if(status)status.textContent='Δεν καταχωρίστηκε: '+String(error.message||error).slice(0,180);}
+});
+document.getElementById('reverseTriggerAudit')?.addEventListener('click',async()=>{
+ const value=id=>String(document.getElementById(id)?.value||'').trim(),auditId=value('triggerAuditReverseId'),reason=value('triggerAuditReverseReason');
+ if(!auditId||!reason){const status=document.getElementById('triggerAuditStatus');if(status)status.textContent='Audit ID και αιτιολογία είναι υποχρεωτικά.';return;}
+ if(!window.confirm('Θα προστεθεί νέα εγγραφή αναστροφής. Η αρχική εγγραφή δεν θα διαγραφεί. Συνέχεια;'))return;
+ const status=document.getElementById('triggerAuditStatus'),out=document.getElementById('triggerAuditActionResult');
+ try{if(status)status.textContent='Προσθήκη reversal event…';const data=await triggerAuditRequest({action:'reverse',auditId,reason,actor:'owner',evidenceRef:'owner-requested reversal'});if(out)out.textContent=JSON.stringify(data,null,2);if(status)status.textContent='Η αναστροφή προστέθηκε· η αρχική εγγραφή διατηρείται.';}
+ catch(error){if(status)status.textContent='Αποτυχία αναστροφής: '+String(error.message||error).slice(0,160);}
+});
+
+// Owner-only append-only settlement ledger controls. Verification/finalization remain disabled until backed by server-side grading.
+function settlementLedgerRequest(body){return fetch(ANALYTICS_API+'/api/settlement/ledger',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,pin:privateAiAdminPin}),cache:'no-store'}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||('HTTP '+response.status));return data;});}
+function setSettlementLedgerEnabled(enabled){['appendSettlementLedger','loadSettlementLedger'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=!enabled;});}
+document.getElementById('appendSettlementLedger')?.addEventListener('click',async()=>{
+ const value=id=>String(document.getElementById(id)?.value||'').trim(),status=document.getElementById('settlementLedgerStatus'),out=document.getElementById('settlementLedgerOutput');
+ const action=value('ledgerAction');let evidence=null;
+ if(action==='evidence_attached'||action==='settle'){try{evidence=JSON.parse(value('ledgerEvidence'));}catch{if(status)status.textContent='Το αποδεικτικό πρέπει να είναι έγκυρο JSON.';return;}}
+ const event={settlementId:value('ledgerSettlementId'),sourceCategory:value('ledgerSourceCategory'),sourceRecordId:value('ledgerSourceRecordId'),eventId:value('ledgerEventId'),action,actor:value('ledgerActor')||'owner',reason:value('ledgerReason'),evidence,idempotencyKey:value('ledgerIdempotency')||null};
+ try{if(status)status.textContent=action==='settle'?'Έλεγχος αγώνα και ασφαλής αξιολόγηση…':'Έλεγχος σύνδεσης και append…';const data=await settlementLedgerRequest({action:action==='settle'?'settle':'append',event});if(out)out.textContent=JSON.stringify(data,null,2);if(status)status.textContent=data.duplicate?'Η ίδια ενέργεια υπάρχει ήδη.':data.finalized?'Επαληθεύτηκε και οριστικοποιήθηκε από τον server: '+data.outcome:'Το γεγονός προστέθηκε στο append-only ledger.';}
+ catch(error){if(status)status.textContent='Δεν καταχωρίστηκε: '+String(error.message||error).slice(0,180);}
+});
+document.getElementById('loadSettlementLedger')?.addEventListener('click',async()=>{
+ const value=id=>String(document.getElementById(id)?.value||'').trim(),status=document.getElementById('settlementLedgerStatus'),out=document.getElementById('settlementLedgerOutput');
+ const settlementId=value('ledgerSettlementId'),sourceRecordId=value('ledgerSourceRecordId');
+ if(!settlementId&&!sourceRecordId){if(status)status.textContent='Συμπλήρωσε Settlement ID ή Source record ID.';return;}
+ try{if(status)status.textContent='Ανάγνωση append-only ιστορικού…';const data=await settlementLedgerRequest({action:'list',settlementId,sourceRecordId});if(out)out.textContent=JSON.stringify(data,null,2);if(status)status.textContent='Ιστορικό: '+data.count+' γεγονότα · append-only.';}
+ catch(error){if(status)status.textContent='Αποτυχία ανάγνωσης: '+String(error.message||error).slice(0,180);}
 });
 
 // Owner-only, one-time repair for the four explicitly allowlisted historical AI alerts.
