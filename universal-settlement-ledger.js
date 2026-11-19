@@ -41,7 +41,8 @@ function validateLedgerTransition(currentStatus, nextEvent) {
   const current = STATUSES.has(String(currentStatus || "")) ? String(currentStatus) : "pending";
   const action = String(nextEvent?.action || "");
   if (!ACTIONS.has(action)) return { ok: false, reason: "unsupported_action" };
-  if (TERMINAL.has(current)) return { ok: false, reason: "terminal_record_requires_new_reversal_event" };
+  if (current === "reversed") return { ok: false, reason: "reversed_record_is_terminal" };
+  if (action === "reversed") return { ok: true, status: "reversed" };
   const allowed = {
     pending: new Set(["evidence_attached", "disputed", "verified"]),
     disputed: new Set(["evidence_attached", "verified"]),
