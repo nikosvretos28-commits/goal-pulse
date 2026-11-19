@@ -68,3 +68,25 @@ test("separates Power Games and Power Ranking from their shared AI/VIP history s
   });
   assert.equal(result.totalPending, 5);
 });
+
+
+test("classifies all Power Ranking trigger IDs and alert types independently from Power Games", () => {
+  const result = buildUniversalSettlementQueue({ alerts: [
+    { alert_id: "pr59", event_id: "e1", level: "AI", payload: { triggerIds: ["power_ranking_59"], betOutcome: "pending" } },
+    { alert_id: "pr65", event_id: "e2", level: "AI", payload: { triggerIds: ["power_ranking_autonomous_65"], betOutcome: "pending" } },
+    { alert_id: "prOther", event_id: "e3", level: "AI", payload: { triggerIds: ["power_ranking_custom"], betOutcome: "pending" } },
+    { alert_id: "prType", event_id: "e4", level: "AI", payload: { alertType: "power_ranking_signal_v2", betOutcome: "pending" } },
+    { alert_id: "pg", event_id: "e5", level: "VIP", payload: { source: "manual-power-games", betOutcome: "pending" } }
+  ] });
+  assert.equal(result.counts.POWER_RANKING, 4);
+  assert.equal(result.counts.POWER_GAMES, 1);
+  assert.equal(result.totalPending, 5);
+});
+
+test("uses alternate persisted settlement status fields for alert history", () => {
+  const result = buildUniversalSettlementQueue({ alerts: [
+    { alert_id: "settled", level: "AI", payload: { outcomeStatus: "won" } },
+    { alert_id: "pending", level: "AI", payload: { settlementStatus: "pending" } }
+  ] });
+  assert.deepEqual(result.records.map(row => row.id), ["pending"]);
+});
