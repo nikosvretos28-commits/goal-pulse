@@ -31,13 +31,27 @@ function validateEvidence(input = {}) {
   const awayScore = score(input.awayScore);
   const homeHtScore = score(input.homeHtScore);
   const awayHtScore = score(input.awayHtScore);
-  if (!provider || !fixtureId || !home || !away || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !finished ||
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(date + "T00:00:00Z") : NaN;
+  if (!provider || !fixtureId || !home || !away || !Number.isFinite(parsedDate) ||
+      new Date(parsedDate).toISOString().slice(0, 10) !== date || !finished ||
       homeScore === null || awayScore === null) return { ok: false, reason: "incomplete_fixture_evidence" };
   if (provider !== "user_supplied" && !sourceUrl) return { ok: false, reason: "missing_source_url" };
   if (sourceUrl) {
     try {
       const parsed = new URL(sourceUrl);
       if (parsed.protocol !== "https:" || parsed.username || parsed.password) return { ok: false, reason: "invalid_source_url" };
+      const host = parsed.hostname.toLowerCase();
+      const hostRules = {
+        sofascore: ["sofascore.com"],
+        nowgoal: ["nowgoal.com", "nowgoal.net"],
+        sportscore: ["sportscore.com"],
+        espn: ["espn.com"],
+        pitch: ["pitchapi.dev"]
+      };
+      const allowedHosts = hostRules[provider] || [];
+      if (provider !== "user_supplied" && !allowedHosts.some(domain => host === domain || host.endsWith("." + domain))) {
+        return { ok: false, reason: "source_provider_mismatch" };
+      }
     } catch { return { ok: false, reason: "invalid_source_url" }; }
   }
   return { ok: true, evidence: {
@@ -69,15 +83,25 @@ function gradeGoalMarket(total, market) {
   const overWins = total > parsed.line;
   return (parsed.side === "over" ? overWins : !overWins) ? "won" : "lost";
 }
+function normalizeTeam(value) {
+  return clean(value, 160).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+    .replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
 function resolveAlertSettlement(record = {}, evidenceInput = {}, settledAt = new Date().toISOString()) {
   const checked = validateEvidence(evidenceInput);
   if (!checked.ok) return checked;
   const evidence = checked.evidence;
   const home = clean(record.home || record.homeTeam || record.homeTeamName, 160);
   const away = clean(record.away || record.awayTeam || record.awayTeamName, 160);
-  if (!home || !away || home.toLowerCase() !== evidence.home.toLowerCase() || away.toLowerCase() !== evidence.away.toLowerCase()) {
+  if (!home || !away || normalizeTeam(home) !== normalizeTeam(evidence.home) || normalizeTeam(away) !== normalizeTeam(evidence.away)) {
     return { ok: false, reason: "fixture_identity_mismatch" };
   }
+  const recordDate = clean(record.fixtureDate || record.matchDate || record.date, 10);
+  if (recordDate && recordDate !== evidence.date) return { ok: false, reason: "fixture_date_mismatch" };
+  const recordLeague = normalizeTeam(record.league || record.competition || "");
+  const evidenceLeague = normalizeTeam(evidence.league || "");
+  if (recordLeague && evidenceLeague && recordLeague !== evidenceLeague) return { ok: false, reason: "fixture_league_mismatch" };
   const scope = evaluationPeriod(record);
   if (!scope) return { ok: false, reason: "unknown_signal_period" };
   const total = scope === "first_half"
@@ -101,9 +125,14 @@ function resolveGoalAfterSignal(record = {}, evidenceInput = {}, settledAt = new
   const evidence = checked.evidence;
   const home = clean(record.home || record.homeTeam || record.homeTeamName, 160);
   const away = clean(record.away || record.awayTeam || record.awayTeamName, 160);
-  if (!home || !away || home.toLowerCase() !== evidence.home.toLowerCase() || away.toLowerCase() !== evidence.away.toLowerCase()) {
+  if (!home || !away || normalizeTeam(home) !== normalizeTeam(evidence.home) || normalizeTeam(away) !== normalizeTeam(evidence.away)) {
     return { ok: false, reason: "fixture_identity_mismatch" };
   }
+  const recordDate = clean(record.fixtureDate || record.matchDate || record.date, 10);
+  if (recordDate && recordDate !== evidence.date) return { ok: false, reason: "fixture_date_mismatch" };
+  const recordLeague = normalizeTeam(record.league || record.competition || "");
+  const evidenceLeague = normalizeTeam(evidence.league || "");
+  if (recordLeague && evidenceLeague && recordLeague !== evidenceLeague) return { ok: false, reason: "fixture_league_mismatch" };
   const scope = evaluationPeriod(record);
   if (!scope) return { ok: false, reason: "unknown_signal_period" };
   const signalHome = score(record.scoreAtSignal?.home);
