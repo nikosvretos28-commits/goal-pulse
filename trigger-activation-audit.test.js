@@ -39,3 +39,11 @@ test("reversals append a reasoned event instead of deleting the original", () =>
   });
   assert.equal(buildTriggerAuditReversal("audit-1", {}).ok, false);
 });
+
+
+test("Power Games and Power Ranking audit entries require canonical alert IDs", () => {
+  assert.equal(validateTriggerAudit({ ...valid, category: "power_games", alertId: null }).reason, "missing_history_link");
+  assert.equal(validateTriggerAudit({ ...valid, category: "power_ranking", alertId: null }).reason, "missing_history_link");
+  assert.equal(validateTriggerAudit({ ...valid, category: "power_games" }).ok, true);
+  assert.equal(validateTriggerAudit({ ...valid, category: "power_ranking" }).ok, true);
+});
