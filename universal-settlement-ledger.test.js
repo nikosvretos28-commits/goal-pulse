@@ -30,10 +30,12 @@ test("verification and finalization require explicit server-side checks", () => 
   }).ok, true);
 });
 
-test("only verified records may be finalized and terminal records cannot be changed", () => {
+test("only verified records may be finalized and reversals are append-only", () => {
   assert.equal(validateLedgerTransition("pending", { action: "finalized" }).reason, "invalid_status_transition");
   assert.equal(validateLedgerTransition("verified", { action: "finalized" }).ok, true);
-  assert.equal(validateLedgerTransition("finalized", { action: "disputed" }).reason, "terminal_record_requires_new_reversal_event");
+  assert.equal(validateLedgerTransition("finalized", { action: "disputed" }).reason, "invalid_status_transition");
+  assert.equal(validateLedgerTransition("finalized", { action: "reversed", status: "reversed" }).ok, true);
+  assert.equal(validateLedgerTransition("reversed", { action: "reversed", status: "reversed" }).reason, "reversed_record_is_terminal");
 });
 
 test("disputed records can receive new evidence and be verified", () => {
