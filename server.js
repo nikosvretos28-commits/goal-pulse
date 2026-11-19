@@ -18,6 +18,7 @@ const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
 const { validateTriggerAudit, buildTriggerAuditReversal } = require("./trigger-activation-audit");
 const { validateLedgerEvent, validateLedgerTransition, reduceLedgerEvents } = require("./universal-settlement-ledger");
+const { validateEvidence, resolveAlertSettlement, resolveGoalAfterSignal } = require("./universal-settlement");
 const { isVerifiedSecondHalfMieRecord } = require("./mie-alert-verification");
 const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-trigger-isolation");
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
@@ -2407,6 +2408,97 @@ const server = http.createServer(async (req, res) => {
     if (!await ensureUniversalSettlementLedgerDb()) return send(res, 503, { ok: false, error: "Settlement ledger database unavailable" });
     const body = auth.body || {};
     try {
+      if (body.action === "settle") {
+        const request = body.event || {};
+        const sourceCategory = String(request.sourceCategory || "").trim().toLowerCase();
+        const sourceRecordId = String(request.sourceRecordId || "").trim().slice(0, 180);
+        const eventId = String(request.eventId || "").trim().slice(0, 180);
+        const settlementId = String(request.settlementId || "").trim().slice(0, 180);
+        const actor = String(request.actor || "owner").trim().slice(0, 120);
+        const idempotencyKey = String(request.idempotencyKey || require("node:crypto").randomUUID()).trim().slice(0, 180);
+        const evidenceCheck = validateEvidence(request.evidence || {});
+        if (!settlementId || !sourceRecordId || !eventId || !actor ||
+            !["ai_alert","vip_alert","hi_activity","pressure_hunter","power_games","power_ranking"].includes(sourceCategory) ||
+            !evidenceCheck.ok) return send(res, 400, { ok: false, error: evidenceCheck.reason || "invalid_settlement_identity" });
+        const evidence = evidenceCheck.evidence;
+        const client = await analyticsPool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [settlementId]);
+          const duplicate = await client.query("SELECT ledger_event_id FROM universal_settlement_ledger WHERE idempotency_key = ANY($1::text[]) ORDER BY created_at DESC LIMIT 1", [[idempotencyKey+":evidence",idempotencyKey+":verified",idempotencyKey+":finalized"]]);
+          if (duplicate.rowCount) { await client.query("COMMIT"); return send(res, 200, { ok: true, duplicate: true, ledgerEventId: duplicate.rows[0].ledger_event_id }); }
+          const latest = await client.query("SELECT status FROM universal_settlement_ledger WHERE settlement_id=$1 ORDER BY created_at DESC,ledger_event_id DESC LIMIT 1", [settlementId]);
+          const currentStatus = latest.rows[0]?.status || "pending";
+          if (!["pending","disputed"].includes(currentStatus)) {
+            await client.query("ROLLBACK");
+            return send(res, 409, { ok: false, error: "Only pending or disputed settlements can be evaluated; existing verified/finalized state is preserved" });
+          }
+          let source, record;
+          if (sourceCategory === "hi_activity") {
+            if (!await ensureHighActivityHistoryDb()) throw new Error("HI Activity history unavailable");
+            source = await highActivityHistoryPool.query("SELECT event_id,payload FROM high_activity_history WHERE observation_id=$1", [sourceRecordId]);
+          } else if (sourceCategory === "pressure_hunter") {
+            if (!await ensurePressureHunterDb()) throw new Error("Pressure Hunter history unavailable");
+            source = await client.query("SELECT event_id,payload FROM pressure_hunter_history WHERE alert_id=$1", [sourceRecordId]);
+          } else {
+            if (!await ensureAlertHistoryDb()) throw new Error("Alert history unavailable");
+            source = await client.query("SELECT event_id,level,payload FROM alert_history WHERE alert_id=$1", [sourceRecordId]);
+          }
+          if (!source?.rowCount || String(source.rows[0].event_id) !== eventId) {
+            await client.query("ROLLBACK");
+            return send(res, 409, { ok: false, error: "Canonical source record/event mismatch" });
+          }
+          record = source.rows[0].payload || {};
+          const ids = Array.isArray(record.triggerIds) ? record.triggerIds : [];
+          const categoryMatches = sourceCategory === "hi_activity" || sourceCategory === "pressure_hunter" ||
+            (sourceCategory === "ai_alert" && source.rows[0].level === "AI" && record.source !== "manual-power-ranking" && record.alertType !== "power_ranking_signal" && !ids.some(value => String(value).startsWith("power_ranking_"))) ||
+            (sourceCategory === "vip_alert" && source.rows[0].level === "VIP" && !["manual-power-games","manual-power-ranking"].includes(record.source)) ||
+            (sourceCategory === "power_games" && source.rows[0].level === "VIP" && record.source === "manual-power-games") ||
+            (sourceCategory === "power_ranking" && (record.source === "manual-power-ranking" || String(record.alertType || "").startsWith("power_ranking_") || ids.some(value => String(value).startsWith("power_ranking_"))));
+          if (!categoryMatches) { await client.query("ROLLBACK"); return send(res, 409, { ok: false, error: "Canonical record does not belong to the selected category" }); }
+          let evaluated;
+          if (sourceCategory === "hi_activity") evaluated = resolveGoalAfterSignal(record, evidence);
+          else if (sourceCategory === "pressure_hunter") {
+            const result = settlePressureHunterRecord(record, {
+              result: {
+                homeScore: evidence.homeScore, awayScore: evidence.awayScore,
+                halfTimeHomeScore: evidence.homeHtScore, halfTimeAwayScore: evidence.awayHtScore,
+                settlementProvider: evidence.provider, settlementFixtureId: evidence.fixtureId,
+                settlementFixtureDate: evidence.date, settlementLeague: evidence.league,
+                status: "post", statusText: "finished"
+              }
+            });
+            evaluated = result ? { ok: true, settlement: { outcome: result.outcomeStatus, ...result } } : { ok: false, reason: "pressure_hunter_evaluation_unresolved" };
+          } else evaluated = resolveAlertSettlement(record, evidence);
+          if (!evaluated?.ok || !evaluated.settlement?.outcome) {
+            await client.query("ROLLBACK");
+            return send(res, 422, { ok: false, error: evaluated?.reason || "settlement_evaluation_unresolved", noSettlementWritten: true });
+          }
+          const sequence = [
+            { action: "evidence_attached", status: "pending", evidence, evaluation: null, key: idempotencyKey+":evidence" },
+            { action: "verified", status: "verified", evidence: null, evaluation: null, key: idempotencyKey+":verified" },
+            { action: "finalized", status: "finalized", evidence: null, evaluation: evaluated.settlement, key: idempotencyKey+":finalized" }
+          ];
+          let previous = currentStatus, finalRow = null;
+          for (const item of sequence) {
+            const event = { action: item.action, status: item.status };
+            const transition = validateLedgerTransition(previous, event);
+            if (!transition.ok) throw new Error(transition.reason);
+            const ledgerId = require("node:crypto").randomUUID();
+            const inserted = await client.query(
+              "INSERT INTO universal_settlement_ledger (ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12) RETURNING ledger_event_id,settlement_id,source_category,source_record_id,event_id,action,status,actor,reason,evidence,evaluation,created_at",
+              [ledgerId,settlementId,sourceCategory,sourceRecordId,eventId,item.action,item.status,actor,item.action==="finalized"?"server_evaluated":null,item.evidence?JSON.stringify(item.evidence):null,item.evaluation?JSON.stringify(item.evaluation):null,item.key]
+            );
+            finalRow = inserted.rows[0]; previous = item.status;
+          }
+          await client.query("COMMIT");
+          return send(res, 201, { ok: true, finalized: true, outcome: evaluated.settlement.outcome, evaluation: evaluated.settlement, ledgerEventsAppended: 3, event: finalRow });
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => {});
+          console.error("[universal-settlement-ledger] evaluation failed:", error.message);
+          return send(res, 500, { ok: false, error: "Settlement evaluation failed; no partial ledger write was committed" });
+        } finally { client.release(); }
+      }
       if (body.action === "list") {
         const settlementId = String(body.settlementId || "").trim().slice(0, 180);
         const sourceRecordId = String(body.sourceRecordId || "").trim().slice(0, 180);
