@@ -1023,21 +1023,43 @@ async function fetchSportScoreMatchDetail(slug) {
     return { ok: false, status: 429, payload: null, cached: false, cooldown: true, retryAt: sportScoreDetailCooldownUntil, ...staleCache };
   }
   if (sportScoreMatchDetailInflight.has(key)) return sportScoreMatchDetailInflight.get(key);
-  // Do not spend more requests than SportScore has allowed recently. This is
-  // a local budget (not a fake provider response); the next scan rotates onward.
-  if (!reserveSportScoreDetailRequest(now)) {
-    return { ok: false, status: 429, payload: null, cached: false, rateLimited: true, ...staleCache };
-  }
+  // Cooldown and request budget are checked again inside the request slot.
+  // A caller may wait in the queue while another request receives HTTP 429.
+  // Reserving here (before the queue) would let those waiters leak through
+  // after the cooldown starts.
   const request = (async () => {
     const url = "https://sportscore.com/api/widget/match/?sport=football&slug=" + encodeURIComponent(key) + "&src=goal-pulse";
     let lastStatus = 0;
     for (let attempt = 0; attempt < 3; attempt++) {
       let response;
       try {
-        response = await withSportScoreDetailSlot(() => fetch(url, {
-          headers: { "Accept": "application/json" },
-          signal: AbortSignal.timeout(10000)
-        }));
+        response = await withSportScoreDetailSlot(async () => {
+          const requestAt = Date.now();
+          if (requestAt < sportScoreDetailCooldownUntil) {
+            return { blocked: true, cooldown: true, retryAt: sportScoreDetailCooldownUntil };
+          }
+          // Reserve only when a slot is actually available and immediately
+          // before the outbound request, so queued work cannot bypass 429.
+          if (!reserveSportScoreDetailRequest(requestAt)) {
+            return { blocked: true, rateLimited: true };
+          }
+          return fetch(url, {
+            headers: { "Accept": "application/json" },
+            signal: AbortSignal.timeout(10000)
+          });
+        });
+        if (response?.blocked) {
+          return {
+            ok: false,
+            status: 429,
+            payload: null,
+            cached: false,
+            cooldown: Boolean(response.cooldown),
+            rateLimited: Boolean(response.rateLimited),
+            retryAt: response.retryAt,
+            ...staleCache
+          };
+        }
       } catch (error) {
         if (attempt === 2) return { ok: false, status: 0, payload: null, cached: false, networkError: true, ...staleCache };
         await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
