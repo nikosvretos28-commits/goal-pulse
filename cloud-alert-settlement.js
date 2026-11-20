@@ -199,6 +199,33 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     return { persistent: true, events: result.rows };
   }
 
+  async function listCurrent(limit = 250) {
+    const pool = getPool();
+    if (!pool || !(await ensureSchema())) return { persistent: false, settlements: [] };
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 250));
+    const result = await pool.query(
+      `WITH targets AS (
+         SELECT signal_id,'HT'::text AS target_period FROM cloud_alert_signals WHERE period='1H'
+         UNION ALL
+         SELECT signal_id,'FT'::text AS target_period FROM cloud_alert_signals
+       )
+       SELECT s.signal_id,s.match_id,s.period AS signal_period,s.minute,s.home,s.away,
+              s.home_sot,s.away_sot,s.score_home AS signal_score_home,s.score_away AS signal_score_away,
+              t.target_period,COALESCE(e.state,'pending') AS state,e.event_id,e.provider,
+              e.fixture_id,e.source,e.settled_at,e.score_home,e.score_away,e.over_line,
+              e.result_goals,e.outcome,e.reason,e.previous_event_id
+       FROM targets t
+       JOIN cloud_alert_signals s ON s.signal_id=t.signal_id
+       LEFT JOIN LATERAL (
+         SELECT * FROM cloud_alert_settlement_events x
+         WHERE x.signal_id=t.signal_id AND x.target_period=t.target_period
+         ORDER BY x.created_at DESC,x.event_id DESC LIMIT 1
+       ) e ON TRUE
+       ORDER BY s.created_at DESC,t.target_period ASC LIMIT $1`, [safeLimit]
+    );
+    return { persistent: true, settlements: result.rows };
+  }
+
   async function integrity(limit = 500) {
     const data = await list(limit);
     if (!data.persistent) return { ok: false, persistent: false, issues: [] };
@@ -234,7 +261,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     return { persistent: true, csv: rows.join("\r\n") + "\r\n" };
   }
 
-  return { ensureSchema, appendEvent, list, integrity, exportCsv };
+  return { ensureSchema, appendEvent, list, listCurrent, integrity, exportCsv };
 }
 
 module.exports = { TARGET_PERIODS, STATES, validateSettlementInput, gradeSignalSettlement, createCloudAlertSettlement };
