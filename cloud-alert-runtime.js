@@ -303,17 +303,20 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       }
     } catch (error) {
       const message = String(error.message || error).slice(0, 300);
+      const markClient = await pool.connect();
       try {
-        await pool.query("BEGIN");
-        await pool.query(
+        await markClient.query("BEGIN");
+        await markClient.query(
           "UPDATE cloud_alert_pushes SET status='unknown',error_message=$2,updated_at=NOW() WHERE push_id=$1 AND status='sending'",
           [reservation.pushId, message]
         );
-        await pool.query("UPDATE cloud_alert_signals SET status='delivery_unknown' WHERE signal_id=$1", [reservation.signalId]);
-        await pool.query("COMMIT");
+        await markClient.query("UPDATE cloud_alert_signals SET status='delivery_unknown' WHERE signal_id=$1", [reservation.signalId]);
+        await markClient.query("COMMIT");
       } catch (persistError) {
-        await pool.query("ROLLBACK").catch(() => {});
+        await markClient.query("ROLLBACK").catch(() => {});
         console.error("[Cloud Alert] delivery outcome unknown and could not be recorded:", persistError.message || persistError);
+      } finally {
+        markClient.release();
       }
       return { ok: false, pushed: false, reason: "delivery_unknown_manual_review" };
     }
@@ -345,18 +348,21 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       return { ok: true, pushed: true, kind: reservation.kind, slot: reservation.slot, sent, failed };
     }
 
+    const failedClient = await pool.connect();
     try {
-      await pool.query("BEGIN");
-      await pool.query(
+      await failedClient.query("BEGIN");
+      await failedClient.query(
         "UPDATE cloud_alert_pushes SET status='failed',error_message=$2,updated_at=NOW() WHERE push_id=$1 AND status='sending'",
         [reservation.pushId, delivery?.configured ? "no subscriber accepted the push" : "web push not configured"]
       );
-      await pool.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1", [reservation.signalId]);
-      await pool.query("COMMIT");
+      await failedClient.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1", [reservation.signalId]);
+      await failedClient.query("COMMIT");
     } catch (error) {
-      await pool.query("ROLLBACK").catch(() => {});
+      await failedClient.query("ROLLBACK").catch(() => {});
       console.error("[Cloud Alert] failed delivery reservation could not be released:", error.message || error);
       return { ok: false, pushed: false, reason: "failed_delivery_persistence_pending_manual_review" };
+    } finally {
+      failedClient.release();
     }
     return {
       ok: true, pushed: false,
