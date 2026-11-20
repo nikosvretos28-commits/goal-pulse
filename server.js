@@ -6583,7 +6583,9 @@ const server = http.createServer(async (req, res) => {
       // with 429; this skipped most fixtures before the next minute's budget reset.
       const detailBudgetUsed = sportScoreDetailRequestTimes.filter(at => Date.now() - at < SPORT_SCORE_DETAIL_RATE_WINDOW_MS).length;
       const detailBudgetAvailable = Math.max(0, SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW - detailBudgetUsed);
-      if (work.length && detailBudgetAvailable > 0) {
+      // Do not consume fixture rotation while the provider-wide 429 cooldown
+      // is active: no detail request can be sent during that interval.
+      if (work.length && detailBudgetAvailable > 0 && Date.now() >= sportScoreDetailCooldownUntil) {
         sportScoreDetailRotationCursor = (rotationStart + Math.min(detailBudgetAvailable, work.length)) % work.length;
       }
       let cursor = 0;
