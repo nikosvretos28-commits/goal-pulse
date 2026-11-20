@@ -404,14 +404,25 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     }
     const pool = getPool();
     const chain = await pool.query(
-      `SELECT e.event_id,e.previous_event_id
+      `SELECT e.event_id,e.previous_event_id,e.state,p.state AS previous_state,
+              e.event_seq,p.event_seq AS previous_event_seq
        FROM cloud_alert_settlement_events e
        LEFT JOIN cloud_alert_settlement_events p ON p.event_id=e.previous_event_id
        WHERE e.previous_event_id IS NOT NULL
-         AND (p.event_id IS NULL OR p.signal_id<>e.signal_id OR p.target_period<>e.target_period)
+         AND (
+           p.event_id IS NULL OR p.signal_id<>e.signal_id OR p.target_period<>e.target_period OR
+           p.event_seq>=e.event_seq OR NOT (
+             (p.state='pending' AND e.state IN ('settled_verified','unverifiable','disputed')) OR
+             (p.state IN ('settled_verified','unverifiable') AND e.state='disputed') OR
+             (p.state='disputed' AND e.state IN ('settled_verified','unverifiable'))
+           )
+         )
        LIMIT 50`
     );
-    for (const row of chain.rows) issues.push({ eventId: row.event_id, issue: "broken_audit_predecessor", previousEventId: row.previous_event_id });
+    for (const row of chain.rows) issues.push({
+      eventId: row.event_id, issue: "broken_or_invalid_audit_transition",
+      previousEventId: row.previous_event_id, previousState: row.previous_state, state: row.state
+    });
     return { ok: issues.length === 0, persistent: true, scanned: data.events.length,
       currentStates: [...latest.values()].length, issues };
   }
