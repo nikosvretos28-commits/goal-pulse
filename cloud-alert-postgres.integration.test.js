@@ -76,6 +76,15 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   assert.equal(history.signals[0].rule_version, "cloud-alert-v0.2");
   assert.equal(history.signals[0].recent_sot6, 1);
   assert.equal(history.signals[0].recent_sot10, 2);
+  await assert.rejects(
+    pool.query("UPDATE cloud_alert_signals SET home_sot=99 WHERE signal_id=$1", [signalId]),
+    /immutable/
+  );
+  await assert.rejects(
+    pool.query("DELETE FROM cloud_alert_signals WHERE signal_id=$1", [signalId]),
+    /immutable/
+  );
+  await assert.rejects(pool.query("TRUNCATE cloud_alert_signals"), /immutable/);
 
   const base = {
     signalId, targetPeriod: "HT", provider: "ESPN", fixtureId,
