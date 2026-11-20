@@ -89,7 +89,7 @@ function createCloudAlertScanner({
     inFlight = (async () => {
       const startedAt = now();
       const date = athensDateKey(startedAt);
-      const response = await fetchImpl(baseUrl.replace(/\/$/, "") + "/api/live-metrics?date=" + date, {
+      const response = await fetchImpl(baseUrl.replace(/\/$/, "") + "/api/live-metrics?date=" + date + "&scope=cloud-alert", {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(25_000)
       });
