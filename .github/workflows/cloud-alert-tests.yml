@@ -5,6 +5,10 @@ on:
     paths:
       - "cloud-alert-evaluator.js"
       - "cloud-alert-evaluator.test.js"
+      - "cloud-alert-scanner.js"
+      - "cloud-alert-scanner.test.js"
+      - "cloud-alert-runtime.js"
+      - "server.js"
       - ".github/workflows/cloud-alert-tests.yml"
   workflow_dispatch:
 permissions:
@@ -19,4 +23,4 @@ jobs:
         with:
           node-version: 24.18.0
       - name: Run isolated Cloud Alert tests
-        run: node --test cloud-alert-evaluator.test.js
+        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js
