@@ -138,3 +138,42 @@ test("a provider SOT regression resets the two-sample confirmation window", asyn
   assert.equal(saved.length, 1);
   assert.equal(saved[0].confirmation, "two_monotonic_samples");
 });
+
+test("cumulative SOT correction quarantines even an otherwise valid R10 trigger", async () => {
+  let clock = Date.parse("2026-11-20T08:20:00Z");
+  const saved = [];
+  const match = {
+    eventId: "fixture-correction", home: "Home", away: "Away", minute: "40",
+    statusText: "1st Half", statsAvailable: true, statsSource: "ESPN",
+    homeScore: 0, awayScore: 0,
+    teams: [
+      { homeAway: "home", shotsOnTarget: 6 },
+      { homeAway: "away", shotsOnTarget: 4 }
+    ],
+    trend: { window10m: { available: true, sampleMinutes: 10, teams: [
+      { shotsOnTarget: 1 }, { shotsOnTarget: 1 }
+    ] } }
+  };
+  const scanner = createCloudAlertScanner({
+    baseUrl: "http://127.0.0.1:3000",
+    runtime: {
+      async recordSnapshot() {
+        return { valid: false, value: null, reason: "cumulative_sot_regression" };
+      },
+      async recordShadowCandidate(candidate) { saved.push(candidate); return { saved: true }; }
+    },
+    fetchImpl: async () => ({
+      ok: true, async json() {
+        return { updatedAt: new Date(clock).toISOString(), matches: [match] };
+      }
+    }),
+    now: () => clock,
+    logger: { info() {}, warn() {} }
+  });
+  for (let i = 0; i < 4; i++) {
+    const result = await scanner.runOnce();
+    assert.equal(result.qualified, 0);
+    clock += 60_000;
+  }
+  assert.equal(saved.length, 0);
+});
