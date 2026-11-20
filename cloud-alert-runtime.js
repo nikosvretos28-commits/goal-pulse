@@ -166,19 +166,47 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
          away_sot=GREATEST(cloud_alert_sot_snapshots.away_sot,EXCLUDED.away_sot)`,
       [String(matchId), period, sampledAt.toISOString(), homeSot, awaySot]
     );
-    const baseline = await pool.query(
-      `SELECT home_sot,away_sot,sampled_at FROM cloud_alert_sot_snapshots
-       WHERE match_id=$1 AND period=$2
-         AND sampled_at <= $3::timestamptz - INTERVAL '6 minutes'
-         AND sampled_at >= $3::timestamptz - INTERVAL '7 minutes'
-       ORDER BY sampled_at DESC LIMIT 1`,
-      [String(matchId), period, sampledAt.toISOString()]
-    );
-    if (!baseline.rows.length) return { value: null, valid: false, reason: "six_minute_baseline_not_yet_available" };
-    const prior = baseline.rows[0];
-    const previousHome = Number(prior.home_sot), previousAway = Number(prior.away_sot);
-    if (homeSot < previousHome || awaySot < previousAway) return { value: null, valid: false, reason: "cumulative_sot_regression" };
-    return { value: (homeSot - previousHome) + (awaySot - previousAway), valid: true, baselineAt: new Date(prior.sampled_at).toISOString() };
+    const [baseline6, baseline10] = await Promise.all([
+      pool.query(
+        `SELECT home_sot,away_sot,sampled_at FROM cloud_alert_sot_snapshots
+         WHERE match_id=$1 AND period=$2
+           AND sampled_at <= $3::timestamptz - INTERVAL '6 minutes'
+           AND sampled_at >= $3::timestamptz - INTERVAL '7 minutes'
+         ORDER BY sampled_at DESC LIMIT 1`,
+        [String(matchId), period, sampledAt.toISOString()]
+      ),
+      pool.query(
+        `SELECT home_sot,away_sot,sampled_at FROM cloud_alert_sot_snapshots
+         WHERE match_id=$1 AND period=$2
+           AND sampled_at <= $3::timestamptz - INTERVAL '9 minutes'
+           AND sampled_at >= $3::timestamptz - INTERVAL '11 minutes 30 seconds'
+         ORDER BY sampled_at DESC LIMIT 1`,
+        [String(matchId), period, sampledAt.toISOString()]
+      )
+    ]);
+    const delta = prior => {
+      if (!prior) return null;
+      const previousHome = Number(prior.home_sot), previousAway = Number(prior.away_sot);
+      if (homeSot < previousHome || awaySot < previousAway) return { regression: true };
+      return {
+        value: (homeSot - previousHome) + (awaySot - previousAway),
+        baselineAt: new Date(prior.sampled_at).toISOString()
+      };
+    };
+    const recent6 = delta(baseline6.rows[0]);
+    const recent10 = delta(baseline10.rows[0]);
+    if (recent6?.regression || recent10?.regression) {
+      return { value: null, valid: false, recentSot10: null, recentSot10Valid: false, reason: "cumulative_sot_regression" };
+    }
+    return {
+      value: recent6?.value ?? null,
+      valid: recent6 !== null,
+      reason: recent6 ? null : "six_minute_baseline_not_yet_available",
+      baselineAt: recent6?.baselineAt ?? null,
+      recentSot10: recent10?.value ?? null,
+      recentSot10Valid: recent10 !== null,
+      baseline10At: recent10?.baselineAt ?? null
+    };
   }
 
   async function recordShadowCandidate(candidate) {
