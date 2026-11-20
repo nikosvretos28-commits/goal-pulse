@@ -891,6 +891,8 @@ async function sendPushToSubscribers(payload) {
   return { sent, failed, configured: true };
 }
 const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers });
+// Safety lock: do not evaluate or deliver reconstructed Cloud Alert thresholds before the authoritative v0.2 source is verified.
+const CLOUD_ALERT_LIVE_ENABLED = false;
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
   if (!isAllowedOrigin(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
@@ -5230,13 +5232,13 @@ const server = http.createServer(async (req, res) => {
         // history and notification cap. Existing AI/VIP/HI calculations below are untouched.
         try {
           const cloudStatus = String(statusForEligibility || "").toLowerCase();
-          const cloudAtHalfTime = /\\bht\\b|half.?time|halftime|ανάπαυλα/.test(cloudStatus);
+          const cloudAtHalfTime = /\bht\b|half.?time|halftime|ανάπαυλα/.test(cloudStatus);
           const cloudPeriod = cloudAtHalfTime ? null :
             (/second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(cloudStatus) ||
              (Number.isFinite(aiMinute) && aiMinute > 45) ? "2H" :
              (/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(cloudStatus) ||
               (Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 45) ? "1H" : null));
-          if (cloudPeriod) {
+          if (CLOUD_ALERT_LIVE_ENABLED && cloudPeriod) {
             const cloudSides = current.sotByTeam || [];
             const cloudSotComplete = cloudSides.length >= 2 &&
               cloudSides[0]?.value != null && cloudSides[1]?.value != null && Number.isInteger(Number(cloudSides[0].value)) && Number.isInteger(Number(cloudSides[1].value));
