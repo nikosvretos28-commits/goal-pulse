@@ -5240,17 +5240,21 @@ const server = http.createServer(async (req, res) => {
             const cloudSides = current.sotByTeam || [];
             const cloudSotComplete = cloudSides.length >= 2 &&
               cloudSides[0]?.value != null && cloudSides[1]?.value != null && Number.isInteger(Number(cloudSides[0].value)) && Number.isInteger(Number(cloudSides[1].value));
+            const cloudR6 = cloudSotComplete ? await cloudAlertRuntime.recordSnapshot({
+              matchId: id, period: cloudPeriod,
+              homeSot: Number(cloudSides[0].value), awaySot: Number(cloudSides[1].value)
+            }) : { value: null, valid: false, reason: "incomplete_sot_sample" };
             const cloudResult = evaluateCloudAlert({
               matchId: id,
               period: cloudPeriod,
               elapsedMinute: aiMinute,
               homeSot: cloudSotComplete ? Number(cloudSides[0].value) : null,
               awaySot: cloudSotComplete ? Number(cloudSides[1].value) : null,
-              recentSot6: null,
+              recentSot6: cloudR6.valid ? cloudR6.value : null,
               recentSot10: onTarget10m,
               dataQuality: match.statsAvailable === true && cloudSotComplete ? "valid" : "unconfirmed_sot_data",
               confirmed: providerSotIntegrity.confirmed === true,
-              rollingWindowsValid: Number.isFinite(onTarget10m) && !sot10Validation.regression
+              rollingWindowsValid: Number.isFinite(onTarget10m) && !sot10Validation.regression && !cloudR6.reason?.includes("regression")
             });
             if (cloudResult.status === "qualified" && cloudSotComplete) {
               const cloudDelivery = await cloudAlertRuntime.processCandidate({
