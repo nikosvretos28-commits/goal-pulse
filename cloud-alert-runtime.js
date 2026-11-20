@@ -154,7 +154,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { ok: false, reason: "persistent_database_unavailable" };
     const {
-      matchId, period, triggers, minute, home, away, homeSot, awaySot,
+      matchId, fixtureId, league, ruleVersion, period, triggers, minute, home, away, homeSot, awaySot,
       recentSot10, scoreHome, scoreAway, metrics
     } = candidate || {};
     if (!matchId || !["1H", "2H"].includes(period) || !Array.isArray(triggers) ||
@@ -162,7 +162,9 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       return { ok: false, reason: "invalid_candidate" };
     }
     const snapshot = {
-      matchId: String(matchId), period, triggers: [...triggers].sort(),
+      matchId: String(matchId), fixtureId: String(fixtureId || matchId),
+      league: String(league || "unknown"), ruleVersion: String(ruleVersion || "cloud-alert-v0.2"),
+      period, triggers: [...triggers].sort(),
       minute: Number.isFinite(minute) ? minute : null,
       home: String(home || "Home"), away: String(away || "Away"),
       homeSot, awaySot,
@@ -177,12 +179,12 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       await client.query("BEGIN");
       await client.query(
         `INSERT INTO cloud_alert_signals
-          (signal_id,match_id,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload)
-         VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,'qualified',$13::jsonb)
+          (signal_id,match_id,fixture_id,league,rule_version,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,'qualified',$16::jsonb)
          ON CONFLICT (signal_id) DO NOTHING`,
-        [signalId, snapshot.matchId, period, JSON.stringify(snapshot.triggers), snapshot.minute,
-         snapshot.home, snapshot.away, homeSot, awaySot, snapshot.recentSot10,
-         snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
+        [signalId, snapshot.matchId, snapshot.fixtureId, snapshot.league, snapshot.ruleVersion,
+         period, JSON.stringify(snapshot.triggers), snapshot.minute, snapshot.home, snapshot.away,
+         homeSot, awaySot, snapshot.recentSot10, snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
       );
       await client.query(
         "INSERT INTO cloud_alert_push_state(match_id,period) VALUES($1,$2) ON CONFLICT DO NOTHING",
@@ -253,7 +255,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     if (!pool || !(await ensureSchema())) return { persistent: false, signals: [], pushes: [] };
     const safeLimit = Math.max(1, Math.min(250, Number(limit) || 100));
     const [signals, pushes] = await Promise.all([
-      pool.query("SELECT signal_id,match_id,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload,created_at FROM cloud_alert_signals ORDER BY created_at DESC LIMIT $1", [safeLimit]),
+      pool.query("SELECT signal_id,match_id,fixture_id,league,rule_version,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload,created_at FROM cloud_alert_signals ORDER BY created_at DESC LIMIT $1", [safeLimit]),
       pool.query("SELECT push_id,match_id,period,slot,signal_id,kind,status,payload,created_at,delivered_at FROM cloud_alert_pushes ORDER BY created_at DESC LIMIT $1", [safeLimit])
     ]);
     return { persistent: true, signals: signals.rows, pushes: pushes.rows };
