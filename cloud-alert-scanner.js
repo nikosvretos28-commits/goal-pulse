@@ -146,7 +146,9 @@ function createCloudAlertScanner({
           matchId, period, homeSot: sot.home, awaySot: sot.away
         });
         const r10 = getRecentSot10(match);
-        const rollingWindowsValid = Boolean(r6?.valid || r10 != null);
+        const cumulativeRegression = r6?.reason === "cumulative_sot_regression";
+        if (cumulativeRegression) confirmations.delete(matchId + "|" + period);
+        const rollingWindowsValid = !cumulativeRegression && Boolean(r6?.valid || r10 != null);
         const result = evaluateCloudAlert({
           matchId,
           period,
