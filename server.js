@@ -7020,6 +7020,9 @@ const server = http.createServer(async (req, res) => {
                 league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
                 statsSource: fallbackSupplied ? "PitchAPI+SportScore" : "PitchAPI",
                 minute: event.status?.displayClock || "",
+                status: event.status?.type?.state ?? event.status?.state ?? "",
+                statusText: event.status?.type?.name ?? event.status?.type?.detail ??
+                  event.status?.type?.shortDetail ?? event.status_text ?? event.statusText ?? "",
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
