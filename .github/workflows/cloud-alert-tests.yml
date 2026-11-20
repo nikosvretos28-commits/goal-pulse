@@ -8,6 +8,7 @@ on:
       - "cloud-alert-scanner.js"
       - "cloud-alert-scanner.test.js"
       - "cloud-alert-runtime.js"
+      - "cloud-alert-runtime.test.js"
       - "cloud-alert-settlement.js"
       - "cloud-alert-settlement.test.js"
       - "server.js"
@@ -26,4 +27,4 @@ jobs:
         with:
           node-version: 24.18.0
       - name: Run isolated Cloud Alert tests
-        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js cloud-alert-settlement.test.js
+        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js cloud-alert-runtime.test.js cloud-alert-settlement.test.js
