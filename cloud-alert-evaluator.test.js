@@ -149,3 +149,44 @@ test("decision fails closed when the other half push state is malformed", () => 
     period: "1H", signalId: "new", qualifies: true, state
   }).reason, "invalid_push_state");
 });
+
+
+// These boundary tests lock down the CURRENT provisional interpolation/clamp
+// implementation only. They do not establish that this curve is the approved v0.2 rule.
+test("DUAL-A provisional curve is continuous at both anchor boundaries", () => {
+  const eps = 0.001;
+  const at55 = dualA2HSot90Threshold(55);
+  const justAfter55 = dualA2HSot90Threshold(55 + eps);
+  const justBefore80 = dualA2HSot90Threshold(80 - eps);
+  const at80 = dualA2HSot90Threshold(80);
+  assert.equal(at55, 32.7);
+  assert.ok(justAfter55 < at55 && justAfter55 > 32.69);
+  assert.ok(justBefore80 > at80 && justBefore80 < 22.51);
+  assert.equal(at80, 22.5);
+});
+
+test("DUAL-A provisional threshold remains clamped on both sides of its anchors", () => {
+  for (const minute of [0, 1, 45, 54, 54.999, 55]) {
+    assert.equal(dualA2HSot90Threshold(minute), 32.7);
+  }
+  for (const minute of [80, 80.001, 85, 90, 95, 120]) {
+    assert.equal(dualA2HSot90Threshold(minute), 22.5);
+  }
+});
+
+test("DUAL-A qualifies at the 80-minute anchor with exact SOT, balance and R10", () => {
+  const r = evaluateCloudAlert({
+    ...base, period: "2H", elapsedMinute: 80,
+    homeSot: 10, awaySot: 10, recentSot10: 1
+  });
+  assert.ok(r.triggers.includes("DUAL_A_2H"));
+  assert.equal(Math.round(r.metrics.sot90 * 10) / 10, 22.5);
+});
+
+test("DUAL-A does not qualify just below its provisional 55-minute SOT90 line", () => {
+  const r = evaluateCloudAlert({
+    ...base, period: "2H", elapsedMinute: 55,
+    homeSot: 9, awaySot: 10, recentSot10: 1
+  });
+  assert.ok(!r.triggers.includes("DUAL_A_2H"));
+});
