@@ -4518,6 +4518,8 @@ const server = http.createServer(async (req, res) => {
       let checked = 0, sent = 0, candidates = 0, powerRankingAlerts = 0;
       let strongSignals = 0, firstHalfOddsChecks = 0, secondHalfEligible = 0, oddsVerifiedCount = 0, oddsMissingCount = 0, oddsErrors = 0;
       const aiSignalDiagnostics = [];
+      const sotBaselineAvailable = w => w?.available === true && Array.isArray(w.teams) &&
+        w.teams.some(t => t?.shotsOnTarget != null && Number.isFinite(Number(t.shotsOnTarget)));
       // Enforce the existing maximum of four alerts separately for each AI trigger per match/half.
       // A different trigger never consumes this trigger's quota; counts survive restarts.
       const alertCountsByMatchHalf = new Map();
@@ -5332,6 +5334,10 @@ const server = http.createServer(async (req, res) => {
           sot5m: onTarget,
           sot10m: onTarget10m,
           sotCumulativeTotal: current.onTarget,
+          sot5mBaselineAvailable: sotBaselineAvailable(match.trend?.window5m),
+          sot10mBaselineAvailable: sotBaselineAvailable(match.trend?.window10m),
+          sot5mBaselineAgeMinutes: sotBaselineAvailable(match.trend?.window5m) && Number.isFinite(Number(match.trend?.window5m?.sampleMinutes)) ? Number(match.trend.window5m.sampleMinutes) : null,
+          sot10mBaselineAgeMinutes: sotBaselineAvailable(match.trend?.window10m) && Number.isFinite(Number(match.trend?.window10m?.sampleMinutes)) ? Number(match.trend.window10m.sampleMinutes) : null,
           sot5mValidation: sot5Validation,
           sot10mValidation: sot10Validation,
           xGHome: teamXGValues[0],
@@ -5634,7 +5640,25 @@ const server = http.createServer(async (req, res) => {
         } catch {}
       }
       const liveMatchSamples = (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 5).map(match => ({ home: match.home || "", away: match.away || "", minute: match.minute ?? match.elapsed ?? match.liveMinute ?? match.live_minute ?? match.time?.elapsed ?? match.time?.minute ?? null, status: String(match.statusText || match.status || match.status_text || ""), homeScore: match.homeScore ?? null, awayScore: match.awayScore ?? null }));
-      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), powerRankingAlerts, scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, secondHalfEligible, strongSignals, aiSignalDiagnostics, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
+      // Read-only AI scan funnel: aggregate the existing per-match diagnostics without changing eligibility or dispatch.
+      const aiFunnel = (() => {
+        try {
+          return aiSignalDiagnostics.reduce((funnel, sample) => {
+            funnel.samples++;
+            if (sample.statsAvailable) funnel.statsAvailable++;
+            if (sample.scoreAvailable) funnel.scoreAvailable++;
+            if (sample.qualifies) funnel.qualified++;
+            const reason = String(sample.rejection || "not_reported");
+            funnel.rejections[reason] = (funnel.rejections[reason] || 0) + 1;
+            for (const triggerId of Array.isArray(sample.qualifiedTriggerIds) ? sample.qualifiedTriggerIds : []) funnel.triggerMatches[triggerId] = (funnel.triggerMatches[triggerId] || 0) + 1;
+            return funnel;
+          }, { samples: 0, statsAvailable: 0, scoreAvailable: 0, qualified: 0, rejections: {}, triggerMatches: {} });
+        } catch (error) {
+          console.warn("AI scan funnel diagnostics unavailable:", String(error.message || error).slice(0, 160));
+          return { error: "funnel_unavailable" };
+        }
+      })();
+      return send(res, 200, { ok: true, liveMatches, statsMatches, checked, candidates, deliveries: sent, subscribers, date, pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), diagnostics: { oddsProviderConfigured: Boolean(getOddsPapiApiKey() || getApiFootballKey()), powerRankingAlerts, scoreboardJoinedMatches, scoreboardJoinSamples, liveMatchSamples, aiFunnel, statsDiagnostics: (metrics.matches || []).filter(match => match.statsAvailable).slice(0, 8).map(match => ({ home: match.home || "", away: match.away || "", minute: getMatchMinute(match), statsSource: match.statsSource || "unknown", statsAvailable: Boolean(match.statsAvailable), teams: (match.teams || []).map(team => ({ team: team.team || "", shotsOnTarget: team.shotsOnTarget ?? null, xG: team.xG ?? null })) })),  statsMissingSOT: (metrics.matches || []).filter(match => match.statsAvailable && (!Array.isArray(match.teams) || match.teams.length < 2 || match.teams.some(team => team.shotsOnTarget == null))).length, secondHalfEligible, strongSignals, aiSignalDiagnostics, firstHalfOddsChecks, oddsVerified: oddsVerifiedCount, oddsMissing: oddsMissingCount, oddsErrors } });
     } catch (error) {
       console.error("Background push scan failed:", error.message);
       return send(res, 503, { error: "Background scan failed", detail: error.message });
