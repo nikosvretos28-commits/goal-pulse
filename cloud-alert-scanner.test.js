@@ -82,3 +82,15 @@ test("independent scanner persists shadow candidates but never invokes push deli
   assert.ok(requestedUrls.every(url => url.includes("scope=cloud-alert")));
   assert.deepEqual(saved[0].triggers, ["EARLY_1H"]);
 });
+
+test("rejects blank SOT values instead of coercing them to zero", () => {
+  const { getTeamSot } = require("./cloud-alert-scanner");
+  assert.equal(getTeamSot({ teams: [
+    { homeAway: "home", shotsOnTarget: " " },
+    { homeAway: "away", shotsOnTarget: "2" }
+  ] }), null);
+  assert.equal(getRecentSot10({ trend: { window10m: {
+    available: true, sampleMinutes: 10,
+    teams: [{ shotsOnTarget: "" }, { shotsOnTarget: 1 }]
+  } } }), null);
+});
