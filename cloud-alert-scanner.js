@@ -54,7 +54,9 @@ function getRecentSot10(match) {
   const sampleMinutes = Number(window.sampleMinutes);
   if (!Number.isFinite(sampleMinutes) || sampleMinutes < 9 || sampleMinutes > 11.5) return null;
   if (!Array.isArray(window.teams) || window.teams.length < 2) return null;
-  const values = window.teams.slice(0, 2).map(team => team?.shotsOnTarget);
+  const home = window.teams.find(team => team?.homeAway === "home") || window.teams[0];
+  const away = window.teams.find(team => team?.homeAway === "away") || window.teams[1];
+  const values = [home?.shotsOnTarget, away?.shotsOnTarget];
   if (values.some(value => value == null ||
       (typeof value === "string" && value.trim() === "") ||
       !Number.isInteger(Number(value)) || Number(value) < 0)) return null;
