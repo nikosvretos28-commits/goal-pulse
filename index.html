@@ -3173,7 +3173,7 @@ async function loadCloudAlertHistory(){
    return '<article class="top-ai-alert-card"><strong>'+cloudAlertEscape(s.home)+' '+cloudAlertEscape(s.score_home??'—')+'–'+cloudAlertEscape(s.score_away??'—')+' '+cloudAlertEscape(s.away)+'</strong><p>'+cloudAlertEscape(s.period)+' · '+cloudAlertEscape(s.minute??'—')+'′ · SOT '+cloudAlertEscape(s.home_sot)+'–'+cloudAlertEscape(s.away_sot)+'</p><small>'+cloudAlertEscape(triggers)+' · '+cloudAlertEscape(s.status)+(p?' · PUSH '+cloudAlertEscape(p.kind)+' #'+cloudAlertEscape(p.slot):'')+'</small></article>';
   }).join('');
   const delivered=pushes.filter(p=>p.status==='accepted').length;
-  document.getElementById('cloudAlertCount').textContent=String(pushes.length)+' PUSH';
+  document.getElementById('cloudAlertCount').textContent=String(signals.length)+' SIGNALS';
   document.getElementById('cloudAlertPushStatus').textContent='PUSH LOCKED · '+delivered+' HISTORICAL ACCEPTED';
   root.innerHTML=rows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη επιβεβαιωμένα Cloud Alert signals.</div>';
   const settlementRoot=document.getElementById('cloudAlertSettlementHistory');
