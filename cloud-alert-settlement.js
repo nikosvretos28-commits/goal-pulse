@@ -80,7 +80,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       schemaReady = pool.query(`
         CREATE TABLE IF NOT EXISTS cloud_alert_settlement_events (
           event_id TEXT PRIMARY KEY,
-          event_seq BIGSERIAL UNIQUE,
+          event_seq BIGSERIAL,
           signal_id TEXT NOT NULL REFERENCES cloud_alert_signals(signal_id),
           target_period TEXT NOT NULL CHECK (target_period IN ('HT','FT')),
           state TEXT NOT NULL CHECK (state IN ('pending','settled_verified','unverifiable','disputed')),
