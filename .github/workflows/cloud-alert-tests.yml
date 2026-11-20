@@ -42,5 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
-      - name: Run isolated Cloud Alert tests
-        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js cloud-alert-runtime.test.js cloud-alert-settlement.test.js
+      - name: Install PostgreSQL test client
+        run: npm install --no-save --package-lock=false pg@8.13.1
+      - name: Run isolated Cloud Alert tests and PostgreSQL integration
+        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js cloud-alert-runtime.test.js cloud-alert-settlement.test.js cloud-alert-postgres.integration.test.js
