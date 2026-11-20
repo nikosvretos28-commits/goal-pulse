@@ -250,8 +250,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
         ].filter(value => value != null).map(String).join(" ").toLowerCase();
         const state = String(type.state || status.state || rawStatus).toLowerCase();
         const finished = state === "post" || type.completed === true ||
-          /full\s*time|finished|ended|complete|\bft\b|after\s*extra/.test(statusText);
-        const halfTime = /half\s*time|halftime|\bht\b|interval/.test(statusText);
+          /full[\s-]*time|finished|ended|complete|\bft\b|after[\s-]*extra/.test(statusText);
+        const halfTime = /half[\s-]*time|halftime|\bht\b|interval/.test(statusText);
         const secondHalf = /second\s*half|2nd\s*half|\b2h\b/.test(statusText) ||
           Number(status.period) === 2 || Number(type.period) === 2;
         const competitors = event.competitions?.[0]?.competitors || [];
