@@ -463,7 +463,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       "target_period","state","provider","source","settled_at","score_home","score_away",
       "signal_goals","over_line","result_goals","outcome","reason","previous_event_id"];
     const escape = value => {
-      const text = value == null ? "" : value instanceof Date ? value.toISOString() : String(value);
+      const raw = value == null ? "" : value instanceof Date ? value.toISOString() : String(value);
+      const text = /^[\s]*[=+\-@]/.test(raw) ? "'" + raw : raw;
       return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
     };
     const rows = [columns.join(",")];
