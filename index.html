@@ -3167,10 +3167,10 @@ async function loadCloudAlertHistory(){
   if(!response.ok||data.persistent!==true)throw new Error(data.error||'Η μόνιμη αποθήκευση δεν είναι διαθέσιμη.');
   const signals=Array.isArray(data.signals)?data.signals:[];
   const pushes=Array.isArray(data.pushes)?data.pushes:[];
-  const pushBySignal=new Map(pushes.map(p=>[p.signal_id,p]));
+  const pushBySignal=new Map();for(const p of pushes){if(!pushBySignal.has(p.signal_id))pushBySignal.set(p.signal_id,p);}
   const rows=signals.map(s=>{
    const p=pushBySignal.get(s.signal_id),triggers=Array.isArray(s.trigger_ids)?s.trigger_ids.join(', '):'—';
-   return '<article class="top-ai-alert-card"><strong>'+cloudAlertEscape(s.home)+' '+cloudAlertEscape(s.score_home??'—')+'–'+cloudAlertEscape(s.score_away??'—')+' '+cloudAlertEscape(s.away)+'</strong><p>'+cloudAlertEscape(s.period)+' · '+cloudAlertEscape(s.minute??'—')+'′ · SOT '+cloudAlertEscape(s.home_sot)+'–'+cloudAlertEscape(s.away_sot)+'</p><small>'+cloudAlertEscape(triggers)+' · '+cloudAlertEscape(s.status)+(p?' · PUSH '+cloudAlertEscape(p.kind)+' #'+cloudAlertEscape(p.slot):'')+'</small></article>';
+   return '<article class="top-ai-alert-card"><strong>'+cloudAlertEscape(s.home)+' '+cloudAlertEscape(s.score_home??'—')+'–'+cloudAlertEscape(s.score_away??'—')+' '+cloudAlertEscape(s.away)+'</strong><p>'+cloudAlertEscape(s.period)+' · '+cloudAlertEscape(s.minute??'—')+'′ · SOT '+cloudAlertEscape(s.home_sot)+'–'+cloudAlertEscape(s.away_sot)+'</p><small>'+cloudAlertEscape(triggers)+' · '+cloudAlertEscape(s.status)+(p?' · PUSH '+cloudAlertEscape(p.status)+' '+cloudAlertEscape(p.kind)+' #'+cloudAlertEscape(p.slot)+' · TRY '+cloudAlertEscape(p.attempt_count??1):'')+'</small></article>';
   }).join('');
   const delivered=pushes.filter(p=>p.status==='accepted').length;
   document.getElementById('cloudAlertCount').textContent=String(signals.length)+' SIGNALS';
