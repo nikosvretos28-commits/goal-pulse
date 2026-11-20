@@ -3174,7 +3174,7 @@ async function loadCloudAlertHistory(){
   }).join('');
   const delivered=pushes.filter(p=>p.status==='accepted').length;
   document.getElementById('cloudAlertCount').textContent=String(pushes.length)+' PUSH';
-  document.getElementById('cloudAlertPushStatus').textContent=delivered+' PUSH ACCEPTED';
+  document.getElementById('cloudAlertPushStatus').textContent='PUSH LOCKED · '+delivered+' HISTORICAL ACCEPTED';
   root.innerHTML=rows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη επιβεβαιωμένα Cloud Alert signals.</div>';
   const settlementRoot=document.getElementById('cloudAlertSettlementHistory');
   if(settlementRoot){
