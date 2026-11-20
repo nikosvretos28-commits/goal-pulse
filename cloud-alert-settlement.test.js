@@ -63,7 +63,7 @@ function settlementPool(signal) {
   const inserted = [];
   const pool = {
     async query(sql) {
-      if (sql.includes("SELECT signal_id,match_id,period,payload FROM cloud_alert_signals")) {
+      if (sql.includes("FROM cloud_alert_signals s") || sql.includes("SELECT signal_id,match_id,period,payload FROM cloud_alert_signals")) {
         return { rows: [signal] };
       }
       if (sql.includes("SELECT state FROM cloud_alert_settlement_events")) return { rows: [] };
