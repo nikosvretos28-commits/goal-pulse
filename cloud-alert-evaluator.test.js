@@ -127,3 +127,25 @@ test("holds rather than trusting malformed push state", () => {
     state: malformed, period: "1H", signalId: "new"
   }), /Invalid Cloud Alert push state/);
 });
+
+test("regular-time stoppage minutes remain eligible in both halves", () => {
+  const firstHalfAddedTime = evaluateCloudAlert({
+    ...base, elapsedMinute: 47, homeSot: 6, awaySot: 4, recentSot10: 2
+  });
+  assert.ok(firstHalfAddedTime.triggers.includes("SUSTAINED_1H"));
+
+  const secondHalfAddedTime = evaluateCloudAlert({
+    ...base, period: "2H", elapsedMinute: 95, homeSot: 10, awaySot: 10, recentSot10: 2
+  });
+  assert.ok(secondHalfAddedTime.triggers.includes("SUSTAINED_B_2H"));
+});
+
+test("decision fails closed when the other half push state is malformed", () => {
+  const state = {
+    "1H": { sentCount: 0, sentSignalIds: [] },
+    "2H": { sentCount: 1, sentSignalIds: [] }
+  };
+  assert.equal(decideCloudAlertPush({
+    period: "1H", signalId: "new", qualifies: true, state
+  }).reason, "invalid_push_state");
+});
