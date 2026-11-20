@@ -259,6 +259,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
         settledAt: new Date(now()).toISOString()
       };
       const scoreValid = Number.isInteger(fixture.scoreHome) && Number.isInteger(fixture.scoreAway);
+      const signalSnapshot = typeof signal.payload === "string" ? JSON.parse(signal.payload) : signal.payload;
+      const signalScoreValid = Number.isInteger(signalSnapshot?.scoreHome) && Number.isInteger(signalSnapshot?.scoreAway);
       if (signal.period === "1H" && (fixture.halfTime || fixture.secondHalf || fixture.finished)) {
         const previous = await pool.query(
           `SELECT state FROM cloud_alert_settlement_events
@@ -266,13 +268,14 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
            ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
         );
         if (!previous.rows.length) {
-          if (fixture.halfTime && scoreValid) {
+          if (fixture.halfTime && scoreValid && signalScoreValid) {
             const result = await appendEvent({ ...common, targetPeriod: "HT", state: "settled_verified",
               scoreHome: fixture.scoreHome, scoreAway: fixture.scoreAway });
             if (result.ok && !result.duplicate) verified++;
           } else {
-            const result = await appendEvent({ ...common, targetPeriod: "HT", state: "unverifiable",
-              reason: "missed_half_time_capture_no_verified_ht_score_available" });
+            const reason = !signalScoreValid ? "signal_time_score_missing_cannot_grade_over_line" :
+              "missed_half_time_capture_no_verified_ht_score_available";
+            const result = await appendEvent({ ...common, targetPeriod: "HT", state: "unverifiable", reason });
             if (result.ok && !result.duplicate) unverifiable++;
           }
           processed++;
@@ -285,13 +288,14 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
            ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
         );
         if (!previous.rows.length) {
-          if (scoreValid) {
+          if (scoreValid && signalScoreValid) {
             const result = await appendEvent({ ...common, targetPeriod: "FT", state: "settled_verified",
               scoreHome: fixture.scoreHome, scoreAway: fixture.scoreAway });
             if (result.ok && !result.duplicate) verified++;
           } else {
-            const result = await appendEvent({ ...common, targetPeriod: "FT", state: "unverifiable",
-              reason: "finished_fixture_missing_verified_final_score" });
+            const reason = !signalScoreValid ? "signal_time_score_missing_cannot_grade_over_line" :
+              "finished_fixture_missing_verified_final_score";
+            const result = await appendEvent({ ...common, targetPeriod: "FT", state: "unverifiable", reason });
             if (result.ok && !result.duplicate) unverifiable++;
           }
           processed++;
