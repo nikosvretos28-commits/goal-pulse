@@ -7294,12 +7294,33 @@ const server = http.createServer(async (req, res) => {
                 }
               }
             }
+            const eventCompetitors = event.competitions?.[0]?.competitors || [];
+            const homeScoreRaw = eventCompetitors.find(t => t.homeAway === "home")?.score;
+            const awayScoreRaw = eventCompetitors.find(t => t.homeAway === "away")?.score;
+            const validScore = value => value == null || String(value).trim() === "" || !Number.isInteger(Number(value))
+              ? null : Number(value);
+            const eventStatus = event.status || {};
+            const competitionStatus = event.competitions?.[0]?.status || {};
+            const liveStatusText = String(
+              eventStatus.type?.detail || competitionStatus.type?.detail ||
+              eventStatus.type?.shortDetail || competitionStatus.type?.shortDetail ||
+              eventStatus.type?.name || competitionStatus.type?.name ||
+              eventStatus.detail || competitionStatus.detail || ""
+            );
+            const liveStatus = String(
+              eventStatus.type?.state || competitionStatus.type?.state ||
+              eventStatus.type?.name || competitionStatus.type?.name || ""
+            );
             matches.push({
               eventId: String(event.id),
               league: String(event.competitions?.[0]?.name || event.leagueName || item.leagueCode || "unknown"),
               statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
-              home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
-              away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
+              home: eventCompetitors.find(t => t.homeAway === "home")?.team?.displayName || "",
+              away: eventCompetitors.find(t => t.homeAway === "away")?.team?.displayName || "",
+              homeScore: validScore(homeScoreRaw),
+              awayScore: validScore(awayScoreRaw),
+              statusText: liveStatusText,
+              status: liveStatus,
               minute: normalizeLiveMinute(
                 event.status?.displayClock,
                 event.competitions?.[0]?.status?.displayClock,
