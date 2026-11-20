@@ -890,7 +890,7 @@ async function sendPushToSubscribers(payload) {
   return { sent, failed, configured: true };
 }
 const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers });
-const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyticsPool });
+const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyticsPool, ensureSignalSchema: () => cloudAlertRuntime.ensureSchema() });
 // Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
 const cloudAlertScanner = createCloudAlertScanner({
   baseUrl: "http://127.0.0.1:" + PORT,
