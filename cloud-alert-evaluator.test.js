@@ -130,7 +130,7 @@ test("holds rather than trusting malformed push state", () => {
 
 test("regular-time stoppage minutes remain eligible in both halves", () => {
   const firstHalfAddedTime = evaluateCloudAlert({
-    ...base, elapsedMinute: 47, homeSot: 6, awaySot: 4, recentSot10: 2
+    ...base, elapsedMinute: 47, homeSot: 6, awaySot: 6, recentSot10: 2
   });
   assert.ok(firstHalfAddedTime.triggers.includes("SUSTAINED_1H"));
 
