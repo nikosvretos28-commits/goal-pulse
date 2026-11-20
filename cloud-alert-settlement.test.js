@@ -125,3 +125,62 @@ test("scoreboard reconciler marks missed HT unverifiable and grades FT independe
   assert.deepEqual(inserted.map(row => [row.targetPeriod, row.state]),
     [["HT", "unverifiable"], ["FT", "settled_verified"]]);
 });
+
+test("settlement ledger schema protects UPDATE, DELETE and TRUNCATE", async () => {
+  let ddl = "";
+  const pool = { async query(sql) { ddl = sql; return { rows: [], rowCount: 0 }; } };
+  const { createCloudAlertSettlement } = require("./cloud-alert-settlement");
+  const service = createCloudAlertSettlement({ getPool: () => pool });
+  assert.equal(await service.ensureSchema(), true);
+  assert.match(ddl, /RETURNS trigger LANGUAGE plpgsql AS \$\$/);
+  assert.match(ddl, /BEFORE UPDATE OR DELETE ON cloud_alert_settlement_events/);
+  assert.match(ddl, /BEFORE TRUNCATE ON cloud_alert_settlement_events/);
+});
+
+test("conflicting same-state score correction cannot be silently treated as a duplicate", async () => {
+  const signal = { period: "1H", payload: { period: "1H", scoreHome: 1, scoreAway: 0 } };
+  const events = [];
+  let ddl = "";
+  const pool = {
+    async query(sql) { ddl = sql; return { rows: [], rowCount: 0 }; },
+    async connect() {
+      return {
+        async query(sql, params = []) {
+          if (sql === "SELECT period,payload FROM cloud_alert_signals WHERE signal_id=$1 FOR UPDATE") {
+            return { rows: [signal] };
+          }
+          if (sql.includes("SELECT event_id,state,provider,fixture_id,source,score_home,score_away,reason")) {
+            return { rows: events.length ? [events[events.length - 1]] : [] };
+          }
+          if (sql.includes("INSERT INTO cloud_alert_settlement_events")) {
+            const event = {
+              event_id: params[0], signal_id: params[1], target_period: params[2],
+              state: params[3], provider: params[4], fixture_id: params[5], source: params[6],
+              score_home: params[8], score_away: params[9], reason: params[14],
+              previous_event_id: params[15]
+            };
+            events.push(event);
+          }
+          return { rows: [], rowCount: 1 };
+        },
+        release() {}
+      };
+    }
+  };
+  const { createCloudAlertSettlement } = require("./cloud-alert-settlement");
+  const service = createCloudAlertSettlement({ getPool: () => pool });
+  const base = { signalId: "sig-correction", targetPeriod: "FT", provider: "ESPN",
+    fixtureId: "fixture-1", source: "scoreboard", settledAt: "2026-11-20T08:00:00Z" };
+  const first = await service.appendEvent({ ...base, state: "settled_verified", scoreHome: 2, scoreAway: 0 });
+  assert.equal(first.ok, true);
+  const duplicate = await service.appendEvent({ ...base, state: "settled_verified", scoreHome: 2, scoreAway: 0 });
+  assert.equal(duplicate.duplicate, true);
+  const conflict = await service.appendEvent({ ...base, state: "settled_verified", scoreHome: 1, scoreAway: 0 });
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.reason, "same_state_conflicting_payload_requires_dispute");
+  const disputed = await service.appendEvent({ ...base, state: "disputed", reason: "provider score correction detected" });
+  assert.equal(disputed.ok, true);
+  const corrected = await service.appendEvent({ ...base, state: "settled_verified", scoreHome: 1, scoreAway: 0 });
+  assert.equal(corrected.ok, true);
+  assert.equal(corrected.previousEventId, disputed.eventId);
+});
