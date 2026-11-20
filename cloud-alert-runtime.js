@@ -237,7 +237,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         [snapshot.matchId, period]
       );
       if (activeResult.rows.length) {
-        await client.query("UPDATE cloud_alert_signals SET status='awaiting_push_delivery' WHERE signal_id=$1", [signalId]);
+        await client.query("UPDATE cloud_alert_signals SET status=CASE WHEN status='delivery_unknown' THEN status ELSE 'awaiting_push_delivery' END WHERE signal_id=$1", [signalId]);
         await client.query("COMMIT");
         return {
           ok: true, pushed: false,
@@ -251,7 +251,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
           state.last_score_total != null && scoreTotal > Number(state.last_score_total) &&
           state.last_signal_id !== signalId) kind = "re_alert";
       if (!kind || Number(state.sent_count) >= 2) {
-        await client.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1", [signalId]);
+        await client.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1 AND status NOT IN ('push_accepted','delivery_unknown')", [signalId]);
         await client.query("COMMIT");
         return {
           ok: true, pushed: false,
