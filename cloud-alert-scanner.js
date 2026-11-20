@@ -28,10 +28,12 @@ function matchPeriod(match, minute) {
     .join(" ").toLowerCase();
   if (/extra.?time|penalt|shoot.?out|\bet\b|\bpens?\b/.test(status)) return null;
   if (/\bht\b|half.?time|halftime|ανάπαυλα/.test(status)) return null;
+  if (/\b(ft|full.?time|finished|ended|final|postponed|cancelled|canceled|abandoned|suspended)\b/.test(status)) return null;
   if (/second.?half|2nd.?half|δεύτερο.?ημίχρονο|2ο.?ημίχρονο|\b2h\b/.test(status)) return "2H";
   if (/first.?half|1st.?half|πρώτο.?ημίχρονο|1ο.?ημίχρονο|\b1h\b/.test(status)) return "1H";
+  // Minute alone cannot distinguish first-half stoppage time (45+N) from
+  // second-half play. Fail closed above 45' unless the feed supplies phase.
   if (minute != null && minute <= 45) return "1H";
-  if (minute != null && minute > 45) return "2H";
   return null;
 }
 
