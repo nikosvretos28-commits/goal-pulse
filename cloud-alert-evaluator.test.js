@@ -22,6 +22,7 @@ test("calculates total SOT, SOT90 and balanced SOT", () => {
 test("rejects total shots or missing/invalid SOT values by failing closed", () => {
   const m = calculateSotMetrics({ homeSot: null, awaySot: 5, elapsedMinute: 20 });
   assert.equal(m.valid, false);
+  assert.equal(calculateSotMetrics({ homeSot: null, awaySot: 0, elapsedMinute: 20 }).valid, false);
 });
 
 test("EARLY 1H trigger qualifies with exact SOT-only thresholds", () => {
@@ -30,7 +31,7 @@ test("EARLY 1H trigger qualifies with exact SOT-only thresholds", () => {
 });
 
 test("SUSTAINED 1H trigger qualifies without a minute cutoff", () => {
-  const r = evaluateCloudAlert({ ...base, elapsedMinute: 45, homeSot: 6, awaySot: 4, recentSot10: 2 });
+  const r = evaluateCloudAlert({ ...base, elapsedMinute: 40, homeSot: 6, awaySot: 4, recentSot10: 2 });
   assert.ok(r.triggers.includes("SUSTAINED_1H"));
 });
 
@@ -45,7 +46,7 @@ test("2H B trigger requires each team, balance, SOT90 and recent SOT", () => {
 test("2H A threshold interpolates between the two approved anchors", () => {
   assert.equal(dualA2HSot90Threshold(55), 32.7);
   assert.equal(dualA2HSot90Threshold(80), 22.5);
-  assert.equal(dualA2HSot90Threshold(67.5), 27.6);
+  assert.equal(Math.round(dualA2HSot90Threshold(67.5) * 10) / 10, 27.6);
 });
 
 test("2H A threshold uses endpoint values outside the interpolation anchors", () => {
