@@ -385,7 +385,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     const safeLimit = Math.max(1, Math.min(250, Number(limit) || 100));
     const [signals, pushes] = await Promise.all([
       pool.query("SELECT signal_id,match_id,fixture_id,league,rule_version,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot6,recent_sot10,score_home,score_away,status,payload,created_at FROM cloud_alert_signals ORDER BY created_at DESC LIMIT $1", [safeLimit]),
-      pool.query("SELECT push_id,match_id,period,slot,signal_id,kind,status,payload,attempt_count,error_message,created_at,updated_at,delivered_at FROM cloud_alert_pushes ORDER BY created_at DESC LIMIT $1", [safeLimit])
+      pool.query("SELECT push_id,match_id,period,slot,signal_id,kind,status,payload,attempt_count,error_message,created_at,updated_at,delivered_at FROM cloud_alert_pushes ORDER BY updated_at DESC,created_at DESC LIMIT $1", [safeLimit])
     ]);
     return { persistent: true, signals: signals.rows, pushes: pushes.rows };
   }
