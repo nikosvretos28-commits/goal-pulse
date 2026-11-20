@@ -41,7 +41,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         CREATE OR REPLACE FUNCTION cloud_alert_reject_signal_mutation()
         RETURNS trigger LANGUAGE plpgsql AS $
         BEGIN
-          IF TG_OP='DELETE' THEN
+          IF TG_OP='TRUNCATE' OR TG_OP='DELETE' THEN
             RAISE EXCEPTION 'Cloud Alert signal snapshots are immutable';
           END IF;
           IF ROW(OLD.signal_id,OLD.match_id,OLD.fixture_id,OLD.league,OLD.rule_version,OLD.period,
