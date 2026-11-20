@@ -94,3 +94,47 @@ test("rejects blank SOT values instead of coercing them to zero", () => {
     teams: [{ shotsOnTarget: "" }, { shotsOnTarget: 1 }]
   } } }), null);
 });
+
+test("a provider SOT regression resets the two-sample confirmation window", async () => {
+  let clock = Date.parse("2026-11-20T08:10:00Z");
+  let sampleIndex = 0;
+  const values = [[6, 4], [5, 4], [6, 4], [6, 4]];
+  const saved = [];
+  const match = () => ({
+    eventId: "fixture-regression", home: "Home", away: "Away", minute: "40",
+    statusText: "1st Half", statsAvailable: true, statsSource: "ESPN",
+    homeScore: 0, awayScore: 0,
+    teams: [
+      { homeAway: "home", shotsOnTarget: values[sampleIndex][0] },
+      { homeAway: "away", shotsOnTarget: values[sampleIndex][1] }
+    ],
+    trend: { window10m: { available: true, sampleMinutes: 10, teams: [
+      { shotsOnTarget: 1 }, { shotsOnTarget: 1 }
+    ] } }
+  });
+  const runtime = {
+    async recordSnapshot() { return { valid: true, value: 1 }; },
+    async recordShadowCandidate(candidate) { saved.push(candidate); return { saved: true }; }
+  };
+  const scanner = createCloudAlertScanner({
+    baseUrl: "http://127.0.0.1:3000", runtime,
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        const body = { updatedAt: new Date(clock).toISOString(), matches: [match()] };
+        sampleIndex++;
+        return body;
+      }
+    }),
+    now: () => clock,
+    logger: { info() {}, warn() {} }
+  });
+  const results = [];
+  for (let i = 0; i < values.length; i++) {
+    results.push(await scanner.runOnce());
+    clock += 60_000;
+  }
+  assert.deepEqual(results.map(result => result.qualified), [0, 0, 0, 1]);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].confirmation, "two_monotonic_samples");
+});
