@@ -25,6 +25,7 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   t.after(async () => {
     await pool.query("DROP TABLE IF EXISTS cloud_alert_settlement_events CASCADE");
     await pool.query("DROP FUNCTION IF EXISTS cloud_alert_reject_settlement_mutation() CASCADE");
+    await pool.query("DROP FUNCTION IF EXISTS cloud_alert_reject_signal_mutation() CASCADE");
     await pool.query("DROP TABLE IF EXISTS cloud_alert_pushes CASCADE");
     await pool.query("DROP TABLE IF EXISTS cloud_alert_push_state CASCADE");
     await pool.query("DROP TABLE IF EXISTS cloud_alert_sot_snapshots CASCADE");
