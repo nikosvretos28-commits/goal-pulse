@@ -5239,7 +5239,7 @@ const server = http.createServer(async (req, res) => {
           if (cloudPeriod) {
             const cloudSides = current.sotByTeam || [];
             const cloudSotComplete = cloudSides.length >= 2 &&
-              Number.isInteger(Number(cloudSides[0]?.value)) && Number.isInteger(Number(cloudSides[1]?.value));
+              cloudSides[0]?.value != null && cloudSides[1]?.value != null && Number.isInteger(Number(cloudSides[0].value)) && Number.isInteger(Number(cloudSides[1].value));
             const cloudResult = evaluateCloudAlert({
               matchId: id,
               period: cloudPeriod,
@@ -5262,9 +5262,9 @@ const server = http.createServer(async (req, res) => {
                 away: match.away,
                 homeSot: Number(cloudSides[0].value),
                 awaySot: Number(cloudSides[1].value),
-                recentSot10: Number.isInteger(Number(onTarget10m)) ? Number(onTarget10m) : null,
-                scoreHome: Number.isInteger(Number(match.homeScore)) ? Number(match.homeScore) : null,
-                scoreAway: Number.isInteger(Number(match.awayScore)) ? Number(match.awayScore) : null,
+                recentSot10: onTarget10m != null && Number.isInteger(Number(onTarget10m)) ? Number(onTarget10m) : null,
+                scoreHome: match.homeScore != null && Number.isInteger(Number(match.homeScore)) ? Number(match.homeScore) : null,
+                scoreAway: match.awayScore != null && Number.isInteger(Number(match.awayScore)) ? Number(match.awayScore) : null,
                 metrics: cloudResult.metrics
               });
               if (cloudDelivery.pushed) {
