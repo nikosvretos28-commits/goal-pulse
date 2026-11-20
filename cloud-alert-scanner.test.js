@@ -9,6 +9,18 @@ test("parses stoppage time without losing added minutes", () => {
   assert.equal(numericMinute("HT"), null);
 });
 
+test("live-metrics supplies Cloud Alert with explicit period and signal-time score fields", () => {
+  const server = require("node:fs").readFileSync(require("node:path").join(__dirname, "server.js"), "utf8");
+  const start = server.indexOf("const liveStatusText = String(");
+  const end = server.indexOf("minute: normalizeLiveMinute(", start);
+  assert.ok(start >= 0 && end > start, "live-metrics match normalization must expose provider status");
+  const mapping = server.slice(start, end);
+  assert.match(mapping, /statusText: liveStatusText/);
+  assert.match(mapping, /status: liveStatus/);
+  assert.match(mapping, /homeScore: validScore\\(homeScoreRaw\\)/);
+  assert.match(mapping, /awayScore: validScore\\(awayScoreRaw\\)/);
+});
+
 test("classifies regular halves and excludes HT, extra time, penalties and finished matches", () => {
   assert.equal(matchPeriod({ statusText: "1st Half" }, 45), "1H");
   assert.equal(matchPeriod({ statusText: "2nd Half" }, 46), "2H");
