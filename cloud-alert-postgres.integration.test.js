@@ -111,7 +111,7 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   await assert.rejects(pool.query("TRUNCATE cloud_alert_settlement_events"), /append-only/);
 
   const disputed = await settlement.appendEvent({
-    ...base, state: "disputed", reason: "provider correction under review"
+    ...base, state: "disputed", reason: "=CMD()"
   });
   assert.equal(disputed.ok, true);
   const corrected = await settlement.appendEvent({
@@ -119,6 +119,9 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   });
   assert.equal(corrected.ok, true);
   assert.equal(corrected.previousEventId, disputed.eventId);
+  const csv = await settlement.exportCsv(100);
+  assert.equal(csv.persistent, true);
+  assert.match(csv.csv, /'=CMD\\(\\)/);
 
   const integrity = await settlement.integrity(100);
   assert.equal(integrity.persistent, true);
