@@ -8,7 +8,10 @@ on:
       - "cloud-alert-scanner.js"
       - "cloud-alert-scanner.test.js"
       - "cloud-alert-runtime.js"
+      - "cloud-alert-settlement.js"
+      - "cloud-alert-settlement.test.js"
       - "server.js"
+      - "docs/CLOUD_ALERT_IMPLEMENTATION_PLAN.md"
       - ".github/workflows/cloud-alert-tests.yml"
   workflow_dispatch:
 permissions:
@@ -23,4 +26,4 @@ jobs:
         with:
           node-version: 24.18.0
       - name: Run isolated Cloud Alert tests
-        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js
+        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js cloud-alert-settlement.test.js
