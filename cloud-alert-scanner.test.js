@@ -177,3 +177,14 @@ test("cumulative SOT correction quarantines even an otherwise valid R10 trigger"
   }
   assert.equal(saved.length, 0);
 });
+
+test("reads rolling SOT by home/away identity rather than provider array order", () => {
+  const value = getRecentSot10({ trend: { window10m: {
+    available: true, sampleMinutes: 10,
+    teams: [
+      { homeAway: "away", shotsOnTarget: 3 },
+      { homeAway: "home", shotsOnTarget: 1 }
+    ]
+  } } });
+  assert.equal(value, 4);
+});
