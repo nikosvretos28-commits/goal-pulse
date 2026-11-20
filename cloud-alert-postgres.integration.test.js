@@ -49,6 +49,8 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   assert.equal(history.signals[0].fixture_id, fixtureId);
   assert.equal(history.signals[0].league, "Integration League");
   assert.equal(history.signals[0].rule_version, "cloud-alert-v0.2");
+  assert.equal(history.signals[0].recent_sot6, 1);
+  assert.equal(history.signals[0].recent_sot10, 2);
 
   const base = {
     signalId, targetPeriod: "HT", provider: "ESPN", fixtureId,
