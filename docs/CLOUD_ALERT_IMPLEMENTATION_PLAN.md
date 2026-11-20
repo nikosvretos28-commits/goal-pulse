@@ -51,15 +51,26 @@ Definitions:
 6. Evaluates the isolated pure evaluator and writes qualifying records only through `recordShadowCandidate`.
 7. Never calls `processCandidate` or `sendPushToSubscribers`. Push delivery remains unavailable by construction in this scanner.
 
+## Settlement ledger contract
+
+- Every 1H signal has separate HT and FT settlement tracks; every 2H signal has an FT track only. Missing results remain `pending` until an explicit event is appended.
+- A verified settlement requires non-negative integer score, provider, provider fixture ID, source and settlement timestamp. A missing HT capture must be recorded as `unverifiable` with an explicit reason; never infer or reconstruct a missed HT score.
+- The market line is fixed at signal-time total goals + 0.5. Grade against the relevant HT or FT score; later odds or later signal data must not alter the line.
+- Allowed transitions: pending → settled_verified / unverifiable / disputed; settled_verified or unverifiable → disputed; disputed → settled_verified / unverifiable. Corrections append new events and retain their predecessor reference.
+- Database trigger rejects UPDATE and DELETE on the settlement event ledger. CSV export includes the audit events; integrity endpoint checks required metadata and predecessor links.
+- Write endpoint requires `Authorization: Bearer CLOUD_ALERT_SETTLEMENT_TOKEN`; do not expose or hardcode this secret. No settlement write or push activation is automatic.
+
 ## Remaining blockers before activation
 
 - Verify the exact provider event construction and rolling-window sampling semantics against real fixtures, including goal-related SOT treatment and provider corrections. DUAL-A outside 55′–80′ remains deliberately non-qualifying because v0.2 supplies no extrapolation rule.
 - Validate the independent scanner against real provider fixtures and feed-gap/downward-correction cases.
 - Verify that persisted R6 sampling has adequate continuity and that provider revisions cannot create false deltas.
-- Implement HT/FT settlement, void/disputed/unverifiable handling and a full append-only audit ledger.
-- Review and harden transactional push idempotency, especially delivery retries and the new-goal identity/order requirement.
+- Validate the new HT/FT settlement ledger against a real PostgreSQL instance and provider result fixtures. The isolated module now records verified, unverifiable and disputed events, derives pending states, grades Over (signal-time total goals + 0.5), stores provider/fixture/source/timestamp metadata, exports CSV, and exposes an integrity check.
+- Settlement history is append-only in application code and protected by a database trigger against UPDATE/DELETE. Corrections require a disputed event followed by a new verified/unverifiable event; prior events remain in the audit chain.
+- The settlement write endpoint is locked behind the dedicated `CLOUD_ALERT_SETTLEMENT_TOKEN` bearer secret. Read-only history/current-state, integrity and CSV endpoints are separate from AI/VIP/HI.
+- Review and harden transactional push idempotency, especially delivery retries and the new-goal identity/order requirement. Push activation remains disabled; do not call `processCandidate` from the shadow scanner.
 - Configure and verify persistent PostgreSQL, VAPID and an active subscription only when activation is explicitly approved.
-- Run the fresh CI suite and review the full PR diff for isolation.
+- Run fresh CI and review the full PR diff for isolation.
 
 ## Non-goals
 
