@@ -99,7 +99,7 @@ test("prevents duplicate delivery of the same signal", () => {
 });
 
 test("a missing R10 does not suppress a qualifying EARLY 1H signal", () => {
-  const r = evaluateCloudAlert({ ...base, recentSot10: null });
+  const r = evaluateCloudAlert({ ...base, elapsedMinute: 15, recentSot10: null });
   assert.ok(r.triggers.includes("EARLY_1H"));
   assert.equal(r.recentSot10, null);
 });
