@@ -80,14 +80,19 @@ function createCloudAlertScanner({
 
   function confirmSnapshot(matchId, period, homeSot, awaySot, at) {
     const key = String(matchId) + "|" + period;
+    for (const [sampleKey, sample] of confirmations) {
+      if (at - sample.at > 90_000) confirmations.delete(sampleKey);
+    }
     const previous = confirmations.get(key);
-    confirmations.set(key, { homeSot, awaySot, at });
     if (!previous || at - previous.at < 10_000 || at - previous.at > 90_000) {
+      confirmations.set(key, { homeSot, awaySot, at });
       return { confirmed: false, reason: "awaiting_second_independent_sample" };
     }
     if (homeSot < previous.homeSot || awaySot < previous.awaySot) {
+      confirmations.delete(key);
       return { confirmed: false, reason: "cumulative_sot_regression" };
     }
+    confirmations.set(key, { homeSot, awaySot, at });
     return { confirmed: true, reason: "two_monotonic_samples" };
   }
 
