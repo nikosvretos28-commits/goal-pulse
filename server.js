@@ -2,6 +2,7 @@ const http = require("node:http");
 const webpush = require("web-push");
 const { createCloudAlertScanner } = require("./cloud-alert-scanner");
 const { createCloudAlertRuntime } = require("./cloud-alert-runtime");
+const { createCloudAlertSettlement } = require("./cloud-alert-settlement");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
@@ -889,6 +890,7 @@ async function sendPushToSubscribers(payload) {
   return { sent, failed, configured: true };
 }
 const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers });
+const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyticsPool });
 // Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
 const cloudAlertScanner = createCloudAlertScanner({
   baseUrl: "http://127.0.0.1:" + PORT,
@@ -3624,6 +3626,53 @@ const server = http.createServer(async (req, res) => {
       return send(res, result.persistent ? 200 : 503, result);
     } catch (error) {
       return send(res, 503, { persistent: false, error: String(error.message || error).slice(0, 180), signals: [], pushes: [] });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements" && req.method === "GET") {
+    try {
+      const result = await cloudAlertSettlement.list(url.searchParams.get("limit"));
+      return send(res, result.persistent ? 200 : 503, result);
+    } catch (error) {
+      return send(res, 503, { persistent: false, error: String(error.message || error).slice(0, 180), events: [] });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements/integrity" && req.method === "GET") {
+    try {
+      const result = await cloudAlertSettlement.integrity(url.searchParams.get("limit"));
+      return send(res, result.persistent ? 200 : 503, result);
+    } catch (error) {
+      return send(res, 503, { ok: false, persistent: false, error: String(error.message || error).slice(0, 180), issues: [] });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements/export.csv" && req.method === "GET") {
+    try {
+      const result = await cloudAlertSettlement.exportCsv(url.searchParams.get("limit"));
+      if (!result.persistent) return send(res, 503, { error: "Cloud Alert settlement database unavailable" });
+      res.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="cloud-alert-settlements.csv"',
+        "X-Content-Type-Options": "nosniff"
+      });
+      return res.end(result.csv);
+    } catch (error) {
+      return send(res, 503, { error: String(error.message || error).slice(0, 180) });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements" && req.method === "POST") {
+    const adminToken = String(process.env.CLOUD_ALERT_SETTLEMENT_TOKEN || "");
+    if (!adminToken || req.headers.authorization !== "Bearer " + adminToken) {
+      return send(res, 401, { error: "Cloud Alert settlement authorization required" });
+    }
+    try {
+      const body = await readJsonBody(req, 10000);
+      const result = await cloudAlertSettlement.appendEvent(body);
+      return send(res, result.ok ? 200 : 400, result);
+    } catch (error) {
+      return send(res, 400, { ok: false, error: String(error.message || error).slice(0, 180) });
     }
   }
 
