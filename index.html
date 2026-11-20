@@ -2944,12 +2944,12 @@ header {
 <section class="top-ai-alerts" id="cloudAlertPanel" hidden aria-labelledby="cloudAlertTitle">
  <div class="top-ai-alerts-head">
   <div><h2 id="cloudAlertTitle">☁ CLOUD ALERT · LIVE SOT SIGNALS</h2><p>Ανεξάρτητο ιστορικό Cloud Alert και ξεχωριστές ειδοποιήσεις. Μέγιστο 2 push ανά ημίχρονο.</p></div>
-  <span class="pulse-status" id="cloudAlertPushStatus">PUSH STATUS</span>
+  <span class="pulse-status" id="cloudAlertPushStatus">OFF · WAITING FOR V0.2</span>
  </div>
  <div class="notification-optin-row">
-  <button type="button" class="login" id="enableCloudAlertPush">☁ ΕΝΕΡΓΟΠΟΙΗΣΗ CLOUD PUSH</button>
+  <button type="button" class="login" id="enableCloudAlertPush" disabled>☁ CLOUD PUSH · ΑΝΕΝΕΡΓΟ</button>
   <button type="button" class="login" id="refreshCloudAlertHistory">↻ ΑΝΑΝΕΩΣΗ</button>
-  <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Χρειάζεται άδεια Web Push στη συσκευή και ρυθμισμένα VAPID keys στον server.</span>
+  <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Η αποστολή παραμένει κλειδωμένη μέχρι να επιβεβαιωθεί το αυθεντικό πρωτόκολλο Cloud Alert v0.2.</span>
  </div>
  <div id="cloudAlertHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση ανεξάρτητου ιστορικού Cloud Alert…</div></div>
  <p class="top-ai-alert-privacy">Τα triggers βασίζονται αποκλειστικά σε SOT. Οι ειδοποιήσεις είναι ενδείξεις και δεν εγγυώνται γκολ ή αποτέλεσμα.</p>
