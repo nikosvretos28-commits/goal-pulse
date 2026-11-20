@@ -168,6 +168,9 @@ function createCloudAlertScanner({
 
         const saved = await runtime.recordShadowCandidate({
           matchId,
+          fixtureId: match.fixtureId || matchId,
+          league: match.league || match.leagueName || "unknown",
+          ruleVersion: "cloud-alert-v0.2",
           period,
           triggers: result.triggers,
           minute,
