@@ -12,6 +12,8 @@ on:
       - "cloud-alert-settlement.js"
       - "cloud-alert-settlement.test.js"
       - "cloud-alert-postgres.integration.test.js"
+      - "cloud-alert-ui.test.js"
+      - "index.html"
       - "server.js"
       - "docs/CLOUD_ALERT_IMPLEMENTATION_PLAN.md"
       - ".github/workflows/cloud-alert-tests.yml"
@@ -45,4 +47,4 @@ jobs:
       - name: Install PostgreSQL test client
         run: npm install --no-save --package-lock=false pg@8.13.1
       - name: Run isolated Cloud Alert tests and PostgreSQL integration
-        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js cloud-alert-runtime.test.js cloud-alert-settlement.test.js cloud-alert-postgres.integration.test.js
+        run: node --test cloud-alert-evaluator.test.js cloud-alert-scanner.test.js cloud-alert-runtime.test.js cloud-alert-settlement.test.js cloud-alert-postgres.integration.test.js cloud-alert-ui.test.js
