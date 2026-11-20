@@ -97,7 +97,7 @@ test("scoreboard reconciler captures HT only from an explicit halftime fixture s
   const service = createCloudAlertSettlement({ getPool: () => pool });
   const result = await service.reconcileScoreboard({ feeds: [{ code: "esp.1", events: [{
     id: "fixture-ht", _goalMatrixSource: "ESPN",
-    status: { type: { state: "in", name: "Halftime" }, displayClock: "Halftime" },
+    status: { type: { state: "in", name: "Half-Time" }, displayClock: "Half-Time" },
     competitions: [{ competitors: [
       { homeAway: "home", score: "1" }, { homeAway: "away", score: "0" }
     ] }]
