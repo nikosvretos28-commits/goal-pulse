@@ -137,11 +137,15 @@ function recordCloudAlertPush({ state = {}, period, signalId }) {
   if (!["1H", "2H"].includes(period) || !signalId) {
     throw new TypeError("period and signalId are required");
   }
+  const current = state[period] || { sentCount: 0, sentSignalIds: [] };
+  const currentIds = Array.isArray(current.sentSignalIds) ? current.sentSignalIds : [];
+  if (currentIds.includes(String(signalId))) throw new Error("Duplicate Cloud Alert signal cannot be recorded");
+  if (current.sentCount >= 2) throw new RangeError("Cloud Alert maximum of two pushes per half exceeded");
   const next = {
     ...state,
     [period]: {
-      sentCount: (state[period]?.sentCount || 0) + 1,
-      sentSignalIds: [...(state[period]?.sentSignalIds || []), String(signalId)]
+      sentCount: current.sentCount + 1,
+      sentSignalIds: [...currentIds, String(signalId)]
     }
   };
   const total = ["1H", "2H"].reduce((sum, half) => sum + (next[half]?.sentCount || 0), 0);
