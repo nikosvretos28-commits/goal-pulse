@@ -268,9 +268,34 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       }
     }
     const signals = await pool.query(
-      `SELECT signal_id,match_id,period,payload FROM cloud_alert_signals
-       WHERE status IN ('shadow_qualified','qualified','recorded_no_push','awaiting_push_delivery','push_accepted')
-       ORDER BY created_at DESC LIMIT 2000`
+      `SELECT s.signal_id,s.match_id,s.period,s.payload
+       FROM cloud_alert_signals s
+       WHERE s.status IN ('shadow_qualified','qualified','recorded_no_push','awaiting_push_delivery','push_accepted')
+         AND (
+           s.created_at >= NOW() - INTERVAL '48 hours'
+           OR (
+             s.period='1H' AND (
+               NOT EXISTS (
+                 SELECT 1 FROM cloud_alert_settlement_events h
+                 WHERE h.signal_id=s.signal_id AND h.target_period='HT'
+                   AND h.state IN ('settled_verified','unverifiable','disputed')
+               )
+               OR NOT EXISTS (
+                 SELECT 1 FROM cloud_alert_settlement_events f
+                 WHERE f.signal_id=s.signal_id AND f.target_period='FT'
+                   AND f.state IN ('settled_verified','unverifiable','disputed')
+               )
+             )
+           )
+           OR (
+             s.period='2H' AND NOT EXISTS (
+               SELECT 1 FROM cloud_alert_settlement_events f
+               WHERE f.signal_id=s.signal_id AND f.target_period='FT'
+                 AND f.state IN ('settled_verified','unverifiable','disputed')
+             )
+           )
+         )
+       ORDER BY s.created_at DESC LIMIT 5000`
     );
     let processed = 0, verified = 0, unverifiable = 0, skipped = 0;
     for (const signal of signals.rows) {
