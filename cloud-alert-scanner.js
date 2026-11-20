@@ -101,7 +101,7 @@ function createCloudAlertScanner({
       let settlementSummary = null;
       if (settlement && typeof settlement.reconcileScoreboard === "function") {
         try {
-          const scoreboardResponse = await fetchImpl(baseUrl.replace(/\\/$/, "") + "/api/scoreboard?date=" + date, {
+          const scoreboardResponse = await fetchImpl(baseUrl.replace(/\/$/, "") + "/api/scoreboard?date=" + date, {
             headers: { Accept: "application/json" },
             signal: AbortSignal.timeout(25_000)
           });
