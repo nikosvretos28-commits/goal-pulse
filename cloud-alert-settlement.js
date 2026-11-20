@@ -231,7 +231,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
           /full\s*time|finished|ended|complete|\bft\b|after\s*extra/.test(statusText);
         const halfTime = /half\s*time|halftime|\bht\b|interval/.test(statusText);
         const secondHalf = /second\s*half|2nd\s*half|\b2h\b/.test(statusText) ||
-          Number(status.period || type.period) === 2;
+          Number(status.period) === 2 || Number(type.period) === 2;
         const competitors = event.competitions?.[0]?.competitors || [];
         const home = competitors.find(team => team?.homeAway === "home") || competitors[0];
         const away = competitors.find(team => team?.homeAway === "away") || competitors[1];
