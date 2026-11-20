@@ -1256,7 +1256,7 @@ async function persistRollingTrends(matches, date, scope = "default") {
     const tuples = snapshots.map((row, index) => {
       const n = index * 8;
       values.push(...row);
-      return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8})`;
+      return `(${n+1}::text, ${n+2}::text, ${n+3}::text, NOW(), ${n+4}::double precision, ${n+5}::double precision, ${n+6}::double precision, ${n+7}::double precision, ${n+8}::text)`;
     });
     // All scanner scopes contribute to one persistent SOT history. Avoid writing
     // duplicate samples when AI, HI Activity and Cloud Alert inspect the same
