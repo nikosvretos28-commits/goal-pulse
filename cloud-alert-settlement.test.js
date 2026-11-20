@@ -89,6 +89,24 @@ function settlementPool(signal) {
   return { pool, inserted };
 }
 
+test("scoreboard reconciler preserves PitchAPI halftime status during scoreboard normalization", async () => {
+  const signal = { signal_id: "sig-pitch-ht", match_id: "pitch-fixture-ht", period: "1H",
+    payload: { period: "1H", scoreHome: 0, scoreAway: 0 } };
+  const { pool, inserted } = settlementPool(signal);
+  const { createCloudAlertSettlement } = require("./cloud-alert-settlement");
+  const service = createCloudAlertSettlement({ getPool: () => pool });
+  const result = await service.reconcileScoreboard({ feeds: [{ code: "pitch.test", events: [{
+    id: "pitch-fixture-ht", _goalMatrixSource: "PitchAPI",
+    status: { type: { state: "in", completed: false, name: "Half Time halftime" }, displayClock: "Half Time" },
+    competitions: [{ competitors: [
+      { homeAway: "home", score: "1" }, { homeAway: "away", score: "0" }
+    ] }]
+  }] }] }, () => Date.parse("2026-11-20T07:00:00Z"));
+  assert.equal(result.verified, 1);
+  assert.deepEqual(inserted.map(row => [row.targetPeriod, row.state, row.scoreHome, row.scoreAway]),
+    [["HT", "settled_verified", 1, 0]]);
+});
+
 test("scoreboard reconciler captures HT only from an explicit halftime fixture state", async () => {
   const signal = { signal_id: "sig-ht", match_id: "fixture-ht", period: "1H",
     payload: { period: "1H", scoreHome: 0, scoreAway: 0 } };
