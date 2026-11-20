@@ -49,6 +49,21 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   assert.equal(r6.valid, true);
   assert.equal(r6.value, 2);
 
+  // R10 is independently calculated from durable PostgreSQL snapshots,
+  // even when the six-minute baseline is not available.
+  const baseline10At = new Date(sampleMinute - 10 * 60000).toISOString();
+  await pool.query(
+    `INSERT INTO cloud_alert_sot_snapshots(match_id,period,sampled_at,home_sot,away_sot)
+     VALUES($1,'1H',$2,2,1)`,
+    ["r10-valid-" + suffix, baseline10At]
+  );
+  const r10 = await runtime.recordSnapshot({
+    matchId: "r10-valid-" + suffix, period: "1H", homeSot: 4, awaySot: 3
+  });
+  assert.equal(r10.valid, false, "R6 remains independently unavailable");
+  assert.equal(r10.recentSot10Valid, true);
+  assert.equal(r10.recentSot10, 4);
+
   await pool.query(
     `INSERT INTO cloud_alert_sot_snapshots(match_id,period,sampled_at,home_sot,away_sot)
      VALUES($1,'1H',$2,5,4)`,
