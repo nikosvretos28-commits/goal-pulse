@@ -2837,6 +2837,7 @@ header {
  <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
  <button type="button" class="gp-section-button gp-prematch-button" id="preMatchToggle" aria-controls="preMatchPanel" aria-expanded="false">PRE MATCH</button>
+ <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="cloudAlertPanel" id="cloudAlertToggle">☁ CLOUD ALERT <span class="gp-button-count" id="cloudAlertCount">HISTORY</span></button>
 </div>
 </div>
 
@@ -2938,6 +2939,22 @@ header {
  <div class="top-ai-alert-list" id="topAiAlertList" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή νέων ενδείξεων από πραγματικά live στατιστικά…</div></div>
  <p class="top-ai-alert-privacy">Οι ενδείξεις βασίζονται στα διαθέσιμα στατιστικά και δεν εγγυώνται αποτέλεσμα.</p>
  
+</section>
+
+<section class="top-ai-alerts" id="cloudAlertPanel" hidden aria-labelledby="cloudAlertTitle">
+ <div class="top-ai-alerts-head">
+  <div><h2 id="cloudAlertTitle">☁ CLOUD ALERT · LIVE SOT SIGNALS</h2><p>Ανεξάρτητο ιστορικό Cloud Alert και ξεχωριστές ειδοποιήσεις. Μέγιστο 2 push ανά ημίχρονο.</p></div>
+  <span class="pulse-status" id="cloudAlertPushStatus">SHADOW · PUSH LOCKED</span>
+ </div>
+ <div class="notification-optin-row">
+  <button type="button" class="login" id="enableCloudAlertPush" disabled>☁ CLOUD PUSH · ΑΝΕΝΕΡΓΟ</button>
+  <button type="button" class="login" id="refreshCloudAlertHistory">↻ ΑΝΑΝΕΩΣΗ</button>
+  <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Το Cloud Alert λειτουργεί σε shadow mode. Η αποστολή push παραμένει κλειδωμένη μέχρι ξεχωριστή έγκριση ενεργοποίησης.</span>
+ </div>
+ <div id="cloudAlertHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση ανεξάρτητου ιστορικού Cloud Alert…</div></div>
+ <div class="top-ai-alerts-head"><h3>HT / FT SETTLEMENT · ΙΣΤΟΡΙΚΟ</h3><a class="login" href="/api/cloud-alert/settlements/export.csv">CSV</a></div>
+ <div id="cloudAlertSettlementHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση HT / FT settlement…</div></div>
+ <p class="top-ai-alert-privacy">Τα triggers βασίζονται αποκλειστικά σε SOT. Οι ειδοποιήσεις είναι ενδείξεις και δεν εγγυώνται γκολ ή αποτέλεσμα.</p>
 </section>
 
 <section class="top-ai-alerts" id="privateAiAlertsPanel" hidden aria-labelledby="privateAiAlertsTitle">
@@ -3140,6 +3157,50 @@ header {
 </script>
 <script>
 const ANALYTICS_API=window.location.origin;
+function cloudAlertEscape(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+async function loadCloudAlertHistory(){
+ const root=document.getElementById('cloudAlertHistory');if(!root)return;
+ root.innerHTML='<div class="top-ai-alert-empty">Ανάκτηση ιστορικού Cloud Alert…</div>';
+ try{
+  const response=await fetch(ANALYTICS_API+'/api/cloud-alert/history?limit=100',{cache:'no-store'});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||data.persistent!==true)throw new Error(data.error||'Η μόνιμη αποθήκευση δεν είναι διαθέσιμη.');
+  const signals=Array.isArray(data.signals)?data.signals:[];
+  const pushes=Array.isArray(data.pushes)?data.pushes:[];
+  const pushBySignal=new Map();for(const p of pushes){if(!pushBySignal.has(p.signal_id))pushBySignal.set(p.signal_id,p);}
+  const rows=signals.map(s=>{
+   const p=pushBySignal.get(s.signal_id),triggers=Array.isArray(s.trigger_ids)?s.trigger_ids.join(', '):'—';
+   return '<article class="top-ai-alert-card"><strong>'+cloudAlertEscape(s.home)+' '+cloudAlertEscape(s.score_home??'—')+'–'+cloudAlertEscape(s.score_away??'—')+' '+cloudAlertEscape(s.away)+'</strong><p>'+cloudAlertEscape(s.period)+' · '+cloudAlertEscape(s.minute??'—')+'′ · SOT '+cloudAlertEscape(s.home_sot)+'–'+cloudAlertEscape(s.away_sot)+'</p><small>'+cloudAlertEscape(triggers)+' · '+cloudAlertEscape(s.status)+(p?' · PUSH '+cloudAlertEscape(p.status)+' '+cloudAlertEscape(p.kind)+' #'+cloudAlertEscape(p.slot)+' · TRY '+cloudAlertEscape(p.attempt_count??1):'')+'</small></article>';
+  }).join('');
+  const delivered=pushes.filter(p=>p.status==='accepted').length;
+  document.getElementById('cloudAlertCount').textContent=String(signals.length)+' SIGNALS';
+  document.getElementById('cloudAlertPushStatus').textContent='PUSH LOCKED · '+delivered+' HISTORICAL ACCEPTED';
+  root.innerHTML=rows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη επιβεβαιωμένα Cloud Alert signals.</div>';
+  const settlementRoot=document.getElementById('cloudAlertSettlementHistory');
+  if(settlementRoot){
+   try{
+    const settlementResponse=await fetch(ANALYTICS_API+'/api/cloud-alert/settlements?limit=100',{cache:'no-store'});
+    const settlementData=await settlementResponse.json().catch(()=>({}));
+    if(!settlementResponse.ok||settlementData.persistent!==true)throw new Error(settlementData.error||'Το settlement ledger δεν είναι διαθέσιμο.');
+    const settlements=Array.isArray(settlementData.settlements)?settlementData.settlements:[];
+    const settlementRows=settlements.map(s=>{
+     const score=s.score_home!=null&&s.score_away!=null?String(s.score_home)+'–'+String(s.score_away):'—';
+     const line=s.over_line!=null?' · Over '+String(s.over_line):'';
+     const result=s.outcome?' · '+String(s.outcome).toUpperCase():s.reason?' · '+String(s.reason):'';
+     return '<article class="top-ai-alert-card"><strong>'+cloudAlertEscape(s.home)+' vs '+cloudAlertEscape(s.away)+'</strong><p>'+cloudAlertEscape(s.league||'—')+' · '+cloudAlertEscape(s.target_period)+' · '+cloudAlertEscape(s.state)+' · '+cloudAlertEscape(s.minute??'—')+'′</p><small>Signal '+cloudAlertEscape(s.signal_score_home??'—')+'–'+cloudAlertEscape(s.signal_score_away??'—')+' · Result '+cloudAlertEscape(score)+cloudAlertEscape(line)+cloudAlertEscape(result)+'</small></article>';
+    }).join('');
+    settlementRoot.innerHTML=settlementRows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη HT / FT settlements. Οι εκκρεμότητες εμφανίζονται ως pending.</div>';
+   }catch(settlementError){
+    settlementRoot.innerHTML='<div class="top-ai-alert-empty">Το settlement ledger δεν είναι διαθέσιμο: '+cloudAlertEscape(settlementError.message||settlementError)+'</div>';
+   }
+  }
+ }catch(error){
+  root.innerHTML='<div class="top-ai-alert-empty">Το Cloud Alert history δεν είναι διαθέσιμο: '+cloudAlertEscape(error.message||error)+'</div>';
+  const status=document.getElementById('cloudAlertPushStatus');if(status)status.textContent='DATABASE / API PENDING';
+ }
+}
+document.getElementById('enableCloudAlertPush')?.addEventListener('click',()=>enableGoalPulsePush(['cloudAlertPushMessage']));
+document.getElementById('refreshCloudAlertHistory')?.addEventListener('click',loadCloudAlertHistory);
 function alertHistoryKey(a){return String(a?.alertId||[a?.eventId||'unknown',a?.level||'AI',a?.createdAt||0,a?.market||''].join(':'))}
 async function persistAlertRecord(a){
  if(!a||!a.eventId||!Number.isFinite(Number(a.createdAt)))return false;
@@ -6317,6 +6378,7 @@ loadHighActivityHistory();
    if(open){
     panel.scrollIntoView({behavior:'smooth',block:'start'});
     if(key==='mieAlertLab'){void loadMieAlertPerformance();}
+    if(key==='cloudAlertPanel'){void loadCloudAlertHistory();}
     if(key==='hunterPanel'){void window.loadPressureHunterHistory?.();}
     if(key==='powerRankingHistory'){void loadPersistentAlertHistory().then(()=>renderPowerRankingHistory());}
     if(key==='matrixAnalytics'){

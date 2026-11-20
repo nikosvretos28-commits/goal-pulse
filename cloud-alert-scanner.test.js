@@ -1,0 +1,215 @@
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { createCloudAlertScanner, numericMinute, matchPeriod, getRecentSot10 } = require("./cloud-alert-scanner");
+
+test("parses stoppage time without losing added minutes", () => {
+  assert.equal(numericMinute("45+3′"), 48);
+  assert.equal(numericMinute("90+4"), 94);
+  assert.equal(numericMinute("HT"), null);
+});
+
+test("live-metrics supplies Cloud Alert with explicit period and signal-time score fields", () => {
+  const server = require("node:fs").readFileSync(require("node:path").join(__dirname, "server.js"), "utf8");
+  const start = server.indexOf("const liveStatusText = String(");
+  const end = server.indexOf("minute: normalizeLiveMinute(", start);
+  assert.ok(start >= 0 && end > start, "live-metrics match normalization must expose provider status");
+  const mapping = server.slice(start, end);
+  assert.match(mapping, /statusText: liveStatusText/);
+  assert.match(mapping, /status: liveStatus/);
+  assert.match(mapping, /homeScore: validScore\(homeScoreRaw\)/);
+  assert.match(mapping, /awayScore: validScore\(awayScoreRaw\)/);
+});
+
+test("classifies regular halves and excludes HT, extra time, penalties and finished matches", () => {
+  assert.equal(matchPeriod({ statusText: "1st Half" }, 45), "1H");
+  assert.equal(matchPeriod({ statusText: "2nd Half" }, 46), "2H");
+  assert.equal(matchPeriod({ statusText: "Half Time" }, 45), null);
+  assert.equal(matchPeriod({ statusText: "Extra Time" }, 95), null);
+  assert.equal(matchPeriod({ statusText: "Penalty Shootout" }, 120), null);
+  assert.equal(matchPeriod({ statusText: "FT" }, 90), null);
+  assert.equal(matchPeriod({ statusText: "Finished" }, 90), null);
+  assert.equal(matchPeriod({ statusText: "Postponed" }, 0), null);
+  assert.equal(matchPeriod({}, 48), null, "45+ stoppage cannot be assumed to be the second half");
+  assert.equal(matchPeriod({}, 45), "1H");
+});
+
+test("accepts only a measured ten-minute SOT window", () => {
+  const match = { trend: { window10m: { available: true, sampleMinutes: 10, teams: [
+    { shotsOnTarget: 1 }, { shotsOnTarget: 2 }
+  ] } } };
+  assert.equal(getRecentSot10(match), 3);
+  assert.equal(getRecentSot10({ trend: { window10m: { available: true, sampleMinutes: 4, teams: [{shotsOnTarget:1},{shotsOnTarget:2}] } } }), null);
+});
+
+test("independent scanner persists shadow candidates but never invokes push delivery", async () => {
+  let clock = Date.parse("2026-11-20T07:30:00Z");
+  const saved = [];
+  const snapshots = [];
+  const runtime = {
+    async recordSnapshot(sample) {
+      snapshots.push(sample);
+      return { valid: true, value: 1 };
+    },
+    async recordShadowCandidate(candidate) {
+      saved.push(candidate);
+      return { saved: true };
+    },
+    async processCandidate() {
+      throw new Error("push delivery must never be called by the shadow scanner");
+    }
+  };
+  const match = {
+    eventId: "fixture-1", home: "Home", away: "Away", minute: "15",
+    statusText: "1st Half", statsAvailable: true, statsSource: "ESPN+PitchAPI",
+    homeScore: 0, awayScore: 0,
+    teams: [
+      { homeAway: "home", shotsOnTarget: 3 },
+      { homeAway: "away", shotsOnTarget: 2 }
+    ],
+    trend: { window10m: { available: false, sampleMinutes: null, teams: [] } }
+  };
+  const requestedUrls = [];
+  const fetchImpl = async url => {
+    requestedUrls.push(url);
+    return {
+    ok: true,
+    async json() { return { updatedAt: new Date(clock).toISOString(), matches: [match] }; }
+  };
+  };
+  const scanner = createCloudAlertScanner({
+    baseUrl: "http://127.0.0.1:3000",
+    runtime,
+    fetchImpl,
+    now: () => clock,
+    logger: { info() {}, warn() {} }
+  });
+  const first = await scanner.runOnce();
+  assert.equal(first.qualified, 0);
+  clock += 60_000;
+  const second = await scanner.runOnce();
+  assert.equal(second.qualified, 1);
+  assert.equal(snapshots.length, 2);
+  assert.equal(saved.length, 1);
+  assert.ok(requestedUrls.every(url => url.includes("scope=cloud-alert")));
+  assert.deepEqual(saved[0].triggers, ["EARLY_1H"]);
+});
+
+test("rejects blank SOT values instead of coercing them to zero", () => {
+  const { getTeamSot } = require("./cloud-alert-scanner");
+  assert.equal(getTeamSot({ teams: [
+    { homeAway: "home", shotsOnTarget: " " },
+    { homeAway: "away", shotsOnTarget: "2" }
+  ] }), null);
+  assert.equal(getRecentSot10({ trend: { window10m: {
+    available: true, sampleMinutes: 10,
+    teams: [{ shotsOnTarget: "" }, { shotsOnTarget: 1 }]
+  } } }), null);
+});
+
+test("a provider SOT regression resets the two-sample confirmation window", async () => {
+  let clock = Date.parse("2026-11-20T08:10:00Z");
+  let sampleIndex = 0;
+  const values = [[6, 4], [5, 4], [6, 4], [6, 4]];
+  const saved = [];
+  const match = () => ({
+    eventId: "fixture-regression", home: "Home", away: "Away", minute: "40",
+    statusText: "1st Half", statsAvailable: true, statsSource: "ESPN",
+    homeScore: 0, awayScore: 0,
+    teams: [
+      { homeAway: "home", shotsOnTarget: values[sampleIndex][0] },
+      { homeAway: "away", shotsOnTarget: values[sampleIndex][1] }
+    ],
+    trend: { window10m: { available: true, sampleMinutes: 10, teams: [
+      { shotsOnTarget: 1 }, { shotsOnTarget: 1 }
+    ] } }
+  });
+  const runtime = {
+    async recordSnapshot() {
+      return { valid: true, value: 1, recentSot10: 2, recentSot10Valid: true };
+    },
+    async recordShadowCandidate(candidate) { saved.push(candidate); return { saved: true }; }
+  };
+  const scanner = createCloudAlertScanner({
+    baseUrl: "http://127.0.0.1:3000", runtime,
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        const body = { updatedAt: new Date(clock).toISOString(), matches: [match()] };
+        sampleIndex++;
+        return body;
+      }
+    }),
+    now: () => clock,
+    logger: { info() {}, warn() {} }
+  });
+  const results = [];
+  for (let i = 0; i < values.length; i++) {
+    results.push(await scanner.runOnce());
+    clock += 60_000;
+  }
+  assert.deepEqual(results.map(result => result.qualified), [0, 0, 0, 1]);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].confirmation, "two_monotonic_samples");
+});
+
+test("cumulative SOT correction quarantines even an otherwise valid R10 trigger", async () => {
+  let clock = Date.parse("2026-11-20T08:20:00Z");
+  const saved = [];
+  const match = {
+    eventId: "fixture-correction", home: "Home", away: "Away", minute: "40",
+    statusText: "1st Half", statsAvailable: true, statsSource: "ESPN",
+    homeScore: 0, awayScore: 0,
+    teams: [
+      { homeAway: "home", shotsOnTarget: 6 },
+      { homeAway: "away", shotsOnTarget: 4 }
+    ],
+    trend: { window10m: { available: true, sampleMinutes: 10, teams: [
+      { shotsOnTarget: 1 }, { shotsOnTarget: 1 }
+    ] } }
+  };
+  const scanner = createCloudAlertScanner({
+    baseUrl: "http://127.0.0.1:3000",
+    runtime: {
+      async recordSnapshot() {
+        return { valid: false, value: null, reason: "cumulative_sot_regression" };
+      },
+      async recordShadowCandidate(candidate) { saved.push(candidate); return { saved: true }; }
+    },
+    fetchImpl: async () => ({
+      ok: true, async json() {
+        return { updatedAt: new Date(clock).toISOString(), matches: [match] };
+      }
+    }),
+    now: () => clock,
+    logger: { info() {}, warn() {} }
+  });
+  for (let i = 0; i < 4; i++) {
+    const result = await scanner.runOnce();
+    assert.equal(result.qualified, 0);
+    clock += 60_000;
+  }
+  assert.equal(saved.length, 0);
+});
+
+test("reads rolling SOT by home/away identity rather than provider array order", () => {
+  const value = getRecentSot10({ trend: { window10m: {
+    available: true, sampleMinutes: 10,
+    teams: [
+      { homeAway: "away", shotsOnTarget: 3 },
+      { homeAway: "home", shotsOnTarget: 1 }
+    ]
+  } } });
+  assert.equal(value, 4);
+});
+
+test("PitchAPI live-metrics carries normalized half status into Cloud Alert period detection", () => {
+  const server = require("node:fs").readFileSync(require("node:path").join(__dirname, "server.js"), "utf8");
+  const start = server.indexOf('statsSource: fallbackSupplied ? "PitchAPI+SportScore" : "PitchAPI"');
+  const end = server.indexOf("teams: values", start);
+  assert.ok(start >= 0 && end > start, "PitchAPI live-metrics normalization must expose provider status");
+  const mapping = server.slice(start, end);
+  assert.match(mapping, /status: event\.status\?\.type\?\.state/);
+  assert.match(mapping, /statusText: event\.status\?\.type\?\.name/);
+  assert.equal(matchPeriod({ status: "in", statusText: "Second Half" }, 68), "2H");
+});

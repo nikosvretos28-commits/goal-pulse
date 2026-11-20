@@ -1,5 +1,8 @@
 const http = require("node:http");
 const webpush = require("web-push");
+const { createCloudAlertScanner } = require("./cloud-alert-scanner");
+const { createCloudAlertRuntime } = require("./cloud-alert-runtime");
+const { createCloudAlertSettlement } = require("./cloud-alert-settlement");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
@@ -886,6 +889,14 @@ async function sendPushToSubscribers(payload) {
   }));
   return { sent, failed, configured: true };
 }
+const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers, pushEnabled: false });
+const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyticsPool, ensureSignalSchema: () => cloudAlertRuntime.ensureSchema() });
+// Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
+const cloudAlertScanner = createCloudAlertScanner({
+  baseUrl: "http://127.0.0.1:" + PORT,
+  runtime: cloudAlertRuntime,
+  settlement: cloudAlertSettlement
+});
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
   if (!isAllowedOrigin(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
@@ -1059,8 +1070,9 @@ async function fetchSportScoreMatchDetail(slug) {
 }
 
 const liveHistory = new Map();
-// HI Activity owns a separate rolling history; it must never share AI/VIP baselines.
+// HI Activity and Cloud Alert each own isolated rolling histories.
 const highActivityLiveHistory = new Map();
+const cloudAlertLiveHistory = new Map();
 function resolveDatabaseUrl(raw) {
   if (!raw) return "";
   const trimmed = String(raw).trim();
@@ -3609,6 +3621,66 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+  if (url.pathname === "/api/cloud-alert/history" && req.method === "GET") {
+    try {
+      const result = await cloudAlertRuntime.listHistory(url.searchParams.get("limit"));
+      return send(res, result.persistent ? 200 : 503, result);
+    } catch (error) {
+      return send(res, 503, { persistent: false, error: String(error.message || error).slice(0, 180), signals: [], pushes: [] });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements" && req.method === "GET") {
+    try {
+      const [result, current] = await Promise.all([
+        cloudAlertSettlement.list(url.searchParams.get("limit")),
+        cloudAlertSettlement.listCurrent(url.searchParams.get("limit"))
+      ]);
+      return send(res, result.persistent && current.persistent ? 200 : 503,
+        { persistent: result.persistent && current.persistent, events: result.events, settlements: current.settlements });
+    } catch (error) {
+      return send(res, 503, { persistent: false, error: String(error.message || error).slice(0, 180), events: [] });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements/integrity" && req.method === "GET") {
+    try {
+      const result = await cloudAlertSettlement.integrity(url.searchParams.get("limit"));
+      return send(res, result.persistent ? 200 : 503, result);
+    } catch (error) {
+      return send(res, 503, { ok: false, persistent: false, error: String(error.message || error).slice(0, 180), issues: [] });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements/export.csv" && req.method === "GET") {
+    try {
+      const result = await cloudAlertSettlement.exportCsv(url.searchParams.get("limit"));
+      if (!result.persistent) return send(res, 503, { error: "Cloud Alert settlement database unavailable" });
+      res.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="cloud-alert-settlements.csv"',
+        "X-Content-Type-Options": "nosniff"
+      });
+      return res.end(result.csv);
+    } catch (error) {
+      return send(res, 503, { error: String(error.message || error).slice(0, 180) });
+    }
+  }
+
+  if (url.pathname === "/api/cloud-alert/settlements" && req.method === "POST") {
+    const adminToken = String(process.env.CLOUD_ALERT_SETTLEMENT_TOKEN || "");
+    if (!adminToken || req.headers.authorization !== "Bearer " + adminToken) {
+      return send(res, 401, { error: "Cloud Alert settlement authorization required" });
+    }
+    try {
+      const body = await readJsonBody(req, 10000);
+      const result = await cloudAlertSettlement.appendEvent(body);
+      return send(res, result.ok ? 200 : 400, result);
+    } catch (error) {
+      return send(res, 400, { ok: false, error: String(error.message || error).slice(0, 180) });
+    }
+  }
+
   if (url.pathname === "/api/push/scan" && req.method === "POST") {
     if (!PUSH_SCAN_TOKEN || req.headers.authorization !== "Bearer " + PUSH_SCAN_TOKEN) {
       return send(res, 401, { error: "Unauthorized scanner" });
@@ -5964,7 +6036,7 @@ const server = http.createServer(async (req, res) => {
                 const liveFlag = truthyLive(match.is_live) || truthyLive(match.live) || truthyLive(match.in_play) || truthyLive(rawStatus?.is_live) || truthyLive(rawStatus?.live);
                 // Explicit scheduled/not-started status must win over inconsistent live flags from the provider.
                 const state = isFinished ? "post" : isNotStarted ? "pre" : (explicitLive || liveFlag || hasElapsedMinute) ? "in" : "pre";
-                const status = { type: { state, completed: state === "post" }, displayClock: match.minute != null ? String(match.minute) + "'" : String(match.status || "") };
+                const status = { type: { state, completed: state === "post", name: statusText }, displayClock: match.minute != null ? String(match.minute) + "'" : String(match.status || "") };
                 const homeName = match.home_team?.name || "";
                 const awayName = match.away_team?.name || "";
                 const event = {
@@ -6266,10 +6338,12 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/live-metrics") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
-      // Keep Hi Activity's isolated cache/history scope, but use the same live-state
-      // recognizer and provider metrics collection for AI/VIP and Hi Activity.
+      // Keep Hi Activity and Cloud Alert cache/history scopes isolated while reusing
+      // the read-only live-state recognizer and provider metrics collection.
       const highActivityOnly = url.searchParams.get("scope") === "high-activity";
-      const cacheKey = (highActivityOnly ? "high-activity-metrics:" : "live-metrics:") + date;
+      const cloudAlertOnly = url.searchParams.get("scope") === "cloud-alert";
+      const cachePrefix = cloudAlertOnly ? "cloud-alert-metrics:" : highActivityOnly ? "high-activity-metrics:" : "live-metrics:";
+      const cacheKey = cachePrefix + date;
       const cachedMetrics = cache.get(cacheKey);
       if (cachedMetrics && Date.now() - cachedMetrics.at < 15000) return send(res, 200, cachedMetrics.body);
       let scoreboard = scoreboardCache.get(date);
@@ -6793,7 +6867,9 @@ const server = http.createServer(async (req, res) => {
                 root.time?.minute ?? root.status?.minute ?? root.status?.elapsed ??
                 event.live_minute ?? event.status?.displayClock ?? scoreboardCompetition.status?.displayClock ?? event.time ?? "";
               matches.push({
-                eventId: String(event.id), home: homeName, away: awayName, statsSource,
+                eventId: String(event.id), home: homeName, away: awayName,
+                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
+                statsSource,
                 minute: liveMinute,
                 homeScore: scoreValue(event.home_score ?? event.homeScore ?? scoreboardHome?.score ?? scoreboardHome?.displayValue),
                 awayScore: scoreValue(event.away_score ?? event.awayScore ?? scoreboardAway?.score ?? scoreboardAway?.displayValue),
@@ -6941,8 +7017,12 @@ const server = http.createServer(async (req, res) => {
               else if (!direct || !Array.isArray(direct.stats) || !direct.stats.length) pitchSportScoreFallbackDiagnostics.noMatch++;
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName,
+                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
                 statsSource: fallbackSupplied ? "PitchAPI+SportScore" : "PitchAPI",
                 minute: event.status?.displayClock || "",
+                status: event.status?.type?.state ?? event.status?.state ?? "",
+                statusText: event.status?.type?.name ?? event.status?.type?.detail ??
+                  event.status?.type?.shortDetail ?? event.status_text ?? event.statusText ?? "",
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 teams: values
               });
@@ -7217,10 +7297,33 @@ const server = http.createServer(async (req, res) => {
                 }
               }
             }
+            const eventCompetitors = event.competitions?.[0]?.competitors || [];
+            const homeScoreRaw = eventCompetitors.find(t => t.homeAway === "home")?.score;
+            const awayScoreRaw = eventCompetitors.find(t => t.homeAway === "away")?.score;
+            const validScore = value => value == null || String(value).trim() === "" || !Number.isInteger(Number(value))
+              ? null : Number(value);
+            const eventStatus = event.status || {};
+            const competitionStatus = event.competitions?.[0]?.status || {};
+            const liveStatusText = String(
+              eventStatus.type?.detail || competitionStatus.type?.detail ||
+              eventStatus.type?.shortDetail || competitionStatus.type?.shortDetail ||
+              eventStatus.type?.name || competitionStatus.type?.name ||
+              eventStatus.detail || competitionStatus.detail || ""
+            );
+            const liveStatus = String(
+              eventStatus.type?.state || competitionStatus.type?.state ||
+              eventStatus.type?.name || competitionStatus.type?.name || ""
+            );
             matches.push({
-              eventId: String(event.id), statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
-              home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
-              away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
+              eventId: String(event.id),
+              league: String(event.competitions?.[0]?.name || event.leagueName || item.leagueCode || "unknown"),
+              statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
+              home: eventCompetitors.find(t => t.homeAway === "home")?.team?.displayName || "",
+              away: eventCompetitors.find(t => t.homeAway === "away")?.team?.displayName || "",
+              homeScore: validScore(homeScoreRaw),
+              awayScore: validScore(awayScoreRaw),
+              statusText: liveStatusText,
+              status: liveStatus,
               minute: normalizeLiveMinute(
                 event.status?.displayClock,
                 event.competitions?.[0]?.status?.displayClock,
@@ -7508,15 +7611,17 @@ const server = http.createServer(async (req, res) => {
           statsAvailable: matches.filter(match => isSportScoreEvent(match.eventId) && match.statsAvailable).length
         }));
       }
-      // High Activity must not write to or mutate the shared AI/VIP rolling-trend history.
-      const persisted = highActivityOnly ? null : await persistRollingTrends(matches, date);
-      if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
+      // HI Activity and Cloud Alert must not write to or mutate shared AI/VIP rolling-trend history.
+      const isolatedScope = highActivityOnly || cloudAlertOnly;
+      const persisted = isolatedScope ? null : await persistRollingTrends(matches, date);
+      if (cloudAlertOnly) addRollingTrends(matches, cloudAlertLiveHistory);
+      else if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
       else if (!persisted) addRollingTrends(matches, liveHistory);
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
         team.team && ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
-      const trendHistory = highActivityOnly ? "isolated in-memory high-activity rolling history; AI/VIP history untouched; resets on service restart" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
+      const trendHistory = cloudAlertOnly ? "isolated in-memory Cloud Alert rolling history; AI/VIP/HI history untouched; resets on service restart" : highActivityOnly ? "isolated in-memory high-activity rolling history; AI/VIP history untouched; resets on service restart" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
       const diagnosticFields = ["shotsOnTarget","shotsInBox","bigChances","dangerousAttacks","corners","possession","xG"];
       // Read-only competition coverage: reuse the already-fetched live catalogue and stats.
@@ -7565,7 +7670,7 @@ const server = http.createServer(async (req, res) => {
         );
       })();
       const liveMetricsAudit = {
-        scope: highActivityOnly ? "high-activity" : "default",
+        scope: cloudAlertOnly ? "cloud-alert" : highActivityOnly ? "high-activity" : "default",
         competitionCoverage,
 
         totalLiveEvents: liveEvents.length,
@@ -7710,6 +7815,7 @@ setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Goal Pulse listening on " + PORT);
+  cloudAlertScanner.start();
   // Daily full-coupon Pre-Match preparation at/after 06:00 Greece time.
   // Per-league persisted freshness prevents duplicate season downloads.
   const preMatchDailyTimer = setInterval(() => {
