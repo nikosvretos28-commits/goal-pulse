@@ -52,10 +52,14 @@ test("independent scanner persists shadow candidates but never invokes push deli
     ],
     trend: { window10m: { available: false, sampleMinutes: null, teams: [] } }
   };
-  const fetchImpl = async () => ({
+  const requestedUrls = [];
+  const fetchImpl = async url => {
+    requestedUrls.push(url);
+    return {
     ok: true,
     async json() { return { updatedAt: new Date(clock).toISOString(), matches: [match] }; }
-  });
+  };
+  };
   const scanner = createCloudAlertScanner({
     baseUrl: "http://127.0.0.1:3000",
     runtime,
@@ -70,5 +74,6 @@ test("independent scanner persists shadow candidates but never invokes push deli
   assert.equal(second.qualified, 1);
   assert.equal(snapshots.length, 2);
   assert.equal(saved.length, 1);
+  assert.ok(requestedUrls.every(url => url.includes("scope=cloud-alert")));
   assert.deepEqual(saved[0].triggers, ["EARLY_1H"]);
 });
