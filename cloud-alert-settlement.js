@@ -112,7 +112,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
           RAISE EXCEPTION 'Cloud Alert settlement audit events are append-only';
         END;
         $$;
-        DO $
+        DO $cloudalert$
         BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_trigger
@@ -125,8 +125,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
             FOR EACH ROW EXECUTE FUNCTION cloud_alert_reject_settlement_mutation();
           END IF;
         END;
-        $;
-        DO $
+        $cloudalert$;
+        DO $cloudalert$
         BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_trigger
@@ -139,7 +139,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
             FOR EACH STATEMENT EXECUTE FUNCTION cloud_alert_reject_settlement_mutation();
           END IF;
         END;
-        $;
+        $cloudalert$;
       `).then(() => true).catch(error => {
         schemaReady = null;
         console.error("[Cloud Alert] settlement schema initialization failed:", error.message);
