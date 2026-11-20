@@ -894,7 +894,8 @@ const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyti
 // Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
 const cloudAlertScanner = createCloudAlertScanner({
   baseUrl: "http://127.0.0.1:" + PORT,
-  runtime: cloudAlertRuntime
+  runtime: cloudAlertRuntime,
+  settlement: cloudAlertSettlement
 });
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
