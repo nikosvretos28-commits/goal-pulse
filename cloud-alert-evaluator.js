@@ -140,9 +140,11 @@ function decideCloudAlertPush({ period, signalId, qualifies, goalSinceLastPush, 
   }
 
   const half = validateHalfState(state[period]);
-  if (!half.valid) return { send: false, reason: "invalid_push_state" };
+  const other = validateHalfState(state[period === "1H" ? "2H" : "1H"]);
+  if (!half.valid || !other.valid) return { send: false, reason: "invalid_push_state" };
   if (half.sentSignalIds.includes(String(signalId))) return { send: false, reason: "duplicate_signal" };
   if (half.sentCount >= 2) return { send: false, reason: "half_push_limit_reached" };
+  if (half.sentCount + other.sentCount >= 4) return { send: false, reason: "match_push_limit_reached" };
   if (half.sentCount === 0) return { send: true, kind: "initial", reason: "first_push_in_half" };
   if (half.sentCount === 1 && goalSinceLastPush === true) {
     return { send: true, kind: "re_alert", reason: "new_goal_and_new_qualifying_signal" };
