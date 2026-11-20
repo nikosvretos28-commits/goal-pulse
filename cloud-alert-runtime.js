@@ -2,7 +2,7 @@
 
 const crypto = require("node:crypto");
 
-function createCloudAlertRuntime({ getPool, sendPush }) {
+function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
   let schemaReady = null;
 
   async function ensureSchema() {
@@ -140,6 +140,9 @@ function createCloudAlertRuntime({ getPool, sendPush }) {
   }
 
   async function processCandidate(candidate) {
+    if (pushEnabled !== true) {
+      return { ok: true, pushed: false, reason: "cloud_alert_activation_locked" };
+    }
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { ok: false, reason: "persistent_database_unavailable" };
     const {
