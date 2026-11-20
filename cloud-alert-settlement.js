@@ -112,7 +112,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
           RAISE EXCEPTION 'Cloud Alert settlement audit events are append-only';
         END;
         $$;
-        DO $$
+        DO $
         BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_trigger
@@ -125,7 +125,21 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
             FOR EACH ROW EXECUTE FUNCTION cloud_alert_reject_settlement_mutation();
           END IF;
         END;
-        $$;
+        $;
+        DO $
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgname='cloud_alert_settlement_no_truncate'
+              AND tgrelid='cloud_alert_settlement_events'::regclass
+              AND NOT tgisinternal
+          ) THEN
+            CREATE TRIGGER cloud_alert_settlement_no_truncate
+            BEFORE TRUNCATE ON cloud_alert_settlement_events
+            FOR EACH STATEMENT EXECUTE FUNCTION cloud_alert_reject_settlement_mutation();
+          END IF;
+        END;
+        $;
       `).then(() => true).catch(error => {
         schemaReady = null;
         console.error("[Cloud Alert] settlement schema initialization failed:", error.message);
@@ -154,15 +168,23 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       }
       const signal = signalResult.rows[0];
       const latestResult = await client.query(
-        `SELECT event_id,state FROM cloud_alert_settlement_events
+        `SELECT event_id,state,provider,fixture_id,source,score_home,score_away,reason
+         FROM cloud_alert_settlement_events
          WHERE signal_id=$1 AND target_period=$2
          ORDER BY event_seq DESC LIMIT 1 FOR UPDATE`,
         [value.signalId, value.targetPeriod]
       );
       const previous = latestResult.rows[0] || null;
       if (previous?.state === value.state) {
+        const samePayload = previous.provider === value.provider &&
+          previous.fixture_id === value.fixtureId && previous.source === value.source &&
+          (previous.score_home == null ? value.scoreHome == null : Number(previous.score_home) === value.scoreHome) &&
+          (previous.score_away == null ? value.scoreAway == null : Number(previous.score_away) === value.scoreAway) &&
+          String(previous.reason || "") === value.reason;
         await client.query("ROLLBACK");
-        return { ok: true, duplicate: true, state: previous.state, eventId: previous.event_id };
+        return samePayload
+          ? { ok: true, duplicate: true, state: previous.state, eventId: previous.event_id }
+          : { ok: false, reason: "same_state_conflicting_payload_requires_dispute", state: previous.state, eventId: previous.event_id };
       }
       const allowedTransitions = {
         pending: new Set(["settled_verified", "unverifiable", "disputed"]),
