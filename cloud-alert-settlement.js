@@ -221,11 +221,12 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
         if (!fixtureId) continue;
         const status = event.status || event.competitions?.[0]?.status || {};
         const type = status.type || {};
+        const rawStatus = typeof status === "string" ? status : "";
         const statusText = [
-          type.name,type.description,type.detail,type.shortDetail,type.state,
+          rawStatus,type.name,type.description,type.detail,type.shortDetail,type.state,
           status.displayClock,status.period,status.phase,event.statusText,event.status_text
         ].filter(value => value != null).map(String).join(" ").toLowerCase();
-        const state = String(type.state || status.state || "").toLowerCase();
+        const state = String(type.state || status.state || rawStatus).toLowerCase();
         const finished = state === "post" || type.completed === true ||
           /full\s*time|finished|ended|complete|\bft\b|after\s*extra/.test(statusText);
         const halfTime = /half\s*time|halftime|\bht\b|interval/.test(statusText);
