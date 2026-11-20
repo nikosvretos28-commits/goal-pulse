@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 
 function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
   let schemaReady = null;
+  let lastSnapshotPruneAt = 0;
 
   async function ensureSchema() {
     const pool = getPool();
@@ -78,6 +79,20 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     return schemaReady;
   }
 
+  async function pruneOldSnapshots(pool) {
+    const now = Date.now();
+    if (now - lastSnapshotPruneAt < 6 * 60 * 60 * 1000) return;
+    lastSnapshotPruneAt = now;
+    try {
+      await pool.query(
+        "DELETE FROM cloud_alert_sot_snapshots WHERE sampled_at < NOW() - INTERVAL '36 hours'"
+      );
+    } catch (error) {
+      lastSnapshotPruneAt = 0;
+      console.warn("[Cloud Alert] snapshot retention cleanup deferred:", error.message || error);
+    }
+  }
+
   async function recordSnapshot({ matchId, period, homeSot, awaySot }) {
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { value: null, valid: false, reason: "persistent_database_unavailable" };
@@ -85,6 +100,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       return { value: null, valid: false, reason: "invalid_sot_snapshot" };
     }
     const sampledAt = new Date(Math.floor(Date.now() / 60000) * 60000);
+    await pruneOldSnapshots(pool);
     await pool.query(
       `INSERT INTO cloud_alert_sot_snapshots(match_id,period,sampled_at,home_sot,away_sot)
        VALUES($1,$2,$3,$4,$5)
