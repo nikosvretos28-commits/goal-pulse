@@ -200,3 +200,14 @@ test("reads rolling SOT by home/away identity rather than provider array order",
   } } });
   assert.equal(value, 4);
 });
+
+test("PitchAPI live-metrics carries normalized half status into Cloud Alert period detection", () => {
+  const server = require("node:fs").readFileSync(require("node:path").join(__dirname, "server.js"), "utf8");
+  const start = server.indexOf('statsSource: fallbackSupplied ? "PitchAPI+SportScore" : "PitchAPI"');
+  const end = server.indexOf("teams: values", start);
+  assert.ok(start >= 0 && end > start, "PitchAPI live-metrics normalization must expose provider status");
+  const mapping = server.slice(start, end);
+  assert.match(mapping, /status: event\.status\?\.type\?\.state/);
+  assert.match(mapping, /statusText: event\.status\?\.type\?\.name/);
+  assert.equal(matchPeriod({ status: "in", statusText: "Second Half" }, 68), "2H");
+});
