@@ -161,7 +161,7 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   const retried = await retryRuntime.processCandidate(retryCandidate);
   assert.equal(retried.pushed, true);
   const attempts = await pool.query(
-    "SELECT attempt_count,status FROM cloud_alert_pushes WHERE match_id=$1 ORDER BY created_at ASC",
+    "SELECT attempt_count,status FROM cloud_alert_pushes WHERE match_id=$1 ORDER BY attempt_count ASC",
     [retryFixture]
   );
   assert.deepEqual(attempts.rows.map(row => [row.attempt_count, row.status]), [[1, "failed"], [2, "accepted"]]);
