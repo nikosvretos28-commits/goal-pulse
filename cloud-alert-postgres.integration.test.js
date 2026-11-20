@@ -85,7 +85,7 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
     pool.query("DELETE FROM cloud_alert_signals WHERE signal_id=$1", [signalId]),
     /immutable/
   );
-  await assert.rejects(pool.query("TRUNCATE cloud_alert_signals"), /immutable/);
+  await assert.rejects(pool.query("TRUNCATE cloud_alert_signals CASCADE"), /immutable/);
 
   const base = {
     signalId, targetPeriod: "HT", provider: "ESPN", fixtureId,
