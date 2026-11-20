@@ -2952,6 +2952,8 @@ header {
   <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Η αποστολή παραμένει κλειδωμένη μέχρι να επιβεβαιωθεί το αυθεντικό πρωτόκολλο Cloud Alert v0.2.</span>
  </div>
  <div id="cloudAlertHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση ανεξάρτητου ιστορικού Cloud Alert…</div></div>
+ <div class="top-ai-alerts-head"><h3>HT / FT SETTLEMENT · ΙΣΤΟΡΙΚΟ</h3><a class="login" href="/api/cloud-alert/settlements/export.csv">CSV</a></div>
+ <div id="cloudAlertSettlementHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση HT / FT settlement…</div></div>
  <p class="top-ai-alert-privacy">Τα triggers βασίζονται αποκλειστικά σε SOT. Οι ειδοποιήσεις είναι ενδείξεις και δεν εγγυώνται γκολ ή αποτέλεσμα.</p>
 </section>
 
@@ -3174,6 +3176,24 @@ async function loadCloudAlertHistory(){
   document.getElementById('cloudAlertCount').textContent=String(pushes.length)+' PUSH';
   document.getElementById('cloudAlertPushStatus').textContent=delivered+' PUSH ACCEPTED';
   root.innerHTML=rows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη επιβεβαιωμένα Cloud Alert signals.</div>';
+  const settlementRoot=document.getElementById('cloudAlertSettlementHistory');
+  if(settlementRoot){
+   try{
+    const settlementResponse=await fetch(ANALYTICS_API+'/api/cloud-alert/settlements?limit=100',{cache:'no-store'});
+    const settlementData=await settlementResponse.json().catch(()=>({}));
+    if(!settlementResponse.ok||settlementData.persistent!==true)throw new Error(settlementData.error||'Το settlement ledger δεν είναι διαθέσιμο.');
+    const settlements=Array.isArray(settlementData.settlements)?settlementData.settlements:[];
+    const settlementRows=settlements.map(s=>{
+     const score=s.score_home!=null&&s.score_away!=null?String(s.score_home)+'–'+String(s.score_away):'—';
+     const line=s.over_line!=null?' · Over '+String(s.over_line):'';
+     const result=s.outcome?' · '+String(s.outcome).toUpperCase():s.reason?' · '+String(s.reason):'';
+     return '<article class="top-ai-alert-card"><strong>'+cloudAlertEscape(s.home)+' vs '+cloudAlertEscape(s.away)+'</strong><p>'+cloudAlertEscape(s.league||'—')+' · '+cloudAlertEscape(s.target_period)+' · '+cloudAlertEscape(s.state)+' · '+cloudAlertEscape(s.minute??'—')+'′</p><small>Signal '+cloudAlertEscape(s.signal_score_home??'—')+'–'+cloudAlertEscape(s.signal_score_away??'—')+' · Result '+cloudAlertEscape(score)+cloudAlertEscape(line)+cloudAlertEscape(result)+'</small></article>';
+    }).join('');
+    settlementRoot.innerHTML=settlementRows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη HT / FT settlements. Οι εκκρεμότητες εμφανίζονται ως pending.</div>';
+   }catch(settlementError){
+    settlementRoot.innerHTML='<div class="top-ai-alert-empty">Το settlement ledger δεν είναι διαθέσιμο: '+cloudAlertEscape(settlementError.message||settlementError)+'</div>';
+   }
+  }
  }catch(error){
   root.innerHTML='<div class="top-ai-alert-empty">Το Cloud Alert history δεν είναι διαθέσιμο: '+cloudAlertEscape(error.message||error)+'</div>';
   const status=document.getElementById('cloudAlertPushStatus');if(status)status.textContent='DATABASE / API PENDING';
