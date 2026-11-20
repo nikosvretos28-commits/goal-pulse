@@ -53,7 +53,11 @@ function gradeSignalSettlement(signalPayload, targetPeriod, scoreHome, scoreAway
       !Number.isInteger(scoreAway) || scoreAway < 0) {
     return { valid: false, reason: "invalid_period_score" };
   }
-  const signalGoals = Number(signalPayload.scoreHome) + Number(signalPayload.scoreAway);
+  if (!Number.isInteger(signalPayload.scoreHome) || signalPayload.scoreHome < 0 ||
+      !Number.isInteger(signalPayload.scoreAway) || signalPayload.scoreAway < 0) {
+    return { valid: false, reason: "signal_time_score_missing" };
+  }
+  const signalGoals = signalPayload.scoreHome + signalPayload.scoreAway;
   if (!Number.isInteger(signalGoals) || signalGoals < 0) {
     return { valid: false, reason: "signal_time_score_missing" };
   }
