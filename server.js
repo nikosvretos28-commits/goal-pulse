@@ -6577,16 +6577,15 @@ const server = http.createServer(async (req, res) => {
       const work = rotationStart
         ? liveWork.slice(rotationStart).concat(liveWork.slice(0, rotationStart))
         : liveWork;
-      // Advance the fixture rotation only when the rolling provider budget can
-      // actually serve fresh detail requests. The old code advanced on every
-      // 15-second poll, including polls where all requests were locally rejected
-      // with 429; this skipped most fixtures before the next minute's budget reset.
+      // Reserve the current rotation position until we know which fixture was
+      // actually blocked. A provider 429 can arrive part-way through a batch.
       const detailBudgetUsed = sportScoreDetailRequestTimes.filter(at => Date.now() - at < SPORT_SCORE_DETAIL_RATE_WINDOW_MS).length;
       const detailBudgetAvailable = Math.max(0, SPORT_SCORE_DETAIL_MAX_REQUESTS_PER_WINDOW - detailBudgetUsed);
-      if (work.length && detailBudgetAvailable > 0) {
-        sportScoreDetailRotationCursor = (rotationStart + Math.min(detailBudgetAvailable, work.length)) % work.length;
-      }
       let cursor = 0;
+      let rotationBlockedIndex = null;
+      const markRotationBlocked = index => {
+        if (rotationBlockedIndex === null || index < rotationBlockedIndex) rotationBlockedIndex = index;
+      };
       const matches = [];
       let espnProviderDiagnosticSample = null;
       const scannerScope = cloudAlertOnly ? "cloud-alert" : highActivityOnly ? "high-activity" : "default";
@@ -6596,7 +6595,8 @@ const server = http.createServer(async (req, res) => {
       const pitchApiSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, liveFetched: 0, supplied: 0, skippedRateLimit: 0, errors: 0 };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
-          const item = work[cursor++];
+          const itemIndex = cursor++;
+          const item = work[itemIndex];
           const event = item.event;
           try {
             const eventId = String(event.id);
@@ -6620,11 +6620,13 @@ const server = http.createServer(async (req, res) => {
               } else if (slug) {
                 if (sportScoreDetailDiagnostics.slugSamples.length < 5) sportScoreDetailDiagnostics.slugSamples.push({ home: homeName, away: awayName, slug });
                 let detailResult = await fetchSportScoreMatchDetail(slug);
+                if (detailResult.cooldown || detailResult.rateLimited || detailResult.provider429) markRotationBlocked(itemIndex);
                 if (detailResult.status === 404 && slug.includes("-vs-")) {
                   const parts = slug.split("-vs-");
                   if (parts.length === 2) {
                     const reverseSlug = parts[1] + "-vs-" + parts[0];
                     const reverseResult = await fetchSportScoreMatchDetail(reverseSlug);
+                    if (reverseResult.cooldown || reverseResult.rateLimited || reverseResult.provider429) markRotationBlocked(itemIndex);
                     if (reverseResult.ok) { slug = reverseSlug; detailResult = reverseResult; }
                     else {
                       if (reverseResult.stalePayload) { staleDetailForDisplay = reverseResult.stalePayload; staleDetailObservedAt = reverseResult.staleAt || null; }
@@ -7441,6 +7443,15 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
+      // Resume at the first fixture that could not be fetched. This avoids
+      // skipping fixtures after a mid-batch 429 or exhausted local request budget.
+      if (work.length) {
+        if (rotationBlockedIndex !== null) {
+          sportScoreDetailRotationCursor = (rotationStart + rotationBlockedIndex) % work.length;
+        } else if (detailBudgetAvailable > 0) {
+          sportScoreDetailRotationCursor = (rotationStart + Math.min(detailBudgetAvailable, work.length)) % work.length;
+        }
+      }
       console.log("[PitchAPI SportScore fallback audit]", JSON.stringify(pitchSportScoreFallbackDiagnostics));
       console.log("[SportScore PitchAPI reverse fallback audit]", JSON.stringify(pitchApiSportScoreFallbackDiagnostics));
       // SportAPI canary: supplement only missing cumulative match statistics.
