@@ -144,7 +144,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
        RETURNING signal_id`,
       [signalId, snapshot.matchId, snapshot.fixtureId, snapshot.league, snapshot.ruleVersion,
        period, JSON.stringify(snapshot.triggers), snapshot.minute, snapshot.home, snapshot.away,
-       homeSot, awaySot, snapshot.recentSot10, snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
+       homeSot, awaySot, snapshot.recentSot6, snapshot.recentSot10, snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
     );
     return { saved: result.rowCount > 0, duplicate: result.rowCount === 0, signalId };
   }
