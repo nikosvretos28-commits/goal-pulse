@@ -3,7 +3,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
-const { Pool } = require("pg");
 const { createCloudAlertRuntime } = require("./cloud-alert-runtime");
 const { createCloudAlertSettlement } = require("./cloud-alert-settlement");
 
@@ -12,6 +11,7 @@ const databaseUrl = process.env.CLOUD_ALERT_TEST_DATABASE_URL;
 test("Cloud Alert settlement schema, audit chain and append-only guards work on PostgreSQL", {
   skip: !databaseUrl
 }, async t => {
+  const { Pool } = require("pg");
   const pool = new Pool({ connectionString: databaseUrl, max: 2 });
   const runtime = createCloudAlertRuntime({ getPool: () => pool, pushEnabled: false });
   const settlement = createCloudAlertSettlement({
