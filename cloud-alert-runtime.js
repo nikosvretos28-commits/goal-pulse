@@ -204,6 +204,9 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       metrics: metrics || null
     };
     const signalId = crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+    const scoreTotal = snapshot.scoreHome == null || snapshot.scoreAway == null
+      ? null : snapshot.scoreHome + snapshot.scoreAway;
+    let reservation = null;
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -215,7 +218,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         [signalId, snapshot.matchId, snapshot.fixtureId, snapshot.league, snapshot.ruleVersion,
          period, JSON.stringify(snapshot.triggers), snapshot.minute, snapshot.home, snapshot.away,
          homeSot, awaySot, snapshot.recentSot6, snapshot.recentSot10,
-        snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
+         snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
       );
       await client.query(
         "INSERT INTO cloud_alert_push_state(match_id,period) VALUES($1,$2) ON CONFLICT DO NOTHING",
@@ -227,8 +230,21 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       );
       const state = stateResult.rows[0];
       if (!state) throw new Error("Cloud Alert push state could not be locked");
-      const scoreTotal = snapshot.scoreHome == null || snapshot.scoreAway == null
-        ? null : snapshot.scoreHome + snapshot.scoreAway;
+      const activeResult = await client.query(
+        `SELECT push_id,status FROM cloud_alert_pushes
+         WHERE match_id=$1 AND period=$2 AND status IN ('sending','unknown')
+         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+        [snapshot.matchId, period]
+      );
+      if (activeResult.rows.length) {
+        await client.query("UPDATE cloud_alert_signals SET status='awaiting_push_delivery' WHERE signal_id=$1", [signalId]);
+        await client.query("COMMIT");
+        return {
+          ok: true, pushed: false,
+          reason: activeResult.rows[0].status === "unknown"
+            ? "delivery_unknown_manual_review" : "delivery_in_progress"
+        };
+      }
       let kind = null;
       if (Number(state.sent_count) === 0) kind = "initial";
       else if (Number(state.sent_count) === 1 && scoreTotal != null &&
@@ -237,10 +253,18 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       if (!kind || Number(state.sent_count) >= 2) {
         await client.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1", [signalId]);
         await client.query("COMMIT");
-        return { ok: true, pushed: false, reason: Number(state.sent_count) >= 2 ? "half_push_limit_reached" : "re_alert_requires_new_goal" };
+        return {
+          ok: true, pushed: false,
+          reason: Number(state.sent_count) >= 2 ? "half_push_limit_reached" : "re_alert_requires_new_goal"
+        };
       }
       const slot = Number(state.sent_count) + 1;
-      const pushId = crypto.createHash("sha256").update(snapshot.matchId + "|" + period + "|" + slot).digest("hex");
+      const attemptsResult = await client.query(
+        "SELECT COUNT(*)::int AS attempts FROM cloud_alert_pushes WHERE match_id=$1 AND period=$2 AND slot=$3",
+        [snapshot.matchId, period, slot]
+      );
+      const attemptCount = Number(attemptsResult.rows[0]?.attempts || 0) + 1;
+      const pushId = crypto.randomUUID();
       const payload = {
         title: "☁️ GOALMATRIX · CLOUD ALERT",
         body: snapshot.home + " " + (snapshot.scoreHome ?? "—") + "–" +
@@ -254,31 +278,90 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         period,
         triggers: snapshot.triggers
       };
-      const delivery = await sendPush(payload);
-      if (!delivery || Number(delivery.sent || 0) < 1) {
-        await client.query("UPDATE cloud_alert_signals SET status='awaiting_push_delivery' WHERE signal_id=$1", [signalId]);
-        await client.query("COMMIT");
-        return { ok: true, pushed: false, reason: delivery?.configured ? "no_active_push_subscriber" : "web_push_not_configured" };
-      }
       await client.query(
-        `INSERT INTO cloud_alert_pushes(push_id,match_id,period,slot,signal_id,kind,status,payload,delivered_at)
-         VALUES($1,$2,$3,$4,$5,$6,'accepted',$7::jsonb,NOW())`,
-        [pushId, snapshot.matchId, period, slot, signalId, kind, JSON.stringify(payload)]
+        `INSERT INTO cloud_alert_pushes
+          (push_id,match_id,period,slot,signal_id,kind,status,payload,attempt_count,updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,'sending',$7::jsonb,$8,NOW())`,
+        [pushId, snapshot.matchId, period, slot, signalId, kind, JSON.stringify(payload), attemptCount]
       );
-      await client.query(
-        `UPDATE cloud_alert_push_state SET sent_count=$3,last_score_total=$4,last_signal_id=$5,updated_at=NOW()
-         WHERE match_id=$1 AND period=$2`,
-        [snapshot.matchId, period, slot, scoreTotal, signalId]
-      );
-      await client.query("UPDATE cloud_alert_signals SET status='push_accepted' WHERE signal_id=$1", [signalId]);
+      await client.query("UPDATE cloud_alert_signals SET status='awaiting_push_delivery' WHERE signal_id=$1", [signalId]);
       await client.query("COMMIT");
-      return { ok: true, pushed: true, kind, slot, sent: delivery.sent, failed: delivery.failed };
+      reservation = { pushId, signalId, matchId: snapshot.matchId, period, slot, kind, scoreTotal, payload };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       throw error;
     } finally {
       client.release();
     }
+
+    let delivery;
+    try {
+      if (typeof sendPush !== "function") {
+        delivery = { sent: 0, failed: 0, configured: false };
+      } else {
+        delivery = await sendPush(reservation.payload);
+      }
+    } catch (error) {
+      const message = String(error.message || error).slice(0, 300);
+      try {
+        await pool.query("BEGIN");
+        await pool.query(
+          "UPDATE cloud_alert_pushes SET status='unknown',error_message=$2,updated_at=NOW() WHERE push_id=$1 AND status='sending'",
+          [reservation.pushId, message]
+        );
+        await pool.query("UPDATE cloud_alert_signals SET status='delivery_unknown' WHERE signal_id=$1", [reservation.signalId]);
+        await pool.query("COMMIT");
+      } catch (persistError) {
+        await pool.query("ROLLBACK").catch(() => {});
+        console.error("[Cloud Alert] delivery outcome unknown and could not be recorded:", persistError.message || persistError);
+      }
+      return { ok: false, pushed: false, reason: "delivery_unknown_manual_review" };
+    }
+
+    const sent = Math.max(0, Number(delivery?.sent) || 0);
+    const failed = Math.max(0, Number(delivery?.failed) || 0);
+    if (sent > 0) {
+      const finishClient = await pool.connect();
+      try {
+        await finishClient.query("BEGIN");
+        await finishClient.query(
+          "UPDATE cloud_alert_pushes SET status='accepted',delivered_at=NOW(),updated_at=NOW(),error_message=$2 WHERE push_id=$1 AND status='sending'",
+          [reservation.pushId, failed ? failed + " subscriber delivery failures" : null]
+        );
+        await finishClient.query(
+          `UPDATE cloud_alert_push_state SET sent_count=$3,last_score_total=$4,last_signal_id=$5,updated_at=NOW()
+           WHERE match_id=$1 AND period=$2`,
+          [reservation.matchId, reservation.period, reservation.slot, reservation.scoreTotal, reservation.signalId]
+        );
+        await finishClient.query("UPDATE cloud_alert_signals SET status='push_accepted' WHERE signal_id=$1", [reservation.signalId]);
+        await finishClient.query("COMMIT");
+      } catch (error) {
+        await finishClient.query("ROLLBACK").catch(() => {});
+        console.error("[Cloud Alert] push accepted but final state remains reserved:", error.message || error);
+        return { ok: false, pushed: false, reason: "delivery_accepted_persistence_pending_manual_review" };
+      } finally {
+        finishClient.release();
+      }
+      return { ok: true, pushed: true, kind: reservation.kind, slot: reservation.slot, sent, failed };
+    }
+
+    try {
+      await pool.query("BEGIN");
+      await pool.query(
+        "UPDATE cloud_alert_pushes SET status='failed',error_message=$2,updated_at=NOW() WHERE push_id=$1 AND status='sending'",
+        [reservation.pushId, delivery?.configured ? "no subscriber accepted the push" : "web push not configured"]
+      );
+      await pool.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1", [reservation.signalId]);
+      await pool.query("COMMIT");
+    } catch (error) {
+      await pool.query("ROLLBACK").catch(() => {});
+      console.error("[Cloud Alert] failed delivery reservation could not be released:", error.message || error);
+      return { ok: false, pushed: false, reason: "failed_delivery_persistence_pending_manual_review" };
+    }
+    return {
+      ok: true, pushed: false,
+      reason: delivery?.configured ? "no_active_push_subscriber" : "web_push_not_configured"
+    };
   }
 
   async function listHistory(limit = 100) {
