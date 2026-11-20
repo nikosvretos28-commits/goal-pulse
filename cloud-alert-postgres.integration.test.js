@@ -34,6 +34,31 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
 
   assert.equal(await runtime.ensureSchema(), true);
   assert.equal(await settlement.ensureSchema(), true);
+
+  const sampleMinute = Math.floor(Date.now() / 60000) * 60000;
+  const baselineAt = new Date(sampleMinute - 6.5 * 60000).toISOString();
+  await pool.query(
+    `INSERT INTO cloud_alert_sot_snapshots(match_id,period,sampled_at,home_sot,away_sot)
+     VALUES($1,'1H',$2,2,1)`,
+    ["r6-valid-" + suffix, baselineAt]
+  );
+  const r6 = await runtime.recordSnapshot({
+    matchId: "r6-valid-" + suffix, period: "1H", homeSot: 3, awaySot: 2
+  });
+  assert.equal(r6.valid, true);
+  assert.equal(r6.value, 2);
+
+  await pool.query(
+    `INSERT INTO cloud_alert_sot_snapshots(match_id,period,sampled_at,home_sot,away_sot)
+     VALUES($1,'1H',$2,5,4)`,
+    ["r6-regression-" + suffix, baselineAt]
+  );
+  const regression = await runtime.recordSnapshot({
+    matchId: "r6-regression-" + suffix, period: "1H", homeSot: 4, awaySot: 4
+  });
+  assert.equal(regression.valid, false);
+  assert.equal(regression.reason, "cumulative_sot_regression");
+
   const recorded = await runtime.recordShadowCandidate({
     matchId: fixtureId, fixtureId, league: "Integration League",
     ruleVersion: "cloud-alert-v0.2", period: "1H", triggers: ["EARLY_1H"],
