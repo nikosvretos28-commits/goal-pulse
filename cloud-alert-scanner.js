@@ -60,6 +60,7 @@ function getRecentSot10(match) {
 function createCloudAlertScanner({
   baseUrl,
   runtime,
+  settlement = null,
   fetchImpl = globalThis.fetch,
   now = () => Date.now(),
   intervalMs = DEFAULT_INTERVAL_MS,
@@ -97,6 +98,22 @@ function createCloudAlertScanner({
       });
       if (!response.ok) throw new Error("live metrics returned HTTP " + response.status);
       const body = await response.json();
+      let settlementSummary = null;
+      if (settlement && typeof settlement.reconcileScoreboard === "function") {
+        try {
+          const scoreboardResponse = await fetchImpl(baseUrl.replace(/\\/$/, "") + "/api/scoreboard?date=" + date, {
+            headers: { Accept: "application/json" },
+            signal: AbortSignal.timeout(25_000)
+          });
+          if (scoreboardResponse.ok) {
+            settlementSummary = await settlement.reconcileScoreboard(await scoreboardResponse.json(), now);
+          } else {
+            logger.warn?.("[Cloud Alert settlement] scoreboard unavailable:", scoreboardResponse.status);
+          }
+        } catch (error) {
+          logger.warn?.("[Cloud Alert settlement] reconciliation deferred:", String(error.message || error).slice(0, 180));
+        }
+      }
       const feedAt = Date.parse(body?.updatedAt || "");
       if (!Number.isFinite(feedAt) || startedAt - feedAt > MAX_FEED_AGE_MS || feedAt > startedAt + 10_000) {
         return { ok: false, reason: "stale_or_unstamped_live_metrics", checked: 0, qualified: 0 };
@@ -149,15 +166,15 @@ function createCloudAlertScanner({
           awaySot: sot.away,
           recentSot6: r6?.valid ? r6.value : null,
           recentSot10: r10,
-          scoreHome: Number.isInteger(Number(match.homeScore)) ? Number(match.homeScore) : null,
-          scoreAway: Number.isInteger(Number(match.awayScore)) ? Number(match.awayScore) : null,
+          scoreHome: Number.isInteger(match.homeScore) ? match.homeScore : null,
+          scoreAway: Number.isInteger(match.awayScore) ? match.awayScore : null,
           metrics: result.metrics,
           confirmation: confirmation.reason,
           statsSource: source
         });
         if (saved?.saved) qualified++;
       }
-      const summary = { ok: true, checked, qualified, held, date, mode: "shadow-only-no-push" };
+      const summary = { ok: true, checked, qualified, held, date, settlement: settlementSummary, mode: "shadow-only-no-push" };
       logger.info?.("[Cloud Alert scanner] independent cycle:", JSON.stringify(summary));
       return summary;
     })();
