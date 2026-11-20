@@ -17,8 +17,8 @@ test("live-metrics supplies Cloud Alert with explicit period and signal-time sco
   const mapping = server.slice(start, end);
   assert.match(mapping, /statusText: liveStatusText/);
   assert.match(mapping, /status: liveStatus/);
-  assert.match(mapping, /homeScore: validScore\\(homeScoreRaw\\)/);
-  assert.match(mapping, /awayScore: validScore\\(awayScoreRaw\\)/);
+  assert.match(mapping, /homeScore: validScore\(homeScoreRaw\)/);
+  assert.match(mapping, /awayScore: validScore\(awayScoreRaw\)/);
 });
 
 test("classifies regular halves and excludes HT, extra time, penalties and finished matches", () => {
