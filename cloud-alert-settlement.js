@@ -267,7 +267,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
            WHERE signal_id=$1 AND target_period='HT'
            ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
         );
-        if (!previous.rows.length) {
+        if (!previous.rows.length || previous.rows[0].state === "pending") {
           if (fixture.halfTime && scoreValid && signalScoreValid) {
             const result = await appendEvent({ ...common, targetPeriod: "HT", state: "settled_verified",
               scoreHome: fixture.scoreHome, scoreAway: fixture.scoreAway });
@@ -287,7 +287,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
            WHERE signal_id=$1 AND target_period='FT'
            ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
         );
-        if (!previous.rows.length) {
+        if (!previous.rows.length || previous.rows[0].state === "pending") {
           if (scoreValid && signalScoreValid) {
             const result = await appendEvent({ ...common, targetPeriod: "FT", state: "settled_verified",
               scoreHome: fixture.scoreHome, scoreAway: fixture.scoreAway });
