@@ -268,7 +268,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       }
     }
     const signals = await pool.query(
-      `SELECT s.signal_id,s.match_id,s.period,s.payload
+      `SELECT s.signal_id,s.match_id,s.fixture_id,s.period,s.payload
        FROM cloud_alert_signals s
        WHERE s.status IN ('shadow_qualified','qualified','recorded_no_push','awaiting_push_delivery','push_accepted')
          AND (
@@ -299,7 +299,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     );
     let processed = 0, verified = 0, unverifiable = 0, skipped = 0;
     for (const signal of signals.rows) {
-      const fixture = fixtures.get(String(signal.match_id));
+      const fixture = fixtures.get(String(signal.fixture_id || signal.match_id));
       if (!fixture || !fixture.provider) { skipped++; continue; }
       const common = {
         signalId: signal.signal_id, provider: fixture.provider,
@@ -370,7 +370,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     if (!pool || !(await ensureSchema())) return { persistent: false, events: [] };
     const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
     const result = await pool.query(
-      `SELECT e.*,s.match_id,s.period AS signal_period,s.minute,s.home,s.away,
+      `SELECT e.*,s.match_id,s.fixture_id,s.league,s.rule_version,
+              s.period AS signal_period,s.minute,s.home,s.away,
               s.home_sot,s.away_sot,s.payload AS signal_snapshot
        FROM cloud_alert_settlement_events e
        JOIN cloud_alert_signals s ON s.signal_id=e.signal_id
@@ -389,7 +390,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
          UNION ALL
          SELECT signal_id,'FT'::text AS target_period FROM cloud_alert_signals
        )
-       SELECT s.signal_id,s.match_id,s.period AS signal_period,s.minute,s.home,s.away,
+       SELECT s.signal_id,s.match_id,s.fixture_id,s.league,s.rule_version,
+              s.period AS signal_period,s.minute,s.home,s.away,
               s.home_sot,s.away_sot,s.score_home AS signal_score_home,s.score_away AS signal_score_away,
               t.target_period,COALESCE(e.state,'pending') AS state,e.event_id,e.provider,
               e.fixture_id,e.source,e.settled_at,e.score_home,e.score_away,e.over_line,
