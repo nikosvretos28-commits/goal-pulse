@@ -260,7 +260,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       const key = event.signal_id + "|" + event.target_period;
       if (!latest.has(key)) latest.set(key, event);
       if (event.state === "settled_verified" &&
-          (!Number.isInteger(Number(event.score_home)) || !Number.isInteger(Number(event.score_away)) ||
+          (event.score_home == null || event.score_away == null ||
+           !Number.isInteger(Number(event.score_home)) || !Number.isInteger(Number(event.score_away)) ||
            !event.provider || !event.fixture_id || !event.source || !event.outcome)) {
         issues.push({ eventId: event.event_id, issue: "verified_settlement_missing_required_metadata" });
       }
