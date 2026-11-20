@@ -264,10 +264,23 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
            !event.provider || !event.fixture_id || !event.source || !event.outcome)) {
         issues.push({ eventId: event.event_id, issue: "verified_settlement_missing_required_metadata" });
       }
-      if (event.previous_event_id && !data.events.some(previous => previous.event_id === event.previous_event_id)) {
-        // The predecessor may be outside this page; do not falsely report a broken chain.
+      if (event.state === "unverifiable" && !event.reason) {
+        issues.push({ eventId: event.event_id, issue: "unverifiable_missing_reason" });
+      }
+      if (event.state === "disputed" && !event.reason) {
+        issues.push({ eventId: event.event_id, issue: "disputed_missing_reason" });
       }
     }
+    const pool = getPool();
+    const chain = await pool.query(
+      `SELECT e.event_id,e.previous_event_id
+       FROM cloud_alert_settlement_events e
+       LEFT JOIN cloud_alert_settlement_events p ON p.event_id=e.previous_event_id
+       WHERE e.previous_event_id IS NOT NULL
+         AND (p.event_id IS NULL OR p.signal_id<>e.signal_id OR p.target_period<>e.target_period)
+       LIMIT 50`
+    );
+    for (const row of chain.rows) issues.push({ eventId: row.event_id, issue: "broken_audit_predecessor", previousEventId: row.previous_event_id });
     return { ok: issues.length === 0, persistent: true, scanned: data.events.length,
       currentStates: [...latest.values()].length, issues };
   }
