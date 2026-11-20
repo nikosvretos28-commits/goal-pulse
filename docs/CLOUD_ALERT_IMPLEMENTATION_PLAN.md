@@ -47,7 +47,7 @@ Definitions:
 2. Requests `/api/live-metrics?scope=cloud-alert` and `/api/scoreboard` using the current Europe/Athens date. Provider data retrieval is reused read-only, but Cloud Alert rolling-window history and settlement ledger are isolated from AI/VIP and HI.
 3. Rejects stale/unstamped metric responses, incomplete team SOT, missing stats source, HT, extra time and penalties.
 4. Requires two monotonic SOT observations at least 10 seconds and no more than 90 seconds apart before treating a sample as confirmed.
-5. Uses a measured 9–11.5 minute SOT window for R10 and the Cloud-specific persisted six-minute baseline for R6. Missing windows are not fabricated.
+5. Uses a measured 9–11.5 minute SOT window for R10 and the Cloud-specific persisted six-minute baseline for R6. Missing windows are not fabricated; cumulative SOT regressions quarantine both rolling triggers until a fresh baseline is available. Rolling snapshots older than 36 hours are pruned.
 6. Evaluates the isolated pure evaluator and writes qualifying records only through `recordShadowCandidate`.
 7. Reconciles only exact fixture-ID matches from the scoreboard into independent HT/FT settlement records. It captures HT only when an explicit halftime state is observed; if the fixture advances to 2H/FT without an HT capture, it records `unverifiable` rather than inferring a score. FT is settled only from a finished fixture with an explicit final score.
 8. Never calls `processCandidate` or `sendPushToSubscribers`; the runtime itself defaults to push-disabled and the server explicitly passes `pushEnabled: false`.
@@ -58,7 +58,7 @@ Definitions:
 - Each immutable signal stores the provider fixture ID, league, rule version (`cloud-alert-v0.2`), minute, score, each team's cumulative SOT, R6/R10 values, SOT90, balance, trigger IDs and statistics source. A verified settlement requires non-negative integer score, provider, provider fixture ID, source and settlement timestamp. A missing HT capture must be recorded as `unverifiable` with an explicit reason; never infer or reconstruct a missed HT score.
 - The market line is fixed at signal-time total goals + 0.5. Grade against the relevant HT or FT score; later odds or later signal data must not alter the line.
 - Allowed transitions: pending → settled_verified / unverifiable / disputed; settled_verified or unverifiable → disputed; disputed → settled_verified / unverifiable. Corrections append new events and retain their predecessor reference.
-- Database trigger rejects UPDATE and DELETE on the settlement event ledger. CSV export includes the audit events; integrity endpoint checks required metadata and predecessor links.
+- Database triggers reject UPDATE, DELETE and TRUNCATE on the settlement event ledger. CSV export includes immutable signal context and audit events; integrity endpoint checks required metadata, predecessor links, sequence order and allowed state transitions.
 - Write endpoint requires `Authorization: Bearer CLOUD_ALERT_SETTLEMENT_TOKEN`; do not expose or hardcode this secret. No settlement write or push activation is automatic.
 
 ## Remaining blockers before activation
