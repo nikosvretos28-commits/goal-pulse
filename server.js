@@ -220,7 +220,6 @@ async function authorizePrivateAdminRequest(req) {
   return { ok: true, body };
 }
 const pushScanSnapshots = new Map();
-// Shadow-only Cloud Alert deduplication; never shares AI/VIP/HI delivery state.
 // Each SOT-based AI trigger keeps its own two-sample confirmation state.
 const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
@@ -1068,8 +1067,9 @@ async function fetchSportScoreMatchDetail(slug) {
 }
 
 const liveHistory = new Map();
-// HI Activity owns a separate rolling history; it must never share AI/VIP baselines.
+// HI Activity and Cloud Alert each own isolated rolling histories.
 const highActivityLiveHistory = new Map();
+const cloudAlertLiveHistory = new Map();
 function resolveDatabaseUrl(raw) {
   if (!raw) return "";
   const trimmed = String(raw).trim();
@@ -6287,7 +6287,9 @@ const server = http.createServer(async (req, res) => {
       // Keep Hi Activity's isolated cache/history scope, but use the same live-state
       // recognizer and provider metrics collection for AI/VIP and Hi Activity.
       const highActivityOnly = url.searchParams.get("scope") === "high-activity";
-      const cacheKey = (highActivityOnly ? "high-activity-metrics:" : "live-metrics:") + date;
+      const cloudAlertOnly = url.searchParams.get("scope") === "cloud-alert";
+      const cachePrefix = cloudAlertOnly ? "cloud-alert-metrics:" : highActivityOnly ? "high-activity-metrics:" : "live-metrics:";
+      const cacheKey = cachePrefix + date;
       const cachedMetrics = cache.get(cacheKey);
       if (cachedMetrics && Date.now() - cachedMetrics.at < 15000) return send(res, 200, cachedMetrics.body);
       let scoreboard = scoreboardCache.get(date);
@@ -7526,15 +7528,17 @@ const server = http.createServer(async (req, res) => {
           statsAvailable: matches.filter(match => isSportScoreEvent(match.eventId) && match.statsAvailable).length
         }));
       }
-      // High Activity must not write to or mutate the shared AI/VIP rolling-trend history.
-      const persisted = highActivityOnly ? null : await persistRollingTrends(matches, date);
-      if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
+      // HI Activity and Cloud Alert must not write to or mutate shared AI/VIP rolling-trend history.
+      const isolatedScope = highActivityOnly || cloudAlertOnly;
+      const persisted = isolatedScope ? null : await persistRollingTrends(matches, date);
+      if (cloudAlertOnly) addRollingTrends(matches, cloudAlertLiveHistory);
+      else if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
       else if (!persisted) addRollingTrends(matches, liveHistory);
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
         team.team && ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
-      const trendHistory = highActivityOnly ? "isolated in-memory high-activity rolling history; AI/VIP history untouched; resets on service restart" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
+      const trendHistory = cloudAlertOnly ? "isolated in-memory Cloud Alert rolling history; AI/VIP/HI history untouched; resets on service restart" : highActivityOnly ? "isolated in-memory high-activity rolling history; AI/VIP history untouched; resets on service restart" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
       const diagnosticFields = ["shotsOnTarget","shotsInBox","bigChances","dangerousAttacks","corners","possession","xG"];
       // Read-only competition coverage: reuse the already-fetched live catalogue and stats.
