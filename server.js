@@ -27,6 +27,7 @@ const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
 const { addRollingTrends } = require("./rolling-trend-history");
+const { createSharedLiveMetricsCoordinator } = require("./shared-live-metrics-coordinator");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
 
@@ -919,6 +920,8 @@ async function readJsonBody(req, maxBytes = 20000) {
 }
 
 const cache = new Map();
+// All scanner scopes consume one normalized live snapshot per date.
+const sharedLiveMetricsCoordinator = createSharedLiveMetricsCoordinator({ ttlMs: 15000, maxEntries: 8 });
 const pitchInflight = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const SCOREBOARD_TTL_MS = 15 * 1000;
@@ -6407,8 +6410,14 @@ const server = http.createServer(async (req, res) => {
       const cloudAlertOnly = url.searchParams.get("scope") === "cloud-alert";
       const cachePrefix = cloudAlertOnly ? "cloud-alert-metrics:" : highActivityOnly ? "high-activity-metrics:" : "live-metrics:";
       const cacheKey = cachePrefix + date;
-      const cachedMetrics = cache.get(cacheKey);
-      if (cachedMetrics && Date.now() - cachedMetrics.at < 15000) return send(res, 200, cachedMetrics.body);
+      // Single-flight collection: default, HI and Cloud scopes wait for and reuse
+      // the same provider-normalized snapshot instead of spending separate quotas.
+      const liveMetricsLease = await sharedLiveMetricsCoordinator.acquire(date);
+      if (liveMetricsLease.role === "shared") {
+        console.log("[GoalMatrix shared live-metrics collector]", JSON.stringify({ date, scope: url.searchParams.get("scope") || "default", cache: "shared" }));
+        return send(res, 200, liveMetricsLease.value);
+      }
+      req._goalMatrixLiveMetricsLease = liveMetricsLease;
       let scoreboard = scoreboardCache.get(date);
       // Prime the scoreboard cache after a cold boot instead of returning 503 until the browser calls /api/scoreboard first.
       if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
@@ -6423,6 +6432,8 @@ const server = http.createServer(async (req, res) => {
         }
       }
       if (!scoreboard || !Array.isArray(scoreboard.body?.feeds)) {
+        liveMetricsLease.fail();
+        delete req._goalMatrixLiveMetricsLease;
         return send(res, 503, { error: "Live scoreboard feed unavailable; retry shortly", matches: [] });
       }
       // One shared live-state recognizer for AI Alerts, VIP and Hi Activity.
@@ -7677,12 +7688,13 @@ const server = http.createServer(async (req, res) => {
         }));
       }
       // One shared, persistent SOT snapshot history feeds every scanner scope.
-      // Scope-specific in-memory history is used only when PostgreSQL is unavailable.
+      // One provider collection feeds all scanners. PostgreSQL remains the primary
+      // shared history; if it is unavailable, seed every scope from this same sample.
       const persisted = await persistRollingTrends(matches, date, scannerScope);
       if (!persisted) {
-        if (cloudAlertOnly) addRollingTrends(matches, cloudAlertLiveHistory);
-        else if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
-        else addRollingTrends(matches, liveHistory);
+        addRollingTrends(matches, liveHistory);
+        addRollingTrends(matches, highActivityLiveHistory);
+        addRollingTrends(matches, cloudAlertLiveHistory);
       }
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
         team.team && ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
@@ -7690,7 +7702,7 @@ const server = http.createServer(async (req, res) => {
       ));
       const trendHistory = persisted
         ? (hasPersistableSamples ? "shared PostgreSQL rolling history across AI/VIP/HI/Cloud scopes; duplicate samples deduplicated" : "PostgreSQL ready; waiting for real live-stat samples")
-        : (cloudAlertOnly ? "Cloud Alert in-memory fallback; resets on service restart" : highActivityOnly ? "high-activity in-memory fallback; resets on service restart" : "in-memory fallback; resets on service restart");
+        : "shared in-memory rolling history across AI/VIP/HI/Cloud scopes; resets on service restart";
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
       const diagnosticFields = ["shotsOnTarget","shotsInBox","bigChances","dangerousAttacks","corners","possession","xG"];
       // Read-only competition coverage: reuse the already-fetched live catalogue and stats.
@@ -7765,6 +7777,9 @@ const server = http.createServer(async (req, res) => {
       console.log("[GoalMatrix live-metrics audit]", JSON.stringify(liveMetricsAudit));
       const body = { date, checked: work.length, totalLive: liveEvents.length, matches, updatedAt: new Date().toISOString(), trendHistory };
       cache.set(cacheKey, { at: Date.now(), body });
+      liveMetricsLease.publish(body);
+      delete req._goalMatrixLiveMetricsLease;
+      console.log("[GoalMatrix shared live-metrics collector]", JSON.stringify({ date, scope: scannerScope, cache: "refreshed", liveMatches: liveEvents.length, statsMatches: matches.filter(match => match.statsAvailable).length }));
       return send(res, 200, body);
     }
 
@@ -7795,6 +7810,10 @@ const server = http.createServer(async (req, res) => {
       res.end(data);
     });
   } catch (err) {
+    if (typeof req._goalMatrixLiveMetricsLease?.fail === "function") {
+      req._goalMatrixLiveMetricsLease.fail();
+      delete req._goalMatrixLiveMetricsLease;
+    }
     const status = Number(err.status) || 502;
     send(res, status, { error: err.message, code: err.code || null });
   }
