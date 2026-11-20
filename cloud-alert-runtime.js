@@ -13,6 +13,9 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         CREATE TABLE IF NOT EXISTS cloud_alert_signals (
           signal_id TEXT PRIMARY KEY,
           match_id TEXT NOT NULL,
+          fixture_id TEXT,
+          league TEXT,
+          rule_version TEXT NOT NULL DEFAULT 'cloud-alert-v0.2',
           period TEXT NOT NULL CHECK (period IN ('1H','2H')),
           trigger_ids JSONB NOT NULL,
           minute INTEGER,
@@ -27,6 +30,9 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
           payload JSONB NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE cloud_alert_signals ADD COLUMN IF NOT EXISTS fixture_id TEXT;
+        ALTER TABLE cloud_alert_signals ADD COLUMN IF NOT EXISTS league TEXT;
+        ALTER TABLE cloud_alert_signals ADD COLUMN IF NOT EXISTS rule_version TEXT NOT NULL DEFAULT 'cloud-alert-v0.2';
         CREATE INDEX IF NOT EXISTS cloud_alert_signals_created_idx ON cloud_alert_signals(created_at DESC);
         CREATE INDEX IF NOT EXISTS cloud_alert_signals_match_idx ON cloud_alert_signals(match_id, created_at DESC);
         CREATE TABLE IF NOT EXISTS cloud_alert_push_state (
@@ -104,7 +110,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { saved: false, reason: "persistent_database_unavailable" };
     const {
-      matchId, period, triggers, minute, home, away, homeSot, awaySot,
+      matchId, fixtureId, league, ruleVersion, period, triggers, minute, home, away, homeSot, awaySot,
       recentSot6, recentSot10, scoreHome, scoreAway, metrics, confirmation, statsSource
     } = candidate || {};
     if (!matchId || !["1H", "2H"].includes(period) || !Array.isArray(triggers) ||
@@ -112,7 +118,9 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       return { saved: false, reason: "invalid_shadow_candidate" };
     }
     const snapshot = {
-      matchId: String(matchId), period, triggers: [...triggers].sort(),
+      matchId: String(matchId), fixtureId: String(fixtureId || matchId),
+      league: String(league || "unknown"), ruleVersion: String(ruleVersion || "cloud-alert-v0.2"),
+      period, triggers: [...triggers].sort(),
       minute: Number.isFinite(minute) ? minute : null,
       home: String(home || "Home"), away: String(away || "Away"),
       homeSot, awaySot,
@@ -128,13 +136,13 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     const signalId = crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
     const result = await pool.query(
       `INSERT INTO cloud_alert_signals
-        (signal_id,match_id,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload)
-       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,'shadow_qualified',$13::jsonb)
+        (signal_id,match_id,fixture_id,league,rule_version,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,'shadow_qualified',$16::jsonb)
        ON CONFLICT (signal_id) DO NOTHING
        RETURNING signal_id`,
-      [signalId, snapshot.matchId, period, JSON.stringify(snapshot.triggers), snapshot.minute,
-       snapshot.home, snapshot.away, homeSot, awaySot, snapshot.recentSot10,
-       snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
+      [signalId, snapshot.matchId, snapshot.fixtureId, snapshot.league, snapshot.ruleVersion,
+       period, JSON.stringify(snapshot.triggers), snapshot.minute, snapshot.home, snapshot.away,
+       homeSot, awaySot, snapshot.recentSot10, snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
     );
     return { saved: result.rowCount > 0, duplicate: result.rowCount === 0, signalId };
   }
