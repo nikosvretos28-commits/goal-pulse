@@ -67,6 +67,7 @@ function createCloudAlertScanner({
   baseUrl,
   runtime,
   settlement = null,
+  pushEnabled = false,
   fetchImpl = globalThis.fetch,
   now = () => Date.now(),
   intervalMs = DEFAULT_INTERVAL_MS,
@@ -130,7 +131,7 @@ function createCloudAlertScanner({
         return { ok: false, reason: "stale_or_unstamped_live_metrics", checked: 0, qualified: 0 };
       }
 
-      let checked = 0, qualified = 0, held = 0;
+      let checked = 0, qualified = 0, held = 0, delivered = 0;
       for (const match of Array.isArray(body.matches) ? body.matches : []) {
         const matchId = String(match?.eventId || "");
         const minute = numericMinute(match?.minute);
@@ -170,7 +171,7 @@ function createCloudAlertScanner({
           continue;
         }
 
-        const saved = await runtime.recordShadowCandidate({
+        const candidate = {
           matchId,
           fixtureId: match.fixtureId || matchId,
           league: match.league || match.leagueName || "unknown",
@@ -189,10 +190,20 @@ function createCloudAlertScanner({
           metrics: result.metrics,
           confirmation: confirmation.reason,
           statsSource: source
-        });
-        if (saved?.saved) qualified++;
+        };
+        if (pushEnabled) {
+          const delivery = await runtime.processCandidate(candidate);
+          if (delivery?.pushed) delivered++;
+          if (delivery?.ok) qualified++;
+        } else {
+          const saved = await runtime.recordShadowCandidate(candidate);
+          if (saved?.saved) qualified++;
+        }
       }
-      const summary = { ok: true, checked, qualified, held, date, settlement: settlementSummary, mode: "shadow-only-no-push" };
+      const summary = {
+        ok: true, checked, qualified, held, delivered, date, settlement: settlementSummary,
+        mode: pushEnabled ? "push-enabled" : "shadow-only-no-push"
+      };
       logger.info?.("[Cloud Alert scanner] independent cycle:", JSON.stringify(summary));
       return summary;
     })();
@@ -212,7 +223,7 @@ function createCloudAlertScanner({
     startupTimeout.unref?.();
     interval = setInterval(() => { void runOnce(); }, intervalMs);
     interval.unref?.();
-    logger.info?.("[Cloud Alert scanner] independent shadow scanner scheduled:", intervalMs + "ms; push delivery disabled");
+    logger.info?.("[Cloud Alert scanner] independent scanner scheduled:", intervalMs + "ms; " + (pushEnabled ? "push delivery enabled" : "shadow-only; push delivery disabled"));
     return true;
   }
 
