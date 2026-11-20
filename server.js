@@ -1,6 +1,7 @@
 const http = require("node:http");
 const webpush = require("web-push");
 const { evaluateCloudAlert } = require("./cloud-alert-evaluator");
+const { createCloudAlertRuntime } = require("./cloud-alert-runtime");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
@@ -889,6 +890,7 @@ async function sendPushToSubscribers(payload) {
   }));
   return { sent, failed, configured: true };
 }
+const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers });
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
   if (!isAllowedOrigin(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
@@ -3612,6 +3614,15 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+  if (url.pathname === "/api/cloud-alert/history" && req.method === "GET") {
+    try {
+      const result = await cloudAlertRuntime.listHistory(url.searchParams.get("limit"));
+      return send(res, result.persistent ? 200 : 503, result);
+    } catch (error) {
+      return send(res, 503, { persistent: false, error: String(error.message || error).slice(0, 180), signals: [], pushes: [] });
+    }
+  }
+
   if (url.pathname === "/api/push/scan" && req.method === "POST") {
     if (!PUSH_SCAN_TOKEN || req.headers.authorization !== "Bearer " + PUSH_SCAN_TOKEN) {
       return send(res, 401, { error: "Unauthorized scanner" });
@@ -5215,12 +5226,10 @@ const server = http.createServer(async (req, res) => {
         }
         const sotSignalQualifies = sotTriggerConditions.some(([, qualifies]) => qualifies);
         const confirmedSotSignal = confirmedSotTriggerIds.length > 0;
-        // Cloud Alert v0.2 shadow evaluation: read-only, SOT-only, no database writes,
-        // no alert-history writes, and no Web Push delivery. The existing AI/VIP path
-        // below remains unchanged. R6 is deliberately unavailable until an exact
-        // six-minute baseline exists; it is never approximated with the 5m window.
+        // Independent Cloud Alert delivery state: separate persistence, idempotency,
+        // history and notification cap. Existing AI/VIP/HI calculations below are untouched.
         try {
-          const cloudStatus = statusForEligibility;
+          const cloudStatus = String(statusForEligibility || "").toLowerCase();
           const cloudAtHalfTime = /\\bht\\b|half.?time|halftime|ανάπαυλα/.test(cloudStatus);
           const cloudPeriod = cloudAtHalfTime ? null :
             (/second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(cloudStatus) ||
@@ -5230,49 +5239,46 @@ const server = http.createServer(async (req, res) => {
           if (cloudPeriod) {
             const cloudSides = current.sotByTeam || [];
             const cloudSotComplete = cloudSides.length >= 2 &&
-              cloudSides[0].value != null && cloudSides[1].value != null;
+              Number.isInteger(Number(cloudSides[0]?.value)) && Number.isInteger(Number(cloudSides[1]?.value));
             const cloudResult = evaluateCloudAlert({
               matchId: id,
               period: cloudPeriod,
               elapsedMinute: aiMinute,
-              homeSot: cloudSides[0]?.value,
-              awaySot: cloudSides[1]?.value,
+              homeSot: cloudSotComplete ? Number(cloudSides[0].value) : null,
+              awaySot: cloudSotComplete ? Number(cloudSides[1].value) : null,
               recentSot6: null,
               recentSot10: onTarget10m,
               dataQuality: match.statsAvailable === true && cloudSotComplete ? "valid" : "unconfirmed_sot_data",
               confirmed: providerSotIntegrity.confirmed === true,
               rollingWindowsValid: Number.isFinite(onTarget10m) && !sot10Validation.regression
             });
-            if (cloudResult.status === "qualified") {
-              for (const trigger of cloudResult.triggers) {
-                const shadowKey = id + ":" + cloudPeriod + ":" + trigger;
-                if (!cloudAlertShadowSeen.has(shadowKey)) {
-                  cloudAlertShadowSeen.add(shadowKey);
-                  if (cloudAlertShadowSeen.size > 2000) {
-                    const oldest = cloudAlertShadowSeen.values().next().value;
-                    cloudAlertShadowSeen.delete(oldest);
-                  }
-                  console.info("[Cloud Alert SHADOW candidate]", JSON.stringify({
-                    eventId: id,
-                    match: String(match.home || "") + " – " + String(match.away || ""),
-                    period: cloudPeriod,
-                    minute: Number.isFinite(aiMinute) ? aiMinute : null,
-                    trigger,
-                    totalSOT: cloudResult.metrics.total,
-                    homeSOT: cloudResult.metrics.home,
-                    awaySOT: cloudResult.metrics.away,
-                    sot90: Number(cloudResult.metrics.sot90.toFixed(2)),
-                    balance: Number(cloudResult.metrics.balance.toFixed(3)),
-                    recentSOT10: cloudResult.recentSot10,
-                    pushSent: false,
-                    mode: "shadow_only"
-                  }));
-                }
+            if (cloudResult.status === "qualified" && cloudSotComplete) {
+              const cloudDelivery = await cloudAlertRuntime.processCandidate({
+                matchId: id,
+                period: cloudPeriod,
+                triggers: cloudResult.triggers,
+                minute: aiMinute,
+                home: match.home,
+                away: match.away,
+                homeSot: Number(cloudSides[0].value),
+                awaySot: Number(cloudSides[1].value),
+                recentSot10: Number.isInteger(Number(onTarget10m)) ? Number(onTarget10m) : null,
+                scoreHome: Number.isInteger(Number(match.homeScore)) ? Number(match.homeScore) : null,
+                scoreAway: Number.isInteger(Number(match.awayScore)) ? Number(match.awayScore) : null,
+                metrics: cloudResult.metrics
+              });
+              if (cloudDelivery.pushed) {
+                console.info("[Cloud Alert] independent push accepted:", JSON.stringify({
+                  eventId: id, period: cloudPeriod, kind: cloudDelivery.kind,
+                  slot: cloudDelivery.slot, sent: cloudDelivery.sent
+                }));
+              } else if (!cloudDelivery.ok) {
+                console.warn("[Cloud Alert] candidate held:", JSON.stringify({ eventId: id, reason: cloudDelivery.reason }));
               }
             }
           }
-        } catch (cloudShadowError) {
-          console.warn("[Cloud Alert SHADOW] evaluation failed closed:", String(cloudShadowError.message || cloudShadowError).slice(0, 160));
+        } catch (cloudRuntimeError) {
+          console.warn("[Cloud Alert] live processing failed closed:", String(cloudRuntimeError.message || cloudRuntimeError).slice(0, 180));
         }
         const qualifiedAiTriggers = buildIndependentAiTriggers({
           eligibleMinute,
