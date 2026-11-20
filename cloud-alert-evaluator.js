@@ -35,16 +35,14 @@ function calculateSotMetrics({ homeSot, awaySot, elapsedMinute }) {
   };
 }
 
-// The A2H SOT90 line is anchored at 32.7 at 55' and 22.5 at 80'.
-// Endpoint behavior outside that interval remains provisional pending the
-// original approved v0.2 wording; this helper is not production-enabled.
+// v0.2 supplies two DUAL-A anchors (55' and 80') and linear
+// interpolation between them. It does not define extrapolation/clamping
+// outside that interval, so fail closed rather than inventing thresholds.
 function dualA2HSot90Threshold(elapsedMinute) {
   if (elapsedMinute === null || elapsedMinute === undefined ||
       (typeof elapsedMinute === "string" && elapsedMinute.trim() === "")) return null;
   const minute = Number(elapsedMinute);
-  if (!Number.isFinite(minute) || minute < 0) return null;
-  if (minute <= 55) return THRESHOLDS.dualA2H.sot90At55;
-  if (minute >= 80) return THRESHOLDS.dualA2H.sot90At80;
+  if (!Number.isFinite(minute) || minute < 55 || minute > 80) return null;
   const t = (minute - 55) / (80 - 55);
   return THRESHOLDS.dualA2H.sot90At55 +
     t * (THRESHOLDS.dualA2H.sot90At80 - THRESHOLDS.dualA2H.sot90At55);
