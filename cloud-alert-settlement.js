@@ -286,7 +286,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       const signalScoreValid = Number.isInteger(signalSnapshot?.scoreHome) && Number.isInteger(signalSnapshot?.scoreAway);
       if (signal.period === "1H" && (fixture.halfTime || fixture.secondHalf || fixture.finished)) {
         const previous = await pool.query(
-          `SELECT state FROM cloud_alert_settlement_events
+          `SELECT state,score_home,score_away FROM cloud_alert_settlement_events
            WHERE signal_id=$1 AND target_period='HT'
            ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
         );
@@ -302,11 +302,17 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
             if (result.ok && !result.duplicate) unverifiable++;
           }
           processed++;
+        } else if (previous.rows[0].state === "settled_verified" && fixture.halfTime && scoreValid &&
+            (Number(previous.rows[0].score_home) !== fixture.scoreHome ||
+             Number(previous.rows[0].score_away) !== fixture.scoreAway)) {
+          const result = await appendEvent({ ...common, targetPeriod: "HT", state: "disputed",
+            reason: "provider_ht_score_changed_after_verified_settlement" });
+          if (result.ok && !result.duplicate) processed++;
         }
       }
       if (fixture.finished) {
         const previous = await pool.query(
-          `SELECT state FROM cloud_alert_settlement_events
+          `SELECT state,score_home,score_away FROM cloud_alert_settlement_events
            WHERE signal_id=$1 AND target_period='FT'
            ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
         );
@@ -322,6 +328,12 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
             if (result.ok && !result.duplicate) unverifiable++;
           }
           processed++;
+        } else if (previous.rows[0].state === "settled_verified" && scoreValid &&
+            (Number(previous.rows[0].score_home) !== fixture.scoreHome ||
+             Number(previous.rows[0].score_away) !== fixture.scoreAway)) {
+          const result = await appendEvent({ ...common, targetPeriod: "FT", state: "disputed",
+            reason: "provider_ft_score_changed_after_verified_settlement" });
+          if (result.ok && !result.duplicate) processed++;
         }
       }
     }
