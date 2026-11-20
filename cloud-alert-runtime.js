@@ -39,7 +39,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         CREATE INDEX IF NOT EXISTS cloud_alert_signals_created_idx ON cloud_alert_signals(created_at DESC);
         CREATE INDEX IF NOT EXISTS cloud_alert_signals_match_idx ON cloud_alert_signals(match_id, created_at DESC);
         CREATE OR REPLACE FUNCTION cloud_alert_reject_signal_mutation()
-        RETURNS trigger LANGUAGE plpgsql AS $
+        RETURNS trigger LANGUAGE plpgsql AS $cloudsignal$
         BEGIN
           IF TG_OP='TRUNCATE' OR TG_OP='DELETE' THEN
             RAISE EXCEPTION 'Cloud Alert signal snapshots are immutable';
@@ -55,7 +55,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
           END IF;
           RETURN NEW;
         END;
-        $;
+        $cloudsignal$;
         DO $cloudsignal$
         BEGIN
           IF NOT EXISTS (
