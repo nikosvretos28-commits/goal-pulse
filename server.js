@@ -5332,6 +5332,8 @@ const server = http.createServer(async (req, res) => {
           sot5m: onTarget,
           sot10m: onTarget10m,
           sotCumulativeTotal: current.onTarget,
+          sot5mBaselineAgeMinutes: Number.isFinite(Number(match.trend?.window5m?.sampleMinutes)) ? Number(match.trend.window5m.sampleMinutes) : null,
+          sot10mBaselineAgeMinutes: Number.isFinite(Number(match.trend?.window10m?.sampleMinutes)) ? Number(match.trend.window10m.sampleMinutes) : null,
           sot5mValidation: sot5Validation,
           sot10mValidation: sot10Validation,
           xGHome: teamXGValues[0],
