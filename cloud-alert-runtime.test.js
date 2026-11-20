@@ -17,6 +17,23 @@ test("Cloud Alert push path is locked by default before touching database or pus
   assert.deepEqual(result, { ok: true, pushed: false, reason: "cloud_alert_activation_locked" });
 });
 
+test("Cloud Alert TEST Push is a delivery-only route and does not invoke candidate or settlement processing", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const server = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+  const routeStart = server.indexOf('url.pathname === "/api/cloud-alert/test-push"');
+  const routeEnd = server.indexOf('url.pathname === "/api/push/test"', routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const route = server.slice(routeStart, routeEnd);
+  assert.ok(route.includes("pushRequestAllowed(req, res)"));
+  assert.ok(route.includes("sendPushToSubscribers("));
+  assert.ok(route.includes('channel: "cloud-alert"'));
+  assert.ok(!route.includes("processCandidate"));
+  assert.ok(!route.includes("recordShadowCandidate"));
+  assert.ok(!route.includes("cloudAlertSettlement"));
+  assert.ok(!route.includes("INSERT INTO"));
+});
+
 test("production server gates Cloud Alert push behind an explicit environment switch", () => {
   const fs = require("node:fs");
   const path = require("node:path");
