@@ -125,7 +125,9 @@ test("a provider SOT regression resets the two-sample confirmation window", asyn
     ] } }
   });
   const runtime = {
-    async recordSnapshot() { return { valid: true, value: 1 }; },
+    async recordSnapshot() {
+      return { valid: true, value: 1, recentSot10: 2, recentSot10Valid: true };
+    },
     async recordShadowCandidate(candidate) { saved.push(candidate); return { saved: true }; }
   };
   const scanner = createCloudAlertScanner({
