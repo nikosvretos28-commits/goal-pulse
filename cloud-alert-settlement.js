@@ -372,7 +372,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     const result = await pool.query(
       `SELECT e.*,s.match_id,s.fixture_id,s.league,s.rule_version,
               s.period AS signal_period,s.minute,s.home,s.away,
-              s.home_sot,s.away_sot,s.payload AS signal_snapshot
+              s.home_sot,s.away_sot,s.recent_sot6,s.recent_sot10,s.payload AS signal_snapshot
        FROM cloud_alert_settlement_events e
        JOIN cloud_alert_signals s ON s.signal_id=e.signal_id
        ORDER BY e.event_seq DESC LIMIT $1`, [safeLimit]
@@ -392,7 +392,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
        )
        SELECT s.signal_id,s.match_id,s.fixture_id,s.league,s.rule_version,
               s.period AS signal_period,s.minute,s.home,s.away,
-              s.home_sot,s.away_sot,s.score_home AS signal_score_home,s.score_away AS signal_score_away,
+              s.home_sot,s.away_sot,s.recent_sot6,s.recent_sot10,
+              s.score_home AS signal_score_home,s.score_away AS signal_score_away,
               t.target_period,COALESCE(e.state,'pending') AS state,e.event_id,e.provider,
               e.fixture_id,e.source,e.settled_at,e.score_home,e.score_away,e.over_line,
               e.result_goals,e.outcome,e.reason,e.previous_event_id
@@ -458,7 +459,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     const data = await list(limit);
     if (!data.persistent) return { persistent: false, csv: "" };
     const columns = ["event_id","signal_id","match_id","fixture_id","league","rule_version",
-      "signal_period","minute","home","away","home_sot","away_sot",
+      "signal_period","minute","home","away","home_sot","away_sot","recent_sot6","recent_sot10",
       "target_period","state","provider","source","settled_at","score_home","score_away",
       "signal_goals","over_line","result_goals","outcome","reason","previous_event_id"];
     const escape = value => {
