@@ -121,7 +121,7 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
   assert.equal(corrected.previousEventId, disputed.eventId);
   const csv = await settlement.exportCsv(100);
   assert.equal(csv.persistent, true);
-  assert.match(csv.csv, /'=CMD\\(\\)/);
+  assert.match(csv.csv, /'=CMD\(\)/);
 
   const integrity = await settlement.integrity(100);
   assert.equal(integrity.persistent, true);
