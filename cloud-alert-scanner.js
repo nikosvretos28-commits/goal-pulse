@@ -147,7 +147,9 @@ function createCloudAlertScanner({
         const r6 = await runtime.recordSnapshot({
           matchId, period, homeSot: sot.home, awaySot: sot.away
         });
-        const r10 = getRecentSot10(match);
+        // Cloud R10 is measured from the same PostgreSQL snapshots as R6.
+        // Do not depend on the process-local trend cache, which resets on restart.
+        const r10 = r6?.recentSot10Valid === true ? r6.recentSot10 : null;
         const cumulativeRegression = r6?.reason === "cumulative_sot_regression";
         if (cumulativeRegression) confirmations.delete(matchId + "|" + period);
         const rollingWindowsValid = !cumulativeRegression && Boolean(r6?.valid || r10 != null);
