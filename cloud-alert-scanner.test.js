@@ -9,12 +9,17 @@ test("parses stoppage time without losing added minutes", () => {
   assert.equal(numericMinute("HT"), null);
 });
 
-test("classifies regular halves and excludes HT, extra time and penalties", () => {
+test("classifies regular halves and excludes HT, extra time, penalties and finished matches", () => {
   assert.equal(matchPeriod({ statusText: "1st Half" }, 45), "1H");
   assert.equal(matchPeriod({ statusText: "2nd Half" }, 46), "2H");
   assert.equal(matchPeriod({ statusText: "Half Time" }, 45), null);
   assert.equal(matchPeriod({ statusText: "Extra Time" }, 95), null);
   assert.equal(matchPeriod({ statusText: "Penalty Shootout" }, 120), null);
+  assert.equal(matchPeriod({ statusText: "FT" }, 90), null);
+  assert.equal(matchPeriod({ statusText: "Finished" }, 90), null);
+  assert.equal(matchPeriod({ statusText: "Postponed" }, 0), null);
+  assert.equal(matchPeriod({}, 48), null, "45+ stoppage cannot be assumed to be the second half");
+  assert.equal(matchPeriod({}, 45), "1H");
 });
 
 test("accepts only a measured ten-minute SOT window", () => {
