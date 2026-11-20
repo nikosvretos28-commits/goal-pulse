@@ -210,6 +210,97 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     }
   }
 
+  async function reconcileScoreboard(scoreboardBody, now = () => Date.now()) {
+    const pool = getPool();
+    if (!pool || !(await ensureSchema())) return { ok: false, reason: "persistent_database_unavailable", processed: 0 };
+    const feeds = Array.isArray(scoreboardBody?.feeds) ? scoreboardBody.feeds : [];
+    const fixtures = new Map();
+    for (const feed of feeds) {
+      for (const event of Array.isArray(feed?.events) ? feed.events : []) {
+        const fixtureId = String(event?.id || "").trim();
+        if (!fixtureId) continue;
+        const status = event.status || event.competitions?.[0]?.status || {};
+        const type = status.type || {};
+        const statusText = [
+          type.name,type.description,type.detail,type.shortDetail,type.state,
+          status.displayClock,status.period,status.phase,event.statusText,event.status_text
+        ].filter(value => value != null).map(String).join(" ").toLowerCase();
+        const state = String(type.state || status.state || "").toLowerCase();
+        const finished = state === "post" || type.completed === true ||
+          /full\s*time|finished|ended|complete|\\bft\\b|after\s*extra/.test(statusText);
+        const halfTime = /half\s*time|halftime|\\bht\\b|interval/.test(statusText);
+        const secondHalf = /second\s*half|2nd\s*half|\\b2h\\b/.test(statusText) ||
+          Number(status.period || type.period) === 2;
+        const competitors = event.competitions?.[0]?.competitors || [];
+        const home = competitors.find(team => team?.homeAway === "home") || competitors[0];
+        const away = competitors.find(team => team?.homeAway === "away") || competitors[1];
+        const parseScore = value => value == null || String(value).trim() === "" || !/^\d+$/.test(String(value).trim())
+          ? null : Number(value);
+        const scoreHome = parseScore(home?.score);
+        const scoreAway = parseScore(away?.score);
+        fixtures.set(fixtureId, {
+          fixtureId, provider: String(event._goalMatrixSource || feed.code || "").trim(),
+          statusText, finished, halfTime, secondHalf, scoreHome, scoreAway
+        });
+      }
+    }
+    const signals = await pool.query(
+      `SELECT signal_id,match_id,period,payload FROM cloud_alert_signals
+       WHERE status IN ('shadow_qualified','qualified','recorded_no_push','awaiting_push_delivery','push_accepted')
+       ORDER BY created_at DESC LIMIT 2000`
+    );
+    let processed = 0, verified = 0, unverifiable = 0, skipped = 0;
+    for (const signal of signals.rows) {
+      const fixture = fixtures.get(String(signal.match_id));
+      if (!fixture || !fixture.provider) { skipped++; continue; }
+      const common = {
+        signalId: signal.signal_id, provider: fixture.provider,
+        fixtureId: fixture.fixtureId, source: "GoalMatrix /api/scoreboard exact fixture ID",
+        settledAt: new Date(now()).toISOString()
+      };
+      const scoreValid = Number.isInteger(fixture.scoreHome) && Number.isInteger(fixture.scoreAway);
+      if (signal.period === "1H" && (fixture.halfTime || fixture.secondHalf || fixture.finished)) {
+        const previous = await pool.query(
+          `SELECT state FROM cloud_alert_settlement_events
+           WHERE signal_id=$1 AND target_period='HT'
+           ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
+        );
+        if (!previous.rows.length) {
+          if (fixture.halfTime && scoreValid) {
+            const result = await appendEvent({ ...common, targetPeriod: "HT", state: "settled_verified",
+              scoreHome: fixture.scoreHome, scoreAway: fixture.scoreAway });
+            if (result.ok && !result.duplicate) verified++;
+          } else {
+            const result = await appendEvent({ ...common, targetPeriod: "HT", state: "unverifiable",
+              reason: "missed_half_time_capture_no_verified_ht_score_available" });
+            if (result.ok && !result.duplicate) unverifiable++;
+          }
+          processed++;
+        }
+      }
+      if (fixture.finished) {
+        const previous = await pool.query(
+          `SELECT state FROM cloud_alert_settlement_events
+           WHERE signal_id=$1 AND target_period='FT'
+           ORDER BY event_seq DESC LIMIT 1`, [signal.signal_id]
+        );
+        if (!previous.rows.length) {
+          if (scoreValid) {
+            const result = await appendEvent({ ...common, targetPeriod: "FT", state: "settled_verified",
+              scoreHome: fixture.scoreHome, scoreAway: fixture.scoreAway });
+            if (result.ok && !result.duplicate) verified++;
+          } else {
+            const result = await appendEvent({ ...common, targetPeriod: "FT", state: "unverifiable",
+              reason: "finished_fixture_missing_verified_final_score" });
+            if (result.ok && !result.duplicate) unverifiable++;
+          }
+          processed++;
+        }
+      }
+    }
+    return { ok: true, processed, verified, unverifiable, skipped, fixtures: fixtures.size, signals: signals.rows.length };
+  }
+
   async function list(limit = 100) {
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { persistent: false, events: [] };
@@ -300,7 +391,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     return { persistent: true, csv: rows.join("\r\n") + "\r\n" };
   }
 
-  return { ensureSchema, appendEvent, list, listCurrent, integrity, exportCsv };
+  return { ensureSchema, appendEvent, reconcileScoreboard, list, listCurrent, integrity, exportCsv };
 }
 
 module.exports = { TARGET_PERIODS, STATES, validateSettlementInput, gradeSignalSettlement, createCloudAlertSettlement };
