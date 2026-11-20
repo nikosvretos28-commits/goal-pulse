@@ -120,7 +120,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
     try {
       await client.query("BEGIN");
       const signalResult = await client.query(
-        "SELECT period,payload FROM cloud_alert_signals WHERE signal_id=$1 FOR SHARE",
+        "SELECT period,payload FROM cloud_alert_signals WHERE signal_id=$1 FOR UPDATE",
         [value.signalId]
       );
       if (!signalResult.rows.length) {
@@ -135,14 +135,20 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
         [value.signalId, value.targetPeriod]
       );
       const previous = latestResult.rows[0] || null;
-      if (previous?.state === value.state && value.state !== "disputed") {
+      if (previous?.state === value.state) {
         await client.query("ROLLBACK");
         return { ok: true, duplicate: true, state: previous.state, eventId: previous.event_id };
       }
-      if (previous && previous.state !== "pending" && previous.state !== "disputed" &&
-          value.state !== "disputed") {
+      const allowedTransitions = {
+        pending: new Set(["settled_verified", "unverifiable", "disputed"]),
+        settled_verified: new Set(["disputed"]),
+        unverifiable: new Set(["disputed"]),
+        disputed: new Set(["settled_verified", "unverifiable"])
+      };
+      if (previous && !allowedTransitions[previous.state]?.has(value.state)) {
         await client.query("ROLLBACK");
-        return { ok: false, reason: "terminal_state_requires_dispute_before_correction" };
+        return { ok: false, reason: "invalid_settlement_state_transition",
+          from: previous.state, to: value.state };
       }
       if (value.targetPeriod === "HT" && signal.period !== "1H") {
         await client.query("ROLLBACK");
