@@ -100,6 +100,45 @@ function createCloudAlertRuntime({ getPool, sendPush }) {
     return { value: (homeSot - previousHome) + (awaySot - previousAway), valid: true, baselineAt: new Date(prior.sampled_at).toISOString() };
   }
 
+  async function recordShadowCandidate(candidate) {
+    const pool = getPool();
+    if (!pool || !(await ensureSchema())) return { saved: false, reason: "persistent_database_unavailable" };
+    const {
+      matchId, period, triggers, minute, home, away, homeSot, awaySot,
+      recentSot6, recentSot10, scoreHome, scoreAway, metrics, confirmation, statsSource
+    } = candidate || {};
+    if (!matchId || !["1H", "2H"].includes(period) || !Array.isArray(triggers) ||
+        !triggers.length || !Number.isInteger(homeSot) || !Number.isInteger(awaySot)) {
+      return { saved: false, reason: "invalid_shadow_candidate" };
+    }
+    const snapshot = {
+      matchId: String(matchId), period, triggers: [...triggers].sort(),
+      minute: Number.isFinite(minute) ? minute : null,
+      home: String(home || "Home"), away: String(away || "Away"),
+      homeSot, awaySot,
+      recentSot6: Number.isInteger(recentSot6) ? recentSot6 : null,
+      recentSot10: Number.isInteger(recentSot10) ? recentSot10 : null,
+      scoreHome: Number.isInteger(scoreHome) ? scoreHome : null,
+      scoreAway: Number.isInteger(scoreAway) ? scoreAway : null,
+      metrics: metrics || null,
+      confirmation: String(confirmation || "unavailable"),
+      statsSource: String(statsSource || "unknown"),
+      mode: "shadow_only"
+    };
+    const signalId = crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+    const result = await pool.query(
+      `INSERT INTO cloud_alert_signals
+        (signal_id,match_id,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload)
+       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,'shadow_qualified',$13::jsonb)
+       ON CONFLICT (signal_id) DO NOTHING
+       RETURNING signal_id`,
+      [signalId, snapshot.matchId, period, JSON.stringify(snapshot.triggers), snapshot.minute,
+       snapshot.home, snapshot.away, homeSot, awaySot, snapshot.recentSot10,
+       snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
+    );
+    return { saved: result.rowCount > 0, duplicate: result.rowCount === 0, signalId };
+  }
+
   async function processCandidate(candidate) {
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { ok: false, reason: "persistent_database_unavailable" };
@@ -209,7 +248,7 @@ function createCloudAlertRuntime({ getPool, sendPush }) {
     return { persistent: true, signals: signals.rows, pushes: pushes.rows };
   }
 
-  return { ensureSchema, recordSnapshot, processCandidate, listHistory };
+  return { ensureSchema, recordSnapshot, recordShadowCandidate, processCandidate, listHistory };
 }
 
 module.exports = { createCloudAlertRuntime };
