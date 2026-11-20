@@ -457,8 +457,10 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
   async function exportCsv(limit = 500) {
     const data = await list(limit);
     if (!data.persistent) return { persistent: false, csv: "" };
-    const columns = ["event_id","signal_id","target_period","state","provider","fixture_id","source",
-      "settled_at","score_home","score_away","signal_goals","over_line","result_goals","outcome","reason","previous_event_id"];
+    const columns = ["event_id","signal_id","match_id","fixture_id","league","rule_version",
+      "signal_period","minute","home","away","home_sot","away_sot",
+      "target_period","state","provider","source","settled_at","score_home","score_away",
+      "signal_goals","over_line","result_goals","outcome","reason","previous_event_id"];
     const escape = value => {
       const text = value == null ? "" : value instanceof Date ? value.toISOString() : String(value);
       return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
