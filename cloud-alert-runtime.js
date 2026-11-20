@@ -38,6 +38,15 @@ function createCloudAlertRuntime({ getPool, sendPush }) {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           PRIMARY KEY(match_id, period)
         );
+        CREATE TABLE IF NOT EXISTS cloud_alert_sot_snapshots (
+          match_id TEXT NOT NULL,
+          period TEXT NOT NULL CHECK (period IN ('1H','2H')),
+          sampled_at TIMESTAMPTZ NOT NULL,
+          home_sot INTEGER NOT NULL,
+          away_sot INTEGER NOT NULL,
+          PRIMARY KEY(match_id, period, sampled_at)
+        );
+        CREATE INDEX IF NOT EXISTS cloud_alert_sot_snapshots_time_idx ON cloud_alert_sot_snapshots(match_id,period,sampled_at DESC);
         CREATE TABLE IF NOT EXISTS cloud_alert_pushes (
           push_id TEXT PRIMARY KEY,
           match_id TEXT NOT NULL,
@@ -59,6 +68,36 @@ function createCloudAlertRuntime({ getPool, sendPush }) {
       });
     }
     return schemaReady;
+  }
+
+  async function recordSnapshot({ matchId, period, homeSot, awaySot }) {
+    const pool = getPool();
+    if (!pool || !(await ensureSchema())) return { value: null, valid: false, reason: "persistent_database_unavailable" };
+    if (!matchId || !["1H", "2H"].includes(period) || !Number.isInteger(homeSot) || !Number.isInteger(awaySot)) {
+      return { value: null, valid: false, reason: "invalid_sot_snapshot" };
+    }
+    const sampledAt = new Date(Math.floor(Date.now() / 60000) * 60000);
+    await pool.query(
+      `INSERT INTO cloud_alert_sot_snapshots(match_id,period,sampled_at,home_sot,away_sot)
+       VALUES($1,$2,$3,$4,$5)
+       ON CONFLICT(match_id,period,sampled_at) DO UPDATE SET
+         home_sot=GREATEST(cloud_alert_sot_snapshots.home_sot,EXCLUDED.home_sot),
+         away_sot=GREATEST(cloud_alert_sot_snapshots.away_sot,EXCLUDED.away_sot)`,
+      [String(matchId), period, sampledAt.toISOString(), homeSot, awaySot]
+    );
+    const baseline = await pool.query(
+      `SELECT home_sot,away_sot,sampled_at FROM cloud_alert_sot_snapshots
+       WHERE match_id=$1 AND period=$2
+         AND sampled_at <= $3::timestamptz - INTERVAL '6 minutes'
+         AND sampled_at >= $3::timestamptz - INTERVAL '7 minutes'
+       ORDER BY sampled_at DESC LIMIT 1`,
+      [String(matchId), period, sampledAt.toISOString()]
+    );
+    if (!baseline.rows.length) return { value: null, valid: false, reason: "six_minute_baseline_not_yet_available" };
+    const prior = baseline.rows[0];
+    const previousHome = Number(prior.home_sot), previousAway = Number(prior.away_sot);
+    if (homeSot < previousHome || awaySot < previousAway) return { value: null, valid: false, reason: "cumulative_sot_regression" };
+    return { value: (homeSot - previousHome) + (awaySot - previousAway), valid: true, baselineAt: new Date(prior.sampled_at).toISOString() };
   }
 
   async function processCandidate(candidate) {
@@ -170,7 +209,7 @@ function createCloudAlertRuntime({ getPool, sendPush }) {
     return { persistent: true, signals: signals.rows, pushes: pushes.rows };
   }
 
-  return { ensureSchema, processCandidate, listHistory };
+  return { ensureSchema, recordSnapshot, processCandidate, listHistory };
 }
 
 module.exports = { createCloudAlertRuntime };
