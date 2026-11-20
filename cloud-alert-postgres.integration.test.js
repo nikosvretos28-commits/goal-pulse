@@ -19,7 +19,7 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
     ensureSignalSchema: () => runtime.ensureSchema()
   });
   const suffix = crypto.randomUUID();
-  const signalId = "pg-test-" + suffix;
+  let signalId = "pg-test-" + suffix;
   const fixtureId = "fixture-" + suffix;
 
   t.after(async () => {
@@ -34,14 +34,21 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
 
   assert.equal(await runtime.ensureSchema(), true);
   assert.equal(await settlement.ensureSchema(), true);
-  await pool.query(
-    `INSERT INTO cloud_alert_signals
-      (signal_id,match_id,period,trigger_ids,minute,home,away,home_sot,away_sot,
-       recent_sot10,score_home,score_away,status,payload)
-     VALUES($1,$2,'1H','["EARLY_1H"]'::jsonb,20,'Home','Away',3,2,1,0,0,
-       'shadow_qualified',$3::jsonb)`,
-    [signalId, fixtureId, JSON.stringify({ period: "1H", scoreHome: 0, scoreAway: 0 })]
-  );
+  const recorded = await runtime.recordShadowCandidate({
+    matchId: fixtureId, fixtureId, league: "Integration League",
+    ruleVersion: "cloud-alert-v0.2", period: "1H", triggers: ["EARLY_1H"],
+    minute: 20, home: "Home", away: "Away", homeSot: 3, awaySot: 2,
+    recentSot6: 1, recentSot10: 2, scoreHome: 0, scoreAway: 0,
+    metrics: { total: 5, sot90: 22.5, balance: 0.4 },
+    confirmation: "two_monotonic_samples", statsSource: "ESPN"
+  });
+  assert.equal(recorded.saved, true);
+  signalId = recorded.signalId;
+  assert.equal(signalId.length, 64);
+  const history = await runtime.listHistory(10);
+  assert.equal(history.signals[0].fixture_id, fixtureId);
+  assert.equal(history.signals[0].league, "Integration League");
+  assert.equal(history.signals[0].rule_version, "cloud-alert-v0.2");
 
   const base = {
     signalId, targetPeriod: "HT", provider: "ESPN", fixtureId,
