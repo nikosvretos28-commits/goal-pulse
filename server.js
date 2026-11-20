@@ -1240,7 +1240,7 @@ ensureAnalyticsDb().then(async ready => {
   }
 });
 
-async function persistRollingTrends(matches, date) {
+async function persistRollingTrends(matches, date, scope = "default") {
   if (!analyticsPool || !await ensureAnalyticsDb()) return false;
   try {
     const snapshots = [];
@@ -1256,12 +1256,29 @@ async function persistRollingTrends(matches, date) {
     const tuples = snapshots.map((row, index) => {
       const n = index * 8;
       values.push(...row);
-      return `($${n+1}, $${n+2}, $${n+3}, NOW(), $${n+4}, $${n+5}, $${n+6}, $${n+7}, $${n+8})`;
+      return `(${n+1}::text, ${n+2}::text, ${n+3}::text, NOW(), ${n+4}::double precision, ${n+5}::double precision, ${n+6}::double precision, ${n+7}::double precision, ${n+8}::text)`;
     });
+    // All scanner scopes contribute to one persistent SOT history. Avoid writing
+    // duplicate samples when AI, HI Activity and Cloud Alert inspect the same
+    // fixture close together. If an earlier scope had no SOT, a later scope may
+    // still contribute the first real SOT sample inside this interval.
     const snapshotInsert = await analyticsPool.query(
       `INSERT INTO live_stat_snapshots
        (event_id, match_date, team_name, observed_at, shots_on_target, corners, attacks, dangerous_attacks, minute)
-       VALUES ${tuples.join(", ")}`, values
+       SELECT incoming.event_id, incoming.match_date, incoming.team_name, NOW(),
+              incoming.shots_on_target, incoming.corners, incoming.attacks,
+              incoming.dangerous_attacks, incoming.minute
+       FROM (VALUES ${tuples.join(", ")}) AS incoming
+         (event_id, match_date, team_name, shots_on_target, corners, attacks, dangerous_attacks, minute)
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM live_stat_snapshots recent
+         WHERE recent.event_id = incoming.event_id
+           AND recent.match_date = incoming.match_date
+           AND LOWER(recent.team_name) = LOWER(incoming.team_name)
+           AND recent.observed_at >= NOW() - INTERVAL '45 seconds'
+           AND (incoming.shots_on_target IS NULL OR recent.shots_on_target IS NOT NULL)
+       )`, values
     );
     const eventIds = [...new Set(matches.map(match => String(match.eventId)).filter(Boolean))];
     const persistedCheck = await analyticsPool.query(
@@ -1271,7 +1288,7 @@ async function persistRollingTrends(matches, date) {
       [eventIds, date]
     );
     console.log("Goal Pulse live snapshot persistence verified:", JSON.stringify({
-      date, attemptedRows: snapshots.length, insertedRows: snapshotInsert.rowCount,
+      date, scope, attemptedRows: snapshots.length, insertedRows: snapshotInsert.rowCount,
       savedSnapshotsForEvents: persistedCheck.rows[0].snapshots,
       savedEventsForDate: persistedCheck.rows[0].events
     }));
@@ -1327,7 +1344,7 @@ async function persistRollingTrends(matches, date) {
       match.trend = { source: "PostgreSQL-persisted cumulative-stat deltas", window5m: makeWindow(5), window10m: makeWindow(10) };
     }
     console.log("Goal Pulse rolling trend verification:", JSON.stringify({
-      date, liveMatchesChecked: matches.length,
+      date, scope, liveMatchesChecked: matches.length,
       window5mAvailable: matches.filter(match => match.trend?.window5m?.available).length,
       window10mAvailable: matches.filter(match => match.trend?.window10m?.available).length,
       persistedBaselineRows5m: baselines[5].length,
@@ -6537,6 +6554,7 @@ const server = http.createServer(async (req, res) => {
       let cursor = 0;
       const matches = [];
       let espnProviderDiagnosticSample = null;
+      const scannerScope = cloudAlertOnly ? "cloud-alert" : highActivityOnly ? "high-activity" : "default";
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, localBudgetLimited: 0, provider429: 0, providerCooldownSkipped: 0, cachedDetailHits: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null, unmatchedLabels: [] };
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0, unmatchedSportScoreLabels: [] };
       const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
@@ -7652,22 +7670,27 @@ const server = http.createServer(async (req, res) => {
       const isSportScoreEvent = value => String(value || "").startsWith("sportscore:") || String(value || "").startsWith("sportscore-widget:");
       if (work.some(item => isSportScoreEvent(item.event.id))) {
         console.log("SportScore live metrics detail diagnostic:", JSON.stringify({
-          attempted: work.filter(item => isSportScoreEvent(item.event.id)).length,
+          scope: scannerScope,
+          attemptedMatches: work.filter(item => isSportScoreEvent(item.event.id)).length,
           ...sportScoreDetailDiagnostics,
           statsAvailable: matches.filter(match => isSportScoreEvent(match.eventId) && match.statsAvailable).length
         }));
       }
-      // HI Activity and Cloud Alert must not write to or mutate shared AI/VIP rolling-trend history.
-      const isolatedScope = highActivityOnly || cloudAlertOnly;
-      const persisted = isolatedScope ? null : await persistRollingTrends(matches, date);
-      if (cloudAlertOnly) addRollingTrends(matches, cloudAlertLiveHistory);
-      else if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
-      else if (!persisted) addRollingTrends(matches, liveHistory);
+      // One shared, persistent SOT snapshot history feeds every scanner scope.
+      // Scope-specific in-memory history is used only when PostgreSQL is unavailable.
+      const persisted = await persistRollingTrends(matches, date, scannerScope);
+      if (!persisted) {
+        if (cloudAlertOnly) addRollingTrends(matches, cloudAlertLiveHistory);
+        else if (highActivityOnly) addRollingTrends(matches, highActivityLiveHistory);
+        else addRollingTrends(matches, liveHistory);
+      }
       const hasPersistableSamples = matches.some(match => Array.isArray(match.teams) && match.teams.some(team =>
         team.team && ["shotsOnTarget", "corners", "attacks", "dangerousAttacks"]
           .some(key => team[key] != null && Number.isFinite(Number(team[key])))
       ));
-      const trendHistory = cloudAlertOnly ? "isolated in-memory Cloud Alert rolling history; AI/VIP/HI history untouched; resets on service restart" : highActivityOnly ? "isolated in-memory high-activity rolling history; AI/VIP history untouched; resets on service restart" : !persisted ? "in-memory fallback; resets on service restart" : hasPersistableSamples ? "postgresql; retained across service restarts" : "PostgreSQL ready; waiting for real live-stat samples";
+      const trendHistory = persisted
+        ? (hasPersistableSamples ? "shared PostgreSQL rolling history across AI/VIP/HI/Cloud scopes; duplicate samples deduplicated" : "PostgreSQL ready; waiting for real live-stat samples")
+        : (cloudAlertOnly ? "Cloud Alert in-memory fallback; resets on service restart" : highActivityOnly ? "high-activity in-memory fallback; resets on service restart" : "in-memory fallback; resets on service restart");
       // Read-only diagnostic summary for blank live-stat tiles. No scoring or protocol logic.
       const diagnosticFields = ["shotsOnTarget","shotsInBox","bigChances","dangerousAttacks","corners","possession","xG"];
       // Read-only competition coverage: reuse the already-fetched live catalogue and stats.
