@@ -98,6 +98,8 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
           previous_event_id TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE cloud_alert_settlement_events
+          ADD COLUMN IF NOT EXISTS event_seq BIGSERIAL;
         CREATE INDEX IF NOT EXISTS cloud_alert_settlement_signal_idx
           ON cloud_alert_settlement_events(signal_id,target_period,created_at DESC);
         CREATE INDEX IF NOT EXISTS cloud_alert_settlement_created_idx
