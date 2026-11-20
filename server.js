@@ -6570,7 +6570,9 @@ const server = http.createServer(async (req, res) => {
           console.warn("SportScore detail slug map refresh failed:", error.message || "unknown error");
         }
       }
-      const liveWork = liveEvents.slice(0, 60);
+      // Rotate across the complete live scoreboard. A fixed first-60 slice
+      // permanently excluded fixtures beyond that position from detail refreshes.
+      const liveWork = liveEvents;
       const rotationStart = liveWork.length ? sportScoreDetailRotationCursor % liveWork.length : 0;
       const work = rotationStart
         ? liveWork.slice(rotationStart).concat(liveWork.slice(0, rotationStart))
