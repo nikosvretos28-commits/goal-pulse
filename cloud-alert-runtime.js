@@ -61,15 +61,26 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
           match_id TEXT NOT NULL,
           period TEXT NOT NULL CHECK (period IN ('1H','2H')),
           slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 2),
-          signal_id TEXT NOT NULL UNIQUE REFERENCES cloud_alert_signals(signal_id),
+          signal_id TEXT NOT NULL REFERENCES cloud_alert_signals(signal_id),
           kind TEXT NOT NULL CHECK (kind IN ('initial','re_alert')),
-          status TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('sending','accepted','failed','unknown')),
           payload JSONB NOT NULL,
+          attempt_count INTEGER NOT NULL DEFAULT 1,
+          error_message TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          delivered_at TIMESTAMPTZ,
-          UNIQUE(match_id, period, slot)
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          delivered_at TIMESTAMPTZ
         );
+        ALTER TABLE cloud_alert_pushes DROP CONSTRAINT IF EXISTS cloud_alert_pushes_match_id_period_slot_key;
+        ALTER TABLE cloud_alert_pushes DROP CONSTRAINT IF EXISTS cloud_alert_pushes_signal_id_key;
+        ALTER TABLE cloud_alert_pushes ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE cloud_alert_pushes ADD COLUMN IF NOT EXISTS error_message TEXT;
+        ALTER TABLE cloud_alert_pushes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
         CREATE INDEX IF NOT EXISTS cloud_alert_pushes_created_idx ON cloud_alert_pushes(created_at DESC);
+        CREATE INDEX IF NOT EXISTS cloud_alert_pushes_signal_idx ON cloud_alert_pushes(signal_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS cloud_alert_pushes_active_slot_idx
+          ON cloud_alert_pushes(match_id,period,slot)
+          WHERE status IN ('sending','accepted','unknown');
       `).then(() => true).catch(error => {
         schemaReady = null;
         console.error("[Cloud Alert] database initialization failed:", error.message);
