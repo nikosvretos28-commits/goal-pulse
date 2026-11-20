@@ -158,6 +158,12 @@ test("Cloud Alert settlement schema, audit chain and append-only guards work on 
     getPool: () => pool, pushEnabled: true,
     async sendPush() { return { sent: 1, failed: 0, configured: true }; }
   });
+  const backoff = await retryRuntime.processCandidate(retryCandidate);
+  assert.equal(backoff.reason, "push_retry_backoff");
+  await pool.query(
+    "UPDATE cloud_alert_pushes SET created_at=NOW()-INTERVAL '6 minutes' WHERE match_id=$1 AND status='failed'",
+    [retryFixture]
+  );
   const retried = await retryRuntime.processCandidate(retryCandidate);
   assert.equal(retried.pushed, true);
   const attempts = await pool.query(
