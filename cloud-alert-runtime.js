@@ -38,6 +38,52 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         ALTER TABLE cloud_alert_signals ADD COLUMN IF NOT EXISTS recent_sot6 INTEGER;
         CREATE INDEX IF NOT EXISTS cloud_alert_signals_created_idx ON cloud_alert_signals(created_at DESC);
         CREATE INDEX IF NOT EXISTS cloud_alert_signals_match_idx ON cloud_alert_signals(match_id, created_at DESC);
+        CREATE OR REPLACE FUNCTION cloud_alert_reject_signal_mutation()
+        RETURNS trigger LANGUAGE plpgsql AS $
+        BEGIN
+          IF TG_OP='DELETE' THEN
+            RAISE EXCEPTION 'Cloud Alert signal snapshots are immutable';
+          END IF;
+          IF ROW(OLD.signal_id,OLD.match_id,OLD.fixture_id,OLD.league,OLD.rule_version,OLD.period,
+                 OLD.trigger_ids,OLD.minute,OLD.home,OLD.away,OLD.home_sot,OLD.away_sot,
+                 OLD.recent_sot6,OLD.recent_sot10,OLD.score_home,OLD.score_away,OLD.payload,OLD.created_at)
+             IS DISTINCT FROM
+             ROW(NEW.signal_id,NEW.match_id,NEW.fixture_id,NEW.league,NEW.rule_version,NEW.period,
+                 NEW.trigger_ids,NEW.minute,NEW.home,NEW.away,NEW.home_sot,NEW.away_sot,
+                 NEW.recent_sot6,NEW.recent_sot10,NEW.score_home,NEW.score_away,NEW.payload,NEW.created_at) THEN
+            RAISE EXCEPTION 'Cloud Alert signal snapshots are immutable';
+          END IF;
+          RETURN NEW;
+        END;
+        $;
+        DO $cloudsignal$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgname='cloud_alert_signal_snapshot_immutable'
+              AND tgrelid='cloud_alert_signals'::regclass
+              AND NOT tgisinternal
+          ) THEN
+            CREATE TRIGGER cloud_alert_signal_snapshot_immutable
+            BEFORE UPDATE OR DELETE ON cloud_alert_signals
+            FOR EACH ROW EXECUTE FUNCTION cloud_alert_reject_signal_mutation();
+          END IF;
+        END;
+        $cloudsignal$;
+        DO $cloudsignal$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgname='cloud_alert_signal_no_truncate'
+              AND tgrelid='cloud_alert_signals'::regclass
+              AND NOT tgisinternal
+          ) THEN
+            CREATE TRIGGER cloud_alert_signal_no_truncate
+            BEFORE TRUNCATE ON cloud_alert_signals
+            FOR EACH STATEMENT EXECUTE FUNCTION cloud_alert_reject_signal_mutation();
+          END IF;
+        END;
+        $cloudsignal$;
         CREATE TABLE IF NOT EXISTS cloud_alert_push_state (
           match_id TEXT NOT NULL,
           period TEXT NOT NULL CHECK (period IN ('1H','2H')),
