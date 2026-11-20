@@ -1,6 +1,6 @@
 # Cloud Alert — isolated implementation plan
 
-Status: branch implementation in progress; not deployed. Runtime delivery is enabled only when this branch is deployed. The PR remains draft and must not be merged until the remaining verification and settlement work is complete.
+Status: branch implementation in progress; live evaluation and push are hard-disabled. The PR remains draft. Do not merge or deploy for activation until the authoritative original v0.2 specification is verified.
 
 ## Confirmed product decisions
 
