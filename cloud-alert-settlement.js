@@ -80,6 +80,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       schemaReady = pool.query(`
         CREATE TABLE IF NOT EXISTS cloud_alert_settlement_events (
           event_id TEXT PRIMARY KEY,
+          event_seq BIGSERIAL UNIQUE,
           signal_id TEXT NOT NULL REFERENCES cloud_alert_signals(signal_id),
           target_period TEXT NOT NULL CHECK (target_period IN ('HT','FT')),
           state TEXT NOT NULL CHECK (state IN ('pending','settled_verified','unverifiable','disputed')),
@@ -101,6 +102,28 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
           ON cloud_alert_settlement_events(signal_id,target_period,created_at DESC);
         CREATE INDEX IF NOT EXISTS cloud_alert_settlement_created_idx
           ON cloud_alert_settlement_events(created_at DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS cloud_alert_settlement_event_seq_idx
+          ON cloud_alert_settlement_events(event_seq);
+        CREATE OR REPLACE FUNCTION cloud_alert_reject_settlement_mutation()
+        RETURNS trigger LANGUAGE plpgsql AS $
+        BEGIN
+          RAISE EXCEPTION 'Cloud Alert settlement audit events are append-only';
+        END;
+        $;
+        DO $
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgname='cloud_alert_settlement_append_only'
+              AND tgrelid='cloud_alert_settlement_events'::regclass
+              AND NOT tgisinternal
+          ) THEN
+            CREATE TRIGGER cloud_alert_settlement_append_only
+            BEFORE UPDATE OR DELETE ON cloud_alert_settlement_events
+            FOR EACH ROW EXECUTE FUNCTION cloud_alert_reject_settlement_mutation();
+          END IF;
+        END;
+        $;
       `).then(() => true).catch(error => {
         schemaReady = null;
         console.error("[Cloud Alert] settlement schema initialization failed:", error.message);
@@ -131,7 +154,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
       const latestResult = await client.query(
         `SELECT event_id,state FROM cloud_alert_settlement_events
          WHERE signal_id=$1 AND target_period=$2
-         ORDER BY created_at DESC,event_id DESC LIMIT 1 FOR UPDATE`,
+         ORDER BY event_seq DESC LIMIT 1 FOR UPDATE`,
         [value.signalId, value.targetPeriod]
       );
       const previous = latestResult.rows[0] || null;
@@ -194,7 +217,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
               s.home_sot,s.away_sot,s.payload AS signal_snapshot
        FROM cloud_alert_settlement_events e
        JOIN cloud_alert_signals s ON s.signal_id=e.signal_id
-       ORDER BY e.created_at DESC,e.event_id DESC LIMIT $1`, [safeLimit]
+       ORDER BY e.event_seq DESC LIMIT $1`, [safeLimit]
     );
     return { persistent: true, events: result.rows };
   }
@@ -219,7 +242,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
        LEFT JOIN LATERAL (
          SELECT * FROM cloud_alert_settlement_events x
          WHERE x.signal_id=t.signal_id AND x.target_period=t.target_period
-         ORDER BY x.created_at DESC,x.event_id DESC LIMIT 1
+         ORDER BY x.event_seq DESC LIMIT 1
        ) e ON TRUE
        ORDER BY s.created_at DESC,t.target_period ASC LIMIT $1`, [safeLimit]
     );
