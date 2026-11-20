@@ -1,6 +1,6 @@
 const http = require("node:http");
 const webpush = require("web-push");
-const { evaluateCloudAlert } = require("./cloud-alert-evaluator");
+const { createCloudAlertScanner } = require("./cloud-alert-scanner");
 const { createCloudAlertRuntime } = require("./cloud-alert-runtime");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -221,7 +221,6 @@ async function authorizePrivateAdminRequest(req) {
 }
 const pushScanSnapshots = new Map();
 // Shadow-only Cloud Alert deduplication; never shares AI/VIP/HI delivery state.
-const cloudAlertShadowSeen = new Set();
 // Each SOT-based AI trigger keeps its own two-sample confirmation state.
 const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
@@ -891,8 +890,11 @@ async function sendPushToSubscribers(payload) {
   return { sent, failed, configured: true };
 }
 const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers });
-// Safety lock: do not evaluate or deliver reconstructed Cloud Alert thresholds before the authoritative v0.2 source is verified.
-const CLOUD_ALERT_LIVE_ENABLED = false;
+// Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
+const cloudAlertScanner = createCloudAlertScanner({
+  baseUrl: "http://127.0.0.1:" + PORT,
+  runtime: cloudAlertRuntime
+});
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
   if (!isAllowedOrigin(origin)) { send(res, 403, { error: "Origin not allowed" }); return false; }
@@ -5228,64 +5230,6 @@ const server = http.createServer(async (req, res) => {
         }
         const sotSignalQualifies = sotTriggerConditions.some(([, qualifies]) => qualifies);
         const confirmedSotSignal = confirmedSotTriggerIds.length > 0;
-        // Independent Cloud Alert delivery state: separate persistence, idempotency,
-        // history and notification cap. Existing AI/VIP/HI calculations below are untouched.
-        try {
-          const cloudStatus = String(statusForEligibility || "").toLowerCase();
-          const cloudAtHalfTime = /\bht\b|half.?time|halftime|ανάπαυλα/.test(cloudStatus);
-          const cloudPeriod = cloudAtHalfTime ? null :
-            (/second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(cloudStatus) ||
-             (Number.isFinite(aiMinute) && aiMinute > 45) ? "2H" :
-             (/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(cloudStatus) ||
-              (Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 45) ? "1H" : null));
-          if (CLOUD_ALERT_LIVE_ENABLED && cloudPeriod) {
-            const cloudSides = current.sotByTeam || [];
-            const cloudSotComplete = cloudSides.length >= 2 &&
-              cloudSides[0]?.value != null && cloudSides[1]?.value != null && Number.isInteger(Number(cloudSides[0].value)) && Number.isInteger(Number(cloudSides[1].value));
-            const cloudR6 = cloudSotComplete ? await cloudAlertRuntime.recordSnapshot({
-              matchId: id, period: cloudPeriod,
-              homeSot: Number(cloudSides[0].value), awaySot: Number(cloudSides[1].value)
-            }) : { value: null, valid: false, reason: "incomplete_sot_sample" };
-            const cloudResult = evaluateCloudAlert({
-              matchId: id,
-              period: cloudPeriod,
-              elapsedMinute: aiMinute,
-              homeSot: cloudSotComplete ? Number(cloudSides[0].value) : null,
-              awaySot: cloudSotComplete ? Number(cloudSides[1].value) : null,
-              recentSot6: cloudR6.valid ? cloudR6.value : null,
-              recentSot10: onTarget10m,
-              dataQuality: match.statsAvailable === true && cloudSotComplete ? "valid" : "unconfirmed_sot_data",
-              confirmed: providerSotIntegrity.confirmed === true,
-              rollingWindowsValid: Number.isFinite(onTarget10m) && !sot10Validation.regression && !cloudR6.reason?.includes("regression")
-            });
-            if (cloudResult.status === "qualified" && cloudSotComplete) {
-              const cloudDelivery = await cloudAlertRuntime.processCandidate({
-                matchId: id,
-                period: cloudPeriod,
-                triggers: cloudResult.triggers,
-                minute: aiMinute,
-                home: match.home,
-                away: match.away,
-                homeSot: Number(cloudSides[0].value),
-                awaySot: Number(cloudSides[1].value),
-                recentSot10: onTarget10m != null && Number.isInteger(Number(onTarget10m)) ? Number(onTarget10m) : null,
-                scoreHome: match.homeScore != null && Number.isInteger(Number(match.homeScore)) ? Number(match.homeScore) : null,
-                scoreAway: match.awayScore != null && Number.isInteger(Number(match.awayScore)) ? Number(match.awayScore) : null,
-                metrics: cloudResult.metrics
-              });
-              if (cloudDelivery.pushed) {
-                console.info("[Cloud Alert] independent push accepted:", JSON.stringify({
-                  eventId: id, period: cloudPeriod, kind: cloudDelivery.kind,
-                  slot: cloudDelivery.slot, sent: cloudDelivery.sent
-                }));
-              } else if (!cloudDelivery.ok) {
-                console.warn("[Cloud Alert] candidate held:", JSON.stringify({ eventId: id, reason: cloudDelivery.reason }));
-              }
-            }
-          }
-        } catch (cloudRuntimeError) {
-          console.warn("[Cloud Alert] live processing failed closed:", String(cloudRuntimeError.message || cloudRuntimeError).slice(0, 180));
-        }
         const qualifiedAiTriggers = buildIndependentAiTriggers({
           eligibleMinute,
           firstHalfSotWindow,
@@ -7784,6 +7728,7 @@ setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Goal Pulse listening on " + PORT);
+  cloudAlertScanner.start();
   // Daily full-coupon Pre-Match preparation at/after 06:00 Greece time.
   // Per-league persisted freshness prevents duplicate season downloads.
   const preMatchDailyTimer = setInterval(() => {
