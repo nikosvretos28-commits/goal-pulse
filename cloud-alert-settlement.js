@@ -107,12 +107,12 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
         CREATE UNIQUE INDEX IF NOT EXISTS cloud_alert_settlement_event_seq_idx
           ON cloud_alert_settlement_events(event_seq);
         CREATE OR REPLACE FUNCTION cloud_alert_reject_settlement_mutation()
-        RETURNS trigger LANGUAGE plpgsql AS $
+        RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
           RAISE EXCEPTION 'Cloud Alert settlement audit events are append-only';
         END;
-        $;
-        DO $
+        $$;
+        DO $$
         BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_trigger
@@ -125,7 +125,7 @@ function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => 
             FOR EACH ROW EXECUTE FUNCTION cloud_alert_reject_settlement_mutation();
           END IF;
         END;
-        $;
+        $$;
       `).then(() => true).catch(error => {
         schemaReady = null;
         console.error("[Cloud Alert] settlement schema initialization failed:", error.message);
