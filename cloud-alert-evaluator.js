@@ -12,7 +12,7 @@ const THRESHOLDS = Object.freeze({
 });
 
 function finiteNonNegative(value) {
-  if (value === null || value === undefined || value === "") return null;
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
@@ -36,11 +36,13 @@ function calculateSotMetrics({ homeSot, awaySot, elapsedMinute }) {
 }
 
 // The A2H SOT90 line is anchored at 32.7 at 55' and 22.5 at 80'.
-// Outside those anchor minutes the nearest endpoint is held; this avoids
-// inventing an extrapolated threshold while allowing evaluation all match.
+// Endpoint behavior outside that interval remains provisional pending the
+// original approved v0.2 wording; this helper is not production-enabled.
 function dualA2HSot90Threshold(elapsedMinute) {
+  if (elapsedMinute === null || elapsedMinute === undefined ||
+      (typeof elapsedMinute === "string" && elapsedMinute.trim() === "")) return null;
   const minute = Number(elapsedMinute);
-  if (!Number.isFinite(minute)) return null;
+  if (!Number.isFinite(minute) || minute < 0) return null;
   if (minute <= 55) return THRESHOLDS.dualA2H.sot90At55;
   if (minute >= 80) return THRESHOLDS.dualA2H.sot90At80;
   const t = (minute - 55) / (80 - 55);
@@ -69,33 +71,33 @@ function evaluateCloudAlert(snapshot) {
   const metrics = calculateSotMetrics(snapshot);
   if (!metrics.valid) return { status: "held", reason: metrics.reason, triggers: [] };
 
+  // Rolling windows are evaluated independently: a missing R6 must not
+  // suppress an R10-only trigger, and a missing R10 must not suppress EARLY.
   const r6 = finiteNonNegative(snapshot.recentSot6);
   const r10 = finiteNonNegative(snapshot.recentSot10);
-  if (r6 == null || r10 == null) {
-    return { status: "held", reason: "rolling_sot_values_missing", triggers: [] };
-  }
-
   const triggers = [];
+
   if (snapshot.period === "1H") {
     const e = THRESHOLDS.early1H;
-    if (metrics.total >= e.total && metrics.home >= e.each && metrics.away >= e.each &&
+    if (r6 != null && metrics.total >= e.total && metrics.home >= e.each && metrics.away >= e.each &&
         metrics.sot90 >= e.sot90 && metrics.balance >= e.balance && r6 >= e.recent6) {
       triggers.push("EARLY_1H");
     }
     const s = THRESHOLDS.sustained1H;
-    if (metrics.total >= s.total && metrics.sot90 >= s.sot90 &&
+    if (r10 != null && metrics.total >= s.total && metrics.sot90 >= s.sot90 &&
         metrics.balance >= s.balance && r10 >= s.recent10) {
       triggers.push("SUSTAINED_1H");
     }
   } else {
     const b = THRESHOLDS.sustainedB2H;
-    if (metrics.total >= b.total && metrics.home >= b.each && metrics.away >= b.each &&
+    if (r10 != null && metrics.total >= b.total && metrics.home >= b.each && metrics.away >= b.each &&
         metrics.sot90 >= b.sot90 && metrics.balance >= b.balance && r10 >= b.recent10) {
       triggers.push("SUSTAINED_B_2H");
     }
     const a = THRESHOLDS.dualA2H;
     const aSot90 = dualA2HSot90Threshold(snapshot.elapsedMinute);
-    if (metrics.total >= a.total && metrics.home >= a.each && metrics.away >= a.each &&
+    if (r10 != null && aSot90 != null && metrics.total >= a.total &&
+        metrics.home >= a.each && metrics.away >= a.each &&
         metrics.sot90 >= aSot90 && r10 >= a.recent10) {
       triggers.push("DUAL_A_2H");
     }
@@ -114,17 +116,32 @@ function evaluateCloudAlert(snapshot) {
   };
 }
 
+function validateHalfState(half) {
+  if (half == null) return { valid: true, sentCount: 0, sentSignalIds: [] };
+  if (typeof half !== "object" || !Number.isInteger(half.sentCount) ||
+      half.sentCount < 0 || half.sentCount > 2 || !Array.isArray(half.sentSignalIds) ||
+      half.sentSignalIds.length !== half.sentCount ||
+      half.sentSignalIds.some(id => id === null || id === undefined || String(id).trim() === "")) {
+    return { valid: false };
+  }
+  const ids = half.sentSignalIds.map(String);
+  if (new Set(ids).size !== ids.length) return { valid: false };
+  return { valid: true, sentCount: half.sentCount, sentSignalIds: ids };
+}
+
 // Per-half delivery policy: one initial push plus one re-alert after a new
 // goal and a genuinely new qualifying signal. Persist state only after a
 // push provider confirms successful delivery.
 function decideCloudAlertPush({ period, signalId, qualifies, goalSinceLastPush, state = {} }) {
   if (!["1H", "2H"].includes(period)) return { send: false, reason: "invalid_period" };
   if (!qualifies) return { send: false, reason: "signal_not_qualified" };
-  if (!signalId) return { send: false, reason: "signal_id_missing" };
+  if (signalId === null || signalId === undefined || String(signalId).trim() === "") {
+    return { send: false, reason: "signal_id_missing" };
+  }
 
-  const half = state[period] || { sentCount: 0, sentSignalIds: [] };
-  const sentIds = Array.isArray(half.sentSignalIds) ? half.sentSignalIds : [];
-  if (sentIds.includes(String(signalId))) return { send: false, reason: "duplicate_signal" };
+  const half = validateHalfState(state[period]);
+  if (!half.valid) return { send: false, reason: "invalid_push_state" };
+  if (half.sentSignalIds.includes(String(signalId))) return { send: false, reason: "duplicate_signal" };
   if (half.sentCount >= 2) return { send: false, reason: "half_push_limit_reached" };
   if (half.sentCount === 0) return { send: true, kind: "initial", reason: "first_push_in_half" };
   if (half.sentCount === 1 && goalSinceLastPush === true) {
@@ -134,23 +151,26 @@ function decideCloudAlertPush({ period, signalId, qualifies, goalSinceLastPush, 
 }
 
 function recordCloudAlertPush({ state = {}, period, signalId }) {
-  if (!["1H", "2H"].includes(period) || !signalId) {
+  if (!["1H", "2H"].includes(period) ||
+      signalId === null || signalId === undefined || String(signalId).trim() === "") {
     throw new TypeError("period and signalId are required");
   }
-  const current = state[period] || { sentCount: 0, sentSignalIds: [] };
-  const currentIds = Array.isArray(current.sentSignalIds) ? current.sentSignalIds : [];
-  if (currentIds.includes(String(signalId))) throw new Error("Duplicate Cloud Alert signal cannot be recorded");
+  const current = validateHalfState(state[period]);
+  const other = validateHalfState(state[period === "1H" ? "2H" : "1H"]);
+  if (!current.valid || !other.valid) throw new TypeError("Invalid Cloud Alert push state");
+  if (current.sentSignalIds.includes(String(signalId))) {
+    throw new Error("Duplicate Cloud Alert signal cannot be recorded");
+  }
   if (current.sentCount >= 2) throw new RangeError("Cloud Alert maximum of two pushes per half exceeded");
-  const next = {
+  const total = current.sentCount + other.sentCount;
+  if (total >= 4) throw new RangeError("Cloud Alert maximum of four pushes per match exceeded");
+  return {
     ...state,
     [period]: {
       sentCount: current.sentCount + 1,
-      sentSignalIds: [...currentIds, String(signalId)]
+      sentSignalIds: [...current.sentSignalIds, String(signalId)]
     }
   };
-  const total = ["1H", "2H"].reduce((sum, half) => sum + (next[half]?.sentCount || 0), 0);
-  if (total > 4) throw new RangeError("Cloud Alert maximum of four pushes per match exceeded");
-  return next;
 }
 
 module.exports = {
