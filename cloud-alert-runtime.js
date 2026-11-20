@@ -1,0 +1,176 @@
+"use strict";
+
+const crypto = require("node:crypto");
+
+function createCloudAlertRuntime({ getPool, sendPush }) {
+  let schemaReady = null;
+
+  async function ensureSchema() {
+    const pool = getPool();
+    if (!pool) return false;
+    if (!schemaReady) {
+      schemaReady = pool.query(`
+        CREATE TABLE IF NOT EXISTS cloud_alert_signals (
+          signal_id TEXT PRIMARY KEY,
+          match_id TEXT NOT NULL,
+          period TEXT NOT NULL CHECK (period IN ('1H','2H')),
+          trigger_ids JSONB NOT NULL,
+          minute INTEGER,
+          home TEXT NOT NULL,
+          away TEXT NOT NULL,
+          home_sot INTEGER NOT NULL,
+          away_sot INTEGER NOT NULL,
+          recent_sot10 INTEGER,
+          score_home INTEGER,
+          score_away INTEGER,
+          status TEXT NOT NULL,
+          payload JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS cloud_alert_signals_created_idx ON cloud_alert_signals(created_at DESC);
+        CREATE INDEX IF NOT EXISTS cloud_alert_signals_match_idx ON cloud_alert_signals(match_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS cloud_alert_push_state (
+          match_id TEXT NOT NULL,
+          period TEXT NOT NULL CHECK (period IN ('1H','2H')),
+          sent_count INTEGER NOT NULL DEFAULT 0 CHECK (sent_count BETWEEN 0 AND 2),
+          last_score_total INTEGER,
+          last_signal_id TEXT,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY(match_id, period)
+        );
+        CREATE TABLE IF NOT EXISTS cloud_alert_pushes (
+          push_id TEXT PRIMARY KEY,
+          match_id TEXT NOT NULL,
+          period TEXT NOT NULL CHECK (period IN ('1H','2H')),
+          slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 2),
+          signal_id TEXT NOT NULL UNIQUE REFERENCES cloud_alert_signals(signal_id),
+          kind TEXT NOT NULL CHECK (kind IN ('initial','re_alert')),
+          status TEXT NOT NULL,
+          payload JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          delivered_at TIMESTAMPTZ,
+          UNIQUE(match_id, period, slot)
+        );
+        CREATE INDEX IF NOT EXISTS cloud_alert_pushes_created_idx ON cloud_alert_pushes(created_at DESC);
+      `).then(() => true).catch(error => {
+        schemaReady = null;
+        console.error("[Cloud Alert] database initialization failed:", error.message);
+        return false;
+      });
+    }
+    return schemaReady;
+  }
+
+  async function processCandidate(candidate) {
+    const pool = getPool();
+    if (!pool || !(await ensureSchema())) return { ok: false, reason: "persistent_database_unavailable" };
+    const {
+      matchId, period, triggers, minute, home, away, homeSot, awaySot,
+      recentSot10, scoreHome, scoreAway, metrics
+    } = candidate || {};
+    if (!matchId || !["1H", "2H"].includes(period) || !Array.isArray(triggers) ||
+        !triggers.length || !Number.isInteger(homeSot) || !Number.isInteger(awaySot)) {
+      return { ok: false, reason: "invalid_candidate" };
+    }
+    const snapshot = {
+      matchId: String(matchId), period, triggers: [...triggers].sort(),
+      minute: Number.isFinite(minute) ? minute : null,
+      home: String(home || "Home"), away: String(away || "Away"),
+      homeSot, awaySot,
+      recentSot10: Number.isInteger(recentSot10) ? recentSot10 : null,
+      scoreHome: Number.isInteger(scoreHome) ? scoreHome : null,
+      scoreAway: Number.isInteger(scoreAway) ? scoreAway : null,
+      metrics: metrics || null
+    };
+    const signalId = crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO cloud_alert_signals
+          (signal_id,match_id,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload)
+         VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,'qualified',$13::jsonb)
+         ON CONFLICT (signal_id) DO NOTHING`,
+        [signalId, snapshot.matchId, period, JSON.stringify(snapshot.triggers), snapshot.minute,
+         snapshot.home, snapshot.away, homeSot, awaySot, snapshot.recentSot10,
+         snapshot.scoreHome, snapshot.scoreAway, JSON.stringify(snapshot)]
+      );
+      await client.query(
+        "INSERT INTO cloud_alert_push_state(match_id,period) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [snapshot.matchId, period]
+      );
+      const stateResult = await client.query(
+        "SELECT sent_count,last_score_total,last_signal_id FROM cloud_alert_push_state WHERE match_id=$1 AND period=$2 FOR UPDATE",
+        [snapshot.matchId, period]
+      );
+      const state = stateResult.rows[0];
+      if (!state) throw new Error("Cloud Alert push state could not be locked");
+      const scoreTotal = snapshot.scoreHome == null || snapshot.scoreAway == null
+        ? null : snapshot.scoreHome + snapshot.scoreAway;
+      let kind = null;
+      if (Number(state.sent_count) === 0) kind = "initial";
+      else if (Number(state.sent_count) === 1 && scoreTotal != null &&
+          state.last_score_total != null && scoreTotal > Number(state.last_score_total) &&
+          state.last_signal_id !== signalId) kind = "re_alert";
+      if (!kind || Number(state.sent_count) >= 2) {
+        await client.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1", [signalId]);
+        await client.query("COMMIT");
+        return { ok: true, pushed: false, reason: Number(state.sent_count) >= 2 ? "half_push_limit_reached" : "re_alert_requires_new_goal" };
+      }
+      const slot = Number(state.sent_count) + 1;
+      const pushId = crypto.createHash("sha256").update(snapshot.matchId + "|" + period + "|" + slot).digest("hex");
+      const payload = {
+        title: "☁️ GOALMATRIX · CLOUD ALERT",
+        body: snapshot.home + " " + (snapshot.scoreHome ?? "—") + "–" +
+          (snapshot.scoreAway ?? "—") + " " + snapshot.away + " · " + period +
+          (snapshot.minute == null ? "" : " · " + snapshot.minute + "′") +
+          " · SOT " + homeSot + "–" + awaySot + " · " + snapshot.triggers.join(", "),
+        tag: "goalmatrix-cloud-" + snapshot.matchId + "-" + period + "-" + slot,
+        url: "/#cloudAlertPanel",
+        cloudAlert: true,
+        eventId: snapshot.matchId,
+        period,
+        triggers: snapshot.triggers
+      };
+      const delivery = await sendPush(payload);
+      if (!delivery || Number(delivery.sent || 0) < 1) {
+        await client.query("UPDATE cloud_alert_signals SET status='awaiting_push_delivery' WHERE signal_id=$1", [signalId]);
+        await client.query("COMMIT");
+        return { ok: true, pushed: false, reason: delivery?.configured ? "no_active_push_subscriber" : "web_push_not_configured" };
+      }
+      await client.query(
+        `INSERT INTO cloud_alert_pushes(push_id,match_id,period,slot,signal_id,kind,status,payload,delivered_at)
+         VALUES($1,$2,$3,$4,$5,$6,'accepted',$7::jsonb,NOW())`,
+        [pushId, snapshot.matchId, period, slot, signalId, kind, JSON.stringify(payload)]
+      );
+      await client.query(
+        `UPDATE cloud_alert_push_state SET sent_count=$3,last_score_total=$4,last_signal_id=$5,updated_at=NOW()
+         WHERE match_id=$1 AND period=$2`,
+        [snapshot.matchId, period, slot, scoreTotal, signalId]
+      );
+      await client.query("UPDATE cloud_alert_signals SET status='push_accepted' WHERE signal_id=$1", [signalId]);
+      await client.query("COMMIT");
+      return { ok: true, pushed: true, kind, slot, sent: delivery.sent, failed: delivery.failed };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async function listHistory(limit = 100) {
+    const pool = getPool();
+    if (!pool || !(await ensureSchema())) return { persistent: false, signals: [], pushes: [] };
+    const safeLimit = Math.max(1, Math.min(250, Number(limit) || 100));
+    const [signals, pushes] = await Promise.all([
+      pool.query("SELECT signal_id,match_id,period,trigger_ids,minute,home,away,home_sot,away_sot,recent_sot10,score_home,score_away,status,payload,created_at FROM cloud_alert_signals ORDER BY created_at DESC LIMIT $1", [safeLimit]),
+      pool.query("SELECT push_id,match_id,period,slot,signal_id,kind,status,payload,created_at,delivered_at FROM cloud_alert_pushes ORDER BY created_at DESC LIMIT $1", [safeLimit])
+    ]);
+    return { persistent: true, signals: signals.rows, pushes: pushes.rows };
+  }
+
+  return { ensureSchema, processCandidate, listHistory };
+}
+
+module.exports = { createCloudAlertRuntime };
