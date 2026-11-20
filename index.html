@@ -2944,12 +2944,12 @@ header {
 <section class="top-ai-alerts" id="cloudAlertPanel" hidden aria-labelledby="cloudAlertTitle">
  <div class="top-ai-alerts-head">
   <div><h2 id="cloudAlertTitle">☁ CLOUD ALERT · LIVE SOT SIGNALS</h2><p>Ανεξάρτητο ιστορικό Cloud Alert και ξεχωριστές ειδοποιήσεις. Μέγιστο 2 push ανά ημίχρονο.</p></div>
-  <span class="pulse-status" id="cloudAlertPushStatus">OFF · WAITING FOR V0.2</span>
+  <span class="pulse-status" id="cloudAlertPushStatus">SHADOW · PUSH LOCKED</span>
  </div>
  <div class="notification-optin-row">
   <button type="button" class="login" id="enableCloudAlertPush" disabled>☁ CLOUD PUSH · ΑΝΕΝΕΡΓΟ</button>
   <button type="button" class="login" id="refreshCloudAlertHistory">↻ ΑΝΑΝΕΩΣΗ</button>
-  <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Η αποστολή παραμένει κλειδωμένη μέχρι να επιβεβαιωθεί το αυθεντικό πρωτόκολλο Cloud Alert v0.2.</span>
+  <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Το Cloud Alert λειτουργεί σε shadow mode. Η αποστολή push παραμένει κλειδωμένη μέχρι ξεχωριστή έγκριση ενεργοποίησης.</span>
  </div>
  <div id="cloudAlertHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση ανεξάρτητου ιστορικού Cloud Alert…</div></div>
  <div class="top-ai-alerts-head"><h3>HT / FT SETTLEMENT · ΙΣΤΟΡΙΚΟ</h3><a class="login" href="/api/cloud-alert/settlements/export.csv">CSV</a></div>
