@@ -49,9 +49,10 @@ test("2H A threshold interpolates between the two approved anchors", () => {
   assert.equal(Math.round(dualA2HSot90Threshold(67.5) * 10) / 10, 27.6);
 });
 
-test("2H A threshold uses endpoint values outside the interpolation anchors", () => {
-  assert.equal(dualA2HSot90Threshold(48), 32.7);
-  assert.equal(dualA2HSot90Threshold(90), 22.5);
+test("DUAL-A fails closed outside its two specified interpolation anchors", () => {
+  for (const minute of [0, 1, 45, 54.999, 80.001, 85, 90, 95, 120]) {
+    assert.equal(dualA2HSot90Threshold(minute), null);
+  }
 });
 
 test("holds when provider integrity or rolling windows are not confirmed", () => {
@@ -151,9 +152,8 @@ test("decision fails closed when the other half push state is malformed", () => 
 });
 
 
-// These boundary tests lock down the CURRENT provisional interpolation/clamp
-// implementation only. They do not establish that this curve is the approved v0.2 rule.
-test("DUAL-A provisional curve is continuous at both anchor boundaries", () => {
+// Boundary tests ensure interpolation is used only where v0.2 defines both anchors.
+test("DUAL-A interpolation is continuous at both anchor boundaries and bounded to them", () => {
   const eps = 0.001;
   const at55 = dualA2HSot90Threshold(55);
   const justAfter55 = dualA2HSot90Threshold(55 + eps);
@@ -165,13 +165,11 @@ test("DUAL-A provisional curve is continuous at both anchor boundaries", () => {
   assert.equal(at80, 22.5);
 });
 
-test("DUAL-A provisional threshold remains clamped on both sides of its anchors", () => {
-  for (const minute of [0, 1, 45, 54, 54.999, 55]) {
-    assert.equal(dualA2HSot90Threshold(minute), 32.7);
-  }
-  for (const minute of [80, 80.001, 85, 90, 95, 120]) {
-    assert.equal(dualA2HSot90Threshold(minute), 22.5);
-  }
+test("DUAL-A is unavailable before 55' and after 80' rather than using invented endpoint clamps", () => {
+  assert.equal(dualA2HSot90Threshold(54.999), null);
+  assert.equal(dualA2HSot90Threshold(55), 32.7);
+  assert.equal(dualA2HSot90Threshold(80), 22.5);
+  assert.equal(dualA2HSot90Threshold(80.001), null);
 });
 
 test("DUAL-A qualifies at the 80-minute anchor with exact SOT, balance and R10", () => {
