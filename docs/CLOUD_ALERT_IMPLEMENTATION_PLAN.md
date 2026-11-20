@@ -1,6 +1,6 @@
 # Cloud Alert — isolated implementation plan
 
-Status: independent Cloud-only shadow scanner is wired on this branch. It runs on its own 60-second schedule, reads the read-only live-metrics endpoint, and records qualified candidates to Cloud Alert's own PostgreSQL history. It never calls the push-delivery method. Live evaluation and push activation remain locked; the PR remains draft.
+Status: independent Cloud-only shadow scanner and HT/FT settlement reconciler are wired on this branch. They run on the Cloud-only 60-second schedule, read the read-only live-metrics and scoreboard endpoints, and write only to Cloud Alert-owned PostgreSQL tables. The scanner never calls push delivery; runtime push activation is explicitly locked. The PR remains draft.
 
 ## Isolation guarantees
 
@@ -44,12 +44,13 @@ Definitions:
 ## Independent scanner behavior
 
 1. Runs independently every 60 seconds after server startup; it does not depend on the AI/VIP/HI push-scan timer or its enable flag.
-2. Requests `/api/live-metrics?scope=cloud-alert` using the current Europe/Athens date. Provider data retrieval is reused, but Cloud Alert rolling-window history is isolated from AI/VIP and HI.
+2. Requests `/api/live-metrics?scope=cloud-alert` and `/api/scoreboard` using the current Europe/Athens date. Provider data retrieval is reused read-only, but Cloud Alert rolling-window history and settlement ledger are isolated from AI/VIP and HI.
 3. Rejects stale/unstamped metric responses, incomplete team SOT, missing stats source, HT, extra time and penalties.
 4. Requires two monotonic SOT observations at least 10 seconds and no more than 90 seconds apart before treating a sample as confirmed.
 5. Uses a measured 9–11.5 minute SOT window for R10 and the Cloud-specific persisted six-minute baseline for R6. Missing windows are not fabricated.
 6. Evaluates the isolated pure evaluator and writes qualifying records only through `recordShadowCandidate`.
-7. Never calls `processCandidate` or `sendPushToSubscribers`. Push delivery remains unavailable by construction in this scanner.
+7. Reconciles only exact fixture-ID matches from the scoreboard into independent HT/FT settlement records. It captures HT only when an explicit halftime state is observed; if the fixture advances to 2H/FT without an HT capture, it records `unverifiable` rather than inferring a score. FT is settled only from a finished fixture with an explicit final score.
+8. Never calls `processCandidate` or `sendPushToSubscribers`; the runtime itself defaults to push-disabled and the server explicitly passes `pushEnabled: false`.
 
 ## Settlement ledger contract
 
