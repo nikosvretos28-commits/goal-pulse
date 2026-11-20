@@ -21,18 +21,25 @@ Status: independent Cloud-only shadow scanner is wired on this branch. It runs o
 - Maximum allowance after a future, separately approved activation: four pushes per match (one initial and one re-alert in each half).
 - A re-alert requires a genuinely new qualifying signal after a new goal; repeated polling must not duplicate a notification.
 
-## Reconstructed v0.2 trigger values — not source-verified
+## Cloud Alert v0.2 trigger rules
 
-The values below are retained as provisional evaluator fixtures from prior conversation context. They are not approved for live activation until checked against the original v0.2 source.
+The four trigger families and numeric conditions below are the recovered v0.2 rules to implement. They are SOT-only: total shots, shots off target and any generic shots field must never be substituted.
 
-| Trigger | Provisional conditions |
+| Trigger | Conditions |
 |---|---|
 | EARLY 1H | Total SOT ≥5; each team ≥2; SOT90 ≥30; balance ≥0.30; R6 ≥1 |
 | SUSTAINED 1H | Total SOT ≥10; SOT90 ≥22; balance ≥0.30; R10 ≥2 |
 | SUSTAINED-B 2H | Total SOT ≥10; each team ≥4; SOT90 ≥12.5; balance ≥0.35; R10 ≥2 |
-| DUAL-A 2H | Each team ≥10; total SOT ≥20; R10 ≥1; SOT90 anchors 32.7 at 55′ and 22.5 at 80′ |
+| DUAL-A 2H | Each team ≥10; total SOT ≥20; R10 ≥1; SOT90 threshold linearly interpolated from 32.7 at 55′ to 22.5 at 80′ |
 
-Recalled definitions: T = combined team SOT; SOT90 = 90 × T / elapsed minute; balance = lower team SOT / total SOT; R6/R10 = SOT accumulated in the respective rolling windows. The exact elapsed-minute convention, event construction, treatment of goal-related SOT and DUAL-A behavior outside 55′–80′ remain unverified. The current interpolation and endpoint clamp are provisional and cannot authorize a live DUAL-A signal.
+Definitions:
+- T = home SOT + away SOT.
+- SOT90 = 90 × T / elapsed match minute.
+- Balance = lower of the two team SOT counts / T (zero when T is zero).
+- R6 and R10 = newly accumulated SOT in the rolling six- and ten-minute windows respectively.
+- There is no general minute cutoff: evaluate throughout both regular halves, including regular-time stoppage time. Exclude extra time and penalty shootouts.
+- DUAL-A is defined by its two anchors and linear interpolation between 55′ and 80′. v0.2 does not define extrapolation or endpoint clamping outside that interval; implementation therefore fails closed outside 55′–80′ rather than inventing a threshold.
+- Missing or unreliable rolling-window data may suppress only the trigger that depends on that window; it must not suppress an independently qualifying trigger with its required window available.
 
 ## Independent scanner behavior
 
@@ -46,7 +53,7 @@ Recalled definitions: T = combined team SOT; SOT90 = 90 × T / elapsed minute; b
 
 ## Remaining blockers before activation
 
-- Verify the original approved v0.2 source, including all thresholds, metric definitions, exact rolling-window semantics, phase boundaries, DUAL-A behavior outside its anchors, goal/SOT handling and re-alert ordering.
+- Verify the exact provider event construction and rolling-window sampling semantics against real fixtures, including goal-related SOT treatment and provider corrections. DUAL-A outside 55′–80′ remains deliberately non-qualifying because v0.2 supplies no extrapolation rule.
 - Validate the independent scanner against real provider fixtures and feed-gap/downward-correction cases.
 - Verify that persisted R6 sampling has adequate continuity and that provider revisions cannot create false deltas.
 - Implement HT/FT settlement, void/disputed/unverifiable handling and a full append-only audit ledger.
