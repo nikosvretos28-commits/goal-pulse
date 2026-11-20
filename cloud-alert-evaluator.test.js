@@ -94,6 +94,36 @@ test("allows four pushes per match: initial plus re-alert in each half", () => {
 });
 
 test("prevents duplicate delivery of the same signal", () => {
-  let state = recordCloudAlertPush({ state: {}, period: "2H", signalId: "same" });
+  const state = recordCloudAlertPush({ state: {}, period: "2H", signalId: "same" });
   assert.equal(decideCloudAlertPush({ period: "2H", signalId: "same", qualifies: true, state }).reason, "duplicate_signal");
+});
+
+test("a missing R10 does not suppress a qualifying EARLY 1H signal", () => {
+  const r = evaluateCloudAlert({ ...base, recentSot10: null });
+  assert.ok(r.triggers.includes("EARLY_1H"));
+  assert.equal(r.recentSot10, null);
+});
+
+test("a missing R6 does not suppress a qualifying SUSTAINED 1H signal", () => {
+  const r = evaluateCloudAlert({
+    ...base, elapsedMinute: 40, homeSot: 6, awaySot: 4, recentSot6: null
+  });
+  assert.ok(r.triggers.includes("SUSTAINED_1H"));
+  assert.equal(r.recentSot6, null);
+});
+
+test("rejects blank rolling values and blank DUAL-A minutes instead of coercing them to zero", () => {
+  assert.equal(calculateSotMetrics({ homeSot: " ", awaySot: 1, elapsedMinute: 20 }).valid, false);
+  assert.equal(dualA2HSot90Threshold(null), null);
+  assert.equal(dualA2HSot90Threshold("  "), null);
+});
+
+test("holds rather than trusting malformed push state", () => {
+  const malformed = { "1H": { sentCount: 0, sentSignalIds: ["unaccounted"] } };
+  assert.equal(decideCloudAlertPush({
+    period: "1H", signalId: "new", qualifies: true, state: malformed
+  }).reason, "invalid_push_state");
+  assert.throws(() => recordCloudAlertPush({
+    state: malformed, period: "1H", signalId: "new"
+  }), /Invalid Cloud Alert push state/);
 });
