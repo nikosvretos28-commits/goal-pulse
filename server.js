@@ -6867,7 +6867,9 @@ const server = http.createServer(async (req, res) => {
                 root.time?.minute ?? root.status?.minute ?? root.status?.elapsed ??
                 event.live_minute ?? event.status?.displayClock ?? scoreboardCompetition.status?.displayClock ?? event.time ?? "";
               matches.push({
-                eventId: String(event.id), home: homeName, away: awayName, statsSource,
+                eventId: String(event.id), home: homeName, away: awayName,
+                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
+                statsSource,
                 minute: liveMinute,
                 homeScore: scoreValue(event.home_score ?? event.homeScore ?? scoreboardHome?.score ?? scoreboardHome?.displayValue),
                 awayScore: scoreValue(event.away_score ?? event.awayScore ?? scoreboardAway?.score ?? scoreboardAway?.displayValue),
@@ -7015,6 +7017,7 @@ const server = http.createServer(async (req, res) => {
               else if (!direct || !Array.isArray(direct.stats) || !direct.stats.length) pitchSportScoreFallbackDiagnostics.noMatch++;
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName,
+                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
                 statsSource: fallbackSupplied ? "PitchAPI+SportScore" : "PitchAPI",
                 minute: event.status?.displayClock || "",
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
@@ -7292,7 +7295,9 @@ const server = http.createServer(async (req, res) => {
               }
             }
             matches.push({
-              eventId: String(event.id), statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
+              eventId: String(event.id),
+              league: String(event.competitions?.[0]?.name || event.leagueName || item.leagueCode || "unknown"),
+              statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
               home: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: event.competitions?.[0]?.competitors?.find(t => t.homeAway === "away")?.team?.displayName || "",
               minute: normalizeLiveMinute(
