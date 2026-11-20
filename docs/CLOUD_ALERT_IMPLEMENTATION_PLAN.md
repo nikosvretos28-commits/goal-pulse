@@ -37,7 +37,7 @@ Recalled definitions: T = combined team SOT; SOT90 = 90 × T / elapsed minute; b
 ## Independent scanner behavior
 
 1. Runs independently every 60 seconds after server startup; it does not depend on the AI/VIP/HI push-scan timer or its enable flag.
-2. Requests `/api/live-metrics` using the current Europe/Athens date. This is a read-only data request; it does not invoke the existing alert evaluator.
+2. Requests `/api/live-metrics?scope=cloud-alert` using the current Europe/Athens date. Provider data retrieval is reused, but Cloud Alert rolling-window history is isolated from AI/VIP and HI.
 3. Rejects stale/unstamped metric responses, incomplete team SOT, missing stats source, HT, extra time and penalties.
 4. Requires two monotonic SOT observations at least 10 seconds and no more than 90 seconds apart before treating a sample as confirmed.
 5. Uses a measured 9–11.5 minute SOT window for R10 and the Cloud-specific persisted six-minute baseline for R6. Missing windows are not fabricated.
