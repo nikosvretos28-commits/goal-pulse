@@ -77,4 +77,4 @@ Definitions:
 
 - No edits to existing AI/VIP/HI protocols or thresholds.
 - No provider-variable changes and no reintroduction of API Sports.
-- No merge, deployment, live Cloud Alert evaluation or push activation in this step.
+- No merge, deployment or push activation in this step. Shadow evaluation is isolated from existing alert histories and protocols.
