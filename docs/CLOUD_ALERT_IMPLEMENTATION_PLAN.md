@@ -1,6 +1,6 @@
 # Cloud Alert — isolated implementation plan
 
-Status: preparation only. This document does not activate alerts or change production.
+Status: branch implementation in progress; not deployed. Runtime delivery is enabled only when this branch is deployed. The PR remains draft and must not be merged until the remaining verification and settlement work is complete.
 
 ## Confirmed product decisions
 
@@ -46,21 +46,25 @@ Recalled metric definitions: T = total SOT; SOT90 = 90 × T / elapsed minute; ba
 - Blank numeric strings are rejected rather than coerced to zero.
 - Malformed per-half push state is rejected rather than trusted.
 - Added DUAL-A boundary regression tests around 55′/80′, just inside/outside the anchors, and a qualifying 80′ sample. These tests validate only the current provisional interpolation/clamp implementation; they do not verify the missing v0.2 source rule.
-- These changes remain isolated to the standalone evaluator and tests. They do not add a live data source, persistence, delivery, or production integration.
+- The evaluator now runs in the live scan's Cloud Alert-only branch and uses a separate PostgreSQL state/history store and Cloud-specific Web Push payload. Existing AI/VIP/HI trigger logic and provider configuration were not intentionally changed.
+- A persistent minute-sampled SOT baseline now calculates R6 only after a real 6–7 minute baseline exists; it never substitutes the 5-minute metric. R10 still comes from the validated live-metrics rolling window.
 
 ## Still required before integration
 
 - Retrieve and verify the authoritative v0.2 source, including exact thresholds, balance, SOT90 time basis, rolling-window semantics, phase boundaries, DUAL-A boundary behavior, goal/SOT handling, and re-alert event ordering.
 - Build verified rolling windows from timestamped snapshots, including gap detection and downward provider corrections.
 - Replace the provisional boolean goal-since-last-push input with auditable goal identity/time ordering and a genuinely new qualifying signal.
-- Add durable, transactional per-match/per-half idempotency. The current pure state helper is not a database concurrency guarantee.
-- Add signal history, settlement, audit events, and endpoints only in a separately reviewed integration stage.
+- Add durable, transactional per-match/per-half idempotency. A separate runtime module and PostgreSQL tables now implement the two-push-per-half cap and idempotent push slots.
+- Add signal history and a dedicated Cloud Alert history endpoint; the page now has its own menu button, push opt-in and history view.
+- Implement HT/FT settlement, void/disputed handling and append-only audit events; these are still outstanding.
 - Define HT/FT settlement, void, disputed, and unverifiable rules from the approved source before implementing them.
 
-Until those items are complete:
-- Keep trigger evaluation disabled.
-- Do not send push notifications.
-- Do not integrate with the production scanner or shared push pipeline.
+Current branch limitations:
+- The Cloud evaluation is presently invoked from the existing scheduled push-scan pass; a truly independent Cloud-only scheduler/scan lifecycle remains outstanding.
+- R6 needs at least six minutes of persisted samples after deployment before EARLY 1H can qualify.
+- The original approved v0.2 source remains unverified; DUAL-A interpolation/clamping and some metric conventions are provisional.
+- The Cloud history page records qualified candidates and accepted pushes, but HT/FT settlement, void/disputed handling and a full append-only audit ledger are not yet implemented.
+- Delivery requires working VAPID keys, a persistent PostgreSQL connection, and at least one active Web Push subscription. A push accepted by the push service is not proof that a device displayed it.
 
 ## Isolated implementation sequence
 
