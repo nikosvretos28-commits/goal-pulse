@@ -6338,8 +6338,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/live-metrics") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
-      // Keep Hi Activity's isolated cache/history scope, but use the same live-state
-      // recognizer and provider metrics collection for AI/VIP and Hi Activity.
+      // Keep Hi Activity and Cloud Alert cache/history scopes isolated while reusing
+      // the read-only live-state recognizer and provider metrics collection.
       const highActivityOnly = url.searchParams.get("scope") === "high-activity";
       const cloudAlertOnly = url.searchParams.get("scope") === "cloud-alert";
       const cachePrefix = cloudAlertOnly ? "cloud-alert-metrics:" : highActivityOnly ? "high-activity-metrics:" : "live-metrics:";
@@ -7646,7 +7646,7 @@ const server = http.createServer(async (req, res) => {
         );
       })();
       const liveMetricsAudit = {
-        scope: highActivityOnly ? "high-activity" : "default",
+        scope: cloudAlertOnly ? "cloud-alert" : highActivityOnly ? "high-activity" : "default",
         competitionCoverage,
 
         totalLiveEvents: liveEvents.length,
