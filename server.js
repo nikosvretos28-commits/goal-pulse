@@ -3582,6 +3582,26 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/cloud-alert/test-push" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    try {
+      // Isolated delivery-only test: never enters Cloud Alert candidate processing,
+      // signal storage, push reservations, settlement, or any alert history.
+      const result = await sendPushToSubscribers({
+        title: "☁️ GOALMATRIX · CLOUD ALERT TEST",
+        body: "Αυτή είναι μόνο δοκιμαστική ειδοποίηση Cloud Alert. Δεν αντιστοιχεί σε πραγματικό αγώνα ή σήμα.",
+        tag: "goalmatrix-cloud-alert-test",
+        url: "/#cloudAlertPanel",
+        cloudAlertTest: true
+      });
+      return send(res, result.configured === false || result.sent < 1 ? 503 : 200, {
+        ok: result.sent > 0, test: true, channel: "cloud-alert", ...result
+      });
+    } catch (error) {
+      return send(res, 503, { ok: false, test: true, channel: "cloud-alert", error: error.message || "Cloud Alert test push failed" });
+    }
+  }
+
   if (url.pathname === "/api/push/test" && req.method === "POST") {
     if (!pushRequestAllowed(req, res)) return;
     try {
