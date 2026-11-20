@@ -45,6 +45,7 @@ Recalled metric definitions: T = total SOT; SOT90 = 90 × T / elapsed minute; ba
 - Rolling-window inputs are checked independently per trigger, so missing R6 does not suppress an otherwise valid R10 trigger and missing R10 does not suppress EARLY 1H.
 - Blank numeric strings are rejected rather than coerced to zero.
 - Malformed per-half push state is rejected rather than trusted.
+- Added DUAL-A boundary regression tests around 55′/80′, just inside/outside the anchors, and a qualifying 80′ sample. These tests validate only the current provisional interpolation/clamp implementation; they do not verify the missing v0.2 source rule.
 - These changes remain isolated to the standalone evaluator and tests. They do not add a live data source, persistence, delivery, or production integration.
 
 ## Still required before integration
