@@ -3631,8 +3631,12 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/cloud-alert/settlements" && req.method === "GET") {
     try {
-      const result = await cloudAlertSettlement.list(url.searchParams.get("limit"));
-      return send(res, result.persistent ? 200 : 503, result);
+      const [result, current] = await Promise.all([
+        cloudAlertSettlement.list(url.searchParams.get("limit")),
+        cloudAlertSettlement.listCurrent(url.searchParams.get("limit"))
+      ]);
+      return send(res, result.persistent && current.persistent ? 200 : 503,
+        { persistent: result.persistent && current.persistent, events: result.events, settlements: current.settlements });
     } catch (error) {
       return send(res, 503, { persistent: false, error: String(error.message || error).slice(0, 180), events: [] });
     }
