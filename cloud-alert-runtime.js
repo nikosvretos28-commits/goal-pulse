@@ -260,9 +260,18 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       }
       const slot = Number(state.sent_count) + 1;
       const attemptsResult = await client.query(
-        "SELECT COUNT(*)::int AS attempts FROM cloud_alert_pushes WHERE match_id=$1 AND period=$2 AND slot=$3",
+        `SELECT COUNT(*)::int AS attempts,
+                MAX(created_at) FILTER (WHERE status='failed') AS last_failed_at
+         FROM cloud_alert_pushes WHERE match_id=$1 AND period=$2 AND slot=$3`,
         [snapshot.matchId, period, slot]
       );
+      const lastFailedAt = attemptsResult.rows[0]?.last_failed_at
+        ? new Date(attemptsResult.rows[0].last_failed_at).getTime() : 0;
+      if (lastFailedAt && Date.now() - lastFailedAt < 5 * 60 * 1000) {
+        await client.query("UPDATE cloud_alert_signals SET status='recorded_no_push' WHERE signal_id=$1 AND status NOT IN ('push_accepted','delivery_unknown')", [signalId]);
+        await client.query("COMMIT");
+        return { ok: true, pushed: false, reason: "push_retry_backoff" };
+      }
       const attemptCount = Number(attemptsResult.rows[0]?.attempts || 0) + 1;
       const pushId = crypto.randomUUID();
       const payload = {
