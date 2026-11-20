@@ -17,11 +17,13 @@ test("Cloud Alert push path is locked by default before touching database or pus
   assert.deepEqual(result, { ok: true, pushed: false, reason: "cloud_alert_activation_locked" });
 });
 
-test("production server explicitly keeps Cloud Alert push activation locked", () => {
+test("production server gates Cloud Alert push behind an explicit environment switch", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const server = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
   const scanner = fs.readFileSync(path.join(__dirname, "cloud-alert-scanner.js"), "utf8");
-  assert.match(server, /createCloudAlertRuntime\(\{[^}]*pushEnabled:\s*false/);
-  assert.doesNotMatch(scanner, /processCandidate\s*\(/);
+  assert.ok(server.includes('CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED === "true"'));
+  assert.ok(server.includes("pushEnabled: CLOUD_ALERT_PUSH_ENABLED"));
+  assert.ok(scanner.includes("runtime.processCandidate(candidate)"));
+  assert.ok(scanner.includes("runtime.recordShadowCandidate(candidate)"));
 });

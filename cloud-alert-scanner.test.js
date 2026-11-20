@@ -95,6 +95,44 @@ test("independent scanner persists shadow candidates but never invokes push deli
   assert.deepEqual(saved[0].triggers, ["EARLY_1H"]);
 });
 
+test("routes confirmed qualified candidates through push delivery only when enabled", async () => {
+  let clock = Date.parse("2026-11-20T07:30:00Z");
+  let pushes = 0;
+  const match = {
+    eventId: "fixture-push-enabled", home: "Home", away: "Away", minute: "15",
+    statusText: "1st Half", statsAvailable: true, statsSource: "ESPN+PitchAPI",
+    homeScore: 0, awayScore: 0,
+    teams: [
+      { homeAway: "home", shotsOnTarget: 3 },
+      { homeAway: "away", shotsOnTarget: 2 }
+    ]
+  };
+  const runtime = {
+    async recordSnapshot() { return { valid: true, value: 1 }; },
+    async recordShadowCandidate() { throw new Error("shadow path must not run when push is enabled"); },
+    async processCandidate(candidate) {
+      pushes++;
+      assert.equal(candidate.matchId, "fixture-push-enabled");
+      return { ok: true, pushed: true, sent: 1, failed: 0 };
+    }
+  };
+  const scanner = createCloudAlertScanner({
+    baseUrl: "http://127.0.0.1:3000", runtime, pushEnabled: true,
+    fetchImpl: async () => ({
+      ok: true,
+      async json() { return { updatedAt: new Date(clock).toISOString(), matches: [match] }; }
+    }),
+    now: () => clock,
+    logger: { info() {}, warn() {} }
+  });
+  await scanner.runOnce();
+  clock += 60_000;
+  const result = await scanner.runOnce();
+  assert.equal(result.mode, "push-enabled");
+  assert.equal(result.delivered, 1);
+  assert.equal(pushes, 1);
+});
+
 test("rejects blank SOT values instead of coercing them to zero", () => {
   const { getTeamSot } = require("./cloud-alert-scanner");
   assert.equal(getTeamSot({ teams: [

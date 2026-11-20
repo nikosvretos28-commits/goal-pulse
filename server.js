@@ -889,13 +889,15 @@ async function sendPushToSubscribers(payload) {
   }));
   return { sent, failed, configured: true };
 }
-const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers, pushEnabled: false });
+const CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED === "true";
+const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers, pushEnabled: CLOUD_ALERT_PUSH_ENABLED });
 const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyticsPool, ensureSignalSchema: () => cloudAlertRuntime.ensureSchema() });
 // Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
 const cloudAlertScanner = createCloudAlertScanner({
   baseUrl: "http://127.0.0.1:" + PORT,
   runtime: cloudAlertRuntime,
-  settlement: cloudAlertSettlement
+  settlement: cloudAlertSettlement,
+  pushEnabled: CLOUD_ALERT_PUSH_ENABLED
 });
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
