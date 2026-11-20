@@ -1,5 +1,6 @@
 const http = require("node:http");
 const webpush = require("web-push");
+const { evaluateCloudAlert } = require("./cloud-alert-evaluator");
 const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
@@ -218,6 +219,8 @@ async function authorizePrivateAdminRequest(req) {
   return { ok: true, body };
 }
 const pushScanSnapshots = new Map();
+// Shadow-only Cloud Alert deduplication; never shares AI/VIP/HI delivery state.
+const cloudAlertShadowSeen = new Set();
 // Each SOT-based AI trigger keeps its own two-sample confirmation state.
 const pushScanSotConfirmations = new Map();
 const pushScanRedCardSince = new Map();
@@ -5212,6 +5215,65 @@ const server = http.createServer(async (req, res) => {
         }
         const sotSignalQualifies = sotTriggerConditions.some(([, qualifies]) => qualifies);
         const confirmedSotSignal = confirmedSotTriggerIds.length > 0;
+        // Cloud Alert v0.2 shadow evaluation: read-only, SOT-only, no database writes,
+        // no alert-history writes, and no Web Push delivery. The existing AI/VIP path
+        // below remains unchanged. R6 is deliberately unavailable until an exact
+        // six-minute baseline exists; it is never approximated with the 5m window.
+        try {
+          const cloudStatus = statusForEligibility;
+          const cloudAtHalfTime = /\\bht\\b|half.?time|halftime|ανάπαυλα/.test(cloudStatus);
+          const cloudPeriod = cloudAtHalfTime ? null :
+            (/second half|2nd half|2ο ημίχρονο|δεύτερο ημίχρονο/.test(cloudStatus) ||
+             (Number.isFinite(aiMinute) && aiMinute > 45) ? "2H" :
+             (/first half|1st half|1ο ημίχρονο|πρώτο ημίχρονο/.test(cloudStatus) ||
+              (Number.isFinite(aiMinute) && aiMinute >= 1 && aiMinute <= 45) ? "1H" : null));
+          if (cloudPeriod) {
+            const cloudSides = current.sotByTeam || [];
+            const cloudSotComplete = cloudSides.length >= 2 &&
+              cloudSides[0].value != null && cloudSides[1].value != null;
+            const cloudResult = evaluateCloudAlert({
+              matchId: id,
+              period: cloudPeriod,
+              elapsedMinute: aiMinute,
+              homeSot: cloudSides[0]?.value,
+              awaySot: cloudSides[1]?.value,
+              recentSot6: null,
+              recentSot10: onTarget10m,
+              dataQuality: match.statsAvailable === true && cloudSotComplete ? "valid" : "unconfirmed_sot_data",
+              confirmed: providerSotIntegrity.confirmed === true,
+              rollingWindowsValid: Number.isFinite(onTarget10m) && !sot10Validation.regression
+            });
+            if (cloudResult.status === "qualified") {
+              for (const trigger of cloudResult.triggers) {
+                const shadowKey = id + ":" + cloudPeriod + ":" + trigger;
+                if (!cloudAlertShadowSeen.has(shadowKey)) {
+                  cloudAlertShadowSeen.add(shadowKey);
+                  if (cloudAlertShadowSeen.size > 2000) {
+                    const oldest = cloudAlertShadowSeen.values().next().value;
+                    cloudAlertShadowSeen.delete(oldest);
+                  }
+                  console.info("[Cloud Alert SHADOW candidate]", JSON.stringify({
+                    eventId: id,
+                    match: String(match.home || "") + " – " + String(match.away || ""),
+                    period: cloudPeriod,
+                    minute: Number.isFinite(aiMinute) ? aiMinute : null,
+                    trigger,
+                    totalSOT: cloudResult.metrics.total,
+                    homeSOT: cloudResult.metrics.home,
+                    awaySOT: cloudResult.metrics.away,
+                    sot90: Number(cloudResult.metrics.sot90.toFixed(2)),
+                    balance: Number(cloudResult.metrics.balance.toFixed(3)),
+                    recentSOT10: cloudResult.recentSot10,
+                    pushSent: false,
+                    mode: "shadow_only"
+                  }));
+                }
+              }
+            }
+          }
+        } catch (cloudShadowError) {
+          console.warn("[Cloud Alert SHADOW] evaluation failed closed:", String(cloudShadowError.message || cloudShadowError).slice(0, 160));
+        }
         const qualifiedAiTriggers = buildIndependentAiTriggers({
           eligibleMinute,
           firstHalfSotWindow,
