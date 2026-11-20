@@ -70,11 +70,12 @@ function gradeSignalSettlement(signalPayload, targetPeriod, scoreHome, scoreAway
   };
 }
 
-function createCloudAlertSettlement({ getPool }) {
+function createCloudAlertSettlement({ getPool, ensureSignalSchema = async () => true }) {
   let schemaReady = null;
   async function ensureSchema() {
     const pool = getPool();
     if (!pool) return false;
+    if (!(await ensureSignalSchema())) return false;
     if (!schemaReady) {
       schemaReady = pool.query(`
         CREATE TABLE IF NOT EXISTS cloud_alert_settlement_events (
