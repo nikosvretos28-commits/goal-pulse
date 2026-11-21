@@ -356,7 +356,8 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         body: snapshot.home + " " + (snapshot.scoreHome ?? "—") + "–" +
           (snapshot.scoreAway ?? "—") + " " + snapshot.away + " · " + period +
           (snapshot.minute == null ? "" : " · " + snapshot.minute + "′") +
-          " · SOT " + homeSot + "–" + awaySot + " · Matrix " + (snapshot.matrixScore ?? "—") + "/100" +\n          " · " + snapshot.league + " · " + snapshot.country,
+          " · SOT " + homeSot + "–" + awaySot + " · Matrix " + (snapshot.matrixScore ?? "—") + "/100" +
+          " · " + snapshot.league + " · " + snapshot.country,
         tag: "goalmatrix-cloud-" + snapshot.matchId + "-" + period + "-" + slot,
         url: "/#cloudAlertPanel",
         cloudAlert: true,
