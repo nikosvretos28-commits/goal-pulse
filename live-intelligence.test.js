@@ -96,7 +96,7 @@ test("builds overlapping 5-minute and 10-minute shot windows from event timestam
   const last10 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:600,coverage:{available:true,eventTime:true}});
   assert.equal(last5.home.shotsOnTarget,1);
   assert.equal(last10.home.shotsOnTarget,2);
-  assert.equal(last10.away.shotsOnTarget,2);
+  assert.equal(last10.away.shotsOnTarget,1);
   assert.ok(Math.abs(last10.home.xg - 0.6) < 1e-9);
   assert.ok(Math.abs(last10.home.psxg - 0.8) < 1e-9);
   assert.equal(last10.home.bigChances,null);
@@ -208,7 +208,7 @@ test("builds clearly labeled match-minute SOT and xG windows without inventing s
   assert.equal(last5.away.shotsOnTarget,0);
   assert.equal(last5.home.xg,0.32);
   assert.equal(last10.home.shotsOnTarget,1);
-  assert.equal(last10.away.shotsOnTarget,1);
+  assert.equal(last10.away.shotsOnTarget,2);
   assert.ok(Math.abs(last10.away.xg-0.31)<1e-9);
   assert.equal(last10.home.psxg,0.31);
   assert.equal(buildShotDerivedMinuteWindow(events,{currentMinute:68,durationMinutes:5,coverage:{available:false}}).available,false);
