@@ -6935,6 +6935,8 @@ const server = http.createServer(async (req, res) => {
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0, unmatchedSportScoreLabels: [] };
       const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
       const pitchApiSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, liveFetched: 0, supplied: 0, skippedRateLimit: 0, errors: 0, noCandidate: 0, ambiguousCandidates: 0, badIdFormat: 0, unmatchedSamples: [] };
+      // Diagnostics only: one compact record per SportScore-path fixture, read at the end of the cycle.
+      const sotFunnelRecords = [];
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const itemIndex = cursor++;
@@ -7108,6 +7110,9 @@ const server = http.createServer(async (req, res) => {
                 { team: homeName, homeAway: "home", shotsOnTarget: readStat("home", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("home", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("home", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("home", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("home", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("home", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("home", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("home", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("home", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("home", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[0] : null), possession: readStat("home", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("home", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) },
                 { team: awayName, homeAway: "away", shotsOnTarget: readStat("away", ["shots_on_target","shots_on_goal","shots_on_target_total","sot","on_target"], true), shotsInBox: readStat("away", ["shots_in_box","shots_inside_box","shots_in_penalty_area","shots_inside_penalty_area","total_shots_inside_box","total_shots_in_box"]), totalShots: readStat("away", ["total_shots","shots_total","shots","shot_attempts","total_shots_for"]), shotsOffTarget: readStat("away", ["shots_off_target","off_target_shots","shots_off_goal","shots_off_target_total"]), shotsOnTargetInsideBox: readStat("away", ["shots_on_target_inside_box","shots_on_target_in_box","shots_on_target_inside_penalty_area","shots_on_target_in_penalty_area","shots_on_target_from_inside_box","on_target_inside_box"]), bigChances: readStat("away", ["big_chances","big_chance","big_chances_created","big_chance_created"]), corners: readStat("away", ["corners","corner","corner_kicks","corner_kick","cornerkicks","cornerkick","won_corners","corners_won","corner_kicks_won","corner_kicks_total","total_corners","corners_total","total_corner_kicks","total_corner_kicks_won"]), attacks: readStat("away", ["attacks","total_attacks","attacks_for","total_attacks_for"]), dangerousAttacks: readStat("away", ["dangerous_attacks","dangerous_attacks_for","dangerous_attacks_created"]), redCards: readStat("away", ["red_cards","red_card","red_cards_total","red_card_total"]) ?? (hasIncidentTimeline ? incidentRedCardCounts[1] : null), possession: readStat("away", ["possession","ball_possession","possession_percentage","possession_pct","ball_possession_percentage"]), xG: readStat("away", ["expected_goals","xg","x_goals","x_goal","xgoals","expected_goals_xg","expected_goals_for","expected_goals_total","expected_goals_scored"]) }
               ];
+              // Diagnostics only: which teams had SOT straight from SportScore, before any fallback.
+              const funnelSs = values.slice(0, 2).map(team => team.shotsOnTarget != null);
+              const funnelEspn = [false, false];
               // Reverse fallback: when SportScore recognizes a live fixture but has no stats,
               // look for the exact same fixture in PitchAPI's free live catalogue.
               // This is fill-only; SOT is read only from explicit SOT fields and is never
@@ -7223,6 +7228,8 @@ const server = http.createServer(async (req, res) => {
                   }));
                 }
               }
+              // Diagnostics only: the fallback above fills nulls only, so SOT present now but not before came from PitchAPI.
+              const funnelPit = values.slice(0, 2).map((team, index) => team.shotsOnTarget != null && !funnelSs[index]);
               // Last-known SOT is carried in a display-only field. It is deliberately
               // not copied into shotsOnTarget, which remains the sole scanner input.
               if (staleDetailForDisplay && staleDetailObservedAt) {
@@ -7291,6 +7298,7 @@ const server = http.createServer(async (req, res) => {
                       };
                       for (const [key, value] of Object.entries(fallback)) {
                         if (key === "shotsOnTarget" && value != null) {
+                          funnelEspn[target.homeAway === "away" ? 1 : 0] = true;
                           const previous = target[key];
                           if (previous != null && Number(previous) !== Number(value)) {
                             console.warn("[GoalMatrix SOT provider disagreement]", JSON.stringify({
@@ -7321,6 +7329,14 @@ const server = http.createServer(async (req, res) => {
               const liveMinute = root.live_minute ?? root.liveMinute ?? root.elapsed ?? root.time?.elapsed ??
                 root.time?.minute ?? root.status?.minute ?? root.status?.elapsed ??
                 event.live_minute ?? event.status?.displayClock ?? scoreboardCompetition.status?.displayClock ?? event.time ?? "";
+              try {
+                sotFunnelRecords.push({
+                  id: String(event.id), home: String(homeName).slice(0, 40), away: String(awayName).slice(0, 40),
+                  league: String(event.leagueName || item.leagueCode || "unknown").slice(0, 40),
+                  ss: funnelSs, pit: funnelPit, espn: funnelEspn.slice(),
+                  fin: values.slice(0, 2).map(team => team.shotsOnTarget != null)
+                });
+              } catch {}
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName,
                 league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
@@ -7797,6 +7813,36 @@ const server = http.createServer(async (req, res) => {
         }
       });
       await Promise.all(workers);
+      // Diagnostics only: per-cycle SOT coverage funnel, built from data already in memory.
+      try {
+        const origin = (record, index) => record.ss[index] ? "SportScore" : record.pit[index] ? "PitchAPI" : record.espn[index] ? "ESPN" : null;
+        const funnel = { total: sotFunnelRecords.length, bothTeamsSot: 0, onlyOneTeam: 0, noSotAnySource: 0,
+          bothFromSingleSource: { SportScore: 0, PitchAPI: 0, ESPN: 0 }, bothFromMixedSources: 0,
+          rawSportScoreBoth: 0, rawEspnBoth: 0, pitchApiSuppliedAnySot: 0 };
+        const missing = [];
+        for (const record of sotFunnelRecords) {
+          const have = record.fin.filter(Boolean).length;
+          if (record.ss[0] && record.ss[1]) funnel.rawSportScoreBoth++;
+          if (record.espn[0] && record.espn[1]) funnel.rawEspnBoth++;
+          if (record.pit[0] || record.pit[1]) funnel.pitchApiSuppliedAnySot++;
+          if (have === 2) {
+            funnel.bothTeamsSot++;
+            const origins = [origin(record, 0), origin(record, 1)];
+            if (origins[0] && origins[0] === origins[1]) funnel.bothFromSingleSource[origins[0]]++;
+            else funnel.bothFromMixedSources++;
+          } else {
+            if (have === 1) funnel.onlyOneTeam++; else funnel.noSotAnySource++;
+            if (missing.length < 40) missing.push({ id: record.id, home: record.home, away: record.away, league: record.league, sot: record.fin.map(Boolean) });
+          }
+        }
+        console.log("[GoalMatrix SOT source funnel]", JSON.stringify({
+          scope: scannerScope, ...funnel,
+          otherPathMatches: Math.max(0, matches.length - sotFunnelRecords.length),
+          missingShown: missing.length, missing
+        }));
+      } catch (funnelError) {
+        console.warn("[GoalMatrix SOT source funnel unavailable]", String(funnelError?.message || funnelError).slice(0, 120));
+      }
       // Resume at the first fixture that could not be fetched. This avoids
       // skipping fixtures after a mid-batch 429 or exhausted local request budget.
       if (work.length) {
