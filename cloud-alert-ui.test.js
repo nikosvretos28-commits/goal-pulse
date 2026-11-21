@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-test("Cloud Alert dashboard script parses and includes settlement history/export UI", () => {
+test("Matrix Alert dashboard script parses and includes its top button, history and settlement export UI", () => {
   const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
   const start = html.indexOf("function cloudAlertEscape");
   const end = html.indexOf("function alertHistoryKey", start);
@@ -17,5 +17,9 @@ test("Cloud Alert dashboard script parses and includes settlement history/export
   assert.match(html, /id="cloudAlertSettlementHistory"/);
   assert.match(html, /\/api\/cloud-alert\/settlements\?limit=100/);
   assert.match(html, /\/api\/cloud-alert\/settlements\/export\.csv/);
-  assert.match(html, /SHADOW · PUSH LOCKED/);
+  assert.match(html, /id="matrixAlertToggle"/);
+  assert.match(html, /🧮 MATRIX ALERT/);
+  assert.match(html, /MATRIX ALERT · LIVE SOT SIGNALS/);
+  assert.match(html, /20 συνολικά SOT πριν από το 70ό λεπτό/);
+  assert.match(html, /ΑΝΑΝΕΩΣΗ MATRIX ALERT/);
 });
