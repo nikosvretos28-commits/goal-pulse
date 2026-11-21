@@ -1,6 +1,6 @@
 "use strict";
 
-const FINISHED = /finished|full.?time|ended|completed|\\bft\\b|shoot.?out|postponed|cancelled|abandoned|ολοκληρώθηκε/i;
+const FINISHED = /finished|full.?time|ended|completed|\bft\b|shoot.?out|postponed|cancelled|abandoned|ολοκληρώθηκε/i;
 
 function validSot(value) {
   if (value === null || value === undefined || value === "") return null;
