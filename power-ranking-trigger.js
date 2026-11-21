@@ -36,7 +36,7 @@ function windowTotal(window, getter, minMinutes, maxMinutes) {
   return values.every(value => value !== null) ? values[0] + values[1] : null;
 }
 
-// Keep this formula byte-for-byte aligned with renderAllLivePowerRanking() in index.html.
+// Existing on-screen ranking and AI 59+ scoring are intentionally unchanged.
 function calculatePowerRankingScore({ teams, trend } = {}) {
   const totalSot = totalForTwoTeams(teams, teamSot);
   const totalXg = totalForTwoTeams(teams, teamXg);
@@ -55,6 +55,38 @@ function calculatePowerRankingScore({ teams, trend } = {}) {
   return Math.max(0, Math.min(100, score));
 }
 
+// Autonomous-only weighted model. The six caps total exactly 100 points.
+// SOT accounts for 65 points; xG 20; non-shot pressure stats only 15.
+function calculateAutonomousPowerRankingScore({ teams, trend } = {}) {
+  const totalSot = totalForTwoTeams(teams, teamSot);
+  const totalXg = totalForTwoTeams(teams, teamXg);
+  const sot5 = windowTotal(trend?.window5m, teamSot, 4.5, 8);
+  const sot10 = windowTotal(trend?.window10m, teamSot, 8, 13);
+  const dangerous10 = windowTotal(trend?.window10m, teamDangerousAttacks, 8, 13);
+  const attacks10 = windowTotal(trend?.window10m, teamAttacks, 8, 13);
+
+  const points = {
+    totalSot: Math.min(30, (totalSot || 0) * 3),
+    sot5m: Math.min(20, (sot5 || 0) * 5),
+    sot10m: Math.min(15, (sot10 || 0) * 3.75),
+    xg: Math.min(20, (totalXg || 0) * 8),
+    dangerousAttacks10m: Math.min(10, (dangerous10 || 0) * (10 / 15)),
+    attacks10m: Math.min(5, (attacks10 || 0) * 0.125)
+  };
+  const score = Math.max(0, Math.min(100,
+    Math.round(Object.values(points).reduce((sum, value) => sum + value, 0))
+  ));
+  return {
+    score,
+    qualified: totalSot !== null && totalSot >= 5 && sot10 !== null && sot10 >= 2,
+    components: {
+      totalSot, sot5m: sot5, sot10m: sot10, totalXg,
+      dangerousAttacks10m: dangerous10, attacks10m: attacks10,
+      points
+    }
+  };
+}
+
 function isPowerRankingMinuteEligible(minute, status = "") {
   if (!Number.isInteger(minute)) return false;
   const period = String(status || "").trim().toLowerCase();
@@ -70,16 +102,15 @@ function isPowerRankingMinuteEligible(minute, status = "") {
 }
 const AUTONOMOUS_POWER_RANKING_THRESHOLD = 65;
 
-function shouldEmitAutonomousPowerRankingAlert({ score, eligible } = {}) {
+function shouldEmitAutonomousPowerRankingAlert({ score, eligible, qualified } = {}) {
   const numericScore = Number(score);
-  // The autonomous trigger depends on the live Power Ranking score and its
-  // minute/period eligibility only. Match scoreboard goals are not a trigger gate.
-  return eligible === true && Number.isFinite(numericScore) &&
-    numericScore > AUTONOMOUS_POWER_RANKING_THRESHOLD;
+  return eligible === true && qualified === true &&
+    Number.isFinite(numericScore) && numericScore > AUTONOMOUS_POWER_RANKING_THRESHOLD;
 }
 
 module.exports = {
   calculatePowerRankingScore,
+  calculateAutonomousPowerRankingScore,
   isPowerRankingMinuteEligible,
   AUTONOMOUS_POWER_RANKING_THRESHOLD,
   shouldEmitAutonomousPowerRankingAlert
