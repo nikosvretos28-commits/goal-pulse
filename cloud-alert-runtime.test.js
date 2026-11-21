@@ -39,7 +39,7 @@ test("production server gates Cloud Alert push behind an explicit environment sw
   const path = require("node:path");
   const server = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
   const scanner = fs.readFileSync(path.join(__dirname, "cloud-alert-scanner.js"), "utf8");
-  assert.ok(server.includes('CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED === "true"'));
+  assert.ok(server.includes('CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED !== "false"'));
   assert.ok(server.includes("pushEnabled: CLOUD_ALERT_PUSH_ENABLED"));
   assert.ok(scanner.includes("runtime.processCandidate(candidate)"));
   assert.ok(scanner.includes("runtime.recordShadowCandidate(candidate)"));

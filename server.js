@@ -1080,10 +1080,10 @@ async function sendPushToSubscribers(payload) {
   }));
   return { sent, failed, configured: true };
 }
-const CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED === "true";
+const CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED !== "false";
 const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers, pushEnabled: CLOUD_ALERT_PUSH_ENABLED });
 const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyticsPool, ensureSignalSchema: () => cloudAlertRuntime.ensureSchema() });
-// Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
+// Separate Matrix Alert scheduler; it consumes read-only live metrics and sends its own pushes.
 const cloudAlertScanner = createCloudAlertScanner({
   baseUrl: "http://127.0.0.1:" + PORT,
   runtime: cloudAlertRuntime,
@@ -7418,7 +7418,8 @@ const server = http.createServer(async (req, res) => {
               } catch {}
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName,
-                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
+                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueName || item.leagueCode || "unknown"),
+                country: String(event.country?.name || event.competitions?.[0]?.country?.name || item.countryName || item.country || ({eng:"England",esp:"Spain",ita:"Italy",ger:"Germany",fra:"France",por:"Portugal",ned:"Netherlands",sco:"Scotland",gre:"Greece",tur:"Turkey",bra:"Brazil",arg:"Argentina",usa:"United States",mex:"Mexico",aus:"Australia",bel:"Belgium",aut:"Austria",sui:"Switzerland",den:"Denmark",nor:"Norway",swe:"Sweden",pol:"Poland",jpn:"Japan",kor:"South Korea",sau:"Saudi Arabia",uefa:"Europe",fifa:"International",conmebol:"South America",concacaf:"North America",caf:"Africa",afc:"Asia"}[String(item.leagueCode || "").split(".")[0]] || "Country unavailable")),
                 statsSource,
                 minute: liveMinute,
                 homeScore: scoreValue(event.home_score ?? event.homeScore ?? scoreboardHome?.score ?? scoreboardHome?.displayValue),
@@ -7866,7 +7867,8 @@ const server = http.createServer(async (req, res) => {
             );
             matches.push({
               eventId: String(event.id),
-              league: String(event.competitions?.[0]?.name || event.leagueName || item.leagueCode || "unknown"),
+              league: String(event.competitions?.[0]?.name || event.leagueName || item.leagueName || item.leagueCode || "unknown"),
+              country: String(event.country?.name || event.competitions?.[0]?.country?.name || item.countryName || item.country || "Country unavailable"),
               statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
               home: eventCompetitors.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: eventCompetitors.find(t => t.homeAway === "away")?.team?.displayName || "",
