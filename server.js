@@ -30,7 +30,7 @@ const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
 const { addRollingTrends } = require("./rolling-trend-history");
-const { buildLiveIntelligenceAnalysis } = require("./live-intelligence");
+const { buildLiveIntelligenceAnalysis, buildShotDerivedMinuteWindow } = require("./live-intelligence");
 const { createLiveIntelligenceRuntime } = require("./live-intelligence-runtime");
 const { createSharedLiveMetricsCoordinator } = require("./shared-live-metrics-coordinator");
 let Pool = null;
@@ -7623,6 +7623,7 @@ const server = http.createServer(async (req, res) => {
                   event.status?.type?.shortDetail ?? event.status_text ?? event.statusText ?? "",
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
                 liveIntelligenceShotEvents,
+                liveIntelligenceShotCoverage: Boolean(pitchShotsData && Array.isArray(pitchShotsData.periods)),
                 liveIntelligenceShotTotals,
                 teams: values
               });
@@ -8414,10 +8415,37 @@ const server = http.createServer(async (req, res) => {
           unavailableWindow.home[metric] = { available: false, value: null, source: null };
           unavailableWindow.away[metric] = { available: false, value: null, source: null };
         }
+        const minuteMatch = String(match.minute ?? "").match(/^(\\d+)(?:\\+(\\d+))?$/);
+        const currentMatchMinute = minuteMatch
+          ? Number(minuteMatch[1]) + Number(minuteMatch[2] || 0)
+          : Number(match.minute);
+        const shotCoverage = match.liveIntelligenceShotCoverage === true;
+        const shotEvents = Array.isArray(match.liveIntelligenceShotEvents) ? match.liveIntelligenceShotEvents : [];
+        const makeMinuteWindow = durationMinutes => {
+          const derived = buildShotDerivedMinuteWindow(shotEvents, {
+            currentMinute: currentMatchMinute,
+            durationMinutes,
+            coverage: { available: shotCoverage }
+          });
+          const window = { home: { ...unavailableWindow.home }, away: { ...unavailableWindow.away } };
+          for (const side of ["home", "away"]) {
+            for (const metric of ["shotsOnTarget", "xg", "psxg"]) {
+              const value = derived[side][metric];
+              window[side][metric] = {
+                available: derived.available && value !== null,
+                value: derived.available ? value : null,
+                source: derived.available ? "PitchAPI /shots (match-minute precision)" : "PitchAPI /shots"
+              };
+            }
+          }
+          return window;
+        };
+        const last5Window = makeMinuteWindow(5);
+        const last10Window = makeMinuteWindow(10);
         const analysis = buildLiveIntelligenceAnalysis({
-          source,
+          source: source || (shotCoverage ? "PitchAPI /shots" : null),
           generatedAt: updatedAt,
-          windows: { last5: unavailableWindow, last10: unavailableWindow },
+          windows: { last5: last5Window, last10: last10Window },
           totals: { home: homeSnapshot, away: awaySnapshot },
           gameState: {
             score: { home: match.homeScore, away: match.awayScore },
@@ -8445,7 +8473,7 @@ const server = http.createServer(async (req, res) => {
         protocol: "GOALMATRIX LIVE INTELLIGENCE",
         independent: true,
         generatedAt: payload.updatedAt || new Date().toISOString(),
-        windowPolicy: "last-5 and last-10 remain unavailable until true event-time provider data is verified",
+        windowPolicy: "PitchAPI shot windows use provider match-minute precision; they are explicitly not second-precision. Box-entry pressure remains unavailable without verified rolling box-entry data.",
         matches
       });
     }
