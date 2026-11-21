@@ -1080,10 +1080,10 @@ async function sendPushToSubscribers(payload) {
   }));
   return { sent, failed, configured: true };
 }
-const CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED === "true";
+const CLOUD_ALERT_PUSH_ENABLED = process.env.CLOUD_ALERT_PUSH_ENABLED !== "false";
 const cloudAlertRuntime = createCloudAlertRuntime({ getPool: () => analyticsPool, sendPush: sendPushToSubscribers, pushEnabled: CLOUD_ALERT_PUSH_ENABLED });
 const cloudAlertSettlement = createCloudAlertSettlement({ getPool: () => analyticsPool, ensureSignalSchema: () => cloudAlertRuntime.ensureSchema() });
-// Separate Cloud-only scheduler; it consumes read-only live metrics and records shadow candidates only.
+// Separate Matrix Alert scheduler; it consumes read-only live metrics and sends its own pushes.
 const cloudAlertScanner = createCloudAlertScanner({
   baseUrl: "http://127.0.0.1:" + PORT,
   runtime: cloudAlertRuntime,
