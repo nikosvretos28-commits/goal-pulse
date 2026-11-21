@@ -97,8 +97,8 @@ test("builds overlapping 5-minute and 10-minute shot windows from event timestam
   assert.equal(last5.home.shotsOnTarget,1);
   assert.equal(last10.home.shotsOnTarget,2);
   assert.equal(last10.away.shotsOnTarget,1);
-  assert.equal(last10.home.xg,0.6);
-  assert.equal(last10.home.psxg,0.8);
+  assert.ok(Math.abs(last10.home.xg - 0.6) < 1e-9);
+  assert.ok(Math.abs(last10.home.psxg - 0.8) < 1e-9);
   assert.equal(last10.home.bigChances,null);
 });
 
