@@ -177,7 +177,8 @@ test("minute-resolution PitchAPI events are never misread as second-precision ro
   const events = normalizePitchApiShotEvents([{ period:"all", shots:[
     {team_id:"h",is_on_target:true,minute:68,expected_goals:0.2,expected_goals_on_target:0.3}
   ]}],{homeTeamId:"h",awayTeamId:"a"});
-  const window = buildShotDerivedWindow(events,{nowSeconds:68*60,durationSeconds:300,coverage:{available:true,eventTime:true}});
-  assert.equal(window.home.shotsOnTarget,0);
+  const window = buildShotDerivedWindow(events,{nowSeconds:68*60,durationSeconds:300,coverage:{available:true,eventTime:false}});
+  assert.equal(window.available,false);
+  assert.equal(window.home.shotsOnTarget,null);
   assert.equal(window.home.xg,null);
 });
