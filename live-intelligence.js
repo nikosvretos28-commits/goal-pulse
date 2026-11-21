@@ -50,6 +50,15 @@ function compareMetric(home, away) {
   return { status: "available", leader: difference > 0 ? "home" : difference < 0 ? "away" : "level", home: home.value, away: away.value, difference };
 }
 
+function deriveMomentum(comparisons) {
+  const signals = ["boxEntries", "shotsOnTarget", "xg"].map(metric => comparisons[metric]);
+  if (signals.some(signal => signal.status !== "available")) return { status: "unavailable", leader: null, label: "Αναμένεται ενημέρωση" };
+  const leaders = signals.map(signal => signal.leader);
+  if (leaders.every(leader => leader === "home")) return { status: "available", leader: "home", label: "Επιθετικό πάνω χέρι: γηπεδούχοι" };
+  if (leaders.every(leader => leader === "away")) return { status: "available", leader: "away", label: "Επιθετικό πάνω χέρι: φιλοξενούμενοι" };
+  return { status: "neutral", leader: null, label: "Ουδέτερη εικόνα — οι δείκτες διαφωνούν ή είναι ισόπαλοι" };
+}
+
 function summarizeWindow(window, source) {
   const teams = {
     home: readTeamWindow(window?.home, source),
@@ -57,10 +66,10 @@ function summarizeWindow(window, source) {
   };
   const comparisons = {};
   for (const metric of METRICS) comparisons[metric] = compareMetric(teams.home[metric], teams.away[metric]);
-  const xgDifference = comparisons.xg.status === "available" ? comparisons.xg.difference : null;
+  const xgDifference = comparisons.xg.status === "available" ? comparisons.xg.difference : null;\n  const momentum = deriveMomentum(comparisons);
   const matchSot = teams.home.shotsOnTarget.status === "available" && teams.away.shotsOnTarget.status === "available"
     ? teams.home.shotsOnTarget.value + teams.away.shotsOnTarget.value : null;
-  return { teams, comparisons, xgDifference, matchSot };
+  return { teams, comparisons, xgDifference, matchSot, momentum };
 }
 
 function classifyPressure(last5, last10) {
@@ -181,4 +190,4 @@ function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, co
   };
 }
 
-module.exports = { METRICS, readMetric, compareMetric, buildShotDerivedWindow, buildLiveIntelligenceAnalysis, describeGameStateChanges };
+module.exports = { METRICS, readMetric, compareMetric, deriveMomentum, buildShotDerivedWindow, buildLiveIntelligenceAnalysis, describeGameStateChanges };
