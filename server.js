@@ -7418,7 +7418,7 @@ const server = http.createServer(async (req, res) => {
               } catch {}
               matches.push({
                 eventId: String(event.id), home: homeName, away: awayName,
-                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueCode || "unknown"),
+                league: String(event.leagueName || event.competitions?.[0]?.name || item.leagueName || item.leagueCode || "unknown"),\n                country: String(event.country?.name || event.competitions?.[0]?.country?.name || item.countryName || item.country || "Country unavailable"),
                 statsSource,
                 minute: liveMinute,
                 homeScore: scoreValue(event.home_score ?? event.homeScore ?? scoreboardHome?.score ?? scoreboardHome?.displayValue),
@@ -7866,7 +7866,7 @@ const server = http.createServer(async (req, res) => {
             );
             matches.push({
               eventId: String(event.id),
-              league: String(event.competitions?.[0]?.name || event.leagueName || item.leagueCode || "unknown"),
+              league: String(event.competitions?.[0]?.name || event.leagueName || item.leagueName || item.leagueCode || "unknown"),\n              country: String(event.country?.name || event.competitions?.[0]?.country?.name || item.countryName || item.country || "Country unavailable"),
               statsSource: (pitchApiSupplemented ? "ESPN+PitchAPI" : "ESPN") + (values.some(v => ["shotsOnTarget","totalShots","shotsOffTarget","dangerousAttacks","shotsInBox","bigChances","corners"].some(key => v[key] != null)) && !pitchApiSupplemented ? "+SportScore" : ""),
               home: eventCompetitors.find(t => t.homeAway === "home")?.team?.displayName || "",
               away: eventCompetitors.find(t => t.homeAway === "away")?.team?.displayName || "",
