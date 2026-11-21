@@ -18,6 +18,7 @@ const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterFor
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { evaluateGptGoalIntelligence } = require("./gpt-goal-intelligence");
+const { createPreScanTracker } = require("./pre-scan-intelligence");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
 const { validateTriggerAudit, buildTriggerAuditReversal } = require("./trigger-activation-audit");
@@ -240,6 +241,152 @@ const pushScanPressureHunterAlerts = new Set();
 const pushScanGptGoalSnapshots = new Map();
 const pushScanGptGoalPending = new Map();
 const pushScanGptGoalLastAlert = new Map();
+const preScanTracker = createPreScanTracker({ maxAgeMs: 36 * 60 * 60 * 1000, maxMatches: 5000 });
+const preScanHydratedEvents = new Set();
+const preScanCandidateCache = new Map();
+let preScanDbInit = null;
+async function ensurePreScanDb() {
+  if (!analyticsPool) return false;
+  if (!preScanDbInit) preScanDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS pre_scan_live_matches (
+      event_id TEXT PRIMARY KEY,
+      home TEXT NOT NULL DEFAULT '',
+      away TEXT NOT NULL DEFAULT '',
+      league TEXT NOT NULL DEFAULT '',
+      first_seen_at TIMESTAMPTZ NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      observation_count INTEGER NOT NULL DEFAULT 0,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS pre_scan_live_matches_last_seen_idx
+      ON pre_scan_live_matches(last_seen_at DESC);
+    CREATE TABLE IF NOT EXISTS pre_scan_candidates (
+      event_id TEXT PRIMARY KEY, league_code TEXT NOT NULL DEFAULT '',
+      home TEXT NOT NULL, away TEXT NOT NULL, home_key TEXT NOT NULL, away_key TEXT NOT NULL,
+      kickoff_at TIMESTAMPTZ NOT NULL, candidate_score NUMERIC NOT NULL DEFAULT 0,
+      payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS pre_scan_candidates_matchup_idx ON pre_scan_candidates(home_key,away_key,kickoff_at DESC);
+    CREATE INDEX IF NOT EXISTS pre_scan_candidates_kickoff_idx ON pre_scan_candidates(kickoff_at);
+  `).then(() => true).catch(error => {
+    preScanDbInit = null;
+    console.warn("[Pre-Scan] persistent history unavailable:", error.message);
+    return false;
+  });
+  return preScanDbInit;
+}
+async function findPreScanCandidate(match) {
+  const homeKey = preMatchNormalizeTeam(match?.home || match?.homeTeam || "");
+  const awayKey = preMatchNormalizeTeam(match?.away || match?.awayTeam || "");
+  if (!homeKey || !awayKey) return null;
+  const key = homeKey + "||" + awayKey;
+  const cachedCandidate = preScanCandidateCache.get(key);
+  if (cachedCandidate && Date.parse(cachedCandidate.kickoffAt || "") >= Date.now() - 36 * 60 * 60 * 1000) return cachedCandidate;
+  if (cachedCandidate) preScanCandidateCache.delete(key);
+  if (!await ensurePreScanDb()) return null;
+  try {
+    const result = await analyticsPool.query("SELECT payload FROM pre_scan_candidates WHERE home_key=$1 AND away_key=$2 AND kickoff_at >= NOW() - make_interval(hours => 36) AND kickoff_at <= NOW() + make_interval(hours => 36) ORDER BY kickoff_at DESC LIMIT 1", [homeKey, awayKey]);
+    const candidate = result.rows?.[0]?.payload || null;
+    if (candidate) preScanCandidateCache.set(key, candidate);
+    return candidate;
+  } catch (error) { console.warn("[Pre-Scan] candidate context lookup failed:", error.message); return null; }
+}
+async function collectPreScanCandidates(events) {
+  const now = Date.now(), candidates = [];
+  for (const event of Array.isArray(events) ? events : []) {
+    const kickoffAt = Date.parse(event?.date || "");
+    if (!event?.id || !Number.isFinite(kickoffAt) || kickoffAt <= now) continue;
+    const competition = Array.isArray(event.competitions) ? event.competitions[0] : null;
+    const status = competition?.status?.type || event.status?.type || {};
+    if (status.completed === true || /post|final|finished|cancelled|abandoned/i.test(String(status.state || status.name || ""))) continue;
+    const competitors = Array.isArray(competition?.competitors) ? competition.competitors : [];
+    const home = competitors.find(side => String(side.homeAway || "").toLowerCase() === "home") || competitors[0];
+    const away = competitors.find(side => String(side.homeAway || "").toLowerCase() === "away") || competitors.find(side => side !== home);
+    const homeName = String(home?.team?.displayName || home?.team?.name || "");
+    const awayName = String(away?.team?.displayName || away?.team?.name || "");
+    const leagueCode = String(event.__goalPulseLeagueCode || "");
+    if (!homeName || !awayName || !leagueCode) continue;
+    const [homeProfile, awayProfile] = await Promise.all([getPreMatchSeasonProfile(leagueCode, homeName), getPreMatchSeasonProfile(leagueCode, awayName)]);
+    const matchup = buildPreMatchMatchupContext(homeProfile, awayProfile, homeName, awayName);
+    const ranking = scorePreMatchMatchupContext(matchup);
+    const candidate = {eventId:String(event.id),leagueCode,league:String(competition?.name || ""),home:homeName,away:awayName,
+      kickoffAt:new Date(kickoffAt).toISOString(),season:matchup?.season || null,score:ranking.score,reasons:ranking.reasons,
+      sample:{home:Number(homeProfile?.matches || 0),away:Number(awayProfile?.matches || 0)},context:matchup,
+      source:"ESPN pre-match fixture scan",scannedAt:new Date(now).toISOString()};
+    const homeKey = preMatchNormalizeTeam(homeName), awayKey = preMatchNormalizeTeam(awayName);
+    preScanCandidateCache.set(homeKey + "||" + awayKey, candidate);
+    candidates.push({eventId:String(event.id),leagueCode,home:homeName,away:awayName,homeKey,awayKey,kickoffAt,score:ranking.score,payload:candidate});
+  }
+  let persisted = false;
+  if (candidates.length && await ensurePreScanDb()) {
+    for (const item of candidates) await analyticsPool.query(
+      "INSERT INTO pre_scan_candidates (event_id,league_code,home,away,home_key,away_key,kickoff_at,candidate_score,payload,updated_at) VALUES ($1,$2,$3,$4,$5,$6,to_timestamp($7/1000.0),$8,$9::jsonb,NOW()) ON CONFLICT(event_id) DO UPDATE SET league_code=EXCLUDED.league_code,home=EXCLUDED.home,away=EXCLUDED.away,home_key=EXCLUDED.home_key,away_key=EXCLUDED.away_key,kickoff_at=EXCLUDED.kickoff_at,candidate_score=EXCLUDED.candidate_score,payload=EXCLUDED.payload,updated_at=NOW()",
+      [item.eventId,item.leagueCode,item.home,item.away,item.homeKey,item.awayKey,item.kickoffAt,item.score,JSON.stringify(item.payload)]
+    );
+    persisted = true;
+  }
+  console.info("[Pre-Scan] upcoming fixture discovery completed:", JSON.stringify({scanned:Array.isArray(events)?events.length:0,candidates:candidates.length,persisted}));
+  return {scanned:Array.isArray(events)?events.length:0,candidates:candidates.length,persisted};
+}
+async function capturePreScanObservation({ eventId, match, current, now }) {
+  const id = String(eventId || "");
+  if (!id || !current || !Array.isArray(current.sotByTeam)) return null;
+  if (!preScanHydratedEvents.has(id)) {
+    const dbReady = await ensurePreScanDb();
+    if (dbReady) {
+      try {
+        const saved = await analyticsPool.query(
+          "SELECT payload FROM pre_scan_live_matches WHERE event_id=$1",
+          [id]
+        );
+        if (saved.rows?.[0]?.payload) preScanTracker.restore(id, saved.rows[0].payload);
+        preScanHydratedEvents.add(id);
+      } catch (error) {
+        console.warn("[Pre-Scan] history restore failed; will retry next scan:", error.message);
+      }
+    } else if (!analyticsPool) {
+      preScanHydratedEvents.add(id);
+    }
+  }
+  const context = preScanTracker.observe({
+    eventId: id, at: now, minute: current.minute,
+    status: match.statusText || match.status || "",
+    home: match.home || match.homeTeam || "",
+    away: match.away || match.awayTeam || "",
+    league: match.league || match.competition || "",
+    teams: current.sotByTeam.map(side => ({ team: side.team, shotsOnTarget: side.value }))
+  });
+  if (!context) return null;
+  const candidate = await findPreScanCandidate(match);
+  if (candidate) context.preMatchCandidate = {eventId:candidate.eventId,leagueCode:candidate.leagueCode,kickoffAt:candidate.kickoffAt,season:candidate.season,score:candidate.score,reasons:candidate.reasons,sample:candidate.sample,matchup:candidate.context};
+  const state = preScanTracker.getState(id);
+  if (await ensurePreScanDb()) {
+    try {
+      await analyticsPool.query(
+        `INSERT INTO pre_scan_live_matches
+           (event_id,home,away,league,first_seen_at,last_seen_at,observation_count,payload,updated_at)
+         VALUES ($1,$2,$3,$4,to_timestamp($5/1000.0),to_timestamp($6/1000.0),$7,$8::jsonb,NOW())
+         ON CONFLICT(event_id) DO UPDATE SET
+           home=EXCLUDED.home,away=EXCLUDED.away,league=EXCLUDED.league,
+           last_seen_at=EXCLUDED.last_seen_at,observation_count=EXCLUDED.observation_count,
+           payload=EXCLUDED.payload,updated_at=NOW()`,
+        [id, state.home, state.away, state.league, state.firstSeenAt, state.lastSeenAt,
+          state.observations.length, JSON.stringify(state)]
+      );
+    } catch (error) {
+      console.warn("[Pre-Scan] live observation persistence failed:", error.message);
+    }
+  }
+  if (context.observationCount === 1 || context.observationCount % 10 === 0) {
+    console.info("[Pre-Scan] live match tracking:", JSON.stringify({
+      eventId: id, minute: context.currentMinute, observations: context.observationCount,
+      trackedMinutes: context.trackedMinutes, deltaSot: context.deltaSot
+    }));
+  }
+  return context;
+}
+
 // Hunter-only 16-minute rolling snapshot buffer; never shared with other triggers.
 const pushScanHunterSnapshots = new Map();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
@@ -1985,6 +2132,7 @@ async function runScheduledPreMatchCollection() {
       (feed.events || []).map(event => ({ ...event, __goalPulseLeagueCode: feed.code || "" }))
     );
     const result = await schedulePreMatchSeasonCollection(events);
+    const preScanCandidates = await collectPreScanCandidates(events);
     preMatchDailyScanDate = date;
     preMatchDailyRetryAt = 0;
     preMatchScanState.status = "complete";
@@ -1999,6 +2147,7 @@ async function runScheduledPreMatchCollection() {
       supportedLeagues: [...new Set(events.map(event => event.__goalPulseLeagueCode).filter(isPreMatchLeagueCode))].length,
       attempted: result.attempted, skipped: result.skipped,
       successful: result.results.filter(item => item.ok).length,
+      preScanCandidates: preScanCandidates.candidates, preScanCandidatesPersisted: preScanCandidates.persisted,
       failed: result.results.filter(item => !item.ok).length
     }));
     return result;
@@ -3484,6 +3633,36 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/pre-scan/status" && req.method === "GET") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    try {
+      const persistent = await ensurePreScanDb();
+      let database = { matches: 0, latestSeenAt: null };
+      if (persistent) {
+        const result = await analyticsPool.query(
+          "SELECT COUNT(*)::int AS matches, MAX(last_seen_at) AS latest_seen_at FROM pre_scan_live_matches"
+        );
+        const candidateResult = await analyticsPool.query("SELECT COUNT(*)::int AS candidates FROM pre_scan_candidates WHERE kickoff_at >= NOW() - make_interval(hours => 36)");
+        database = {
+          matches: Number(result.rows?.[0]?.matches || 0),
+          latestSeenAt: result.rows?.[0]?.latest_seen_at || null,
+          upcomingCandidates: Number(candidateResult.rows?.[0]?.candidates || 0)
+        };
+      }
+      return send(res, 200, {
+        ok: true,
+        active: true,
+        source: "live scanner exact cumulative SOT",
+        trackedInMemory: preScanTracker.size(),
+        persistent,
+        database
+      });
+    } catch (error) {
+      console.warn("[Pre-Scan] status request failed:", error.message);
+      return send(res, 503, { ok: false, active: false, error: "Pre-Scan status unavailable" });
+    }
+  }
+
   if (url.pathname === "/api/pre-match/scan" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     try {
@@ -4723,6 +4902,7 @@ const server = http.createServer(async (req, res) => {
           bothTeamsXGQualified
         };
         const id = String(match.eventId);
+        const preScanContext = await capturePreScanObservation({ eventId: id, match, current, now });
         // Keep a rolling five-minute window so activity spread across scanner cycles
         // is measured together, instead of comparing only with the immediately prior scan.
         const snapshots = pushScanSnapshots.get(id) || [];
@@ -4970,7 +5150,8 @@ const server = http.createServer(async (req, res) => {
         const gptEvaluation = evaluateGptGoalIntelligence({
           minute: current.minute, status: statusForEligibility, teams: gptTeamRows,
           window5m: gptWindow(gptAt5, gptAt5 ? (now - gptAt5.at) / 60000 : null),
-          window10m: gptWindow(gptAt10, gptAt10 ? (now - gptAt10.at) / 60000 : null)
+          window10m: gptWindow(gptAt10, gptAt10 ? (now - gptAt10.at) / 60000 : null),
+          preScanContext
         });
         if (gptEvaluation.triggered) {
           const signature = [...gptEvaluation.triggers].sort().join("+");
@@ -4993,6 +5174,7 @@ const server = http.createServer(async (req, res) => {
                     minute: formatPushMinute(match), minuteNumber: current.minute,
                     score: gptEvaluation.score, triggers: gptEvaluation.triggers,
                     reason: gptEvaluation.reason, statsAtSignal: gptEvaluation.evidence,
+                    preScanContext: gptEvaluation.preScanContext || preScanContext || null,
                     scoreAtSignal: {
                       home: match.homeScore != null && Number.isFinite(Number(match.homeScore)) ? Number(match.homeScore) : null,
                       away: match.awayScore != null && Number.isFinite(Number(match.awayScore)) ? Number(match.awayScore) : null

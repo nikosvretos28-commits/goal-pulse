@@ -21,7 +21,7 @@ function readWindow(window, expectedMin, expectedMax) {
   const values = window.teams.map(team => count(team?.shotsOnTarget));
   return values.some(v => v === null) ? null : values;
 }
-function evaluateGptGoalIntelligence({ minute, status, teams, window5m, window10m } = {}) {
+function evaluateGptGoalIntelligence({ minute, status, teams, window5m, window10m, preScanContext } = {}) {
   const reject = reason => ({ eligible: false, triggered: false, level: null, score: 0, reason, triggers: [], evidence: null });
   if (!liveEligible(minute, status)) return reject("match_not_live_or_minute_out_of_range");
   if (!Array.isArray(teams) || teams.length !== 2) return reject("two_teams_required");
@@ -54,7 +54,9 @@ function evaluateGptGoalIntelligence({ minute, status, teams, window5m, window10
     triggers: triggers.map(t => t.id),
     evidence: { cumulativeSot: { home: cumulative[0], away: cumulative[1], total },
       rolling5m: w5 ? { home: w5[0], away: w5[1], total: total5 } : null,
-      rolling10m: w10 ? { home: w10[0], away: w10[1], total: total10 } : null }
+      rolling10m: w10 ? { home: w10[0], away: w10[1], total: total10 } : null },
+    // Pre-Scan is attached as auditable context only; it never changes trigger gates or score.
+    preScanContext: preScanContext && typeof preScanContext === "object" ? preScanContext : null
   };
 }
 module.exports = { evaluateGptGoalIntelligence, liveEligible };
