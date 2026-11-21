@@ -3667,6 +3667,28 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/gpt-goal-intelligence/test-push" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    try {
+      // Delivery-only GPT Goal Intelligence test. Never writes history,
+      // evaluates a fixture, changes scanner state, or affects other protocols.
+      const result = await sendPushToSubscribers({
+        title: "TEST · GPT GOAL INTELLIGENCE",
+        body: "Δοκιμαστική ειδοποίηση GPT Goal Intelligence. Δεν είναι πραγματικός αγώνας ή ενεργό σήμα.",
+        tag: "goal-matrix-gpt-goal-intelligence-test",
+        url: "/"
+      });
+      return send(res, result.configured === false || result.sent < 1 ? 503 : 200, {
+        ok: result.sent > 0, test: true, channel: "gpt-goal-intelligence", ...result
+      });
+    } catch (error) {
+      return send(res, 503, {
+        ok: false, test: true, channel: "gpt-goal-intelligence",
+        error: error.message || "GPT Goal Intelligence test push failed"
+      });
+    }
+  }
+
   if (url.pathname === "/api/push/test" && req.method === "POST") {
     if (!pushRequestAllowed(req, res)) return;
     try {
