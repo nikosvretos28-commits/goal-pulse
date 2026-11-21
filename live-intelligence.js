@@ -280,7 +280,10 @@ function buildLiveIntelligencePushPayload({ analysis, match, triggeredAt = new D
   const minute = finiteNonNegative(match?.minute);
   const scoreHome = finiteNonNegative(match?.score?.home);
   const scoreAway = finiteNonNegative(match?.score?.away);
-  if (!home || !away || !league || !country || minute === null ||
+  const hasPlaceholderContext = [home, away, league, country].some(value =>
+    /^(μη διαθέσιμο|unknown|n\/a)$/i.test(value)
+  );
+  if (!home || !away || !league || !country || hasPlaceholderContext || minute === null ||
       scoreHome === null || scoreAway === null) {
     return { ok: false, reason: "incomplete_match_snapshot" };
   }
