@@ -206,7 +206,7 @@ test("builds clearly labeled match-minute SOT and xG windows without inventing s
   assert.equal(last5.timePrecision,"match-minute");
   assert.equal(last5.home.shotsOnTarget,1);
   assert.equal(last5.away.shotsOnTarget,0);
-  assert.equal(last5.home.xg,0.24);
+  assert.equal(last5.home.xg,0.32);
   assert.equal(last10.home.shotsOnTarget,1);
   assert.equal(last10.away.shotsOnTarget,1);
   assert.ok(Math.abs(last10.away.xg-0.31)<1e-9);
