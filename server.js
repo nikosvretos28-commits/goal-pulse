@@ -18,6 +18,7 @@ const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterFor
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { evaluateGptGoalIntelligence } = require("./gpt-goal-intelligence");
+const { createPreScanTracker } = require("./pre-scan-intelligence");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
 const { validateTriggerAudit, buildTriggerAuditReversal } = require("./trigger-activation-audit");
@@ -240,6 +241,85 @@ const pushScanPressureHunterAlerts = new Set();
 const pushScanGptGoalSnapshots = new Map();
 const pushScanGptGoalPending = new Map();
 const pushScanGptGoalLastAlert = new Map();
+const preScanTracker = createPreScanTracker({ maxAgeMs: 36 * 60 * 60 * 1000, maxMatches: 5000 });
+const preScanHydratedEvents = new Set();
+let preScanDbInit = null;
+async function ensurePreScanDb() {
+  if (!analyticsPool) return false;
+  if (!preScanDbInit) preScanDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS pre_scan_live_matches (
+      event_id TEXT PRIMARY KEY,
+      home TEXT NOT NULL DEFAULT '',
+      away TEXT NOT NULL DEFAULT '',
+      league TEXT NOT NULL DEFAULT '',
+      first_seen_at TIMESTAMPTZ NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      observation_count INTEGER NOT NULL DEFAULT 0,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS pre_scan_live_matches_last_seen_idx
+      ON pre_scan_live_matches(last_seen_at DESC);
+  `).then(() => true).catch(error => {
+    preScanDbInit = null;
+    console.warn("[Pre-Scan] persistent history unavailable:", error.message);
+    return false;
+  });
+  return preScanDbInit;
+}
+async function capturePreScanObservation({ eventId, match, current, now }) {
+  const id = String(eventId || "");
+  if (!id || !current || !Array.isArray(current.sotByTeam)) return null;
+  if (!preScanHydratedEvents.has(id)) {
+    preScanHydratedEvents.add(id);
+    if (await ensurePreScanDb()) {
+      try {
+        const saved = await analyticsPool.query(
+          "SELECT payload FROM pre_scan_live_matches WHERE event_id=$1",
+          [id]
+        );
+        if (saved.rows?.[0]?.payload) preScanTracker.restore(id, saved.rows[0].payload);
+      } catch (error) {
+        console.warn("[Pre-Scan] history restore failed:", error.message);
+      }
+    }
+  }
+  const context = preScanTracker.observe({
+    eventId: id, at: now, minute: current.minute,
+    status: match.statusText || match.status || "",
+    home: match.home || match.homeTeam || "",
+    away: match.away || match.awayTeam || "",
+    league: match.league || match.competition || "",
+    teams: current.sotByTeam.map(side => ({ team: side.team, shotsOnTarget: side.value }))
+  });
+  if (!context) return null;
+  const state = preScanTracker.getState(id);
+  if (await ensurePreScanDb()) {
+    try {
+      await analyticsPool.query(
+        `INSERT INTO pre_scan_live_matches
+           (event_id,home,away,league,first_seen_at,last_seen_at,observation_count,payload,updated_at)
+         VALUES ($1,$2,$3,$4,to_timestamp($5/1000.0),to_timestamp($6/1000.0),$7,$8::jsonb,NOW())
+         ON CONFLICT(event_id) DO UPDATE SET
+           home=EXCLUDED.home,away=EXCLUDED.away,league=EXCLUDED.league,
+           last_seen_at=EXCLUDED.last_seen_at,observation_count=EXCLUDED.observation_count,
+           payload=EXCLUDED.payload,updated_at=NOW()`,
+        [id, state.home, state.away, state.league, state.firstSeenAt, state.lastSeenAt,
+          state.observations.length, JSON.stringify(state)]
+      );
+    } catch (error) {
+      console.warn("[Pre-Scan] live observation persistence failed:", error.message);
+    }
+  }
+  if (context.observationCount === 1 || context.observationCount % 10 === 0) {
+    console.info("[Pre-Scan] live match tracking:", JSON.stringify({
+      eventId: id, minute: context.currentMinute, observations: context.observationCount,
+      trackedMinutes: context.trackedMinutes, deltaSot: context.deltaSot
+    }));
+  }
+  return context;
+}
+
 // Hunter-only 16-minute rolling snapshot buffer; never shared with other triggers.
 const pushScanHunterSnapshots = new Map();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
@@ -4723,6 +4803,7 @@ const server = http.createServer(async (req, res) => {
           bothTeamsXGQualified
         };
         const id = String(match.eventId);
+        const preScanContext = await capturePreScanObservation({ eventId: id, match, current, now });
         // Keep a rolling five-minute window so activity spread across scanner cycles
         // is measured together, instead of comparing only with the immediately prior scan.
         const snapshots = pushScanSnapshots.get(id) || [];
@@ -4970,7 +5051,8 @@ const server = http.createServer(async (req, res) => {
         const gptEvaluation = evaluateGptGoalIntelligence({
           minute: current.minute, status: statusForEligibility, teams: gptTeamRows,
           window5m: gptWindow(gptAt5, gptAt5 ? (now - gptAt5.at) / 60000 : null),
-          window10m: gptWindow(gptAt10, gptAt10 ? (now - gptAt10.at) / 60000 : null)
+          window10m: gptWindow(gptAt10, gptAt10 ? (now - gptAt10.at) / 60000 : null),
+          preScanContext
         });
         if (gptEvaluation.triggered) {
           const signature = [...gptEvaluation.triggers].sort().join("+");
@@ -4993,6 +5075,7 @@ const server = http.createServer(async (req, res) => {
                     minute: formatPushMinute(match), minuteNumber: current.minute,
                     score: gptEvaluation.score, triggers: gptEvaluation.triggers,
                     reason: gptEvaluation.reason, statsAtSignal: gptEvaluation.evidence,
+                    preScanContext: gptEvaluation.preScanContext || preScanContext || null,
                     scoreAtSignal: {
                       home: match.homeScore != null && Number.isFinite(Number(match.homeScore)) ? Number(match.homeScore) : null,
                       away: match.awayScore != null && Number.isFinite(Number(match.awayScore)) ? Number(match.awayScore) : null
