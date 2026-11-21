@@ -8354,6 +8354,7 @@ const server = http.createServer(async (req, res) => {
         protocol: "GOALMATRIX LIVE INTELLIGENCE",
         independent: true,
         ...history,
+        pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
         scanner: liveIntelligenceRuntime.status()
       });
     }
