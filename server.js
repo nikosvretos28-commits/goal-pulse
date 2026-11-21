@@ -7479,6 +7479,10 @@ const server = http.createServer(async (req, res) => {
               const pitchShotRows = shotPeriodsToCount.flatMap(period => Array.isArray(period.shots) ? period.shots : []);
               const pitchHomeTeamId = pitchStatsData.home_team?.id || pitchShotsData?.home_team?.id || "";
               const pitchAwayTeamId = pitchStatsData.away_team?.id || pitchShotsData?.away_team?.id || "";
+              const liveIntelligenceShotEvents = require("./live-intelligence").normalizePitchApiShotEvents(shotPeriods, {
+                homeTeamId: pitchHomeTeamId, awayTeamId: pitchAwayTeamId, source: "PitchAPI"
+              });
+              const liveIntelligenceShotTotals = require("./live-intelligence").summarizeShotEventTotals(liveIntelligenceShotEvents);
               const shotsInBoxByTeam = new Map();
               for (const shot of pitchShotRows) {
                 if (shot?.is_inside_box !== true || !shot?.team_id) continue;
@@ -7600,6 +7604,8 @@ const server = http.createServer(async (req, res) => {
                 statusText: event.status?.type?.name ?? event.status?.type?.detail ??
                   event.status?.type?.shortDetail ?? event.status_text ?? event.statusText ?? "",
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                liveIntelligenceShotEvents,
+                liveIntelligenceShotTotals,
                 teams: values
               });
               continue;
