@@ -1,6 +1,7 @@
 const http = require("node:http");
 const webpush = require("web-push");
 const { createCloudAlertScanner } = require("./cloud-alert-scanner");
+const { buildMatrixAlertTestPushPayload } = require("./matrix-alert-test-push");
 const { createCloudAlertRuntime } = require("./cloud-alert-runtime");
 const { createCloudAlertSettlement } = require("./cloud-alert-settlement");
 const fs = require("node:fs");
@@ -3843,6 +3844,29 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     } catch (error) {
       return send(res, 400, { error: error.message || "Push acknowledgement failed" });
+    }
+  }
+
+  if (url.pathname === "/api/matrix-alert/test-push" && req.method === "POST") {
+    if (!pushRequestAllowed(req, res)) return;
+    if (!CLOUD_ALERT_PUSH_ENABLED) {
+      return send(res, 503, {
+        ok: false, test: true, channel: "matrix-alert",
+        disabled: true, error: "Matrix Alert push is disabled"
+      });
+    }
+    try {
+      // Delivery-only Matrix Alert test. It deliberately bypasses candidate
+      // evaluation and never writes signals, reservations, settlements, or history.
+      const result = await sendPushToSubscribers(buildMatrixAlertTestPushPayload());
+      return send(res, result.configured === false || result.sent < 1 ? 503 : 200, {
+        ok: result.sent > 0, test: true, channel: "matrix-alert", ...result
+      });
+    } catch (error) {
+      return send(res, 503, {
+        ok: false, test: true, channel: "matrix-alert",
+        error: error.message || "Matrix Alert test push failed"
+      });
     }
   }
 
