@@ -15,7 +15,7 @@ const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirst
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow, formatEspnMonth } = require("./competition-history");
 const { createCompetitionHistoryStore } = require("./competition-history-store");
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
-const { calculatePowerRankingScore, calculateAutonomousPowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
+const { calculatePowerRankingScore, calculateAutonomousPowerRankingScore, confirmAutonomousPowerRankingObservation, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { evaluateGptGoalIntelligence } = require("./gpt-goal-intelligence");
 const { createPreScanTracker } = require("./pre-scan-intelligence");
@@ -391,6 +391,8 @@ async function capturePreScanObservation({ eventId, match, current, now }) {
 const pushScanHunterSnapshots = new Map();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
 const pushScanAutonomousPowerRankingAlerts = new Set();
+// Require two qualifying autonomous observations 30–90 seconds apart before alerting.
+const pushScanAutonomousPowerRankingCandidates = new Map();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
 const volatileAlertHistory = new Map();
 const volatileHighActivityHistory = new Map();
@@ -5376,11 +5378,18 @@ const server = http.createServer(async (req, res) => {
             [id]
           );
           pushScanAutonomousPowerRankingAlerts.delete(id);
+          pushScanAutonomousPowerRankingCandidates.delete(id);
         }
-        const autonomousPowerRankingQualified = shouldEmitAutonomousPowerRankingAlert({
+        const autonomousPowerRankingRawQualified = shouldEmitAutonomousPowerRankingAlert({
           score: autonomousPowerRanking.score,
           eligible: powerRankingEligible,
           qualified: autonomousPowerRanking.qualified
+        });
+        const autonomousPowerRankingQualified = confirmAutonomousPowerRankingObservation({
+          candidates: pushScanAutonomousPowerRankingCandidates,
+          eventId: id,
+          qualified: autonomousPowerRankingRawQualified,
+          now
         });
         if (autonomousPowerRankingQualified && !pushScanAutonomousPowerRankingAlerts.has(id)) {
           try {
