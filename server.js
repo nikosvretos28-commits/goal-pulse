@@ -3567,6 +3567,34 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/pre-scan/status" && req.method === "GET") {
+    if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
+    try {
+      const persistent = await ensurePreScanDb();
+      let database = { matches: 0, latestSeenAt: null };
+      if (persistent) {
+        const result = await analyticsPool.query(
+          "SELECT COUNT(*)::int AS matches, MAX(last_seen_at) AS latest_seen_at FROM pre_scan_live_matches"
+        );
+        database = {
+          matches: Number(result.rows?.[0]?.matches || 0),
+          latestSeenAt: result.rows?.[0]?.latest_seen_at || null
+        };
+      }
+      return send(res, 200, {
+        ok: true,
+        active: true,
+        source: "live scanner exact cumulative SOT",
+        trackedInMemory: preScanTracker.size(),
+        persistent,
+        database
+      });
+    } catch (error) {
+      console.warn("[Pre-Scan] status request failed:", error.message);
+      return send(res, 503, { ok: false, active: false, error: "Pre-Scan status unavailable" });
+    }
+  }
+
   if (url.pathname === "/api/pre-match/scan" && req.method === "GET") {
     if (!isAllowedRequestOrigin(req)) return send(res, 403, { error: "Origin not allowed" });
     try {
