@@ -7378,7 +7378,7 @@ body{color:#63f5d0}
   const scanner=data.scanner||{};
   if(historyStatus){
    const last=scanner.lastScanAt?new Date(scanner.lastScanAt).toLocaleTimeString('el-GR'):'σε αναμονή πρώτου ελέγχου';
-   historyStatus.textContent='Scanner: '+(scanner.enabled?'ΕΝΕΡΓΟΣ':'ανενεργός')+' · Τελευταίος έλεγχος: '+last+' · Αποθήκευση: '+(data.persistent?'PostgreSQL':'προσωρινή μνήμη');
+   historyStatus.textContent='Scanner: '+(scanner.enabled?'ΕΝΕΡΓΟΣ':'ανενεργός')+' · Τελευταίος έλεγχος: '+last+' · Push: '+(data.pushConfigured?'ρυθμισμένο':'μη ρυθμισμένο')+' · Αποθήκευση: '+(data.persistent?'PostgreSQL':'προσωρινή μνήμη')+(scanner.lastScanError?' · Σφάλμα: '+scanner.lastScanError:'');
   }
   if(!historyList)return;
   if(!records.length){historyList.innerHTML='<div class="top-ai-alert-empty">Δεν έχει καταγραφεί ακόμη επιβεβαιωμένη αλλαγή σκορ ή κόκκινη κάρτα.</div>';return;}
