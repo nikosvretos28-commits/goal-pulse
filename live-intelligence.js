@@ -194,7 +194,7 @@ function buildLiveIntelligenceAnalysis(input = {}) {
 
 
 function cleanLabel(value) {
-  return typeof value === "string" ? value.trim().replace(/\\s+/g, " ").slice(0, 100) : "";
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 100) : "";
 }
 
 function selectLiveIntelligenceTrigger(analysis) {
