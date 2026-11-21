@@ -170,6 +170,55 @@ function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, co
   return result;
 }
 
+
+function normalizePitchApiShotEvents(shotPeriods, { homeTeamId, awayTeamId, source = "PitchAPI" } = {}) {
+  const periods = Array.isArray(shotPeriods) ? shotPeriods : [];
+  const allPeriods = periods.filter(period => !period?.period || String(period.period).trim().toLowerCase() === "all");
+  const selected = allPeriods.length ? allPeriods : periods;
+  const rows = selected.flatMap(period => Array.isArray(period?.shots) ? period.shots : []);
+  const idToSide = new Map();
+  if (homeTeamId != null) idToSide.set(String(homeTeamId), "home");
+  if (awayTeamId != null) idToSide.set(String(awayTeamId), "away");
+  return rows.flatMap((shot, index) => {
+    const team = idToSide.get(String(shot?.team_id ?? ""));
+    if (!team || shot?.is_on_target !== true) return [];
+    const minute = finiteNonNegative(shot.minute);
+    const addedMinute = finiteNonNegative(shot.minute_added);
+    const xg = finiteNonNegative(shot.expected_goals);
+    const psxg = finiteNonNegative(shot.expected_goals_on_target);
+    return [{
+      id: shot.id != null ? String(shot.id) : String(index),
+      type: "shot",
+      team,
+      onTarget: true,
+      minute: minute === null ? null : Math.floor(minute),
+      minuteAdded: addedMinute === null ? null : Math.floor(addedMinute),
+      xg,
+      psxg,
+      source,
+      timePrecision: "match-minute",
+      timestampSeconds: null
+    }];
+  });
+}
+
+function summarizeShotEventTotals(events) {
+  const result = {
+    home: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null },
+    away: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null }
+  };
+  if (!Array.isArray(events) || events.length === 0) return result;
+  for (const side of ["home", "away"]) {
+    const rows = events.filter(event => event?.team === side && event?.type === "shot" && event.onTarget === true);
+    result[side].shotsOnTarget = rows.length;
+    const xg = rows.map(event => finiteNonNegative(event.xg));
+    const psxg = rows.map(event => finiteNonNegative(event.psxg));
+    result[side].xg = xg.every(value => value !== null) ? xg.reduce((sum, value) => sum + value, 0) : null;
+    result[side].psxg = psxg.every(value => value !== null) ? psxg.reduce((sum, value) => sum + value, 0) : null;
+  }
+  return result;
+}
+
 function buildLiveIntelligenceAnalysis(input = {}) {
   const source = input.source || null;
   const last5 = summarizeWindow(input.windows?.last5, source);
@@ -261,4 +310,4 @@ function buildLiveIntelligencePushPayload({ analysis, match, triggeredAt = new D
   };
 }
 
-module.exports = { METRICS, readMetric, compareMetric, deriveMomentum, buildShotDerivedWindow, buildLiveIntelligenceAnalysis, describeGameStateChanges, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload };
+module.exports = { METRICS, readMetric, compareMetric, deriveMomentum, buildShotDerivedWindow, normalizePitchApiShotEvents, summarizeShotEventTotals, buildLiveIntelligenceAnalysis, describeGameStateChanges, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload };
