@@ -154,7 +154,7 @@ function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, co
       shotsOnTarget: onTarget.length,
       xg: xgValues.every(value => value !== null) ? xgValues.reduce((sum, value) => sum + value, 0) : null,
       psxg: psxgValues.every(value => value !== null) ? psxgValues.reduce((sum, value) => sum + value, 0) : null,
-      bigChances: shots.filter(event => event.bigChance === true).length
+      bigChances: null
     };
   }
   return result;
