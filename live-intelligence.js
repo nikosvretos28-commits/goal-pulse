@@ -146,12 +146,12 @@ function describeGameStateChanges(events, windowStartSeconds = null) {
 
 function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, coverage = {} } = {}) {
   const empty = () => ({
-    available: coverage.available === true,
+    available: coverage.available === true && coverage.eventTime === true,
     home: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null },
     away: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null }
   });
   const result = empty();
-  if (coverage.available !== true || !Number.isFinite(Number(nowSeconds)) || !Array.isArray(events)) return result;
+  if (coverage.available !== true || coverage.eventTime !== true || !Number.isFinite(Number(nowSeconds)) || !Array.isArray(events)) return result;
   const start = durationSeconds === null ? -Infinity : Number(nowSeconds) - Number(durationSeconds);
   const relevant = events.filter(event => event && event.timestampSeconds !== null && event.timestampSeconds !== undefined && Number.isFinite(Number(event.timestampSeconds)) &&
     Number(event.timestampSeconds) <= Number(nowSeconds) && Number(event.timestampSeconds) >= start &&
