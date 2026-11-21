@@ -8368,15 +8368,15 @@ const server = http.createServer(async (req, res) => {
         const away = teams.find(team => team?.homeAway === "away") || teams[1] || {};
         const source = match.statsSource || null;
         const updatedAt = payload.updatedAt || null;
-        const snapshot = side => Object.fromEntries(Object.entries(metricKeys).map(([metric, keys]) =>
-          [metric, read(side, keys, source, updatedAt)]));
+        const homeSnapshot = snapshot(home);
+        const awaySnapshot = snapshot(away);
         const shotTotals = match.liveIntelligenceShotTotals || {};
-        for (const side of ["home", "away"]) {
+        for (const [side, teamSnapshot] of [["home", homeSnapshot], ["away", awaySnapshot]]) {
           for (const metric of ["shotsOnTarget", "xg", "psxg"]) {
-            const current = snapshot(side)[metric];
+            const current = teamSnapshot[metric];
             const eventValue = shotTotals[side]?.[metric];
             if (!current?.available && Number.isFinite(eventValue)) {
-              snapshot(side)[metric] = { available: true, value: eventValue, source: "PitchAPI /shots event totals", updatedAt };
+              teamSnapshot[metric] = { available: true, value: eventValue, source: "PitchAPI /shots event totals", updatedAt };
             }
           }
         }
@@ -8389,7 +8389,7 @@ const server = http.createServer(async (req, res) => {
           source,
           generatedAt: updatedAt,
           windows: { last5: unavailableWindow, last10: unavailableWindow },
-          totals: { home: snapshot(home), away: snapshot(away) },
+          totals: { home: homeSnapshot, away: awaySnapshot },
           gameState: {
             score: { home: match.homeScore, away: match.awayScore },
             minute: match.minute,
