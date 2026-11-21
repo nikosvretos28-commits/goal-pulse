@@ -281,7 +281,9 @@ async function findPreScanCandidate(match) {
   const awayKey = preMatchNormalizeTeam(match?.away || match?.awayTeam || "");
   if (!homeKey || !awayKey) return null;
   const key = homeKey + "||" + awayKey;
-  if (preScanCandidateCache.has(key)) return preScanCandidateCache.get(key);
+  const cachedCandidate = preScanCandidateCache.get(key);
+  if (cachedCandidate && Date.parse(cachedCandidate.kickoffAt || "") >= Date.now() - 36 * 60 * 60 * 1000) return cachedCandidate;
+  if (cachedCandidate) preScanCandidateCache.delete(key);
   if (!await ensurePreScanDb()) return null;
   try {
     const result = await analyticsPool.query("SELECT payload FROM pre_scan_candidates WHERE home_key=$1 AND away_key=$2 AND kickoff_at >= NOW() - make_interval(hours => 36) AND kickoff_at <= NOW() + make_interval(hours => 36) ORDER BY kickoff_at DESC LIMIT 1", [homeKey, awayKey]);
