@@ -122,18 +122,23 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
     const pool = getPool();
     let existing = memoryAlerts.get(alertId) || null;
     if (pool && await ensureSchema()) {
-      await pool.query(`
-        INSERT INTO live_intelligence_alert_history
-          (alert_id,event_id,trigger_type,trigger_fingerprint,payload,delivery_status)
-        VALUES($1,$2,$3,$4,$5::jsonb,'pending')
-        ON CONFLICT(event_id,trigger_type,trigger_fingerprint) DO NOTHING
-      `, [alertId, eventId, event.type, triggerFingerprint, JSON.stringify(payload)]);
-      const found = await pool.query(
-        "SELECT alert_id,payload,delivery_status,attempts FROM live_intelligence_alert_history WHERE event_id=$1 AND trigger_type=$2 AND trigger_fingerprint=$3",
-        [eventId, event.type, triggerFingerprint]
-      );
-      existing = found.rows[0] || null;
-    } else if (!existing) {
+      try {
+        await pool.query(`
+          INSERT INTO live_intelligence_alert_history
+            (alert_id,event_id,trigger_type,trigger_fingerprint,payload,delivery_status)
+          VALUES($1,$2,$3,$4,$5::jsonb,'pending')
+          ON CONFLICT(event_id,trigger_type,trigger_fingerprint) DO NOTHING
+        `, [alertId, eventId, event.type, triggerFingerprint, JSON.stringify(payload)]);
+        const found = await pool.query(
+          "SELECT alert_id,payload,delivery_status,attempts FROM live_intelligence_alert_history WHERE event_id=$1 AND trigger_type=$2 AND trigger_fingerprint=$3",
+          [eventId, event.type, triggerFingerprint]
+        );
+        existing = found.rows[0] || existing;
+      } catch (error) {
+        console.error("[LIVE INTELLIGENCE] alert persistence fell back to memory:", error.message);
+      }
+    }
+    if (!existing) {
       existing = { alert_id: alertId, payload, delivery_status: "pending", attempts: 0 };
       memoryAlerts.set(alertId, existing);
     }
@@ -155,13 +160,17 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
     const attempts = Number(existing.attempts || 0) + 1;
     const result = { ...delivery, attemptedAt: now().toISOString() };
     if (pool && await ensureSchema()) {
-      await pool.query(`
-        UPDATE live_intelligence_alert_history
-        SET delivery_status=$2,delivery_result=$3::jsonb,attempts=$4
-        WHERE alert_id=$1
-      `, [existing.alert_id || alertId, status, JSON.stringify(result), attempts]);
+      try {
+        await pool.query(`
+          UPDATE live_intelligence_alert_history
+          SET delivery_status=$2,delivery_result=$3::jsonb,attempts=$4
+          WHERE alert_id=$1
+        `, [existing.alert_id || alertId, status, JSON.stringify(result), attempts]);
+      } catch (error) {
+        console.error("[LIVE INTELLIGENCE] alert delivery status fell back to memory:", error.message);
+      }
     }
-    memoryAlerts.set(alertId, { alert_id: alertId, payload, delivery_status: status, delivery_result: result, attempts });
+    memoryAlerts.set(alertId, { alert_id: existing.alert_id || alertId, event_id: eventId, trigger_type: event.type, payload, delivery_status: status, delivery_result: result, attempts });
     return { alertId, deliveryStatus: status, delivery: result };
   }
 
