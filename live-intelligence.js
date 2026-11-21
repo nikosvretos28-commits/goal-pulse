@@ -172,6 +172,41 @@ function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, co
 }
 
 
+function buildShotDerivedMinuteWindow(events, { currentMinute, durationMinutes = 5, coverage = {} } = {}) {
+  const unavailable = () => ({
+    available: false,
+    timePrecision: "match-minute",
+    home: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null },
+    away: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null }
+  });
+  const now = Number(currentMinute);
+  if (coverage.available !== true || !Number.isFinite(now) || now < 0 || !Array.isArray(events)) return unavailable();
+  const startExclusive = now - Number(durationMinutes);
+  const relevant = events.filter(event => {
+    if (!event || (event.team !== "home" && event.team !== "away") || event.type !== "shot") return false;
+    const minute = finiteNonNegative(event.minute);
+    if (minute === null) return false;
+    const added = finiteNonNegative(event.minuteAdded) || 0;
+    const eventMinute = minute + added;
+    return eventMinute > startExclusive && eventMinute <= now;
+  });
+  const result = { available: true, timePrecision: "match-minute", home: {}, away: {} };
+  for (const side of ["home", "away"]) {
+    const shots = relevant.filter(event => event.team === side);
+    const onTarget = shots.filter(event => event.onTarget === true);
+    const xgValues = shots.map(event => finiteNonNegative(event.xg));
+    const psxgValues = onTarget.map(event => finiteNonNegative(event.psxg));
+    result[side] = {
+      shotsOnTarget: onTarget.length,
+      xg: xgValues.every(value => value !== null) ? xgValues.reduce((sum, value) => sum + value, 0) : null,
+      psxg: psxgValues.every(value => value !== null) ? psxgValues.reduce((sum, value) => sum + value, 0) : null,
+      bigChances: null
+    };
+  }
+  return result;
+}
+
+
 function normalizePitchApiShotEvents(shotPeriods, { homeTeamId, awayTeamId, source = "PitchAPI" } = {}) {
   const periods = Array.isArray(shotPeriods) ? shotPeriods : [];
   const allPeriods = periods.filter(period => !period?.period || String(period.period).trim().toLowerCase() === "all");
@@ -315,4 +350,4 @@ function buildLiveIntelligencePushPayload({ analysis, match, triggeredAt = new D
   };
 }
 
-module.exports = { METRICS, readMetric, compareMetric, deriveMomentum, buildShotDerivedWindow, normalizePitchApiShotEvents, summarizeShotEventTotals, buildLiveIntelligenceAnalysis, describeGameStateChanges, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload };
+module.exports = { METRICS, readMetric, compareMetric, deriveMomentum, buildShotDerivedWindow, buildShotDerivedMinuteWindow, normalizePitchApiShotEvents, summarizeShotEventTotals, buildLiveIntelligenceAnalysis, describeGameStateChanges, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload };
