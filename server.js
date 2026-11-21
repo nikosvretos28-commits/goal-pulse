@@ -8466,6 +8466,7 @@ const server = http.createServer(async (req, res) => {
           statusText: match.statusText || null,
           source,
           statsAvailable: match.statsAvailable === true,
+          windowPrecision: shotCoverage ? "match-minute" : "unavailable",
           analysis
         };
       });
