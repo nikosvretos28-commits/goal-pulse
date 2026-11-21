@@ -172,3 +172,12 @@ test("normalizes PitchAPI on-target events with minute precision without inventi
   assert.ok(Math.abs(totals.away.xg-0.30)<1e-9);
   assert.equal(totals.home.bigChances,null);
 });
+
+test("minute-resolution PitchAPI events are never misread as second-precision rolling windows", () => {
+  const events = normalizePitchApiShotEvents([{ period:"all", shots:[
+    {team_id:"h",is_on_target:true,minute:68,expected_goals:0.2,expected_goals_on_target:0.3}
+  ]}],{homeTeamId:"h",awayTeamId:"a"});
+  const window = buildShotDerivedWindow(events,{nowSeconds:68*60,durationSeconds:300,coverage:{available:true}});
+  assert.equal(window.home.shotsOnTarget,0);
+  assert.equal(window.home.xg,0);
+});
