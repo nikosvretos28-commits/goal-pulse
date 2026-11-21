@@ -37,5 +37,6 @@ This is a read-only audit of the current `server.js` live-stat normalization pat
 
 1. Identify a provider/feed with genuine timestamped shot events and compatible xG/PSxG event data, or clearly label the rolling window as unavailable.
 2. Verify source coverage and definitions for Final Third Entries, Defensive Pressure and Pressure Recoveries.
-3. Define the alert activation conditions and repeat/cooldown behavior before push delivery is enabled.
-4. Add the independent UI panel, history and test-push flow only after the provider adapter and trigger rules are verified.
+3. Trigger selection is now defined in the independent engine: confirmed goal/red-card state changes, sustained attacking superiority, pressure without a clear SOT/xG edge, and pressure with some chance indicators. Unconfirmed events never trigger a state-change alert.
+4. Push payload formatting now requires a complete alert-time snapshot: both team names, score, current minute, competition and country. Incomplete snapshots are rejected rather than filled with guesses. The message also includes the analysis label and available SOT/xG context.
+5. Remaining before production push delivery: connect only verified provider inputs to this engine, persist independent LIVE INTELLIGENCE history/deduplication/cooldown, and add the independent UI panel and test-push flow. The existing alert channels remain isolated.
