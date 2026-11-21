@@ -30,6 +30,7 @@ const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
 const { addRollingTrends } = require("./rolling-trend-history");
+const { buildLiveIntelligenceAnalysis } = require("./live-intelligence");
 const { createSharedLiveMetricsCoordinator } = require("./shared-live-metrics-coordinator");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
@@ -8321,6 +8322,87 @@ const server = http.createServer(async (req, res) => {
       delete req._goalMatrixLiveMetricsLease;
       console.log("[GoalMatrix shared live-metrics collector]", JSON.stringify({ date, scope: scannerScope, cache: "refreshed", liveMatches: liveEvents.length, statsMatches: matches.filter(match => match.statsAvailable).length }));
       return send(res, 200, body);
+    }
+
+    if (url.pathname === "/api/live-intelligence" && req.method === "GET") {
+      const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      if (!/^\\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
+      const base = "http://127.0.0.1:" + PORT;
+      const response = await fetch(base + "/api/live-metrics?date=" + date, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(50000)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return send(res, response.status, { error: payload.error || "Live metrics unavailable", matches: [] });
+      const read = (team, keys, source, updatedAt) => {
+        for (const key of keys) {
+          const raw = team?.[key];
+          if (raw !== null && raw !== undefined && raw !== "" && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+            return { available: true, value: Number(raw), source: source || null, updatedAt: updatedAt || null };
+          }
+        }
+        return { available: false, value: null, source: source || null, updatedAt: updatedAt || null };
+      };
+      const metricKeys = {
+        shotsOnTarget: ["shotsOnTarget", "displayShotsOnTarget"],
+        xg: ["xG", "xg"],
+        psxg: ["psxG", "PSxG", "psxg"],
+        bigChances: ["bigChances", "big_chances"],
+        boxEntries: ["boxEntries", "box_entries"],
+        dangerousAttacks: ["dangerousAttacks", "dangerous_attacks"],
+        finalThirdEntries: ["finalThirdEntries", "final_third_entries"],
+        progressivePasses: ["progressivePasses", "progressive_passes"],
+        keyPasses: ["keyPasses", "key_passes"],
+        defensivePressures: ["defensivePressures", "pressures"],
+        pressureRecoveries: ["pressureRecoveries", "pressure_recoveries"]
+      };
+      const matches = (Array.isArray(payload.matches) ? payload.matches : []).map(match => {
+        const teams = Array.isArray(match.teams) ? match.teams : [];
+        const home = teams.find(team => team?.homeAway === "home") || teams[0] || {};
+        const away = teams.find(team => team?.homeAway === "away") || teams[1] || {};
+        const source = match.statsSource || null;
+        const updatedAt = payload.updatedAt || null;
+        const snapshot = side => Object.fromEntries(Object.entries(metricKeys).map(([metric, keys]) =>
+          [metric, read(side, keys, source, updatedAt)]));
+        const unavailableWindow = { home: {}, away: {} };
+        for (const metric of Object.keys(metricKeys)) {
+          unavailableWindow.home[metric] = { available: false, value: null, source: null };
+          unavailableWindow.away[metric] = { available: false, value: null, source: null };
+        }
+        const analysis = buildLiveIntelligenceAnalysis({
+          source,
+          generatedAt: updatedAt,
+          windows: { last5: unavailableWindow, last10: unavailableWindow },
+          totals: { home: snapshot(home), away: snapshot(away) },
+          gameState: {
+            score: { home: match.homeScore, away: match.awayScore },
+            minute: match.minute,
+            period: match.period || null,
+            redCards: { home: home.redCards, away: away.redCards }
+          },
+          events: []
+        });
+        return {
+          eventId: match.eventId || null,
+          home: match.home || home.team || "Μη διαθέσιμο",
+          away: match.away || away.team || "Μη διαθέσιμο",
+          league: match.league || "Μη διαθέσιμο",
+          country: match.country || "Μη διαθέσιμο",
+          score: { home: match.homeScore ?? null, away: match.awayScore ?? null },
+          minute: match.minute ?? null,
+          statusText: match.statusText || null,
+          source,
+          statsAvailable: match.statsAvailable === true,
+          analysis
+        };
+      });
+      return send(res, 200, {
+        protocol: "GOALMATRIX LIVE INTELLIGENCE",
+        independent: true,
+        generatedAt: payload.updatedAt || new Date().toISOString(),
+        windowPolicy: "last-5 and last-10 remain unavailable until true event-time provider data is verified",
+        matches
+      });
     }
 
     if (url.pathname === "/api/pitch/date") {
