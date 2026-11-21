@@ -3642,9 +3642,11 @@ const server = http.createServer(async (req, res) => {
         const result = await analyticsPool.query(
           "SELECT COUNT(*)::int AS matches, MAX(last_seen_at) AS latest_seen_at FROM pre_scan_live_matches"
         );
+        const candidateResult = await analyticsPool.query("SELECT COUNT(*)::int AS candidates FROM pre_scan_candidates WHERE kickoff_at >= NOW() - make_interval(hours => 36)");
         database = {
           matches: Number(result.rows?.[0]?.matches || 0),
-          latestSeenAt: result.rows?.[0]?.latest_seen_at || null
+          latestSeenAt: result.rows?.[0]?.latest_seen_at || null,
+          upcomingCandidates: Number(candidateResult.rows?.[0]?.candidates || 0)
         };
       }
       return send(res, 200, {
