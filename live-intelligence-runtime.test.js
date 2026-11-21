@@ -70,7 +70,8 @@ test("missing identity or incomplete match snapshot never sends an alert", async
   await runtime.scan();
   current = match({ score: { home: 1, away: 0 }, country: "" });
   const result = await runtime.scan();
-  assert.equal(result.results[0].reason, "incomplete_match_snapshot");
+  assert.equal(result.results[0].pendingContext, true);
+  assert.equal(result.results[0].events[0].reason, "incomplete_match_snapshot");
   assert.equal(deliveries.length, 0);
 });
 
