@@ -1,183 +1,104 @@
 "use strict";
 
-// Cloud Alert v0.2 isolated evaluator.
-// Pure functions only: no server, provider, database, or push-pipeline imports.
-// Activation remains the responsibility of a later, explicitly reviewed integration.
+// Matrix Alert v1: independent, SOT-gated 15-metric evaluator.
+const MINUTE_START = 1;
+const MINUTE_END_EXCLUSIVE = 70;
+const REQUIRED_TOTAL_SOT = 20;
+const MIN_METRIC_COVERAGE = 8;
+const MIN_SCORE = 75;
 
-const THRESHOLDS = Object.freeze({
-  early1H: Object.freeze({ total: 5, each: 2, sot90: 30, balance: 0.30, recent6: 1 }),
-  sustained1H: Object.freeze({ total: 10, sot90: 22, balance: 0.30, recent10: 2 }),
-  sustainedB2H: Object.freeze({ total: 10, each: 4, sot90: 12.5, balance: 0.35, recent10: 2 }),
-  dualA2H: Object.freeze({ each: 10, total: 20, sot90At55: 32.7, sot90At80: 22.5, recent10: 1 })
-});
-
-function finiteNonNegative(value) {
+function finite(value) {
   if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
+function sum(a, b) { return a == null || b == null ? null : a + b; }
+function difference(a, b) { return a == null || b == null ? null : Math.abs(a - b); }
 
-function calculateSotMetrics({ homeSot, awaySot, elapsedMinute }) {
-  const home = finiteNonNegative(homeSot);
-  const away = finiteNonNegative(awaySot);
-  const minute = finiteNonNegative(elapsedMinute);
-  if (home == null || away == null || minute == null || minute <= 0) {
-    return { valid: false, reason: "invalid_sot_or_match_minute" };
-  }
-  const total = home + away;
+const METRIC_DEFINITIONS = Object.freeze([
+  ["totalSot", "Total match SOT", v => v >= 20],
+  ["homeSot", "Home SOT", v => v >= 8],
+  ["awaySot", "Away SOT", v => v >= 8],
+  ["recentSot6", "SOT last 6 minutes", v => v >= 3],
+  ["recentSot10", "SOT last 10 minutes", v => v >= 5],
+  ["xgTotal", "Combined xG", v => v >= 3],
+  ["xgDifference", "Absolute xG difference", v => v <= 1.5],
+  ["psxgTotal", "Combined PSxG", v => v >= 2],
+  ["bigChancesTotal", "Combined big chances", v => v >= 3],
+  ["boxEntriesTotal", "Combined box entries", v => v >= 25],
+  ["keyPassesTotal", "Combined key passes", v => v >= 8],
+  ["progressivePassesTotal", "Combined progressive passes", v => v >= 20],
+  ["dangerousAttacksTotal", "Combined dangerous attacks", v => v >= 40],
+  ["cornersTotal", "Combined corners", v => v >= 8],
+  ["possessionDifference", "Absolute possession difference", v => v <= 25]
+]);
+
+function buildMatrixMetrics(input = {}) {
+  const homeSot = finite(input.homeSot), awaySot = finite(input.awaySot);
+  const homeXg = finite(input.homeXg), awayXg = finite(input.awayXg);
+  const homePsxg = finite(input.homePsxg), awayPsxg = finite(input.awayPsxg);
+  const homeBig = finite(input.homeBigChances), awayBig = finite(input.awayBigChances);
+  const homeBox = finite(input.homeBoxEntries), awayBox = finite(input.awayBoxEntries);
+  const homeKey = finite(input.homeKeyPasses), awayKey = finite(input.awayKeyPasses);
+  const homeProgressive = finite(input.homeProgressivePasses), awayProgressive = finite(input.awayProgressivePasses);
+  const homeDanger = finite(input.homeDangerousAttacks), awayDanger = finite(input.awayDangerousAttacks);
+  const homeCorners = finite(input.homeCorners), awayCorners = finite(input.awayCorners);
+  const homePossession = finite(input.homePossession), awayPossession = finite(input.awayPossession);
+  const totalSot = sum(homeSot, awaySot);
   return {
-    valid: true,
-    home,
-    away,
-    total,
-    sot90: 90 * total / minute,
-    balance: total === 0 ? 0 : Math.min(home, away) / total
+    totalSot, homeSot, awaySot,
+    recentSot6: finite(input.recentSot6),
+    recentSot10: finite(input.recentSot10),
+    xgTotal: sum(homeXg, awayXg),
+    xgDifference: difference(homeXg, awayXg),
+    psxgTotal: sum(homePsxg, awayPsxg),
+    bigChancesTotal: sum(homeBig, awayBig),
+    boxEntriesTotal: sum(homeBox, awayBox),
+    keyPassesTotal: sum(homeKey, awayKey),
+    progressivePassesTotal: sum(homeProgressive, awayProgressive),
+    dangerousAttacksTotal: sum(homeDanger, awayDanger),
+    cornersTotal: sum(homeCorners, awayCorners),
+    possessionDifference: difference(homePossession, awayPossession)
   };
-}
-
-// v0.2 supplies two DUAL-A anchors (55' and 80') and linear
-// interpolation between them. It does not define extrapolation/clamping
-// outside that interval, so fail closed rather than inventing thresholds.
-function dualA2HSot90Threshold(elapsedMinute) {
-  if (elapsedMinute === null || elapsedMinute === undefined ||
-      (typeof elapsedMinute === "string" && elapsedMinute.trim() === "")) return null;
-  const minute = Number(elapsedMinute);
-  if (!Number.isFinite(minute) || minute < 55 || minute > 80) return null;
-  const t = (minute - 55) / (80 - 55);
-  return THRESHOLDS.dualA2H.sot90At55 +
-    t * (THRESHOLDS.dualA2H.sot90At80 - THRESHOLDS.dualA2H.sot90At55);
 }
 
 function evaluateCloudAlert(snapshot) {
-  if (!snapshot || typeof snapshot !== "object") {
-    return { status: "held", reason: "snapshot_missing", triggers: [] };
-  }
+  if (!snapshot || typeof snapshot !== "object") return { status: "held", reason: "snapshot_missing", triggers: [] };
   if (!snapshot.matchId) return { status: "held", reason: "match_id_missing", triggers: [] };
-  if (!["1H", "2H"].includes(snapshot.period)) {
-    return { status: "not_applicable", reason: "outside_regular_play_halves", triggers: [] };
+  if (!["1H", "2H"].includes(snapshot.period)) return { status: "not_applicable", reason: "outside_regular_play_halves", triggers: [] };
+  const minute = finite(snapshot.elapsedMinute);
+  if (minute == null || minute < MINUTE_START || minute >= MINUTE_END_EXCLUSIVE) {
+    return { status: "not_qualified", reason: "outside_matrix_minute_window", triggers: [] };
   }
-  if (snapshot.dataQuality !== "valid") {
-    return { status: "held", reason: snapshot.dataQualityReason || "data_quality_not_confirmed", triggers: [] };
+  if (snapshot.dataQuality !== "valid" || snapshot.confirmed !== true) {
+    return { status: "held", reason: snapshot.dataQualityReason || "sot_sample_not_confirmed", triggers: [] };
   }
-  if (snapshot.confirmed !== true) {
-    return { status: "held", reason: "awaiting_confirmed_sot_sample", triggers: [] };
+  const metrics = buildMatrixMetrics(snapshot);
+  if (metrics.totalSot == null) return { status: "held", reason: "sot_unavailable", triggers: [] };
+  if (metrics.totalSot < REQUIRED_TOTAL_SOT) {
+    return { status: "not_qualified", reason: "total_sot_below_20", metrics, triggers: [] };
   }
-  if (snapshot.rollingWindowsValid !== true) {
-    return { status: "held", reason: "rolling_sot_window_unreliable", triggers: [] };
+  const rows = METRIC_DEFINITIONS.map(([key, label, qualifies]) => {
+    const value = metrics[key];
+    return { key, label, value, available: value != null, qualifies: value == null ? null : Boolean(qualifies(value)) };
+  });
+  const available = rows.filter(row => row.available);
+  const passed = available.filter(row => row.qualifies).length;
+  const score = available.length ? Math.round(100 * passed / available.length) : 0;
+  if (available.length < MIN_METRIC_COVERAGE) {
+    return { status: "held", reason: "insufficient_metric_coverage", metrics, score, availableMetrics: available.length, totalMetrics: 15, metricBreakdown: rows, triggers: [] };
   }
-
-  const metrics = calculateSotMetrics(snapshot);
-  if (!metrics.valid) return { status: "held", reason: metrics.reason, triggers: [] };
-
-  // Rolling windows are evaluated independently: a missing R6 must not
-  // suppress an R10-only trigger, and a missing R10 must not suppress EARLY.
-  const r6 = finiteNonNegative(snapshot.recentSot6);
-  const r10 = finiteNonNegative(snapshot.recentSot10);
-  const triggers = [];
-
-  if (snapshot.period === "1H") {
-    const e = THRESHOLDS.early1H;
-    if (r6 != null && metrics.total >= e.total && metrics.home >= e.each && metrics.away >= e.each &&
-        metrics.sot90 >= e.sot90 && metrics.balance >= e.balance && r6 >= e.recent6) {
-      triggers.push("EARLY_1H");
-    }
-    const s = THRESHOLDS.sustained1H;
-    if (r10 != null && metrics.total >= s.total && metrics.sot90 >= s.sot90 &&
-        metrics.balance >= s.balance && r10 >= s.recent10) {
-      triggers.push("SUSTAINED_1H");
-    }
-  } else {
-    const b = THRESHOLDS.sustainedB2H;
-    if (r10 != null && metrics.total >= b.total && metrics.home >= b.each && metrics.away >= b.each &&
-        metrics.sot90 >= b.sot90 && metrics.balance >= b.balance && r10 >= b.recent10) {
-      triggers.push("SUSTAINED_B_2H");
-    }
-    const a = THRESHOLDS.dualA2H;
-    const aSot90 = dualA2HSot90Threshold(snapshot.elapsedMinute);
-    if (r10 != null && aSot90 != null && metrics.total >= a.total &&
-        metrics.home >= a.each && metrics.away >= a.each &&
-        metrics.sot90 >= aSot90 && r10 >= a.recent10) {
-      triggers.push("DUAL_A_2H");
-    }
-  }
-
+  const qualified = score >= MIN_SCORE;
   return {
-    status: triggers.length ? "qualified" : "not_qualified",
-    reason: triggers.length ? "one_or_more_cloud_triggers_met" : "no_cloud_trigger_met",
-    matchId: String(snapshot.matchId),
-    period: snapshot.period,
-    elapsedMinute: Number(snapshot.elapsedMinute),
-    metrics,
-    recentSot6: r6,
-    recentSot10: r10,
-    triggers
-  };
-}
-
-function validateHalfState(half) {
-  if (half == null) return { valid: true, sentCount: 0, sentSignalIds: [] };
-  if (typeof half !== "object" || !Number.isInteger(half.sentCount) ||
-      half.sentCount < 0 || half.sentCount > 2 || !Array.isArray(half.sentSignalIds) ||
-      half.sentSignalIds.length !== half.sentCount ||
-      half.sentSignalIds.some(id => id === null || id === undefined || String(id).trim() === "")) {
-    return { valid: false };
-  }
-  const ids = half.sentSignalIds.map(String);
-  if (new Set(ids).size !== ids.length) return { valid: false };
-  return { valid: true, sentCount: half.sentCount, sentSignalIds: ids };
-}
-
-// Per-half delivery policy: one initial push plus one re-alert after a new
-// goal and a genuinely new qualifying signal. Persist state only after a
-// push provider confirms successful delivery.
-function decideCloudAlertPush({ period, signalId, qualifies, goalSinceLastPush, state = {} }) {
-  if (!["1H", "2H"].includes(period)) return { send: false, reason: "invalid_period" };
-  if (!qualifies) return { send: false, reason: "signal_not_qualified" };
-  if (signalId === null || signalId === undefined || String(signalId).trim() === "") {
-    return { send: false, reason: "signal_id_missing" };
-  }
-
-  const half = validateHalfState(state[period]);
-  const other = validateHalfState(state[period === "1H" ? "2H" : "1H"]);
-  if (!half.valid || !other.valid) return { send: false, reason: "invalid_push_state" };
-  if (half.sentSignalIds.includes(String(signalId))) return { send: false, reason: "duplicate_signal" };
-  if (half.sentCount >= 2) return { send: false, reason: "half_push_limit_reached" };
-  if (half.sentCount + other.sentCount >= 4) return { send: false, reason: "match_push_limit_reached" };
-  if (half.sentCount === 0) return { send: true, kind: "initial", reason: "first_push_in_half" };
-  if (half.sentCount === 1 && goalSinceLastPush === true) {
-    return { send: true, kind: "re_alert", reason: "new_goal_and_new_qualifying_signal" };
-  }
-  return { send: false, reason: "re_alert_requires_goal_since_last_push" };
-}
-
-function recordCloudAlertPush({ state = {}, period, signalId }) {
-  if (!["1H", "2H"].includes(period) ||
-      signalId === null || signalId === undefined || String(signalId).trim() === "") {
-    throw new TypeError("period and signalId are required");
-  }
-  const current = validateHalfState(state[period]);
-  const other = validateHalfState(state[period === "1H" ? "2H" : "1H"]);
-  if (!current.valid || !other.valid) throw new TypeError("Invalid Cloud Alert push state");
-  if (current.sentSignalIds.includes(String(signalId))) {
-    throw new Error("Duplicate Cloud Alert signal cannot be recorded");
-  }
-  if (current.sentCount >= 2) throw new RangeError("Cloud Alert maximum of two pushes per half exceeded");
-  const total = current.sentCount + other.sentCount;
-  if (total >= 4) throw new RangeError("Cloud Alert maximum of four pushes per match exceeded");
-  return {
-    ...state,
-    [period]: {
-      sentCount: current.sentCount + 1,
-      sentSignalIds: [...current.sentSignalIds, String(signalId)]
-    }
+    status: qualified ? "qualified" : "not_qualified",
+    reason: qualified ? "matrix_score_threshold_met" : "matrix_score_below_threshold",
+    matchId: String(snapshot.matchId), period: snapshot.period, elapsedMinute: minute,
+    metrics, score, availableMetrics: available.length, totalMetrics: 15,
+    metricBreakdown: rows, triggers: qualified ? ["MATRIX_20_SOT_15_METRICS"] : []
   };
 }
 
 module.exports = {
-  THRESHOLDS,
-  calculateSotMetrics,
-  dualA2HSot90Threshold,
-  evaluateCloudAlert,
-  decideCloudAlertPush,
-  recordCloudAlertPush
+  MINUTE_START, MINUTE_END_EXCLUSIVE, REQUIRED_TOTAL_SOT, MIN_METRIC_COVERAGE, MIN_SCORE,
+  METRIC_DEFINITIONS, buildMatrixMetrics, evaluateCloudAlert
 };
