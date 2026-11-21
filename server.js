@@ -6631,13 +6631,29 @@ const server = http.createServer(async (req, res) => {
               const normalizeLiveTeam = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
               const liveEventsFromApi = [];
               let replacedLive = 0;
+              const skippedLive = { noName: 0, byStatus: 0, buckets: {}, samples: [] };
+              const skipStatusPattern = /finished|full time|ended|complete|not started|upcoming|scheduled|postponed|cancelled/;
               for (const match of liveFixtures) {
                 const homeName = String(match.home?.name || match.home_team?.name || match.home_name || (typeof match.home === "string" ? match.home : "") || "").trim();
                 const awayName = String(match.away?.name || match.away_team?.name || match.away_name || (typeof match.away === "string" ? match.away : "") || "").trim();
-                if (!homeName || !awayName) continue;
+                if (!homeName || !awayName) { skippedLive.noName++; continue; }
                 const statusValue = match.status;
                 const statusText = [typeof statusValue === "object" ? JSON.stringify(statusValue) : statusValue, match.status_text, match.status_name, match.state, match.minute, match.elapsed].filter(v => v != null).map(String).join(" ").toLowerCase();
-                if (/finished|full time|ended|complete|not started|upcoming|scheduled|postponed|cancelled/.test(statusText)) continue;
+                const skippedStatusMatch = statusText.match(skipStatusPattern);
+                if (skippedStatusMatch) {
+                  skippedLive.byStatus++;
+                  const bucket = skippedStatusMatch[0];
+                  skippedLive.buckets[bucket] = (skippedLive.buckets[bucket] || 0) + 1;
+                  if (skippedLive.samples.length < 30) skippedLive.samples.push({
+                    home: homeName.slice(0, 40), away: awayName.slice(0, 40),
+                    status: (typeof statusValue === "object" ? JSON.stringify(statusValue) : String(statusValue ?? "")).slice(0, 60),
+                    status_text: String(match.status_text ?? "").slice(0, 60),
+                    minute: match.live_minute ?? match.minute ?? null,
+                    elapsed: match.elapsed ?? null,
+                    start: match.time_utc || match.time || match.date || null
+                  });
+                  continue;
+                }
                 const matchUrlSlug = (() => { try { const segments = new URL(String(match.url || ""), "https://sportscore.com").pathname.split("/").filter(Boolean); const matchIndex = segments.indexOf("match"); return matchIndex >= 0 ? (segments[matchIndex + 2] || segments[matchIndex + 1] || "") : ""; } catch { return ""; } })();
                 const slug = String(match.slug || match.match_slug || match.matchSlug || match.id || match.event_id || matchUrlSlug || (normalizeLiveTeam(homeName) + "-vs-" + normalizeLiveTeam(awayName)));
                 const liveClock = match.live_minute ?? match.liveMinute ?? match.elapsed ?? match.time?.elapsed ?? match.minute ?? match.time?.minute;
@@ -6693,7 +6709,7 @@ const server = http.createServer(async (req, res) => {
               console.log("SportScore dedicated live endpoint:", JSON.stringify({
                 checkedAt: new Date().toISOString(), httpStatus: response.status, rootKeys: Object.keys(payload || {}),
                 count: liveFixtures.length, mappedLive: liveEventsFromApi.length + replacedLive,
-                addedLive: liveEventsFromApi.length, replacedLive,
+                addedLive: liveEventsFromApi.length, replacedLive, skipped: skippedLive,
                 sample: liveFixtures.slice(0, 3).map(match => ({ keys: Object.keys(match || {}), id: match.id, slug: match.slug, status: match.status, status_text: match.status_text, home: match.home, away: match.away, minute: match.minute, elapsed: match.elapsed, liveMinute: match.liveMinute, live_minute: match.live_minute, time: match.time, tracker: match.tracker }))
               }));
             } else console.warn("SportScore dedicated live endpoint HTTP:", response.status);
@@ -6917,7 +6933,7 @@ const server = http.createServer(async (req, res) => {
       const sportScoreDetailDiagnostics = { ok: 0, notFound: 0, otherErrors: 0, localBudgetLimited: 0, provider429: 0, providerCooldownSkipped: 0, cachedDetailHits: 0, statuses: {}, slugSamples: [], minuteSamples: [], sample: null, unmatchedLabels: [] };
       const espnSummaryDiagnostics = { attempted: 0, httpOk: 0, httpErrors: {}, timeoutErrors: 0, missingBoxscoreTeams: 0, teamsFound: 0, teamsWithShotStats: 0, unmatchedSportScoreLabels: [] };
       const pitchSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, detailFetched: 0, supplied: 0, noMatch: 0 };
-      const pitchApiSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, liveFetched: 0, supplied: 0, skippedRateLimit: 0, errors: 0 };
+      const pitchApiSportScoreFallbackDiagnostics = { attempted: 0, fixtureMatched: 0, liveFetched: 0, supplied: 0, skippedRateLimit: 0, errors: 0, noCandidate: 0, ambiguousCandidates: 0, badIdFormat: 0, matchFailureSamples: [] };
       const workers = Array.from({ length: Math.min(8, work.length) }, async () => {
         while (cursor < work.length) {
           const itemIndex = cursor++;
@@ -7116,7 +7132,16 @@ const server = http.createServer(async (req, res) => {
                     return (pitchHome === homeKey && pitchAway === awayKey) ||
                       (pitchHome === awayKey && pitchAway === homeKey);
                   });
-                  if (candidates.length === 1 && /^m_[A-Za-z0-9]{6}$/.test(String(candidates[0].id || ""))) {
+                  if (candidates.length === 0) {
+                    pitchApiSportScoreFallbackDiagnostics.noCandidate++;
+                    if (pitchApiSportScoreFallbackDiagnostics.matchFailureSamples.length < 10) pitchApiSportScoreFallbackDiagnostics.matchFailureSamples.push({ reason: "no_candidate", home: homeName.slice(0, 40), away: awayName.slice(0, 40) });
+                  } else if (candidates.length > 1) {
+                    pitchApiSportScoreFallbackDiagnostics.ambiguousCandidates++;
+                    if (pitchApiSportScoreFallbackDiagnostics.matchFailureSamples.length < 10) pitchApiSportScoreFallbackDiagnostics.matchFailureSamples.push({ reason: "ambiguous_candidates", home: homeName.slice(0, 40), away: awayName.slice(0, 40), candidates: candidates.slice(0, 3).map(candidate => ({ id: candidate.id || null, home: String(candidate?.home_team?.name || "").slice(0, 40), away: String(candidate?.away_team?.name || "").slice(0, 40) })) });
+                  } else if (!/^m_[A-Za-z0-9]{6}$/.test(String(candidates[0].id || ""))) {
+                    pitchApiSportScoreFallbackDiagnostics.badIdFormat++;
+                    if (pitchApiSportScoreFallbackDiagnostics.matchFailureSamples.length < 10) pitchApiSportScoreFallbackDiagnostics.matchFailureSamples.push({ reason: "bad_id_format", home: homeName.slice(0, 40), away: awayName.slice(0, 40), candidateId: String(candidates[0].id || "").slice(0, 40) });
+                  } else {
                     const pitchFixture = candidates[0];
                     pitchApiSportScoreFallbackDiagnostics.fixtureMatched++;
                     const now = Date.now();
