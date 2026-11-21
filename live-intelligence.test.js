@@ -43,7 +43,7 @@ test("compares last 5, last 10 and match totals team by team", () => {
   assert.equal(result.windows.last5.comparisons.shotsOnTarget.leader, "home");
   assert.equal(result.windows.last10.comparisons.xg.difference, 0.6);
   assert.equal(result.windows.totals.matchSot, 8);
-  assert.equal(result.pressure.status, "sustained_attacking_superiority");
+  assert.equal(result.pressure.status, "sustained_attacking_superiority");\n  assert.equal(result.windows.last5.momentum.leader, "home");
 });
 
 test("missing coverage remains unavailable and blocks unsupported conclusions", () => {
@@ -76,7 +76,7 @@ test("does not treat equal values as a team leader in match momentum inputs", ()
       last10: window(team({sot:2,xg:0.4,box:4}), team({sot:2,xg:0.4,box:4})) }
   });
   assert.equal(result.windows.last5.comparisons.boxEntries.leader, "level");
-  assert.equal(result.pressure.status, "balanced_or_unclear");
+  assert.equal(result.pressure.status, "balanced_or_unclear");\n  assert.equal(result.windows.last5.momentum.status, "neutral");
 });
 
 test("builds overlapping 5-minute and 10-minute shot windows from event timestamps", () => {
