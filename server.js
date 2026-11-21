@@ -15,7 +15,7 @@ const { isAiMinuteEligible, isCumulativeSotMinute, isFirstHalfSotMinute, isFirst
 const { createLimiter, isHistoryLeagueSupported, fetchCompetitionHistoryWindow, formatEspnMonth } = require("./competition-history");
 const { createCompetitionHistoryStore } = require("./competition-history-store");
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
-const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
+const { calculatePowerRankingScore, calculateAutonomousPowerRankingScore, confirmAutonomousPowerRankingObservation, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
 const { evaluateGptGoalIntelligence } = require("./gpt-goal-intelligence");
 const { createPreScanTracker } = require("./pre-scan-intelligence");
@@ -391,6 +391,8 @@ async function capturePreScanObservation({ eventId, match, current, now }) {
 const pushScanHunterSnapshots = new Map();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
 const pushScanAutonomousPowerRankingAlerts = new Set();
+// Require two qualifying autonomous observations 30–90 seconds apart before alerting.
+const pushScanAutonomousPowerRankingCandidates = new Map();
 // Bounded temporary history for hosts without PostgreSQL. Lost on process restart.
 const volatileAlertHistory = new Map();
 const volatileHighActivityHistory = new Map();
@@ -5314,6 +5316,7 @@ const server = http.createServer(async (req, res) => {
         const powerRankingMinute = minuteForEligibility;
         const powerRankingEligible = isPowerRankingMinuteEligible(powerRankingMinute, statusForEligibility);
         const powerRankingScore = calculatePowerRankingScore({ teams, trend: match.trend });
+        const autonomousPowerRanking = calculateAutonomousPowerRankingScore({ teams, trend: match.trend });
         if (powerRankingEligible && powerRankingScore >= 59 && scoreAvailable && !pushScanPowerRankingAlerts.has(id)) {
           const alertId = "push:" + id + ":AI:power-ranking-59:" + now;
           try {
@@ -5368,17 +5371,25 @@ const server = http.createServer(async (req, res) => {
         // SOT/xG triggers, their cooldowns, or the AI Power Ranking deduplication state.
         // A dip to 65 or below rearms the next autonomous 2H alert. Persist this
         // on the latest signal so the re-crossing rule survives process restarts.
-        if (powerRankingEligible && powerRankingMinute >= 46 && Number(powerRankingScore) <= 65 &&
+        if (powerRankingEligible && powerRankingMinute >= 46 && Number(autonomousPowerRanking.score) <= 65 &&
             await ensureAlertHistoryDb()) {
           await analyticsPool.query(
             "UPDATE alert_history SET payload=jsonb_set(payload,'{statsAtSignal,autonomousRearmed}','true'::jsonb,true),updated_at=NOW() WHERE alert_id=(SELECT alert_id FROM alert_history WHERE event_id=$1 AND payload->>'alertType'='power_ranking_autonomous_signal' AND payload->>'periodAtSignal'='second_half' ORDER BY created_at DESC LIMIT 1)",
             [id]
           );
           pushScanAutonomousPowerRankingAlerts.delete(id);
+          pushScanAutonomousPowerRankingCandidates.delete(id);
         }
-        const autonomousPowerRankingQualified = shouldEmitAutonomousPowerRankingAlert({
-          score: powerRankingScore,
-          eligible: powerRankingEligible
+        const autonomousPowerRankingRawQualified = shouldEmitAutonomousPowerRankingAlert({
+          score: autonomousPowerRanking.score,
+          eligible: powerRankingEligible,
+          qualified: autonomousPowerRanking.qualified
+        });
+        const autonomousPowerRankingQualified = confirmAutonomousPowerRankingObservation({
+          candidates: pushScanAutonomousPowerRankingCandidates,
+          eventId: id,
+          qualified: autonomousPowerRankingRawQualified,
+          now
         });
         if (autonomousPowerRankingQualified && !pushScanAutonomousPowerRankingAlerts.has(id)) {
           try {
@@ -5430,15 +5441,16 @@ const server = http.createServer(async (req, res) => {
                 market: autonomousOverLine ? "Over " + autonomousOverLine : "Power Ranking signal",
                 alertType: "power_ranking_autonomous_signal",
                 odds: null, oddsVerifiedAt: null, periodAtSignal: autonomousPeriod,
-                reason: "Αυτόνομο Power Ranking " + powerRankingScore + "/100 · όριο 65+",
+                reason: "Αυτόνομο Power Ranking " + autonomousPowerRanking.score + "/100 · όριο 65+",
                 outcome: "εκκρεμεί", betOutcome: "pending",
                 evaluationRule: autonomousMatchScoreAvailable ? "end_of_relevant_half" : "signal_only_no_score_at_signal",
                 startScore: autonomousMatchScoreAvailable ? autonomousHomeScore + autonomousAwayScore : null,
                 startHomeScore: autonomousHomeScore, startAwayScore: autonomousAwayScore,
                 triggerIds: ["power_ranking_autonomous_65"], supportSignalIds: [],
                 statsAtSignal: {
-                  powerRankingScore,
+                  powerRankingScore: autonomousPowerRanking.score,
                   powerRankingThreshold: 65,
+                  powerRankingComponents: autonomousPowerRanking.components,
                   powerRankingMode: "autonomous",
                   autonomousRearmed: false,
                   autonomousAlertIndex,
@@ -5465,7 +5477,8 @@ const server = http.createServer(async (req, res) => {
                 candidates++;
                 console.info("Autonomous Power Ranking 65+ alert saved:", JSON.stringify({
                   eventId: id, minute: powerRankingMinute, period: autonomousPeriod,
-                  score: powerRankingScore, matchScoreAvailable: autonomousMatchScoreAvailable,
+                  score: autonomousPowerRanking.score, matchScoreAvailable: autonomousMatchScoreAvailable,
+                  sotQualified: autonomousPowerRanking.qualified,
                   alertId: autonomousAlertId
                 }));
               }
