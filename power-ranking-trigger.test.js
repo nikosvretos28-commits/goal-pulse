@@ -68,11 +68,11 @@ test("halftime and completed matches are always rejected", () => {
   assert.equal(isPowerRankingMinuteEligible(60, "finished"), false);
 });
 
-test("autonomous Power Ranking requires score above 65, SOT qualification, and eligibility", () => {
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 65, eligible: true, qualified: true }), false);
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 66, eligible: false, qualified: true }), false);
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 100, eligible: true, qualified: false }), false);
-  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 66, eligible: true, qualified: true }), true);
+test("autonomous Power Ranking alerts at 70 based on score alone, while retaining minute eligibility", () => {
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 69, eligible: true, qualified: true }), false);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 70, eligible: true, qualified: false }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 71, eligible: true, qualified: false }), true);
+  assert.equal(shouldEmitAutonomousPowerRankingAlert({ score: 100, eligible: false, qualified: false }), false);
 });
 
 test("autonomous model weights SOT 65 points and records all six score components", () => {
