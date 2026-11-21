@@ -158,7 +158,7 @@ test("normalizes PitchAPI on-target events with minute precision without inventi
       { id: 3, team_id: "a", is_on_target: true, minute: 68, expected_goals: 0.22, expected_goals_on_target: 0.19 }
     ]}
   ], {homeTeamId:"h",awayTeamId:"a"});
-  assert.equal(events.length,2);
+  assert.equal(events.length,3);
   assert.equal(events[0].team,"home");
   assert.equal(events[0].minute,64);
   assert.equal(events[0].minuteAdded,2);
@@ -169,5 +169,6 @@ test("normalizes PitchAPI on-target events with minute precision without inventi
   assert.equal(totals.away.shotsOnTarget,1);
   assert.ok(Math.abs(totals.home.xg-0.31)<1e-9);
   assert.ok(Math.abs(totals.away.psxg-0.19)<1e-9);
+  assert.ok(Math.abs(totals.away.xg-0.30)<1e-9);
   assert.equal(totals.home.bigChances,null);
 });
