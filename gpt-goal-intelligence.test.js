@@ -34,3 +34,5 @@ test("does not trigger on stale or malformed rolling windows", () => {
   const r = evaluateGptGoalIntelligence({...base, window5m:{available:true,sampleMinutes:15,teams:[{shotsOnTarget:5},{shotsOnTarget:0}]}});
   assert.equal(r.evidence.rolling5m, null);
 });
+
+test("attaches Pre-Scan context without changing trigger score or decisions", () => {\n  const context = { observationCount: 12, trackedMinutes: 8, deltaSot: { Home: 3, Away: 1 } };\n  const plain = evaluateGptGoalIntelligence(base);\n  const enriched = evaluateGptGoalIntelligence({...base, preScanContext: context});\n  assert.equal(enriched.triggered, plain.triggered);\n  assert.equal(enriched.score, plain.score);\n  assert.deepEqual(enriched.triggers, plain.triggers);\n  assert.deepEqual(enriched.preScanContext, context);\n});\n
