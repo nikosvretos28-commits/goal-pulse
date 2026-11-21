@@ -224,22 +224,28 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
 
   async function retryPending() {
     const pool = getPool();
+    const attemptedIds = new Set();
     if (pool && await ensureSchema()) {
-      const pending = await pool.query("SELECT alert_id,payload,attempts FROM live_intelligence_alert_history WHERE delivery_status='pending' ORDER BY created_at ASC LIMIT 25");
-      for (const row of pending.rows) {
-        let delivery;
-        try { delivery = typeof sendPush === "function" ? await sendPush(row.payload) : { sent: 0, failed: 0, configured: false }; }
-        catch (error) { delivery = { sent: 0, failed: 1, configured: true, error: String(error.message || error).slice(0, 180) }; }
-        const status = delivery.configured === false ? "not_configured" : Number(delivery.sent || 0) > 0 ? "delivered" : "pending";
-        const result = { ...delivery, attemptedAt: now().toISOString() };
-        await pool.query("UPDATE live_intelligence_alert_history SET delivery_status=$2,delivery_result=$3::jsonb,attempts=$4 WHERE alert_id=$1", [row.alert_id, status, JSON.stringify(result), Number(row.attempts || 0) + 1]);
-        memoryAlerts.set(row.alert_id, { alert_id: row.alert_id, payload: row.payload, delivery_status: status, delivery_result: result, attempts: Number(row.attempts || 0) + 1 });
+      try {
+        const pending = await pool.query("SELECT alert_id,payload,attempts FROM live_intelligence_alert_history WHERE delivery_status=$1 ORDER BY created_at ASC LIMIT 25", ["pending"]);
+        for (const row of pending.rows) {
+          attemptedIds.add(row.alert_id);
+          let delivery;
+          try { delivery = typeof sendPush === "function" ? await sendPush(row.payload) : { sent: 0, failed: 0, configured: false }; }
+          catch (error) { delivery = { sent: 0, failed: 1, configured: true, error: String(error.message || error).slice(0, 180) }; }
+          const status = delivery.configured === false ? "not_configured" : Number(delivery.sent || 0) > 0 ? "delivered" : "pending";
+          const result = { ...delivery, attemptedAt: now().toISOString() };
+          const attempts = Number(row.attempts || 0) + 1;
+          await pool.query("UPDATE live_intelligence_alert_history SET delivery_status=$2,delivery_result=$3::jsonb,attempts=$4 WHERE alert_id=$1", [row.alert_id, status, JSON.stringify(result), attempts]).catch(error => console.error("[LIVE INTELLIGENCE] retry status update failed:", error.message));
+          memoryAlerts.set(row.alert_id, { alert_id: row.alert_id, payload: row.payload, delivery_status: status, delivery_result: result, attempts });
+        }
+      } catch (error) {
+        console.warn("[LIVE INTELLIGENCE] database retry queue unavailable; using memory queue:", error.message);
       }
-      return pending.rowCount || 0;
     }
-    let retried = 0;
+    let retried = attemptedIds.size;
     for (const row of memoryAlerts.values()) {
-      if (row.delivery_status !== "pending") continue;
+      if (row.delivery_status !== "pending" || attemptedIds.has(row.alert_id)) continue;
       let delivery;
       try { delivery = typeof sendPush === "function" ? await sendPush(row.payload) : { sent: 0, failed: 0, configured: false }; }
       catch (error) { delivery = { sent: 0, failed: 1, configured: true, error: String(error.message || error).slice(0, 180) }; }
@@ -247,6 +253,9 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
       row.delivery_result = { ...delivery, attemptedAt: now().toISOString() };
       row.attempts = Number(row.attempts || 0) + 1;
       retried++;
+      if (pool && await ensureSchema()) {
+        await pool.query("UPDATE live_intelligence_alert_history SET delivery_status=$2,delivery_result=$3::jsonb,attempts=$4 WHERE alert_id=$1", [row.alert_id, row.delivery_status, JSON.stringify(row.delivery_result), row.attempts]).catch(() => {});
+      }
     }
     return retried;
   }
