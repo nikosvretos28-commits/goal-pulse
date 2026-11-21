@@ -40,3 +40,23 @@ This is a read-only audit of the current `server.js` live-stat normalization pat
 3. Trigger selection is now defined in the independent engine: confirmed goal/red-card state changes, sustained attacking superiority, pressure without a clear SOT/xG edge, and pressure with some chance indicators. Unconfirmed events never trigger a state-change alert.
 4. Push payload formatting now requires a complete alert-time snapshot: both team names, score, current minute, competition and country. Incomplete snapshots are rejected rather than filled with guesses. The message also includes the analysis label and available SOT/xG context.
 5. Remaining before production push delivery: connect only verified provider inputs to this engine, persist independent LIVE INTELLIGENCE history/deduplication/cooldown, and add the independent UI panel and test-push flow. The existing alert channels remain isolated.
+
+## PitchAPI shot-event schema verification (2026-11-21)
+
+The official PitchAPI reference for `GET /v1/matches/{id}/shots` confirms that each shot row includes:
+
+- `team_id` for team attribution.
+- `is_on_target` for on-target classification (including blocked shots heading on target, per provider definition).
+- `expected_goals` and optional `expected_goals_on_target` for shot-level xG / PSxG.
+- `minute` and optional `minute_added` for match-minute placement.
+- `event_type`, `is_blocked`, and `is_inside_box` for event context.
+
+The documented shot schema does **not** include an RFC 3339 event timestamp or a seconds-within-minute field. Therefore:
+
+- PitchAPI is a verified source for event-level SOT, xG and optional PSxG, subject to the response being present and fresh.
+- PitchAPI shot rows can support minute-resolution event ordering, but must not be converted into fabricated second-precision `timestampSeconds`.
+- The engine's strict 5-minute / 10-minute rolling event-time windows remain unavailable until a source supplies genuine event timestamps, or the product explicitly approves a clearly labeled minute-resolution alternative.
+- The existing `/shots` integration currently uses the rows only to count shots inside the box; it does not yet pass event-level SOT/xG/PSxG into LIVE INTELLIGENCE.
+- `big_chances` remains an editorial/team-stat field; do not infer it from `is_on_target`, xG, or shot location.
+
+Reference checked: official PitchAPI API reference, `GET /v1/matches/{id}/shots` and Shot fields, https://pitchapi.dev/.
