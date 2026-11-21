@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { calculatePowerRankingScore, calculateAutonomousPowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
+const { calculatePowerRankingScore, calculateAutonomousPowerRankingScore, confirmAutonomousPowerRankingObservation, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 
 function makeWindow(sampleMinutes, teams) {
   return { available: true, sampleMinutes, teams };
@@ -121,4 +121,29 @@ test("stale or missing ten-minute SOT data cannot satisfy autonomous qualificati
   });
   assert.equal(result.components.sot10m, null);
   assert.equal(result.qualified, false);
+});
+
+test("autonomous alerts require two qualifying observations 30–90 seconds apart", () => {
+  const candidates = new Map();
+  const args = { candidates, eventId: "fixture-1", qualified: true };
+  assert.equal(confirmAutonomousPowerRankingObservation({ ...args, now: 100000 }), false);
+  assert.equal(confirmAutonomousPowerRankingObservation({ ...args, now: 129999 }), false);
+  assert.equal(confirmAutonomousPowerRankingObservation({ ...args, now: 130000 }), true);
+  assert.equal(confirmAutonomousPowerRankingObservation({ ...args, now: 190001 }), false);
+});
+
+test("autonomous confirmation resets after a failed qualification or stale observation", () => {
+  const candidates = new Map();
+  assert.equal(confirmAutonomousPowerRankingObservation({
+    candidates, eventId: "fixture-2", qualified: true, now: 100000
+  }), false);
+  assert.equal(confirmAutonomousPowerRankingObservation({
+    candidates, eventId: "fixture-2", qualified: false, now: 140000
+  }), false);
+  assert.equal(confirmAutonomousPowerRankingObservation({
+    candidates, eventId: "fixture-2", qualified: true, now: 150000
+  }), false);
+  assert.equal(confirmAutonomousPowerRankingObservation({
+    candidates, eventId: "fixture-2", qualified: true, now: 240001
+  }), false);
 });
