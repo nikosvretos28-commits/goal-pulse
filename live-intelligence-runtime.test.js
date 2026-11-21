@@ -89,3 +89,27 @@ test("unconfigured push is recorded once and does not retry or duplicate", async
   const history = await runtime.listHistory();
   assert.equal(history.records[0].delivery_status, "not_configured");
 });
+
+test("pending delivery is retried on the next independent scan without a duplicate alert record", async () => {
+  let current = match();
+  let attempts = 0;
+  const runtime = createLiveIntelligenceRuntime({
+    getMatches: async () => [current],
+    sendPush: async () => {
+      attempts++;
+      return attempts === 1
+        ? { sent: 0, failed: 1, configured: true }
+        : { sent: 1, failed: 0, configured: true };
+    }
+  });
+  await runtime.scan();
+  current = match({ score: { home: 1, away: 0 } });
+  const first = await runtime.scan();
+  assert.equal(first.results[0].deliveryStatus, "pending");
+  await runtime.scan();
+  assert.equal(attempts, 2);
+  const history = await runtime.listHistory();
+  assert.equal(history.records.length, 1);
+  assert.equal(history.records[0].delivery_status, "delivered");
+  assert.equal(history.records[0].attempts, 2);
+});
