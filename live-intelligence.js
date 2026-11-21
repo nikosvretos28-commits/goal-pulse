@@ -83,7 +83,7 @@ function classifyPressure(last5, last10) {
     return { status: "mixed", label: "Οι δείκτες ευκαιριών δείχνουν διαφορετική εικόνα", team: null };
   }
   if (sot5.leader === "level" && xg5.leader === "level") {
-    return { status: "pressure_without_clear_chances", label: "Συχνές είσοδοι στην περιοχή, λίγες καθαρές τελικές", team: entryLeader };
+    return { status: "box_entry_pressure_without_sot_or_xg_edge", label: "Περισσότερες είσοδοι στην περιοχή χωρίς υπεροχή σε SOT ή xG", team: entryLeader };
   }
   const stableMetrics = ["boxEntries", "shotsOnTarget", "xg"];
   const stable10 = stableMetrics.every(metric => last10.comparisons[metric].status === "available" &&
@@ -132,7 +132,34 @@ function describeGameStateChanges(events, windowStartSeconds = null) {
     }));
 }
 
-function buildLiveIntelligenceAnalysis(input = {}) {
+
+function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, coverage = {} } = {}) {
+  const empty = () => ({
+    available: coverage.available === true,
+    home: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null },
+    away: { shotsOnTarget: null, xg: null, psxg: null, bigChances: null }
+  });
+  const result = empty();
+  if (coverage.available !== true || !Number.isFinite(Number(nowSeconds)) || !Array.isArray(events)) return result;
+  const start = durationSeconds === null ? -Infinity : Number(nowSeconds) - Number(durationSeconds);
+  const relevant = events.filter(event => event && Number.isFinite(Number(event.timestampSeconds)) &&
+    Number(event.timestampSeconds) <= Number(nowSeconds) && Number(event.timestampSeconds) >= start &&
+    (event.team === "home" || event.team === "away") && event.type === "shot");
+  for (const side of ["home", "away"]) {
+    const shots = relevant.filter(event => event.team === side);
+    const onTarget = shots.filter(event => event.onTarget === true);
+    const xgValues = shots.map(event => finiteNonNegative(event.xg));
+    const psxgValues = onTarget.map(event => finiteNonNegative(event.psxg));
+    result[side] = {
+      shotsOnTarget: onTarget.length,
+      xg: xgValues.every(value => value !== null) ? xgValues.reduce((sum, value) => sum + value, 0) : null,
+      psxg: psxgValues.every(value => value !== null) ? psxgValues.reduce((sum, value) => sum + value, 0) : null,
+      bigChances: shots.filter(event => event.bigChance === true).length
+    };
+  }
+  return result;
+}
+\nfunction buildLiveIntelligenceAnalysis(input = {}) {
   const source = input.source || null;
   const last5 = summarizeWindow(input.windows?.last5, source);
   const last10 = summarizeWindow(input.windows?.last10, source);
@@ -154,4 +181,4 @@ function buildLiveIntelligenceAnalysis(input = {}) {
   };
 }
 
-module.exports = { METRICS, readMetric, compareMetric, buildLiveIntelligenceAnalysis, describeGameStateChanges };
+module.exports = { METRICS, readMetric, compareMetric, buildShotDerivedWindow, buildLiveIntelligenceAnalysis, describeGameStateChanges };
