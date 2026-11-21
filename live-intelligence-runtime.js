@@ -170,22 +170,25 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
     const previous = await readState(eventId);
     await writeState(eventId, current);
     if (!previous) return { eventId, seeded: true };
-    let event = null;
+    const events = [];
     if (current.scoreHome !== null && current.scoreAway !== null &&
         previous.scoreHome !== null && previous.scoreAway !== null &&
         (current.scoreHome !== previous.scoreHome || current.scoreAway !== previous.scoreAway)) {
       const homeDelta = current.scoreHome - previous.scoreHome;
       const awayDelta = current.scoreAway - previous.scoreAway;
       if (homeDelta >= 0 && awayDelta >= 0 && (homeDelta > 0 || awayDelta > 0)) {
-        event = { type: "goal", team: homeDelta > awayDelta ? "home" : awayDelta > homeDelta ? "away" : null };
+        events.push({ type: "goal", team: homeDelta > awayDelta ? "home" : awayDelta > homeDelta ? "away" : null });
       }
     }
-    if (!event && current.redCardsHome !== null && current.redCardsAway !== null &&
+    if (current.redCardsHome !== null && current.redCardsAway !== null &&
         previous.redCardsHome !== null && previous.redCardsAway !== null) {
-      if (current.redCardsHome > previous.redCardsHome) event = { type: "red_card", team: "home" };
-      else if (current.redCardsAway > previous.redCardsAway) event = { type: "red_card", team: "away" };
+      if (current.redCardsHome > previous.redCardsHome) events.push({ type: "red_card", team: "home" });
+      if (current.redCardsAway > previous.redCardsAway) events.push({ type: "red_card", team: "away" });
     }
-    return event ? { eventId, ...(await deliverOnce(match, event)) } : { eventId, observed: true };
+    if (!events.length) return { eventId, observed: true };
+    const outcomes = [];
+    for (const event of events) outcomes.push(await deliverOnce(match, event));
+    return { eventId, events: outcomes, ...outcomes[0] };
   }
 
   async function retryPending() {
