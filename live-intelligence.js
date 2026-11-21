@@ -255,7 +255,7 @@ function selectLiveIntelligenceTrigger(analysis) {
   if (confirmedShift) {
     return {
       type: "game_state_shift",
-      label: confirmedShift.type === "goal" ? "Αλλαγή εικόνας μετά από γκολ" : "Αλλαγή αριθμητικών ισορροπιών μετά από κόκκινη κάρτα",
+      label: confirmedShift.type === "goal" ? "Επιβεβαιωμένη αλλαγή σκορ από διαδοχικά live snapshots" : "Αλλαγή αριθμητικών ισορροπιών μετά από κόκκινη κάρτα",
       event: confirmedShift
     };
   }
