@@ -113,3 +113,23 @@ test("pending delivery is retried on the next independent scan without a duplica
   assert.equal(history.records[0].delivery_status, "delivered");
   assert.equal(history.records[0].attempts, 2);
 });
+
+test("records simultaneous goal and red-card changes as separate deduplicated alerts", async () => {
+  let current = match();
+  const deliveries = [];
+  const runtime = createLiveIntelligenceRuntime({
+    getMatches: async () => [current],
+    sendPush: async payload => { deliveries.push(payload); return { sent: 1, failed: 0, configured: true }; }
+  });
+  await runtime.scan();
+  current = match({
+    minute: 75,
+    score: { home: 1, away: 0 },
+    analysis: { independent: true, gameState: { redCards: { home: 0, away: 1 } }, windows: {} }
+  });
+  const result = await runtime.scan();
+  assert.equal(result.results[0].events.length, 2);
+  assert.equal(deliveries.length, 2);
+  const history = await runtime.listHistory();
+  assert.equal(history.records.length, 2);
+});
