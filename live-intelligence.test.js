@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildLiveIntelligenceAnalysis, buildShotDerivedWindow, readMetric, METRICS, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload } = require("./live-intelligence");
+const { buildLiveIntelligenceAnalysis, buildShotDerivedWindow, normalizePitchApiShotEvents, summarizeShotEventTotals, readMetric, METRICS, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload } = require("./live-intelligence");
 
 function metric(value, extra = {}) { return { available: true, value, source: "test-provider", ...extra }; }
 function team({ sot=0, xg=0, box=0 } = {}) {
@@ -149,3 +149,25 @@ test("refuses to send a live alert without a complete verified match snapshot", 
   assert.deepEqual(payload, { ok: false, reason: "incomplete_match_snapshot" });
 });
 
+
+test("normalizes PitchAPI on-target events with minute precision without inventing timestamps", () => {
+  const events = normalizePitchApiShotEvents([
+    { period: "all", shots: [
+      { id: 1, team_id: "h", is_on_target: true, minute: 64, minute_added: 2, expected_goals: 0.31, expected_goals_on_target: 0.44 },
+      { id: 2, team_id: "a", is_on_target: false, minute: 65, expected_goals: 0.08 },
+      { id: 3, team_id: "a", is_on_target: true, minute: 68, expected_goals: 0.22, expected_goals_on_target: 0.19 }
+    ]}
+  ], {homeTeamId:"h",awayTeamId:"a"});
+  assert.equal(events.length,2);
+  assert.equal(events[0].team,"home");
+  assert.equal(events[0].minute,64);
+  assert.equal(events[0].minuteAdded,2);
+  assert.equal(events[0].timestampSeconds,null);
+  assert.equal(events[0].timePrecision,"match-minute");
+  const totals=summarizeShotEventTotals(events);
+  assert.equal(totals.home.shotsOnTarget,1);
+  assert.equal(totals.away.shotsOnTarget,1);
+  assert.ok(Math.abs(totals.home.xg-0.31)<1e-9);
+  assert.ok(Math.abs(totals.away.psxg-0.19)<1e-9);
+  assert.equal(totals.home.bigChances,null);
+});
