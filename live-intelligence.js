@@ -181,7 +181,7 @@ function normalizePitchApiShotEvents(shotPeriods, { homeTeamId, awayTeamId, sour
   if (awayTeamId != null) idToSide.set(String(awayTeamId), "away");
   return rows.flatMap((shot, index) => {
     const team = idToSide.get(String(shot?.team_id ?? ""));
-    if (!team || shot?.is_on_target !== true) return [];
+    if (!team) return [];
     const minute = finiteNonNegative(shot.minute);
     const addedMinute = finiteNonNegative(shot.minute_added);
     const xg = finiteNonNegative(shot.expected_goals);
@@ -190,7 +190,7 @@ function normalizePitchApiShotEvents(shotPeriods, { homeTeamId, awayTeamId, sour
       id: shot.id != null ? String(shot.id) : String(index),
       type: "shot",
       team,
-      onTarget: true,
+      onTarget: shot?.is_on_target === true,
       minute: minute === null ? null : Math.floor(minute),
       minuteAdded: addedMinute === null ? null : Math.floor(addedMinute),
       xg,
@@ -209,10 +209,11 @@ function summarizeShotEventTotals(events) {
   };
   if (!Array.isArray(events) || events.length === 0) return result;
   for (const side of ["home", "away"]) {
-    const rows = events.filter(event => event?.team === side && event?.type === "shot" && event.onTarget === true);
-    result[side].shotsOnTarget = rows.length;
-    const xg = rows.map(event => finiteNonNegative(event.xg));
-    const psxg = rows.map(event => finiteNonNegative(event.psxg));
+    const shots = events.filter(event => event?.team === side && event?.type === "shot");
+    const onTarget = shots.filter(event => event.onTarget === true);
+    result[side].shotsOnTarget = onTarget.length;
+    const xg = shots.map(event => finiteNonNegative(event.xg));
+    const psxg = onTarget.map(event => finiteNonNegative(event.psxg));
     result[side].xg = xg.every(value => value !== null) ? xg.reduce((sum, value) => sum + value, 0) : null;
     result[side].psxg = psxg.every(value => value !== null) ? psxg.reduce((sum, value) => sum + value, 0) : null;
   }
