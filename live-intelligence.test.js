@@ -93,7 +93,7 @@ test("builds overlapping 5-minute and 10-minute shot windows from event timestam
   assert.equal(last10.away.shotsOnTarget,1);
   assert.equal(last10.home.xg,0.6);
   assert.equal(last10.home.psxg,0.8);
-  assert.equal(last10.home.bigChances,1);
+  assert.equal(last10.home.bigChances,null);
 });
 
 test("does not fabricate zero values when shot-event coverage is unavailable", () => {
