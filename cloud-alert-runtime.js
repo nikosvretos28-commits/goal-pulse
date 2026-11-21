@@ -213,8 +213,8 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { saved: false, reason: "persistent_database_unavailable" };
     const {
-      matchId, fixtureId, league, ruleVersion, period, triggers, minute, home, away, homeSot, awaySot,
-      recentSot6, recentSot10, scoreHome, scoreAway, metrics, confirmation, statsSource
+      matchId, fixtureId, league, country, ruleVersion, period, triggers, minute, home, away, homeSot, awaySot,
+      recentSot6, recentSot10, scoreHome, scoreAway, metrics, matrixScore, availableMetrics, metricBreakdown, confirmation, statsSource
     } = candidate || {};
     if (!matchId || !["1H", "2H"].includes(period) || !Array.isArray(triggers) ||
         !triggers.length || !Number.isInteger(homeSot) || !Number.isInteger(awaySot)) {
@@ -258,8 +258,8 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     const pool = getPool();
     if (!pool || !(await ensureSchema())) return { ok: false, reason: "persistent_database_unavailable" };
     const {
-      matchId, fixtureId, league, ruleVersion, period, triggers, minute, home, away, homeSot, awaySot,
-      recentSot6, recentSot10, scoreHome, scoreAway, metrics
+      matchId, fixtureId, league, country, ruleVersion, period, triggers, minute, home, away, homeSot, awaySot,
+      recentSot6, recentSot10, scoreHome, scoreAway, metrics, matrixScore, availableMetrics, metricBreakdown
     } = candidate || {};
     if (!matchId || !["1H", "2H"].includes(period) || !Array.isArray(triggers) ||
         !triggers.length || !Number.isInteger(homeSot) || !Number.isInteger(awaySot)) {
@@ -267,7 +267,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     }
     const snapshot = {
       matchId: String(matchId), fixtureId: String(fixtureId || matchId),
-      league: String(league || "unknown"), ruleVersion: String(ruleVersion || "cloud-alert-v0.2"),
+      league: String(league || "unknown"), ruleVersion: String(ruleVersion || "matrix-alert-v1"),
       period, triggers: [...triggers].sort(),
       minute: Number.isFinite(minute) ? minute : null,
       home: String(home || "Home"), away: String(away || "Away"),
