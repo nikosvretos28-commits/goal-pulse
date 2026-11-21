@@ -1,0 +1,28 @@
+name: Matrix Alert push test endpoint checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "server.js"
+      - "matrix-alert-test-push.js"
+      - "matrix-alert-test-push.test.js"
+      - ".github/workflows/matrix-alert-push-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix-alert-push-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+      - name: Check server syntax
+        run: node --check server.js
+      - name: Run Matrix Alert test-push tests
+        run: node --test matrix-alert-test-push.test.js
