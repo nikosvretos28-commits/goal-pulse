@@ -271,17 +271,20 @@ async function capturePreScanObservation({ eventId, match, current, now }) {
   const id = String(eventId || "");
   if (!id || !current || !Array.isArray(current.sotByTeam)) return null;
   if (!preScanHydratedEvents.has(id)) {
-    preScanHydratedEvents.add(id);
-    if (await ensurePreScanDb()) {
+    const dbReady = await ensurePreScanDb();
+    if (dbReady) {
       try {
         const saved = await analyticsPool.query(
           "SELECT payload FROM pre_scan_live_matches WHERE event_id=$1",
           [id]
         );
         if (saved.rows?.[0]?.payload) preScanTracker.restore(id, saved.rows[0].payload);
+        preScanHydratedEvents.add(id);
       } catch (error) {
-        console.warn("[Pre-Scan] history restore failed:", error.message);
+        console.warn("[Pre-Scan] history restore failed; will retry next scan:", error.message);
       }
+    } else if (!analyticsPool) {
+      preScanHydratedEvents.add(id);
     }
   }
   const context = preScanTracker.observe({
