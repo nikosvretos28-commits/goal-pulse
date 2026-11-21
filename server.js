@@ -31,6 +31,7 @@ const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
 const { addRollingTrends } = require("./rolling-trend-history");
 const { buildLiveIntelligenceAnalysis } = require("./live-intelligence");
+const { createLiveIntelligenceRuntime } = require("./live-intelligence-runtime");
 const { createSharedLiveMetricsCoordinator } = require("./shared-live-metrics-coordinator");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
@@ -1091,6 +1092,23 @@ const cloudAlertScanner = createCloudAlertScanner({
   runtime: cloudAlertRuntime,
   settlement: cloudAlertSettlement,
   pushEnabled: CLOUD_ALERT_PUSH_ENABLED
+});
+// Independent LIVE INTELLIGENCE scanner. It observes its own analysis endpoint,
+// persists only its own state/history, and never writes to other protocol stores.
+const liveIntelligenceRuntime = createLiveIntelligenceRuntime({
+  getPool: () => analyticsPool,
+  sendPush: sendPushToSubscribers,
+  intervalMs: 30000,
+  getMatches: async () => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const response = await fetch("http://127.0.0.1:" + PORT + "/api/live-intelligence?date=" + date, {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(55000)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.independent !== true) throw new Error(data.error || ("LIVE INTELLIGENCE feed HTTP " + response.status));
+    return Array.isArray(data.matches) ? data.matches : [];
+  }
 });
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
@@ -8330,6 +8348,16 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, body);
     }
 
+    if (url.pathname === "/api/live-intelligence/history" && req.method === "GET") {
+      const history = await liveIntelligenceRuntime.listHistory(Number(url.searchParams.get("limit") || 50));
+      return send(res, 200, {
+        protocol: "GOALMATRIX LIVE INTELLIGENCE",
+        independent: true,
+        ...history,
+        scanner: liveIntelligenceRuntime.status()
+      });
+    }
+
     if (url.pathname === "/api/live-intelligence" && req.method === "GET") {
       const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
       if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
@@ -8542,6 +8570,7 @@ setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Goal Pulse listening on " + PORT);
   cloudAlertScanner.start();
+  liveIntelligenceRuntime.start();
   // Daily full-coupon Pre-Match preparation at/after 06:00 Greece time.
   // Per-league persisted freshness prevents duplicate season downloads.
   const preMatchDailyTimer = setInterval(() => {
