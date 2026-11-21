@@ -192,4 +192,73 @@ function buildLiveIntelligenceAnalysis(input = {}) {
   };
 }
 
-module.exports = { METRICS, readMetric, compareMetric, deriveMomentum, buildShotDerivedWindow, buildLiveIntelligenceAnalysis, describeGameStateChanges };
+
+function cleanLabel(value) {
+  return typeof value === "string" ? value.trim().replace(/\\s+/g, " ").slice(0, 100) : "";
+}
+
+function selectLiveIntelligenceTrigger(analysis) {
+  if (!analysis || analysis.independent !== true) return null;
+  const changes = Array.isArray(analysis.recentGameStateChanges) ? analysis.recentGameStateChanges : [];
+  const confirmedShift = changes.find(event => event.confirmed === true && (event.type === "goal" || event.type === "red_card"));
+  if (confirmedShift) {
+    return {
+      type: "game_state_shift",
+      label: confirmedShift.type === "goal" ? "Αλλαγή εικόνας μετά από γκολ" : "Αλλαγή αριθμητικών ισορροπιών μετά από κόκκινη κάρτα",
+      event: confirmedShift
+    };
+  }
+  const pressure = analysis.pressure || {};
+  if (pressure.status === "sustained_attacking_superiority") {
+    return { type: pressure.status, label: pressure.label, team: pressure.team || null };
+  }
+  if (pressure.status === "box_entry_pressure_without_sot_or_xg_edge" ||
+      pressure.status === "pressure_with_some_chances") {
+    return { type: pressure.status, label: pressure.label, team: pressure.team || null };
+  }
+  return null;
+}
+
+function buildLiveIntelligencePushPayload({ analysis, match, triggeredAt = new Date().toISOString() } = {}) {
+  const trigger = selectLiveIntelligenceTrigger(analysis);
+  if (!trigger) return { ok: false, reason: "no_verified_trigger" };
+  const home = cleanLabel(match?.home);
+  const away = cleanLabel(match?.away);
+  const league = cleanLabel(match?.league);
+  const country = cleanLabel(match?.country);
+  const minute = finiteNonNegative(match?.minute);
+  const scoreHome = finiteNonNegative(match?.score?.home);
+  const scoreAway = finiteNonNegative(match?.score?.away);
+  if (!home || !away || !league || !country || minute === null ||
+      scoreHome === null || scoreAway === null) {
+    return { ok: false, reason: "incomplete_match_snapshot" };
+  }
+  const score = String(scoreHome) + "-" + String(scoreAway);
+  const matchName = home + " – " + away;
+  const pressureLine = trigger.label;
+  const window = analysis.windows?.last10 || analysis.windows?.last5;
+  const sot = window?.matchSot;
+  const xg = window?.xgDifference;
+  const details = [];
+  if (Number.isFinite(sot)) details.push("SOT σύνολο: " + sot);
+  if (Number.isFinite(xg)) details.push("Διαφορά xG: " + (xg > 0 ? "+" : "") + xg.toFixed(2));
+  const body = [
+    score + " · " + String(Math.floor(minute)) + "′ · " + league + " · " + country,
+    matchName,
+    pressureLine,
+    details.join(" | ")
+  ].filter(Boolean).join("\\n");
+  return {
+    ok: true,
+    channel: "live-intelligence",
+    title: "GOALMATRIX · LIVE INTELLIGENCE",
+    body,
+    tag: "goalmatrix-live-intelligence-" + cleanLabel(match?.fixtureId || matchName).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 70),
+    url: "/#liveIntelligencePanel",
+    triggeredAt,
+    snapshot: { score, minute: Math.floor(minute), league, country, home, away },
+    trigger
+  };
+}
+
+module.exports = { METRICS, readMetric, compareMetric, deriveMomentum, buildShotDerivedWindow, buildLiveIntelligenceAnalysis, describeGameStateChanges, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload };
