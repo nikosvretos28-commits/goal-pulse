@@ -247,7 +247,7 @@ function buildLiveIntelligencePushPayload({ analysis, match, triggeredAt = new D
     matchName,
     pressureLine,
     details.join(" | ")
-  ].filter(Boolean).join("\\n");
+  ].filter(Boolean).join("\n");
   return {
     ok: true,
     channel: "live-intelligence",
