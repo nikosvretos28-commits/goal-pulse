@@ -113,7 +113,12 @@ function createPreScanTracker({ maxAgeMs = 36 * 60 * 60 * 1000, maxMatches = 500
     return state ? buildContext(state) : null;
   }
 
-  return { observe, restore, get, size: () => matches.size };
+  function getState(eventId) {
+    const state = matches.get(String(eventId || ""));
+    return state ? JSON.parse(JSON.stringify(state)) : null;
+  }
+
+  return { observe, restore, get, getState, size: () => matches.size };
 }
 
 module.exports = { createPreScanTracker, validSot };
