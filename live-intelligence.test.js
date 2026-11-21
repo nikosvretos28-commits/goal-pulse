@@ -48,8 +48,12 @@ test("compares last 5, last 10 and match totals team by team", () => {
 });
 
 test("missing coverage remains unavailable and blocks unsupported conclusions", () => {
+  const home = team({box:3});
+  const away = team({box:1});
+  home.xg = null;
+  away.xg = null;
   const result = buildLiveIntelligenceAnalysis({
-    windows: { last5: window(team({box:3}), team({box:1})), last10: window(team(), team()) }
+    windows: { last5: window(home, away), last10: window(team(), team()) }
   });
   assert.equal(result.windows.last5.comparisons.xg.status, "unavailable");
   assert.equal(result.windows.last5.teams.home.xg.value, null);
