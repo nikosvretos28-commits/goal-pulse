@@ -60,3 +60,19 @@ The documented shot schema does **not** include an RFC 3339 event timestamp or a
 - `big_chances` remains an editorial/team-stat field; do not infer it from `is_on_target`, xG, or shot location.
 
 Reference checked: official PitchAPI API reference, `GET /v1/matches/{id}/shots` and Shot fields, https://pitchapi.dev/.
+
+
+## Integration status after PitchAPI event adapter (2026-11-21)
+
+The independent LIVE INTELLIGENCE adapter now consumes the already-fetched PitchAPI `/shots` response on PitchAPI fixtures:
+
+- Normalizes provider shot rows and maps `team_id` to home/away using the provider team IDs.
+- Counts SOT only when `is_on_target === true`; it does not use total shots or off-target attempts as SOT.
+- Uses all shot rows for event-derived xG totals when the cumulative team xG stat is unavailable.
+- Uses PSxG only for on-target shot rows when the cumulative team PSxG stat is unavailable.
+- Keeps Big Chances unavailable; it does not infer them from shots.
+- Retains the provider's `minute` / `minute_added` as minute-resolution metadata and explicitly leaves `timestampSeconds` null.
+- The API adapter prefers verified cumulative team stats and uses shot-event totals only as a fallback, with the source labeled `PitchAPI /shots event totals`.
+- 5-minute and 10-minute rolling windows remain unavailable unless the input explicitly declares genuine event-time coverage. Minute-only shot rows cannot enter second-based windows.
+
+This is a read-only analysis-data connection. It does not activate push delivery, persistence, duplicate suppression, alert history, or any existing protocol.
