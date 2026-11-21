@@ -7363,14 +7363,16 @@ body{color:#63f5d0}
   const matches=Array.isArray(data.matches)?data.matches:[];
   if(!matches.length){list.innerHTML='<div class="top-ai-alert-empty">Δεν εντοπίστηκαν live αγώνες αυτή τη στιγμή.</div>';return;}
   list.innerHTML=matches.map(match=>{
-   const analysis=match.analysis||{},totals=analysis.windows?.totals||{},home=totals.teams?.home||{},away=totals.teams?.away||{};
+   const analysis=match.analysis||{},totals=analysis.windows?.totals||{},home=totals.teams?.home||{},away=totals.teams?.away||{},last5=analysis.windows?.last5||{},last10=analysis.windows?.last10||{};
    const metrics=Object.keys(labels).map(key=>{
     const h=home[key],a=away[key];
     const left=key==='score'?(match.score?.home??'Μη διαθέσιμο'):key==='minute'?(match.minute??'Μη διαθέσιμο'):key==='numericalAdvantage'?(analysis.gameState?.numericalAdvantage||'Μη διαθέσιμο'):value(h);
     const right=key==='score'?(match.score?.away??'Μη διαθέσιμο'):key==='minute'?'—':key==='numericalAdvantage'?'—':value(a);
     return '<div class="protocol-analyst-recommendation" style="padding:8px"><small>'+esc(labels[key])+'</small><strong style="display:block">'+esc(left)+' – '+esc(right)+'</strong></div>';
    }).join('');
-   return '<article class="top-ai-alert-item" style="margin:10px 0;padding:12px;border:1px solid rgba(99,245,208,.18);border-radius:12px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>'+esc(match.home)+' – '+esc(match.away)+'</strong><strong>'+esc(match.score?.home??'—')+'-'+esc(match.score?.away??'—')+' · '+esc(match.minute??'—')+'′</strong></div><p class="subtle">'+esc(match.league)+' · '+esc(match.country)+' · Πηγή: '+esc(match.source||'Μη διαθέσιμη')+'</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:7px;margin-top:10px">'+metrics+'</div><p class="top-ai-alert-privacy">Τελευταία 5′ / 10′: Μη διαθέσιμο · Δεν υπάρχει επιβεβαιωμένο event-time window.</p></article>';
+   const windowLine=(label,w)=>{const h=w.teams?.home||{},a=w.teams?.away||{};return '<p class="top-ai-alert-privacy"><strong>'+label+':</strong> SOT '+value(h.shotsOnTarget)+'–'+value(a.shotsOnTarget)+' · xG '+value(h.xg)+'–'+value(a.xg)+' · PSxG '+value(h.psxg)+'–'+value(a.psxg)+'</p>';};
+   const windowNote=match.windowPrecision==='match-minute'?'Τα παράθυρα SOT/xG/PSxG έχουν ακρίβεια λεπτού αγώνα από PitchAPI, όχι δευτερολέπτου.':'Τα παράθυρα SOT/xG/PSxG δεν είναι διαθέσιμα από την τρέχουσα πηγή.';
+   return '<article class="top-ai-alert-item" style="margin:10px 0;padding:12px;border:1px solid rgba(99,245,208,.18);border-radius:12px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>'+esc(match.home)+' – '+esc(match.away)+'</strong><strong>'+esc(match.score?.home??'—')+'-'+esc(match.score?.away??'—')+' · '+esc(match.minute??'—')+'′</strong></div><p class="subtle">'+esc(match.league)+' · '+esc(match.country)+' · Πηγή: '+esc(match.source||'Μη διαθέσιμη')+'</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:7px;margin-top:10px">'+metrics+'</div>'+windowLine('Τελευταία 5′',last5)+windowLine('Τελευταία 10′',last10)+'<p class="top-ai-alert-privacy">'+windowNote+' Η στατιστική ειδοποίηση πίεσης παραμένει ανενεργή μέχρι να υπάρχουν και επαληθευμένα rolling Box Entries. Οι επιβεβαιωμένες αλλαγές σκορ/κόκκινης κάρτας λειτουργούν ανεξάρτητα.</p></article>';
   }).join('');
  }
  function renderHistory(data){
