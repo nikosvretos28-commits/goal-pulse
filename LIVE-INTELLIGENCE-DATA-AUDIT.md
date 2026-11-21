@@ -91,3 +91,12 @@ The independent LIVE INTELLIGENCE adapter now consumes the already-fetched Pitch
 - 5-minute and 10-minute rolling windows remain unavailable unless the input explicitly declares genuine event-time coverage. Minute-only shot rows cannot enter second-based windows.
 
 The PitchAPI adapter remains read-only with respect to existing protocol data. The separate LIVE INTELLIGENCE runtime now owns its own polling, score/red-card state-change push path, deduplication and history. The adapter still cannot supply true event-time rolling windows; statistical pressure alerts remain unavailable until that source gap is resolved.
+
+
+## Minute-resolution live windows connected (2026-11-21)
+
+The independent API now derives PitchAPI last-5-minute and last-10-minute match-clock windows from shot rows using the provider's `minute` plus `minute_added` fields. The UI explicitly labels these as **match-minute precision**, not second-precision timestamps. SOT is counted only for `is_on_target === true`; xG is summed from all shots; PSxG is summed only for on-target shots when all required values are present. A successfully fetched shot feed establishes covered zero when no shot falls in the window; a failed/unavailable feed remains unavailable.
+
+This is a transparent minute-resolution implementation, not a claim of exact event-time precision. The provider's live shot feed is refreshed through the existing PitchAPI stats/shots collector. The engine's 5′/10′ shot windows are now populated when that feed and match clock are available.
+
+**Still deliberately not activated:** the pressure classifier requires rolling Box Entries alongside SOT and xG. The current provider adapter supplies cumulative Box Entries only, not event-time or minute-window Box Entries. Therefore statistical pressure/sustained-superiority push alerts remain dormant; no Box Entry deltas are fabricated. Final Third Entries, Defensive Pressure and Pressure Recoveries also remain unavailable pending verified source fields. Goal/red-card state-change pushes continue independently.
