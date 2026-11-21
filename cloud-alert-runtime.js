@@ -222,7 +222,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
     }
     const snapshot = {
       matchId: String(matchId), fixtureId: String(fixtureId || matchId),
-      league: String(league || "unknown"), ruleVersion: String(ruleVersion || "cloud-alert-v0.2"),
+      league: String(league || "unknown"), country: String(country || "Country unavailable"), ruleVersion: String(ruleVersion || "matrix-alert-v1"),
       period, triggers: [...triggers].sort(),
       minute: Number.isFinite(minute) ? minute : null,
       home: String(home || "Home"), away: String(away || "Away"),
@@ -231,7 +231,8 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       recentSot10: Number.isInteger(recentSot10) ? recentSot10 : null,
       scoreHome: Number.isInteger(scoreHome) ? scoreHome : null,
       scoreAway: Number.isInteger(scoreAway) ? scoreAway : null,
-      metrics: metrics || null,
+      metrics: metrics || null, matrixScore: Number.isFinite(matrixScore) ? matrixScore : null,
+      availableMetrics: Number.isInteger(availableMetrics) ? availableMetrics : null, metricBreakdown: Array.isArray(metricBreakdown) ? metricBreakdown : null,
       confirmation: String(confirmation || "unavailable"),
       statsSource: String(statsSource || "unknown"),
       mode: "shadow_only"
@@ -275,7 +276,9 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       recentSot10: Number.isInteger(recentSot10) ? recentSot10 : null,
       scoreHome: Number.isInteger(scoreHome) ? scoreHome : null,
       scoreAway: Number.isInteger(scoreAway) ? scoreAway : null,
-      metrics: metrics || null
+      metrics: metrics || null, matrixScore: Number.isFinite(matrixScore) ? matrixScore : null,
+      availableMetrics: Number.isInteger(availableMetrics) ? availableMetrics : null, metricBreakdown: Array.isArray(metricBreakdown) ? metricBreakdown : null,
+      country: String(country || "Country unavailable")
     };
     const signalId = crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
     const scoreTotal = snapshot.scoreHome == null || snapshot.scoreAway == null
@@ -353,7 +356,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
         body: snapshot.home + " " + (snapshot.scoreHome ?? "—") + "–" +
           (snapshot.scoreAway ?? "—") + " " + snapshot.away + " · " + period +
           (snapshot.minute == null ? "" : " · " + snapshot.minute + "′") +
-          " · SOT " + homeSot + "–" + awaySot + " · " + snapshot.triggers.join(", "),
+          " · SOT " + homeSot + "–" + awaySot + " · Matrix " + (snapshot.matrixScore ?? "—") + "/100" +\n          " · " + snapshot.league + " · " + snapshot.country,
         tag: "goalmatrix-cloud-" + snapshot.matchId + "-" + period + "-" + slot,
         url: "/#cloudAlertPanel",
         cloudAlert: true,
