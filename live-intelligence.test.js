@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildLiveIntelligenceAnalysis, buildShotDerivedWindow, normalizePitchApiShotEvents, summarizeShotEventTotals, readMetric, METRICS, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload } = require("./live-intelligence");
+const { buildLiveIntelligenceAnalysis, buildShotDerivedWindow, buildShotDerivedMinuteWindow, normalizePitchApiShotEvents, summarizeShotEventTotals, readMetric, METRICS, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload } = require("./live-intelligence");
 
 function metric(value, extra = {}) { return { available: true, value, source: "test-provider", ...extra }; }
 function team({ sot=0, xg=0, box=0 } = {}) {
@@ -189,4 +189,34 @@ test("refuses to send when provider context is only a placeholder", () => {
     match: { home: "Real", away: "Barcelona", score: { home: 1, away: 0 }, minute: 70, league: "Μη διαθέσιμο", country: "Spain" }
   });
   assert.deepEqual(payload, { ok: false, reason: "incomplete_match_snapshot" });
+});
+
+
+test("builds clearly labeled match-minute SOT and xG windows without inventing second timestamps", () => {
+  const events = [
+    {type:"shot",team:"home",minute:68,minuteAdded:0,onTarget:true,xg:0.24,psxg:0.31},
+    {type:"shot",team:"home",minute:64,minuteAdded:0,onTarget:false,xg:0.08,psxg:null},
+    {type:"shot",team:"away",minute:63,minuteAdded:0,onTarget:true,xg:0.19,psxg:0.22},
+    {type:"shot",team:"away",minute:60,minuteAdded:0,onTarget:true,xg:0.12,psxg:0.14},
+    {type:"shot",team:"home",minute:45,minuteAdded:2,onTarget:true,xg:0.4,psxg:0.5}
+  ];
+  const last5=buildShotDerivedMinuteWindow(events,{currentMinute:68,durationMinutes:5,coverage:{available:true}});
+  const last10=buildShotDerivedMinuteWindow(events,{currentMinute:68,durationMinutes:10,coverage:{available:true}});
+  assert.equal(last5.available,true);
+  assert.equal(last5.timePrecision,"match-minute");
+  assert.equal(last5.home.shotsOnTarget,1);
+  assert.equal(last5.away.shotsOnTarget,0);
+  assert.equal(last5.home.xg,0.24);
+  assert.equal(last10.home.shotsOnTarget,1);
+  assert.equal(last10.away.shotsOnTarget,1);
+  assert.equal(last10.away.xg,0.19);
+  assert.equal(last10.home.psxg,0.31);
+  assert.equal(buildShotDerivedMinuteWindow(events,{currentMinute:68,durationMinutes:5,coverage:{available:false}}).available,false);
+});
+
+test("minute-resolution windows include stoppage-time shots using minute plus minute_added", () => {
+  const events=[{type:"shot",team:"home",minute:45,minuteAdded:2,onTarget:true,xg:0.3,psxg:0.4}];
+  const result=buildShotDerivedMinuteWindow(events,{currentMinute:47,durationMinutes:5,coverage:{available:true}});
+  assert.equal(result.home.shotsOnTarget,1);
+  assert.equal(result.home.xg,0.3);
 });
