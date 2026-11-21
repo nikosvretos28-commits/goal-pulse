@@ -17,6 +17,7 @@ const { createCompetitionHistoryStore } = require("./competition-history-store")
 const { buildPreMatchMatchupContext, seasonBoundsForLeague, seasonEventFilterForLeague, scorePreMatchMatchupContext } = require("./pre-match-intelligence");
 const { calculatePowerRankingScore, isPowerRankingMinuteEligible, shouldEmitAutonomousPowerRankingAlert } = require("./power-ranking-trigger");
 const { evaluatePressureHunter } = require("./pressure-hunter");
+const { evaluateGptGoalIntelligence } = require("./gpt-goal-intelligence");
 const { settlePressureHunterRecord } = require("./pressure-hunter-settlement");
 const { buildUniversalSettlementQueue } = require("./universal-settlement-queue");
 const { validateTriggerAudit, buildTriggerAuditReversal } = require("./trigger-activation-audit");
@@ -235,6 +236,10 @@ const pushScanLastAlert = new Map();
 // Existing AI Power Ranking 59+ trigger: keep its deduplication and behavior unchanged.
 const pushScanPowerRankingAlerts = new Set();
 const pushScanPressureHunterAlerts = new Set();
+// GPT Goal Intelligence owns independent snapshots, confirmations and delivery dedupe.
+const pushScanGptGoalSnapshots = new Map();
+const pushScanGptGoalPending = new Map();
+const pushScanGptGoalLastAlert = new Map();
 // Hunter-only 16-minute rolling snapshot buffer; never shared with other triggers.
 const pushScanHunterSnapshots = new Map();
 // Autonomous Power Ranking 65+ has a separate persistent alert ID and in-memory guard.
@@ -385,6 +390,24 @@ async function ensurePressureHunterDb() {
     return false;
   });
   return pressureHunterDbInit;
+}
+
+let gptGoalIntelligenceDbInit = null;
+async function ensureGptGoalIntelligenceDb() {
+  if (!analyticsPool) return false;
+  if (!gptGoalIntelligenceDbInit) gptGoalIntelligenceDbInit = analyticsPool.query(`
+    CREATE TABLE IF NOT EXISTS gpt_goal_intelligence_history (
+      alert_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, level TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL, payload JSONB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS gpt_goal_intelligence_history_created_at_idx ON gpt_goal_intelligence_history(created_at DESC);
+    CREATE INDEX IF NOT EXISTS gpt_goal_intelligence_history_event_id_idx ON gpt_goal_intelligence_history(event_id);
+  `).then(() => true).catch(error => {
+    gptGoalIntelligenceDbInit = null;
+    console.error("GPT Goal Intelligence database unavailable:", error.message);
+    return false;
+  });
+  return gptGoalIntelligenceDbInit;
 }
 
 let highActivityHistoryDbInit = null;
@@ -4897,6 +4920,91 @@ const server = http.createServer(async (req, res) => {
               console.error("Pressure Hunter dispatch failed:", hunterError.message);
             }
           }
+        }
+        // GPT Goal Intelligence: independent rolling SOT windows and confirmation.
+        const gptTeamRows = current.sotByTeam.slice(0, 2).map(side => ({
+          team: String(side.team || "").trim().toLowerCase(),
+          shotsOnTarget: side.value == null || !Number.isFinite(Number(side.value)) ? null : Math.max(0, Number(side.value))
+        }));
+        const gptSnapshot = { at: now, teams: gptTeamRows };
+        const gptHistory = (pushScanGptGoalSnapshots.get(id) || []).filter(row => now - row.at <= 13 * 60 * 1000);
+        gptHistory.push(gptSnapshot);
+        pushScanGptGoalSnapshots.set(id, gptHistory);
+        const gptBaseline = (minAge, maxAge) => [...gptHistory].reverse().find(row => {
+          const age = (now - row.at) / 60000;
+          return age >= minAge && age <= maxAge;
+        }) || null;
+        const gptWindow = (older, sampleMinutes) => {
+          if (!older || !gptSnapshot.teams.every(row => row.shotsOnTarget !== null)) return { available: false };
+          const deltas = gptSnapshot.teams.map((row, index) => {
+            const prior = older.teams.find(item => item.team && item.team === row.team) || older.teams[index];
+            if (!prior || prior.shotsOnTarget === null || row.shotsOnTarget < prior.shotsOnTarget) return null;
+            return { shotsOnTarget: row.shotsOnTarget - prior.shotsOnTarget };
+          });
+          return { available: deltas.every(Boolean), sampleMinutes, teams: deltas };
+        };
+        const gptAt5 = gptBaseline(4, 7);
+        const gptAt10 = gptBaseline(8, 12);
+        const gptEvaluation = evaluateGptGoalIntelligence({
+          minute: current.minute, status: statusForEligibility, teams: gptTeamRows,
+          window5m: gptWindow(gptAt5, gptAt5 ? (now - gptAt5.at) / 60000 : null),
+          window10m: gptWindow(gptAt10, gptAt10 ? (now - gptAt10.at) / 60000 : null)
+        });
+        if (gptEvaluation.triggered) {
+          const signature = [...gptEvaluation.triggers].sort().join("+");
+          const pending = pushScanGptGoalPending.get(id);
+          if (!pending || pending.signature !== signature || now - pending.at > 150000) {
+            pushScanGptGoalPending.set(id, { signature, at: now, score: gptEvaluation.score });
+          } else if (now - pending.at >= 30000) {
+            const previousAlert = pushScanGptGoalLastAlert.get(id);
+            const isNewSignal = !previousAlert || previousAlert.signature !== signature ||
+              (gptEvaluation.score >= previousAlert.score + 2 && now - previousAlert.at >= 8 * 60 * 1000);
+            if (isNewSignal) {
+              try {
+                if (await ensureGptGoalIntelligenceDb()) {
+                  const gptAlertId = "gptgi:" + id + ":" + now;
+                  const gptRecord = {
+                    alertId: gptAlertId, source: "gpt-goal-intelligence", eventId: id,
+                    level: gptEvaluation.level, createdAt: now,
+                    home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "",
+                    league: match.league || match.competition || "", country: match.country || match.countryName || null,
+                    minute: formatPushMinute(match), minuteNumber: current.minute,
+                    score: gptEvaluation.score, triggers: gptEvaluation.triggers,
+                    reason: gptEvaluation.reason, statsAtSignal: gptEvaluation.evidence,
+                    scoreAtSignal: {
+                      home: match.homeScore != null && Number.isFinite(Number(match.homeScore)) ? Number(match.homeScore) : null,
+                      away: match.awayScore != null && Number.isFinite(Number(match.awayScore)) ? Number(match.awayScore) : null
+                    },
+                    outcome: "εκκρεμεί"
+                  };
+                  const saved = await analyticsPool.query(
+                    "INSERT INTO gpt_goal_intelligence_history(alert_id,event_id,level,created_at,payload) VALUES($1,$2,$3,to_timestamp($4/1000.0),$5::jsonb) ON CONFLICT(alert_id) DO NOTHING RETURNING alert_id",
+                    [gptAlertId, id, gptEvaluation.level, now, JSON.stringify(gptRecord)]
+                  );
+                  if (saved.rows.length) {
+                    pushScanGptGoalLastAlert.set(id, { signature, score: gptEvaluation.score, at: now });
+                    try {
+                      const gptPush = await sendPushToSubscribers({
+                        title: "GoalMatrix · GPT GOAL INTELLIGENCE",
+                        body: "⚡ " + gptEvaluation.level + " · " + gptEvaluation.triggers.join(" + ") + " · " +
+                          gptRecord.home + " – " + gptRecord.away + " · " + gptRecord.minute,
+                        tag: "goal-matrix-gpt-goal-intelligence-" + id + "-" + signature.toLowerCase(),
+                        url: "/"
+                      });
+                      sent += Number(gptPush?.sent || 0);
+                    } catch (gptPushError) {
+                      console.warn("GPT Goal Intelligence push failed; dedicated history remains saved:", gptPushError.message);
+                    }
+                    console.info("GPT Goal Intelligence alert saved:", JSON.stringify({ eventId: id, level: gptEvaluation.level, triggers: gptEvaluation.triggers, alertId: gptAlertId }));
+                  }
+                } else console.error("GPT Goal Intelligence alert not saved: dedicated history unavailable", id);
+              } catch (gptError) {
+                console.error("GPT Goal Intelligence dispatch failed:", gptError.message);
+              }
+            }
+          }
+        } else if (gptEvaluation.eligible) {
+          pushScanGptGoalPending.delete(id);
         }
         const redCardCountsKnown = current.redCardsByTeam.length >= 2 && current.redCardsByTeam.slice(0, 2).every(side => side.value != null && Number.isFinite(Number(side.value)));
         const redCardSideIndex = redCardCountsKnown
