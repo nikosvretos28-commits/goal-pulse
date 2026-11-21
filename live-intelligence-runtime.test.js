@@ -133,3 +133,21 @@ test("records simultaneous goal and red-card changes as separate deduplicated al
   const history = await runtime.listHistory();
   assert.equal(history.records.length, 2);
 });
+
+test("holds a state-change candidate until complete match context arrives", async () => {
+  let current = match();
+  const deliveries = [];
+  const runtime = createLiveIntelligenceRuntime({
+    getMatches: async () => [current],
+    sendPush: async payload => { deliveries.push(payload); return { sent: 1, failed: 0, configured: true }; }
+  });
+  await runtime.scan();
+  current = match({ score: { home: 1, away: 0 }, country: "" });
+  const incomplete = await runtime.scan();
+  assert.equal(incomplete.results[0].pendingContext, true);
+  assert.equal(deliveries.length, 0);
+  current = match({ minute: 70, score: { home: 1, away: 0 } });
+  const completed = await runtime.scan();
+  assert.equal(completed.results[0].deliveryStatus, "delivered");
+  assert.equal(deliveries.length, 1);
+});
