@@ -2847,6 +2847,10 @@ header {
  <div><strong>☁ CLOUD ALERT · TEST PUSH</strong><span>Άμεση δοκιμή push ειδοποίησης στο κινητό</span></div>
  <button type="button" id="testCloudAlertNotifications" class="cloud-alert-quick-test-button">🔔 ΑΠΟΣΤΟΛΗ TEST PUSH</button>
 </div>
+<div class="cloud-alert-quick-test" role="group" aria-label="Δοκιμαστική ειδοποίηση Matrix Alert" style="border-color:rgba(92,190,235,.4);background:linear-gradient(105deg,rgba(19,53,77,.78),rgba(10,31,47,.96))">
+ <div><strong style="color:#8bd8ff">🧮 MATRIX ALERT · TEST PUSH</strong><span>Ανεξάρτητη δοκιμή Matrix Alert push στο κινητό</span></div>
+ <button type="button" id="testMatrixAlertNotifications" class="cloud-alert-quick-test-button" style="background:linear-gradient(100deg,#70c9ee,#a2e3fa);border-color:rgba(112,201,238,.7);color:#082338">🔔 ΑΠΟΣΤΟΛΗ MATRIX TEST PUSH</button>
+</div>
 </div>
 
 <section class="top-ai-alerts protocol-analyst-panel gp-elite-analyst-panel" id="eliteFiveBotsPanel" hidden aria-labelledby="eliteFiveBotsTitle">
@@ -4011,6 +4015,28 @@ document.getElementById('testCloudAlertNotifications')?.addEventListener('click'
   const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok||data.channel!=='cloud-alert'||Number(data.sent)<1)throw new Error(data.error||('Η αποστολή Cloud Alert TEST απέτυχε. Παραδόθηκαν: '+(data.sent||0)+', αποτυχίες: '+(data.failed||0)+'.'));
   setStatus('Το Cloud Alert TEST Push έγινε δεκτό από τον server ('+data.sent+' συσκευή/ές). Έλεγξε αν εμφανίστηκε στο κινητό.');
  }catch(error){setStatus('Απέτυχε το Cloud Alert TEST Push: '+String(error.message||error).slice(0,180))}finally{button.disabled=false}
+});
+document.getElementById('testMatrixAlertNotifications')?.addEventListener('click',async()=>{
+ const button=document.getElementById('testMatrixAlertNotifications');
+ const status=document.getElementById('signalStatus');
+ const setStatus=message=>{if(status)status.textContent=message};
+ if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){setStatus('Οι δοκιμαστικές push ειδοποιήσεις απαιτούν Chrome και υποστήριξη ειδοποιήσεων.');return}
+ button.disabled=true;
+ try{
+  if(Notification.permission!=='granted'){const permission=await Notification.requestPermission();if(permission!=='granted')throw new Error('Δεν δόθηκε άδεια ειδοποιήσεων.')}
+  const keyResponse=await fetch(ANALYTICS_API+'/api/push/vapid-public-key',{cache:'no-store'});
+  if(!keyResponse.ok)throw new Error('Ο server push δεν είναι διαθέσιμος (HTTP '+keyResponse.status+').');
+  const keyData=await keyResponse.json();if(!keyData.publicKey)throw new Error('Λείπει το δημόσιο κλειδί push.');
+  const decodeKey=value=>{const padding='='.repeat((4-value.length%4)%4);const raw=atob((value+padding).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0))};
+  const registration=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
+  let subscription=await registration.pushManager.getSubscription();
+  if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeKey(keyData.publicKey)});
+  const save=await fetch(ANALYTICS_API+'/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
+  const saved=await save.json().catch(()=>({}));if(!save.ok||!saved.ok)throw new Error(saved.error||'Δεν αποθηκεύτηκε η συνδρομή push.');
+  const response=await fetch(ANALYTICS_API+'/api/matrix-alert/test-push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const data=await response.json().catch(()=>({}));if(!response.ok||!data.ok||data.channel!=='matrix-alert'||Number(data.sent)<1)throw new Error(data.error||('Η αποστολή Matrix Alert TEST απέτυχε. Παραδόθηκαν: '+(data.sent||0)+', αποτυχίες: '+(data.failed||0)+'.'));
+  setStatus('Το MATRIX ALERT TEST PUSH έγινε δεκτό από τον server ('+data.sent+' συσκευή/ές). Έλεγξε αν εμφανίστηκε στο κινητό.');
+ }catch(error){setStatus('Απέτυχε το MATRIX ALERT TEST PUSH: '+String(error.message||error).slice(0,180))}finally{button.disabled=false}
 });
 document.getElementById('enableNotifications').addEventListener('click',async()=>{
  const button=document.getElementById('enableNotifications');
