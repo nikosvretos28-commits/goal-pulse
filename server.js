@@ -7145,9 +7145,57 @@ const server = http.createServer(async (req, res) => {
                       : !/^m_[A-Za-z0-9]{6}$/.test(String(candidates[0].id || "")) ? "badIdFormat" : "";
                     if (unmatchedReason) {
                       pitchApiSportScoreFallbackDiagnostics[unmatchedReason]++;
-                      if (pitchApiSportScoreFallbackDiagnostics.unmatchedSamples.length < 10) pitchApiSportScoreFallbackDiagnostics.unmatchedSamples.push({
-                        home: String(homeName).slice(0, 40), away: String(awayName).slice(0, 40), reason: unmatchedReason, candidates: candidates.length
-                      });
+                      if (pitchApiSportScoreFallbackDiagnostics.unmatchedSamples.length < 10) {
+                        const sample = {
+                          home: String(homeName).slice(0, 40), away: String(awayName).slice(0, 40),
+                          reason: unmatchedReason, candidates: candidates.length
+                        };
+                        if (unmatchedReason === "noCandidate") {
+                          // Observability only: rank names from the already-loaded daily catalogue.
+                          // This does not participate in fixture matching and makes no API request.
+                          const editDistance = (left, right) => {
+                            const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+                            for (let i = 1; i <= left.length; i++) {
+                              let diagonal = previous[0];
+                              previous[0] = i;
+                              for (let j = 1; j <= right.length; j++) {
+                                const above = previous[j];
+                                previous[j] = Math.min(
+                                  previous[j] + 1,
+                                  previous[j - 1] + 1,
+                                  diagonal + (left[i - 1] === right[j - 1] ? 0 : 1)
+                                );
+                                diagonal = above;
+                              }
+                            }
+                            return previous[right.length];
+                          };
+                          const similarity = (left, right) => {
+                            if (!left || !right) return 0;
+                            return 1 - editDistance(left, right) / Math.max(left.length, right.length);
+                          };
+                          const nearest = pitchRows.map(row => {
+                            const pitchHome = normalizePitchFallbackTeam(row?.home_team?.name);
+                            const pitchAway = normalizePitchFallbackTeam(row?.away_team?.name);
+                            const direct = (similarity(homeKey, pitchHome) + similarity(awayKey, pitchAway)) / 2;
+                            const reverse = (similarity(homeKey, pitchAway) + similarity(awayKey, pitchHome)) / 2;
+                            return {
+                              score: Number(Math.max(direct, reverse).toFixed(3)),
+                              orientation: direct >= reverse ? "same" : "reversed",
+                              id: row?.id == null ? null : String(row.id),
+                              home: String(row?.home_team?.name || "").slice(0, 60),
+                              away: String(row?.away_team?.name || "").slice(0, 60),
+                              league: String(row?.league?.name || row?.competition?.name || "").slice(0, 60)
+                            };
+                          }).sort((a, b) => b.score - a.score).slice(0, 3);
+                          sample.nearestPitchCandidates = nearest;
+                          console.info("[GoalMatrix PitchAPI noCandidate nearest]", JSON.stringify({
+                            eventId, requested: { home: homeName, away: awayName },
+                            catalogueDate: isoDate, catalogueSize: pitchRows.length, nearest
+                          }));
+                        }
+                        pitchApiSportScoreFallbackDiagnostics.unmatchedSamples.push(sample);
+                      }
                     }
                   }
                   if (candidates.length === 1 && /^m_[A-Za-z0-9]{6}$/.test(String(candidates[0].id || ""))) {
