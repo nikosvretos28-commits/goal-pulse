@@ -2841,7 +2841,7 @@ header {
  <button type="button" class="gp-section-button" data-gp-toggle="history">◷ ΙΣΤΟΡΙΚΟ AI ALERTS <span class="gp-button-count" id="gpHistoryCount">0</span></button>
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
  <button type="button" class="gp-section-button gp-prematch-button" id="preMatchToggle" aria-controls="preMatchPanel" aria-expanded="false">PRE MATCH</button>
- <button type="button" class="gp-section-button gp-ai-button" data-gp-toggle="cloudAlertPanel" id="cloudAlertToggle">☁ CLOUD ALERT <span class="gp-button-count" id="cloudAlertCount">HISTORY</span></button>
+ <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="cloudAlertPanel" id="matrixAlertToggle">🧮 MATRIX ALERT <span class="gp-button-count" id="cloudAlertCount">HISTORY</span></button>
 </div>
 <div class="cloud-alert-quick-test" role="group" aria-label="Δοκιμαστική ειδοποίηση Cloud Alert">
  <div><strong>☁ CLOUD ALERT · TEST PUSH</strong><span>Άμεση δοκιμή push ειδοποίησης στο κινητό</span></div>
@@ -2951,15 +2951,14 @@ header {
 
 <section class="top-ai-alerts" id="cloudAlertPanel" hidden aria-labelledby="cloudAlertTitle">
  <div class="top-ai-alerts-head">
-  <div><h2 id="cloudAlertTitle">☁ CLOUD ALERT · LIVE SOT SIGNALS</h2><p>Ανεξάρτητο ιστορικό Cloud Alert και ξεχωριστές ειδοποιήσεις. Μέγιστο 2 push ανά ημίχρονο.</p></div>
-  <span class="pulse-status" id="cloudAlertPushStatus">SHADOW · PUSH LOCKED</span>
+  <div><h2 id="cloudAlertTitle">🧮 MATRIX ALERT · LIVE SOT SIGNALS</h2><p>Αυτόνομο Matrix Alert: 20 συνολικά SOT πριν από το 70ό λεπτό και σύνθετη αξιολόγηση 15 metrics. Ξεχωριστό ιστορικό σημάτων και push ειδοποιήσεων.</p></div>
+  <span class="pulse-status" id="cloudAlertPushStatus">ΑΥΤΟΝΟΜΟ · LIVE PUSH</span>
  </div>
  <div class="notification-optin-row">
-  <button type="button" class="login" id="enableCloudAlertPush" disabled>☁ CLOUD PUSH · ΑΝΕΝΕΡΓΟ</button>
-  <button type="button" class="login" id="refreshCloudAlertHistory">↻ ΑΝΑΝΕΩΣΗ</button>
-  <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Το Cloud Alert λειτουργεί σε shadow mode. Η αποστολή push παραμένει κλειδωμένη μέχρι ξεχωριστή έγκριση ενεργοποίησης.</span>
+  <button type="button" class="login" id="refreshCloudAlertHistory">↻ ΑΝΑΝΕΩΣΗ MATRIX ALERT</button>
+  <span class="subtle" id="cloudAlertPushMessage" role="status" aria-live="polite">Το Matrix Alert αξιολογεί ανεξάρτητα τα live δεδομένα και στέλνει push όταν πληρούνται τα εγκεκριμένα κριτήρια.</span>
  </div>
- <div id="cloudAlertHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση ανεξάρτητου ιστορικού Cloud Alert…</div></div>
+ <div id="cloudAlertHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση ιστορικού Matrix Alert…</div></div>
  <div class="top-ai-alerts-head"><h3>HT / FT SETTLEMENT · ΙΣΤΟΡΙΚΟ</h3><a class="login" href="/api/cloud-alert/settlements/export.csv">CSV</a></div>
  <div id="cloudAlertSettlementHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση HT / FT settlement…</div></div>
  <p class="top-ai-alert-privacy">Τα triggers βασίζονται αποκλειστικά σε SOT. Οι ειδοποιήσεις είναι ενδείξεις και δεν εγγυώνται γκολ ή αποτέλεσμα.</p>
@@ -3182,8 +3181,8 @@ async function loadCloudAlertHistory(){
   }).join('');
   const delivered=pushes.filter(p=>p.status==='accepted').length;
   document.getElementById('cloudAlertCount').textContent=String(signals.length)+' SIGNALS';
-  document.getElementById('cloudAlertPushStatus').textContent='PUSH LOCKED · '+delivered+' HISTORICAL ACCEPTED';
-  root.innerHTML=rows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη επιβεβαιωμένα Cloud Alert signals.</div>';
+  document.getElementById('cloudAlertPushStatus').textContent='MATRIX ALERT · '+delivered+' HISTORICAL PUSH ACCEPTED';
+  root.innerHTML=rows||'<div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη καταγεγραμμένα Matrix Alert signals.</div>';
   const settlementRoot=document.getElementById('cloudAlertSettlementHistory');
   if(settlementRoot){
    try{
@@ -3203,7 +3202,7 @@ async function loadCloudAlertHistory(){
    }
   }
  }catch(error){
-  root.innerHTML='<div class="top-ai-alert-empty">Το Cloud Alert history δεν είναι διαθέσιμο: '+cloudAlertEscape(error.message||error)+'</div>';
+  root.innerHTML='<div class="top-ai-alert-empty">Το Matrix Alert history δεν είναι διαθέσιμο: '+cloudAlertEscape(error.message||error)+'</div>';
   const status=document.getElementById('cloudAlertPushStatus');if(status)status.textContent='DATABASE / API PENDING';
  }
 }
