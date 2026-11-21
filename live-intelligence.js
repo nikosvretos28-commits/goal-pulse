@@ -66,7 +66,8 @@ function summarizeWindow(window, source) {
   };
   const comparisons = {};
   for (const metric of METRICS) comparisons[metric] = compareMetric(teams.home[metric], teams.away[metric]);
-  const xgDifference = comparisons.xg.status === "available" ? comparisons.xg.difference : null;\n  const momentum = deriveMomentum(comparisons);
+  const xgDifference = comparisons.xg.status === "available" ? comparisons.xg.difference : null;
+  const momentum = deriveMomentum(comparisons);
   const matchSot = teams.home.shotsOnTarget.status === "available" && teams.away.shotsOnTarget.status === "available"
     ? teams.home.shotsOnTarget.value + teams.away.shotsOnTarget.value : null;
   return { teams, comparisons, xgDifference, matchSot, momentum };
@@ -168,7 +169,8 @@ function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, co
   }
   return result;
 }
-\nfunction buildLiveIntelligenceAnalysis(input = {}) {
+
+function buildLiveIntelligenceAnalysis(input = {}) {
   const source = input.source || null;
   const last5 = summarizeWindow(input.windows?.last5, source);
   const last10 = summarizeWindow(input.windows?.last10, source);
