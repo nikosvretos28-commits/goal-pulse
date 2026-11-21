@@ -182,3 +182,11 @@ test("minute-resolution PitchAPI events are never misread as second-precision ro
   assert.equal(window.home.shotsOnTarget,null);
   assert.equal(window.home.xg,null);
 });
+
+test("refuses to send when provider context is only a placeholder", () => {
+  const payload = buildLiveIntelligencePushPayload({
+    analysis: { independent: true, pressure: { status: "sustained_attacking_superiority", label: "Υπεροχή" } },
+    match: { home: "Real", away: "Barcelona", score: { home: 1, away: 0 }, minute: 70, league: "Μη διαθέσιμο", country: "Spain" }
+  });
+  assert.deepEqual(payload, { ok: false, reason: "incomplete_match_snapshot" });
+});
