@@ -33,13 +33,28 @@ This is a read-only audit of the current `server.js` live-stat normalization pat
 - xG and PSxG must retain the provider/model identity. Do not combine values from different models in one comparison.
 - The new protocol must use a separate endpoint/state/history/delivery path. Existing alert modules remain untouched.
 
+## Independent LIVE INTELLIGENCE runtime (2026-11-21)
+
+The feature branch now includes a separate runtime (live-intelligence-runtime.js) and a dedicated history endpoint:
+
+- The independent scanner polls /api/live-intelligence every 30 seconds. It does not call or mutate the AI, VIP, HI Activity, Matrix Alert or Cloud Alert evaluators.
+- It establishes a baseline on the first observation of each fixture. It emits a state-change candidate only after a later observed snapshot confirms a score increase or a red-card-count increase. Score decreases/corrections are recorded as new state but are not treated as goals.
+- A score change and a red-card change observed in the same poll are recorded as separate alerts.
+- Alert IDs are deterministic and the database has a unique (event_id, trigger_type, trigger_fingerprint) constraint. Repeated scans cannot create a second history record for the same event state.
+- Delivery uses the existing web-push subscription store and VAPID configuration, but a distinct LIVE INTELLIGENCE payload/channel/tag. Failed or no-subscriber deliveries remain pending for a later retry; missing VAPID configuration is recorded as not configured.
+- History and last observed match state are stored in dedicated live_intelligence_* tables when PostgreSQL is available. An in-memory fallback is used when it is not; that fallback is not durable across restarts.
+- The LIVE INTELLIGENCE panel now displays its own alert history and scanner/persistence status.
+- Alerts freeze score, minute, league, country and both team names from the observed match snapshot. Placeholder competition/country values are rejected.
+
 ## Remaining implementation gates
 
-1. Identify a provider/feed with genuine timestamped shot events and compatible xG/PSxG event data, or clearly label the rolling window as unavailable.
-2. Verify source coverage and definitions for Final Third Entries, Defensive Pressure and Pressure Recoveries.
-3. Trigger selection is now defined in the independent engine: confirmed goal/red-card state changes, sustained attacking superiority, pressure without a clear SOT/xG edge, and pressure with some chance indicators. Unconfirmed events never trigger a state-change alert.
-4. Push payload formatting now requires a complete alert-time snapshot: both team names, score, current minute, competition and country. Incomplete snapshots are rejected rather than filled with guesses. The message also includes the analysis label and available SOT/xG context.
-5. Remaining before production push delivery: connect only verified provider inputs to this engine, persist independent LIVE INTELLIGENCE history/deduplication/cooldown, and add the independent UI panel and test-push flow. The existing alert channels remain isolated.
+1. **True rolling windows:** PitchAPI provides minute/minute-added shot metadata, not exact event timestamps. The 5-minute and 10-minute SOT/xG/PSxG windows therefore remain unavailable. They must not be approximated from minute-only data or cumulative sample deltas.
+2. **Statistical pressure alerts:** Sustained attacking superiority and box-entry pressure alerts remain dormant until both teams have verified rolling Box Entries, SOT and xG for genuine event-time windows. The current autonomous push scanner can send verified score/red-card state-change alerts only.
+3. **Provider coverage:** Verify source definitions and availability for Final Third Entries, Defensive Pressure and Pressure Recoveries. Keep Big Chances provider-classified; never infer them from shots.
+4. **Push prerequisites:** Actual delivery requires configured VAPID keys and at least one valid browser push subscription. Database history is durable only when PostgreSQL is configured and reachable.
+5. **Live runtime verification:** The branch CI can validate code and tests, but real push delivery, database persistence and 30-second live polling still require deployment and a live environment check. No deployment has been performed.
+
+Existing alert channels and provider variables remain unchanged.
 
 ## PitchAPI shot-event schema verification (2026-11-21)
 
@@ -75,4 +90,4 @@ The independent LIVE INTELLIGENCE adapter now consumes the already-fetched Pitch
 - The API adapter prefers verified cumulative team stats and uses shot-event totals only as a fallback, with the source labeled `PitchAPI /shots event totals`.
 - 5-minute and 10-minute rolling windows remain unavailable unless the input explicitly declares genuine event-time coverage. Minute-only shot rows cannot enter second-based windows.
 
-This is a read-only analysis-data connection. It does not activate push delivery, persistence, duplicate suppression, alert history, or any existing protocol.
+The PitchAPI adapter remains read-only with respect to existing protocol data. The separate LIVE INTELLIGENCE runtime now owns its own polling, score/red-card state-change push path, deduplication and history. The adapter still cannot supply true event-time rolling windows; statistical pressure alerts remain unavailable until that source gap is resolved.
