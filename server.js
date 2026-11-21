@@ -8326,7 +8326,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/live-intelligence" && req.method === "GET") {
       const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      if (!/^\\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
+      if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
       const base = "http://127.0.0.1:" + PORT;
       const response = await fetch(base + "/api/live-metrics?date=" + date, {
         headers: { "Accept": "application/json" },
