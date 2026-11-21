@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildLiveIntelligenceAnalysis, readMetric, METRICS } = require("./live-intelligence");
+const { buildLiveIntelligenceAnalysis, buildShotDerivedWindow, readMetric, METRICS } = require("./live-intelligence");
 
 function metric(value, extra = {}) { return { available: true, value, source: "test-provider", ...extra }; }
 function team({ sot=0, xg=0, box=0 } = {}) {
@@ -77,4 +77,28 @@ test("does not treat equal values as a team leader in match momentum inputs", ()
   });
   assert.equal(result.windows.last5.comparisons.boxEntries.leader, "level");
   assert.equal(result.pressure.status, "balanced_or_unclear");
+});
+
+test("builds overlapping 5-minute and 10-minute shot windows from event timestamps", () => {
+  const events = [
+    {type:"shot",team:"home",timestampSeconds:4100,onTarget:true,xg:0.2,psxg:0.3,bigChance:false},
+    {type:"shot",team:"home",timestampSeconds:3800,onTarget:true,xg:0.4,psxg:0.5,bigChance:true},
+    {type:"shot",team:"away",timestampSeconds:3700,onTarget:false,xg:0.1,psxg:null,bigChance:false},
+    {type:"shot",team:"away",timestampSeconds:3000,onTarget:true,xg:0.3,psxg:0.2,bigChance:false}
+  ];
+  const last5 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:300,coverage:{available:true}});
+  const last10 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:600,coverage:{available:true}});
+  assert.equal(last5.home.shotsOnTarget,1);
+  assert.equal(last10.home.shotsOnTarget,2);
+  assert.equal(last10.away.shotsOnTarget,1);
+  assert.equal(last10.home.xg,0.6);
+  assert.equal(last10.home.psxg,0.8);
+  assert.equal(last10.home.bigChances,1);
+});
+
+test("does not fabricate zero values when shot-event coverage is unavailable", () => {
+  const result = buildShotDerivedWindow([], {nowSeconds:4200,durationSeconds:300,coverage:{available:false}});
+  assert.equal(result.available,false);
+  assert.equal(result.home.shotsOnTarget,null);
+  assert.equal(result.away.xg,null);
 });
