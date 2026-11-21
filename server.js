@@ -1022,7 +1022,25 @@ async function savePushSubscription(subscription) {
     );
   }
 }
+function formatPushMatchContext(context) {
+  if (!context || typeof context !== "object") return "";
+  const clean = value => String(value == null ? "" : value).replace(/[\\r\\n]+/g, " ").trim();
+  const league = clean(context.league) || "Διοργάνωση μη διαθέσιμη";
+  const country = clean(context.country) || "Χώρα μη διαθέσιμη";
+  const home = clean(context.home) || "Γηπεδούχος";
+  const away = clean(context.away) || "Φιλοξενούμενος";
+  const minute = clean(context.minute);
+  const score = context.score && context.score.home != null && context.score.away != null
+    ? String(context.score.home) + "–" + String(context.score.away) : "";
+  return [league + " · " + country, home + " – " + away, minute, score].filter(Boolean).join(" | ");
+}
 async function sendPushToSubscribers(payload) {
+  if (payload && payload.matchContext) {
+    const matchLine = formatPushMatchContext(payload.matchContext);
+    if (matchLine) payload = { ...payload, body: matchLine + (payload.body ? " | " + String(payload.body) : "") };
+    const { matchContext, ...pushPayload } = payload;
+    payload = pushPayload;
+  }
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return { sent: 0, failed: 0, configured: false };
   let subscriptions = [...pushSubscriptions.values()];
   if (await ensurePushDb()) {
@@ -5109,7 +5127,8 @@ const server = http.createServer(async (req, res) => {
                       title: "GoalMatrix · PRESSURE HUNTER",
                       body: "🎯 CONTINUOUS SHOT FLOW" + " · " + hunterRecord.home + " – " + hunterRecord.away + " · " + hunterRecord.minute,
                       tag: "goal-matrix-pressure-hunter-" + id + "-" + hunterEvaluation.level.toLowerCase(),
-                      url: "/"
+                      url: "/",
+                      matchContext: { league: hunterRecord.league, country: hunterRecord.country, home: hunterRecord.home, away: hunterRecord.away, minute: hunterRecord.minute, score: hunterRecord.scoreAtSignal }
                     });
                     sent += Number(hunterPush?.sent || 0);
                   } catch (hunterPushError) {
@@ -5195,7 +5214,8 @@ const server = http.createServer(async (req, res) => {
                         body: "⚡ " + gptEvaluation.level + " · " + gptEvaluation.triggers.join(" + ") + " · " +
                           gptRecord.home + " – " + gptRecord.away + " · " + gptRecord.minute,
                         tag: "goal-matrix-gpt-goal-intelligence-" + id + "-" + signature.toLowerCase(),
-                        url: "/"
+                        url: "/",
+                        matchContext: { league: gptRecord.league, country: gptRecord.country, home: gptRecord.home, away: gptRecord.away, minute: gptRecord.minute, score: gptRecord.scoreAtSignal }
                       });
                       sent += Number(gptPush?.sent || 0);
                     } catch (gptPushError) {
@@ -5352,7 +5372,8 @@ const server = http.createServer(async (req, res) => {
                   const pushResult = await sendPushToSubscribers({
                     title: "GoalMatrix · AI ALERT",
                     body: "🏆 POWER RANKING " + powerRankingScore + "/100 · " + (match.home || "Γηπεδούχος") + " – " + (match.away || "Φιλοξενούμενος") + " · Over " + overLine + " · " + (periodAtSignal === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "ΤΕΛΙΚΟ ΣΥΝΟΛΟ") + " · " + rawMinute,
-                    tag: "goal-pulse-bg-ai-power-ranking-" + id, url: "/"
+                    tag: "goal-pulse-bg-ai-power-ranking-" + id, url: "/",
+                    matchContext: { league: alertRecord.league, country: alertRecord.country, home: alertRecord.home, away: alertRecord.away, minute: alertRecord.minute, score: { home: alertRecord.startHomeScore, away: alertRecord.startAwayScore } }
                   });
                   sent += Number(pushResult?.sent || 0);
                 } catch (pushError) {
@@ -5509,7 +5530,8 @@ const server = http.createServer(async (req, res) => {
                       (storedPeriod === "first_half" ? "1ο ΗΜΙΧΡΟΝΟ" : "2ο ΗΜΙΧΡΟΝΟ") +
                       " · " + storedMinute,
                     tag: "goalmatrix-autonomous-power-ranking-" + id + "-" + autonomousAlertIndex,
-                    url: "/"
+                    url: "/",
+                    matchContext: { league: autonomousDeliveryRecord.league, country: autonomousDeliveryRecord.country, home: storedHome, away: storedAway, minute: storedMinute, score: { home: autonomousDeliveryRecord.startHomeScore, away: autonomousDeliveryRecord.startAwayScore } }
                   });
                   const deliveryComplete = autonomousPushResult?.configured === true &&
                     Number(autonomousPushResult?.sent || 0) > 0 &&
@@ -5969,7 +5991,8 @@ const server = http.createServer(async (req, res) => {
               title: alertTitle,
               body: alertBody.slice(0, 240),
               tag: "goal-pulse-bg-" + level.toLowerCase() + "-" + id + "-" + triggerId,
-              url: "/"
+              url: "/",
+              matchContext: { league: match.league || match.competition || "", country: match.country || match.countryName || null, home: match.home || match.homeTeam || "", away: match.away || match.awayTeam || "", minute: formatPushMinute(match), score: { home: currentHomeScore, away: currentAwayScore } }
             });
             sent += Number(pushResult?.sent || 0);
           } catch (pushError) {
