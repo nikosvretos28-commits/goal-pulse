@@ -87,6 +87,25 @@ function calculateAutonomousPowerRankingScore({ teams, trend } = {}) {
   };
 }
 
+function confirmAutonomousPowerRankingObservation({
+  candidates, eventId, qualified, now,
+  minIntervalMs = 30000, maxIntervalMs = 90000
+} = {}) {
+  if (!(candidates instanceof Map) || !eventId || !Number.isFinite(Number(now))) return false;
+  const key = String(eventId);
+  if (qualified !== true) {
+    candidates.delete(key);
+    return false;
+  }
+  const timestamp = Number(now);
+  const previous = candidates.get(key);
+  if (!previous || timestamp - previous.firstSeenAt > maxIntervalMs || timestamp < previous.firstSeenAt) {
+    candidates.set(key, { firstSeenAt: timestamp });
+    return false;
+  }
+  return timestamp - previous.firstSeenAt >= minIntervalMs;
+}
+
 function isPowerRankingMinuteEligible(minute, status = "") {
   if (!Number.isInteger(minute)) return false;
   const period = String(status || "").trim().toLowerCase();
@@ -111,6 +130,7 @@ function shouldEmitAutonomousPowerRankingAlert({ score, eligible, qualified } = 
 module.exports = {
   calculatePowerRankingScore,
   calculateAutonomousPowerRankingScore,
+  confirmAutonomousPowerRankingObservation,
   isPowerRankingMinuteEligible,
   AUTONOMOUS_POWER_RANKING_THRESHOLD,
   shouldEmitAutonomousPowerRankingAlert
