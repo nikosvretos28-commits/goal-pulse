@@ -56,8 +56,12 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
   async function readState(eventId) {
     const pool = getPool();
     if (pool && await ensureSchema()) {
-      const result = await pool.query("SELECT snapshot FROM live_intelligence_match_state WHERE event_id=$1", [eventId]);
-      return result.rows[0]?.snapshot || null;
+      try {
+        const result = await pool.query("SELECT snapshot FROM live_intelligence_match_state WHERE event_id=$1", [eventId]);
+        return result.rows[0]?.snapshot || memoryStates.get(eventId) || null;
+      } catch (error) {
+        console.error("[LIVE INTELLIGENCE] state read fell back to memory:", error.message);
+      }
     }
     return memoryStates.get(eventId) || null;
   }
@@ -65,14 +69,19 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
   async function writeState(eventId, snapshot) {
     const pool = getPool();
     if (pool && await ensureSchema()) {
-      await pool.query(`
-        INSERT INTO live_intelligence_match_state(event_id,snapshot,updated_at)
-        VALUES($1,$2::jsonb,NOW())
-        ON CONFLICT(event_id) DO UPDATE SET snapshot=EXCLUDED.snapshot,updated_at=NOW()
-      `, [eventId, JSON.stringify(snapshot)]);
-    } else {
-      memoryStates.set(eventId, snapshot);
+      try {
+        await pool.query(`
+          INSERT INTO live_intelligence_match_state(event_id,snapshot,updated_at)
+          VALUES($1,$2::jsonb,NOW())
+          ON CONFLICT(event_id) DO UPDATE SET snapshot=EXCLUDED.snapshot,updated_at=NOW()
+        `, [eventId, JSON.stringify(snapshot)]);
+        memoryStates.set(eventId, snapshot);
+        return;
+      } catch (error) {
+        console.error("[LIVE INTELLIGENCE] state write fell back to memory:", error.message);
+      }
     }
+    memoryStates.set(eventId, snapshot);
   }
 
   async function deliverOnce(match, event) {
@@ -237,7 +246,8 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
     scanInFlight = (async () => {
       try {
         if (typeof getMatches !== "function") throw new Error("LIVE INTELLIGENCE match source is not configured");
-        await retryPending();
+        try { await retryPending(); }
+        catch (error) { console.warn("[LIVE INTELLIGENCE] pending push retry deferred:", error.message); }
         const matches = await getMatches();
         const results = [];
         for (const match of Array.isArray(matches) ? matches : []) {
