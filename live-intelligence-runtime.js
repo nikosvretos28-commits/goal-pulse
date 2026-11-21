@@ -186,8 +186,10 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
       minute: validCount(match.minute)
     };
     const previous = await readState(eventId);
-    await writeState(eventId, current);
-    if (!previous) return { eventId, seeded: true };
+    if (!previous) {
+      await writeState(eventId, current);
+      return { eventId, seeded: true };
+    }
     const events = [];
     if (current.scoreHome !== null && current.scoreAway !== null &&
         previous.scoreHome !== null && previous.scoreAway !== null &&
@@ -216,9 +218,18 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
           "|away:" + previous.redCardsAway + ">" + current.redCardsAway + "@" + String(current.minute)
       });
     }
-    if (!events.length) return { eventId, observed: true };
+    if (!events.length) {
+      await writeState(eventId, current);
+      return { eventId, observed: true };
+    }
     const outcomes = [];
     for (const event of events) outcomes.push(await deliverOnce(match, event));
+    // If the match snapshot is incomplete, keep the previous state so the
+    // candidate can be retried when complete context arrives.
+    if (outcomes.some(outcome => outcome?.reason === "incomplete_match_snapshot")) {
+      return { eventId, events: outcomes, pendingContext: true };
+    }
+    await writeState(eventId, current);
     return { eventId, events: outcomes, ...outcomes[0] };
   }
 
