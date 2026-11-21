@@ -54,11 +54,14 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
   }
 
   async function readState(eventId) {
+    if (memoryStates.has(eventId)) return memoryStates.get(eventId);
     const pool = getPool();
     if (pool && await ensureSchema()) {
       try {
         const result = await pool.query("SELECT snapshot FROM live_intelligence_match_state WHERE event_id=$1", [eventId]);
-        return result.rows[0]?.snapshot || memoryStates.get(eventId) || null;
+        const snapshot = result.rows[0]?.snapshot || null;
+        if (snapshot) memoryStates.set(eventId, snapshot);
+        return snapshot;
       } catch (error) {
         console.error("[LIVE INTELLIGENCE] state read fell back to memory:", error.message);
       }
