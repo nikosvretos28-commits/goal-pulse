@@ -352,7 +352,7 @@ function createCloudAlertRuntime({ getPool, sendPush, pushEnabled = false }) {
       const attemptCount = Number(attemptsResult.rows[0]?.attempts || 0) + 1;
       const pushId = crypto.randomUUID();
       const payload = {
-        title: "☁️ GOALMATRIX · CLOUD ALERT",
+        title: "🧮 GOALMATRIX · MATRIX ALERT",
         body: snapshot.home + " " + (snapshot.scoreHome ?? "—") + "–" +
           (snapshot.scoreAway ?? "—") + " " + snapshot.away + " · " + period +
           (snapshot.minute == null ? "" : " · " + snapshot.minute + "′") +
