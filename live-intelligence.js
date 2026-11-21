@@ -129,6 +129,7 @@ function describeGameStateChanges(events, windowStartSeconds = null) {
   if (!Array.isArray(events)) return [];
   return events
     .filter(event => event && ["goal", "red_card", "score_correction"].includes(event.type) &&
+      event.timestampSeconds !== null && event.timestampSeconds !== undefined &&
       Number.isFinite(Number(event.timestampSeconds)) &&
       (windowStartSeconds === null || Number(event.timestampSeconds) >= windowStartSeconds))
     .sort((a, b) => Number(a.timestampSeconds) - Number(b.timestampSeconds))
@@ -152,7 +153,7 @@ function buildShotDerivedWindow(events, { nowSeconds, durationSeconds = null, co
   const result = empty();
   if (coverage.available !== true || !Number.isFinite(Number(nowSeconds)) || !Array.isArray(events)) return result;
   const start = durationSeconds === null ? -Infinity : Number(nowSeconds) - Number(durationSeconds);
-  const relevant = events.filter(event => event && Number.isFinite(Number(event.timestampSeconds)) &&
+  const relevant = events.filter(event => event && event.timestampSeconds !== null && event.timestampSeconds !== undefined && Number.isFinite(Number(event.timestampSeconds)) &&
     Number(event.timestampSeconds) <= Number(nowSeconds) && Number(event.timestampSeconds) >= start &&
     (event.team === "home" || event.team === "away") && event.type === "shot");
   for (const side of ["home", "away"]) {
