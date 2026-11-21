@@ -135,6 +135,7 @@ test("push payload freezes score, minute, league, country and teams from the ale
   assert.equal(payload.snapshot.country, "Spain");
   assert.match(payload.body, /2-1 · 69′ · La Liga · Spain/);
   assert.match(payload.body, /Real – Barcelona/);
+  assert.equal(payload.body.split("\n").length, 3);
   assert.match(payload.body, /Σταθερή επιθετική υπεροχή/);
   assert.match(payload.body, /SOT σύνολο: 9/);
   assert.equal(payload.triggeredAt, "2026-11-21T13:15:00.000Z");
