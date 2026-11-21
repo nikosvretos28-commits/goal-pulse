@@ -188,11 +188,40 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
     return event ? { eventId, ...(await deliverOnce(match, event)) } : { eventId, observed: true };
   }
 
+  async function retryPending() {
+    const pool = getPool();
+    if (pool && await ensureSchema()) {
+      const pending = await pool.query("SELECT alert_id,payload,attempts FROM live_intelligence_alert_history WHERE delivery_status='pending' ORDER BY created_at ASC LIMIT 25");
+      for (const row of pending.rows) {
+        let delivery;
+        try { delivery = typeof sendPush === "function" ? await sendPush(row.payload) : { sent: 0, failed: 0, configured: false }; }
+        catch (error) { delivery = { sent: 0, failed: 1, configured: true, error: String(error.message || error).slice(0, 180) }; }
+        const status = delivery.configured === false ? "not_configured" : Number(delivery.sent || 0) > 0 ? "delivered" : "pending";
+        const result = { ...delivery, attemptedAt: now().toISOString() };
+        await pool.query("UPDATE live_intelligence_alert_history SET delivery_status=$2,delivery_result=$3::jsonb,attempts=$4 WHERE alert_id=$1", [row.alert_id, status, JSON.stringify(result), Number(row.attempts || 0) + 1]);
+        memoryAlerts.set(row.alert_id, { alert_id: row.alert_id, payload: row.payload, delivery_status: status, delivery_result: result, attempts: Number(row.attempts || 0) + 1 });
+      }
+      return pending.rowCount || 0;
+    }
+    let retried = 0;
+    for (const row of memoryAlerts.values()) {
+      if (row.delivery_status !== "pending") continue;
+      let delivery;
+      try { delivery = typeof sendPush === "function" ? await sendPush(row.payload) : { sent: 0, failed: 0, configured: false }; }
+      catch (error) { delivery = { sent: 0, failed: 1, configured: true, error: String(error.message || error).slice(0, 180) }; }
+      row.delivery_status = delivery.configured === false ? "not_configured" : Number(delivery.sent || 0) > 0 ? "delivered" : "pending";
+      row.delivery_result = { ...delivery, attemptedAt: now().toISOString() };
+      row.attempts = Number(row.attempts || 0) + 1;
+      retried++;
+    }
+    return retried;
+  }
   async function scan() {
     if (scanInFlight) return scanInFlight;
     scanInFlight = (async () => {
       try {
         if (typeof getMatches !== "function") throw new Error("LIVE INTELLIGENCE match source is not configured");
+        await retryPending();
         const matches = await getMatches();
         const results = [];
         for (const match of Array.isArray(matches) ? matches : []) {
