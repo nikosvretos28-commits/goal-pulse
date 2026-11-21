@@ -2842,6 +2842,7 @@ header {
  <button type="button" class="gp-section-button gp-vip-button" id="vipHistoryToggle">◷ ΙΣΤΟΡΙΚΟ VIP ALERTS <span class="gp-button-count" id="gpVipHistoryCount">VIP</span></button>
  <button type="button" class="gp-section-button gp-prematch-button" id="preMatchToggle" aria-controls="preMatchPanel" aria-expanded="false">PRE MATCH</button>
  <button type="button" class="gp-section-button gp-matrix-analytics-button" data-gp-toggle="cloudAlertPanel" id="matrixAlertToggle">🧮 MATRIX ALERT <span class="gp-button-count" id="cloudAlertCount">HISTORY</span></button>
+ <button type="button" class="gp-section-button" id="liveIntelligenceToggle" aria-controls="liveIntelligencePanel" aria-expanded="false">🧠 LIVE INTELLIGENCE <span class="gp-button-count">15 METRICS</span></button>
 </div>
 <div class="cloud-alert-quick-test" role="group" aria-label="Δοκιμαστική ειδοποίηση Cloud Alert">
  <div><strong>☁ CLOUD ALERT · TEST PUSH</strong><span>Άμεση δοκιμή push ειδοποίησης στο κινητό</span></div>
@@ -2966,6 +2967,15 @@ header {
  <div class="top-ai-alerts-head"><h3>HT / FT SETTLEMENT · ΙΣΤΟΡΙΚΟ</h3><a class="login" href="/api/cloud-alert/settlements/export.csv">CSV</a></div>
  <div id="cloudAlertSettlementHistory" aria-live="polite"><div class="top-ai-alert-empty">Φόρτωση HT / FT settlement…</div></div>
  <p class="top-ai-alert-privacy">Τα triggers βασίζονται αποκλειστικά σε SOT. Οι ειδοποιήσεις είναι ενδείξεις και δεν εγγυώνται γκολ ή αποτέλεσμα.</p>
+</section>
+
+<section class="top-ai-alerts" id="liveIntelligencePanel" hidden aria-labelledby="liveIntelligenceTitle">
+ <div class="top-ai-alerts-head"><div><h2 id="liveIntelligenceTitle">🧠 GOALMATRIX LIVE INTELLIGENCE</h2><p>Ανεξάρτητη, read-only σύγκριση των διαθέσιμων live metrics ανά ομάδα.</p></div><div class="feed-actions"><button type="button" class="login" id="refreshLiveIntelligence">↻ ΑΝΑΝΕΩΣΗ</button><button type="button" class="login" id="closeLiveIntelligence">✕ ΚΛΕΙΣΙΜΟ</button></div></div>
+ <p id="liveIntelligenceStatus" class="top-ai-alert-privacy" role="status" aria-live="polite">Η ανάλυση φορτώνει μόνο επιβεβαιωμένα provider fields. Τα μη διαθέσιμα δεδομένα δεν εμφανίζονται ως μηδέν.</p>
+ <div id="liveIntelligenceMatches" aria-live="polite"><div class="top-ai-alert-empty">Αναμονή live δεδομένων…</div></div>
+ <div class="top-ai-alerts-head" style="margin-top:18px"><h3>LIVE INTELLIGENCE · ΙΣΤΟΡΙΚΟ ΕΙΔΟΠΟΙΗΣΕΩΝ</h3><span id="liveIntelligenceHistoryStatus" class="subtle">Αναμονή scanner…</span></div>
+ <div id="liveIntelligenceHistory" aria-live="polite"><div class="top-ai-alert-empty">Δεν υπάρχουν ακόμη καταγεγραμμένες ειδοποιήσεις.</div></div>
+ <p class="top-ai-alert-privacy">Ο ανεξάρτητος scanner ανιχνεύει επιβεβαιωμένες αλλαγές σκορ και κόκκινες κάρτες και διατηρεί ξεχωριστό ιστορικό με αποφυγή διπλών ειδοποιήσεων. Τα rolling 5′/10′ παραμένουν ΜΗ ΔΙΑΘΕΣΙΜΑ μέχρι να παρέχονται πραγματικά event timestamps· δεν υπολογίζονται από εκτιμήσεις λεπτών. Τα υπόλοιπα πρωτόκολλα δεν επηρεάζονται.</p>
 </section>
 
 <section class="top-ai-alerts" id="privateAiAlertsPanel" hidden aria-labelledby="privateAiAlertsTitle">
@@ -7333,3 +7343,91 @@ body{color:#63f5d0}
  text-shadow:0 0 7px rgba(74,245,208,.18);
 }
 </style>
+
+<script id="gm-live-intelligence-panel">
+(function(){
+ 'use strict';
+ const panel=document.getElementById('liveIntelligencePanel');
+ const toggle=document.getElementById('liveIntelligenceToggle');
+ const refresh=document.getElementById('refreshLiveIntelligence');
+ const close=document.getElementById('closeLiveIntelligence');
+ const status=document.getElementById('liveIntelligenceStatus');
+ const list=document.getElementById('liveIntelligenceMatches');
+ const historyList=document.getElementById('liveIntelligenceHistory');
+ const historyStatus=document.getElementById('liveIntelligenceHistoryStatus');
+ if(!panel||!toggle||!list)return;
+ const esc=value=>String(value??'—').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ const labels={shotsOnTarget:'SOT',xg:'xG',psxg:'PSxG',bigChances:'Big Chances',boxEntries:'Box Entries',dangerousAttacks:'Dangerous Attacks',finalThirdEntries:'Final Third Entries',progressivePasses:'Progressive Passes',keyPasses:'Key Passes',matchMomentum:'Match Momentum',defensivePressures:'Defensive Pressure',pressureRecoveries:'Pressure Recoveries',score:'Game State / Score',minute:'Minute',numericalAdvantage:'Numerical Advantage'};
+ function value(metric){if(metric?.status!=='available'||metric.value==null)return 'Μη διαθέσιμο';return Number.isInteger(metric.value)?String(metric.value):Number(metric.value).toFixed(2);}
+ function render(data){
+  const matches=Array.isArray(data.matches)?data.matches:[];
+  if(!matches.length){list.innerHTML='<div class="top-ai-alert-empty">Δεν εντοπίστηκαν live αγώνες αυτή τη στιγμή.</div>';return;}
+  list.innerHTML=matches.map(match=>{
+   const analysis=match.analysis||{},totals=analysis.windows?.totals||{},home=totals.teams?.home||{},away=totals.teams?.away||{},last5=analysis.windows?.last5||{},last10=analysis.windows?.last10||{};
+   const metrics=Object.keys(labels).map(key=>{
+    const h=home[key],a=away[key];
+    const left=key==='score'?(match.score?.home??'Μη διαθέσιμο'):key==='minute'?(match.minute??'Μη διαθέσιμο'):key==='numericalAdvantage'?(analysis.gameState?.numericalAdvantage||'Μη διαθέσιμο'):value(h);
+    const right=key==='score'?(match.score?.away??'Μη διαθέσιμο'):key==='minute'?'—':key==='numericalAdvantage'?'—':value(a);
+    return '<div class="protocol-analyst-recommendation" style="padding:8px"><small>'+esc(labels[key])+'</small><strong style="display:block">'+esc(left)+' – '+esc(right)+'</strong></div>';
+   }).join('');
+   const windowLine=(label,w)=>{const h=w.teams?.home||{},a=w.teams?.away||{};return '<p class="top-ai-alert-privacy"><strong>'+label+':</strong> SOT '+value(h.shotsOnTarget)+'–'+value(a.shotsOnTarget)+' · xG '+value(h.xg)+'–'+value(a.xg)+' · PSxG '+value(h.psxg)+'–'+value(a.psxg)+'</p>';};
+   const windowNote=match.windowPrecision==='match-minute'?'Τα παράθυρα SOT/xG/PSxG έχουν ακρίβεια λεπτού αγώνα από PitchAPI, όχι δευτερολέπτου.':'Τα παράθυρα SOT/xG/PSxG δεν είναι διαθέσιμα από την τρέχουσα πηγή.';
+   return '<article class="top-ai-alert-item" style="margin:10px 0;padding:12px;border:1px solid rgba(99,245,208,.18);border-radius:12px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>'+esc(match.home)+' – '+esc(match.away)+'</strong><strong>'+esc(match.score?.home??'—')+'-'+esc(match.score?.away??'—')+' · '+esc(match.minute??'—')+'′</strong></div><p class="subtle">'+esc(match.league)+' · '+esc(match.country)+' · Πηγή: '+esc(match.source||'Μη διαθέσιμη')+'</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:7px;margin-top:10px">'+metrics+'</div>'+windowLine('Τελευταία 5′',last5)+windowLine('Τελευταία 10′',last10)+'<p class="top-ai-alert-privacy">'+windowNote+' Η στατιστική ειδοποίηση πίεσης παραμένει ανενεργή μέχρι να υπάρχουν και επαληθευμένα rolling Box Entries. Οι επιβεβαιωμένες αλλαγές σκορ/κόκκινης κάρτας λειτουργούν ανεξάρτητα.</p></article>';
+  }).join('');
+ }
+ function renderHistory(data){
+  const records=Array.isArray(data.records)?data.records:[];
+  const scanner=data.scanner||{};
+  if(historyStatus){
+   const last=scanner.lastScanAt?new Date(scanner.lastScanAt).toLocaleTimeString('el-GR'):'σε αναμονή πρώτου ελέγχου';
+   historyStatus.textContent='Scanner: '+(scanner.enabled?'ΕΝΕΡΓΟΣ':'ανενεργός')+' · Τελευταίος έλεγχος: '+last+' · Push: '+(data.pushConfigured?'ρυθμισμένο':'μη ρυθμισμένο')+' · Αποθήκευση: '+(data.persistent?'PostgreSQL':'προσωρινή μνήμη')+(scanner.lastScanError?' · Σφάλμα: '+scanner.lastScanError:'');
+  }
+  if(!historyList)return;
+  if(!records.length){historyList.innerHTML='<div class="top-ai-alert-empty">Δεν έχει καταγραφεί ακόμη επιβεβαιωμένη αλλαγή σκορ ή κόκκινη κάρτα.</div>';return;}
+  const statusLabel={delivered:'Push αποδεκτό',pending:'Σε αναμονή / επανάληψη',not_configured:'Push μη ρυθμισμένο'};
+  historyList.innerHTML=records.map(record=>{
+   const payload=record.payload||{},trigger=payload.trigger||{},snapshot=payload.snapshot||{};
+   const date=record.created_at||record.delivery_result?.attemptedAt||'';
+   const label=trigger.label||record.trigger_type||trigger.type||'LIVE INTELLIGENCE';
+   const matchName=(snapshot.home||'—')+' – '+(snapshot.away||'—');
+   const context=[snapshot.score,snapshot.minute!=null?String(snapshot.minute)+'′':'',snapshot.league,snapshot.country].filter(Boolean).join(' · ');
+   const delivery=statusLabel[record.delivery_status]||record.delivery_status||'Καταχωρήθηκε';
+   return '<article class="top-ai-alert-item" style="margin:8px 0;padding:11px;border:1px solid rgba(99,245,208,.16);border-radius:10px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>'+esc(matchName)+'</strong><small>'+esc(date?new Date(date).toLocaleString('el-GR'):'—')+'</small></div><p class="subtle">'+esc(context)+'</p><strong>'+esc(label)+'</strong><p class="top-ai-alert-privacy">'+esc(delivery)+'</p><div style="white-space:pre-line">'+esc(payload.body||'')+'</div></article>';
+  }).join('');
+ }
+ async function loadHistory(){
+  if(!historyList)return;
+  try{
+   const response=await fetch('/api/live-intelligence/history?limit=40',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok||data.independent!==true)throw new Error(data.error||('HTTP '+response.status));
+   renderHistory(data);
+  }catch(error){
+   if(historyStatus)historyStatus.textContent='Ιστορικό μη διαθέσιμο: '+String(error.message||error);
+   historyList.innerHTML='<div class="top-ai-alert-empty">Δεν ήταν δυνατή η φόρτωση του ιστορικού.</div>';
+  }
+ }
+ async function load(){
+  if(refresh)refresh.disabled=true;
+  status.textContent='Συλλογή επιβεβαιωμένων live snapshots…';
+  try{
+   const date=new Date().toISOString().slice(0,10).replace(/-/g,'');
+   const response=await fetch('/api/live-intelligence?date='+date,{cache:'no-store',signal:AbortSignal.timeout(55000)});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok||data.independent!==true)throw new Error(data.error||('HTTP '+response.status));
+   render(data);
+   status.textContent='Ενημέρωση: '+new Date(data.generatedAt||Date.now()).toLocaleTimeString('el-GR')+' · Scanner ανεξάρτητος · Rolling 5′/10′: μη διαθέσιμα χωρίς πραγματικά event timestamps.';
+  }catch(error){
+   status.textContent='Δεν ήταν δυνατή η φόρτωση: '+String(error.message||error);
+   list.innerHTML='<div class="top-ai-alert-empty">Τα live δεδομένα δεν είναι διαθέσιμα. Δοκίμασε ξανά αργότερα.</div>';
+  }finally{
+   await loadHistory();
+   if(refresh)refresh.disabled=false;
+  }
+ }
+ function show(open){panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));if(open){panel.scrollIntoView({behavior:'smooth',block:'start'});void load();}}
+ toggle.addEventListener('click',()=>show(panel.hidden));
+ close?.addEventListener('click',()=>show(false));
+ refresh?.addEventListener('click',()=>void load());
+})();
+</script>

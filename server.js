@@ -30,6 +30,8 @@ const { buildIndependentAiTriggers, sotTriggerConfirmationKey } = require("./ai-
 const { summarizeEliteDataAudit } = require("./elite-data-audit");
 const { buildFiveBotDailyReport } = require("./elite-five-bots");
 const { addRollingTrends } = require("./rolling-trend-history");
+const { buildLiveIntelligenceAnalysis, buildShotDerivedMinuteWindow } = require("./live-intelligence");
+const { createLiveIntelligenceRuntime } = require("./live-intelligence-runtime");
 const { createSharedLiveMetricsCoordinator } = require("./shared-live-metrics-coordinator");
 let Pool = null;
 try { ({ Pool } = require("pg")); } catch {}
@@ -1090,6 +1092,23 @@ const cloudAlertScanner = createCloudAlertScanner({
   runtime: cloudAlertRuntime,
   settlement: cloudAlertSettlement,
   pushEnabled: CLOUD_ALERT_PUSH_ENABLED
+});
+// Independent LIVE INTELLIGENCE scanner. It observes its own analysis endpoint,
+// persists only its own state/history, and never writes to other protocol stores.
+const liveIntelligenceRuntime = createLiveIntelligenceRuntime({
+  getPool: () => analyticsPool,
+  sendPush: sendPushToSubscribers,
+  intervalMs: 30000,
+  getMatches: async () => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const response = await fetch("http://127.0.0.1:" + PORT + "/api/live-intelligence?date=" + date, {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(55000)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.independent !== true) throw new Error(data.error || ("LIVE INTELLIGENCE feed HTTP " + response.status));
+    return Array.isArray(data.matches) ? data.matches : [];
+  }
 });
 function pushRequestAllowed(req, res) {
   const origin = req.headers.origin || "";
@@ -7478,6 +7497,10 @@ const server = http.createServer(async (req, res) => {
               const pitchShotRows = shotPeriodsToCount.flatMap(period => Array.isArray(period.shots) ? period.shots : []);
               const pitchHomeTeamId = pitchStatsData.home_team?.id || pitchShotsData?.home_team?.id || "";
               const pitchAwayTeamId = pitchStatsData.away_team?.id || pitchShotsData?.away_team?.id || "";
+              const liveIntelligenceShotEvents = require("./live-intelligence").normalizePitchApiShotEvents(shotPeriods, {
+                homeTeamId: pitchHomeTeamId, awayTeamId: pitchAwayTeamId, source: "PitchAPI"
+              });
+              const liveIntelligenceShotTotals = require("./live-intelligence").summarizeShotEventTotals(liveIntelligenceShotEvents);
               const shotsInBoxByTeam = new Map();
               for (const shot of pitchShotRows) {
                 if (shot?.is_inside_box !== true || !shot?.team_id) continue;
@@ -7599,6 +7622,9 @@ const server = http.createServer(async (req, res) => {
                 statusText: event.status?.type?.name ?? event.status?.type?.detail ??
                   event.status?.type?.shortDetail ?? event.status_text ?? event.statusText ?? "",
                 statsAvailable: values.some(value => ["shotsOnTarget","shotsOnTargetInsideBox","bigChances","corners","possession","xG"].some(key => value[key] !== null)),
+                liveIntelligenceShotEvents,
+                liveIntelligenceShotCoverage: Boolean(pitchShotsData && Array.isArray(pitchShotsData.periods)),
+                liveIntelligenceShotTotals,
                 teams: values
               });
               continue;
@@ -8323,6 +8349,136 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, body);
     }
 
+    if (url.pathname === "/api/live-intelligence/history" && req.method === "GET") {
+      const history = await liveIntelligenceRuntime.listHistory(Number(url.searchParams.get("limit") || 50));
+      return send(res, 200, {
+        protocol: "GOALMATRIX LIVE INTELLIGENCE",
+        independent: true,
+        ...history,
+        pushConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
+        scanner: liveIntelligenceRuntime.status()
+      });
+    }
+
+    if (url.pathname === "/api/live-intelligence" && req.method === "GET") {
+      const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      if (!/^\d{8}$/.test(date)) return send(res, 400, { error: "date must be YYYYMMDD" });
+      const base = "http://127.0.0.1:" + PORT;
+      const response = await fetch(base + "/api/live-metrics?date=" + date, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(50000)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return send(res, response.status, { error: payload.error || "Live metrics unavailable", matches: [] });
+      const read = (team, keys, source, updatedAt) => {
+        for (const key of keys) {
+          const raw = team?.[key];
+          if (raw !== null && raw !== undefined && raw !== "" && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+            return { available: true, value: Number(raw), source: source || null, updatedAt: updatedAt || null };
+          }
+        }
+        return { available: false, value: null, source: source || null, updatedAt: updatedAt || null };
+      };
+      const metricKeys = {
+        shotsOnTarget: ["shotsOnTarget", "displayShotsOnTarget"],
+        xg: ["xG", "xg"],
+        psxg: ["psxG", "PSxG", "psxg"],
+        bigChances: ["bigChances", "big_chances"],
+        boxEntries: ["boxEntries", "box_entries"],
+        dangerousAttacks: ["dangerousAttacks", "dangerous_attacks"],
+        finalThirdEntries: ["finalThirdEntries", "final_third_entries"],
+        progressivePasses: ["progressivePasses", "progressive_passes"],
+        keyPasses: ["keyPasses", "key_passes"],
+        defensivePressures: ["defensivePressures", "pressures"],
+        pressureRecoveries: ["pressureRecoveries", "pressure_recoveries"]
+      };
+      const matches = (Array.isArray(payload.matches) ? payload.matches : []).map(match => {
+        const teams = Array.isArray(match.teams) ? match.teams : [];
+        const home = teams.find(team => team?.homeAway === "home") || teams[0] || {};
+        const away = teams.find(team => team?.homeAway === "away") || teams[1] || {};
+        const source = match.statsSource || null;
+        const updatedAt = payload.updatedAt || null;
+        const homeSnapshot = snapshot(home);
+        const awaySnapshot = snapshot(away);
+        const shotTotals = match.liveIntelligenceShotTotals || {};
+        for (const [side, teamSnapshot] of [["home", homeSnapshot], ["away", awaySnapshot]]) {
+          for (const metric of ["shotsOnTarget", "xg", "psxg"]) {
+            const current = teamSnapshot[metric];
+            const eventValue = shotTotals[side]?.[metric];
+            if (!current?.available && Number.isFinite(eventValue)) {
+              teamSnapshot[metric] = { available: true, value: eventValue, source: "PitchAPI /shots event totals", updatedAt };
+            }
+          }
+        }
+        const unavailableWindow = { home: {}, away: {} };
+        for (const metric of Object.keys(metricKeys)) {
+          unavailableWindow.home[metric] = { available: false, value: null, source: null };
+          unavailableWindow.away[metric] = { available: false, value: null, source: null };
+        }
+        const minuteMatch = String(match.minute ?? "").match(/^(\\d+)(?:\\+(\\d+))?$/);
+        const currentMatchMinute = minuteMatch
+          ? Number(minuteMatch[1]) + Number(minuteMatch[2] || 0)
+          : Number(match.minute);
+        const shotCoverage = match.liveIntelligenceShotCoverage === true;
+        const shotEvents = Array.isArray(match.liveIntelligenceShotEvents) ? match.liveIntelligenceShotEvents : [];
+        const makeMinuteWindow = durationMinutes => {
+          const derived = buildShotDerivedMinuteWindow(shotEvents, {
+            currentMinute: currentMatchMinute,
+            durationMinutes,
+            coverage: { available: shotCoverage }
+          });
+          const window = { home: { ...unavailableWindow.home }, away: { ...unavailableWindow.away } };
+          for (const side of ["home", "away"]) {
+            for (const metric of ["shotsOnTarget", "xg", "psxg"]) {
+              const value = derived[side][metric];
+              window[side][metric] = {
+                available: derived.available && value !== null,
+                value: derived.available ? value : null,
+                source: derived.available ? "PitchAPI /shots (match-minute precision)" : "PitchAPI /shots"
+              };
+            }
+          }
+          return window;
+        };
+        const last5Window = makeMinuteWindow(5);
+        const last10Window = makeMinuteWindow(10);
+        const analysis = buildLiveIntelligenceAnalysis({
+          source: source || (shotCoverage ? "PitchAPI /shots" : null),
+          generatedAt: updatedAt,
+          windows: { last5: last5Window, last10: last10Window },
+          totals: { home: homeSnapshot, away: awaySnapshot },
+          gameState: {
+            score: { home: match.homeScore, away: match.awayScore },
+            minute: match.minute,
+            period: match.period || null,
+            redCards: { home: home.redCards, away: away.redCards }
+          },
+          events: []
+        });
+        return {
+          eventId: match.eventId || null,
+          home: match.home || home.team || "Μη διαθέσιμο",
+          away: match.away || away.team || "Μη διαθέσιμο",
+          league: match.league || "Μη διαθέσιμο",
+          country: match.country || "Μη διαθέσιμο",
+          score: { home: match.homeScore ?? null, away: match.awayScore ?? null },
+          minute: match.minute ?? null,
+          statusText: match.statusText || null,
+          source,
+          statsAvailable: match.statsAvailable === true,
+          windowPrecision: shotCoverage ? "match-minute" : "unavailable",
+          analysis
+        };
+      });
+      return send(res, 200, {
+        protocol: "GOALMATRIX LIVE INTELLIGENCE",
+        independent: true,
+        generatedAt: payload.updatedAt || new Date().toISOString(),
+        windowPolicy: "PitchAPI shot windows use provider match-minute precision; they are explicitly not second-precision. Box-entry pressure remains unavailable without verified rolling box-entry data.",
+        matches
+      });
+    }
+
     if (url.pathname === "/api/pitch/date") {
       const date = url.searchParams.get("date") || "";
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return send(res, 400, { error: "date must be YYYY-MM-DD" });
@@ -8444,6 +8600,7 @@ setTimeout(() => { runProtocolAnalyst().catch(() => {}); }, 15000).unref?.();
 server.listen(PORT, "0.0.0.0", () => {
   console.log("Goal Pulse listening on " + PORT);
   cloudAlertScanner.start();
+  liveIntelligenceRuntime.start();
   // Daily full-coupon Pre-Match preparation at/after 06:00 Greece time.
   // Per-league persisted freshness prevents duplicate season downloads.
   const preMatchDailyTimer = setInterval(() => {
