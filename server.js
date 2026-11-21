@@ -3918,7 +3918,11 @@ const server = http.createServer(async (req, res) => {
         title,
         body: alertBody,
         tag: "goal-pulse-" + level.toLowerCase() + "-" + String(body.eventId || "live").slice(0, 60),
-        url: "/"
+        url: "/",
+        matchContext: body.matchContext || ((body.home || body.away || body.league || body.country)
+          ? { league: body.league, country: body.country, home: body.home, away: body.away,
+              minute: body.minute, score: body.score || { home: body.homeScore, away: body.awayScore } }
+          : null)
       });
       // The frontend saves the full alert record (teams, market, outcomes) before sending push.
       // Avoid inserting a second, incomplete client-push row into the persistent alert history.
