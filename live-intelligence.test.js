@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildLiveIntelligenceAnalysis, buildShotDerivedWindow, readMetric, METRICS } = require("./live-intelligence");
+const { buildLiveIntelligenceAnalysis, buildShotDerivedWindow, readMetric, METRICS, selectLiveIntelligenceTrigger, buildLiveIntelligencePushPayload } = require("./live-intelligence");
 
 function metric(value, extra = {}) { return { available: true, value, source: "test-provider", ...extra }; }
 function team({ sot=0, xg=0, box=0 } = {}) {
@@ -108,3 +108,43 @@ test("does not fabricate zero values when shot-event coverage is unavailable", (
   assert.equal(result.home.shotsOnTarget,null);
   assert.equal(result.away.xg,null);
 });
+
+
+test("selects independent pressure, sustained dominance and confirmed game-state triggers", () => {
+  const base = { independent: true, recentGameStateChanges: [], pressure: { status: "sustained_attacking_superiority", label: "Σταθερή υπεροχή", team: "home" } };
+  assert.equal(selectLiveIntelligenceTrigger(base).type, "sustained_attacking_superiority");
+  assert.equal(selectLiveIntelligenceTrigger({ ...base, pressure: { status: "box_entry_pressure_without_sot_or_xg_edge", label: "Πίεση χωρίς καθαρές ευκαιρίες" } }).type, "box_entry_pressure_without_sot_or_xg_edge");
+  assert.equal(selectLiveIntelligenceTrigger({ ...base, recentGameStateChanges: [{ type: "goal", confirmed: true, minute: 69 }] }).type, "game_state_shift");
+  assert.equal(selectLiveIntelligenceTrigger({ ...base, recentGameStateChanges: [{ type: "goal", confirmed: false }] }).type, "sustained_attacking_superiority");
+});
+
+test("push payload freezes score, minute, league, country and teams from the alert-time snapshot", () => {
+  const payload = buildLiveIntelligencePushPayload({
+    analysis: {
+      independent: true,
+      pressure: { status: "sustained_attacking_superiority", label: "Σταθερή επιθετική υπεροχή", team: "home" },
+      windows: { last10: { matchSot: 9, xgDifference: 0.75 } }
+    },
+    match: { fixtureId: "fixture-1", home: "Real", away: "Barcelona", score: { home: 2, away: 1 }, minute: 69, league: "La Liga", country: "Spain" },
+    triggeredAt: "2026-11-21T13:15:00.000Z"
+  });
+  assert.equal(payload.ok, true);
+  assert.equal(payload.snapshot.score, "2-1");
+  assert.equal(payload.snapshot.minute, 69);
+  assert.equal(payload.snapshot.league, "La Liga");
+  assert.equal(payload.snapshot.country, "Spain");
+  assert.match(payload.body, /2-1 · 69′ · La Liga · Spain/);
+  assert.match(payload.body, /Real – Barcelona/);
+  assert.match(payload.body, /Σταθερή επιθετική υπεροχή/);
+  assert.match(payload.body, /SOT σύνολο: 9/);
+  assert.equal(payload.triggeredAt, "2026-11-21T13:15:00.000Z");
+});
+
+test("refuses to send a live alert without a complete verified match snapshot", () => {
+  const payload = buildLiveIntelligencePushPayload({
+    analysis: { independent: true, pressure: { status: "sustained_attacking_superiority", label: "Σταθερή υπεροχή" } },
+    match: { home: "Real", away: "Barcelona", score: { home: 2, away: 1 }, minute: 69, league: "La Liga" }
+  });
+  assert.deepEqual(payload, { ok: false, reason: "incomplete_match_snapshot" });
+});
+
