@@ -289,12 +289,16 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
     const pool = getPool();
     if (pool && await ensureSchema()) {
-      const result = await pool.query(`
-        SELECT alert_id,event_id,trigger_type,created_at,payload,delivery_status,delivery_result,attempts
-        FROM live_intelligence_alert_history
-        ORDER BY created_at DESC LIMIT $1
-      `, [safeLimit]);
-      return { persistent: true, records: result.rows };
+      try {
+        const result = await pool.query(`
+          SELECT alert_id,event_id,trigger_type,created_at,payload,delivery_status,delivery_result,attempts
+          FROM live_intelligence_alert_history
+          ORDER BY created_at DESC LIMIT $1
+        `, [safeLimit]);
+        return { persistent: true, records: result.rows };
+      } catch (error) {
+        console.error("[LIVE INTELLIGENCE] history read fell back to memory:", error.message);
+      }
     }
     return {
       persistent: false,
