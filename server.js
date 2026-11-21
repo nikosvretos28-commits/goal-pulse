@@ -8370,6 +8370,16 @@ const server = http.createServer(async (req, res) => {
         const updatedAt = payload.updatedAt || null;
         const snapshot = side => Object.fromEntries(Object.entries(metricKeys).map(([metric, keys]) =>
           [metric, read(side, keys, source, updatedAt)]));
+        const shotTotals = match.liveIntelligenceShotTotals || {};
+        for (const side of ["home", "away"]) {
+          for (const metric of ["shotsOnTarget", "xg", "psxg"]) {
+            const current = snapshot(side)[metric];
+            const eventValue = shotTotals[side]?.[metric];
+            if (!current?.available && Number.isFinite(eventValue)) {
+              snapshot(side)[metric] = { available: true, value: eventValue, source: "PitchAPI /shots event totals", updatedAt };
+            }
+          }
+        }
         const unavailableWindow = { home: {}, away: {} };
         for (const metric of Object.keys(metricKeys)) {
           unavailableWindow.home[metric] = { available: false, value: null, source: null };
