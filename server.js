@@ -243,6 +243,7 @@ const pushScanGptGoalPending = new Map();
 const pushScanGptGoalLastAlert = new Map();
 const preScanTracker = createPreScanTracker({ maxAgeMs: 36 * 60 * 60 * 1000, maxMatches: 5000 });
 const preScanHydratedEvents = new Set();
+const preScanCandidateCache = new Map();
 let preScanDbInit = null;
 async function ensurePreScanDb() {
   if (!analyticsPool) return false;
@@ -260,12 +261,71 @@ async function ensurePreScanDb() {
     );
     CREATE INDEX IF NOT EXISTS pre_scan_live_matches_last_seen_idx
       ON pre_scan_live_matches(last_seen_at DESC);
+    CREATE TABLE IF NOT EXISTS pre_scan_candidates (
+      event_id TEXT PRIMARY KEY, league_code TEXT NOT NULL DEFAULT '',
+      home TEXT NOT NULL, away TEXT NOT NULL, home_key TEXT NOT NULL, away_key TEXT NOT NULL,
+      kickoff_at TIMESTAMPTZ NOT NULL, candidate_score NUMERIC NOT NULL DEFAULT 0,
+      payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS pre_scan_candidates_matchup_idx ON pre_scan_candidates(home_key,away_key,kickoff_at DESC);
+    CREATE INDEX IF NOT EXISTS pre_scan_candidates_kickoff_idx ON pre_scan_candidates(kickoff_at);
   `).then(() => true).catch(error => {
     preScanDbInit = null;
     console.warn("[Pre-Scan] persistent history unavailable:", error.message);
     return false;
   });
   return preScanDbInit;
+}
+async function findPreScanCandidate(match) {
+  const homeKey = preMatchNormalizeTeam(match?.home || match?.homeTeam || "");
+  const awayKey = preMatchNormalizeTeam(match?.away || match?.awayTeam || "");
+  if (!homeKey || !awayKey) return null;
+  const key = homeKey + "||" + awayKey;
+  if (preScanCandidateCache.has(key)) return preScanCandidateCache.get(key);
+  if (!await ensurePreScanDb()) return null;
+  try {
+    const result = await analyticsPool.query("SELECT payload FROM pre_scan_candidates WHERE home_key=$1 AND away_key=$2 AND kickoff_at >= NOW() - make_interval(hours => 36) AND kickoff_at <= NOW() + make_interval(hours => 36) ORDER BY kickoff_at DESC LIMIT 1", [homeKey, awayKey]);
+    const candidate = result.rows?.[0]?.payload || null;
+    if (candidate) preScanCandidateCache.set(key, candidate);
+    return candidate;
+  } catch (error) { console.warn("[Pre-Scan] candidate context lookup failed:", error.message); return null; }
+}
+async function collectPreScanCandidates(events) {
+  const now = Date.now(), candidates = [];
+  for (const event of Array.isArray(events) ? events : []) {
+    const kickoffAt = Date.parse(event?.date || "");
+    if (!event?.id || !Number.isFinite(kickoffAt) || kickoffAt <= now) continue;
+    const competition = Array.isArray(event.competitions) ? event.competitions[0] : null;
+    const status = competition?.status?.type || event.status?.type || {};
+    if (status.completed === true || /post|final|finished|cancelled|abandoned/i.test(String(status.state || status.name || ""))) continue;
+    const competitors = Array.isArray(competition?.competitors) ? competition.competitors : [];
+    const home = competitors.find(side => String(side.homeAway || "").toLowerCase() === "home") || competitors[0];
+    const away = competitors.find(side => String(side.homeAway || "").toLowerCase() === "away") || competitors.find(side => side !== home);
+    const homeName = String(home?.team?.displayName || home?.team?.name || "");
+    const awayName = String(away?.team?.displayName || away?.team?.name || "");
+    const leagueCode = String(event.__goalPulseLeagueCode || "");
+    if (!homeName || !awayName || !leagueCode) continue;
+    const [homeProfile, awayProfile] = await Promise.all([getPreMatchSeasonProfile(leagueCode, homeName), getPreMatchSeasonProfile(leagueCode, awayName)]);
+    const matchup = buildPreMatchMatchupContext(homeProfile, awayProfile, homeName, awayName);
+    const ranking = scorePreMatchMatchupContext(matchup);
+    const candidate = {eventId:String(event.id),leagueCode,league:String(competition?.name || ""),home:homeName,away:awayName,
+      kickoffAt:new Date(kickoffAt).toISOString(),season:matchup?.season || null,score:ranking.score,reasons:ranking.reasons,
+      sample:{home:Number(homeProfile?.matches || 0),away:Number(awayProfile?.matches || 0)},context:matchup,
+      source:"ESPN pre-match fixture scan",scannedAt:new Date(now).toISOString()};
+    const homeKey = preMatchNormalizeTeam(homeName), awayKey = preMatchNormalizeTeam(awayName);
+    preScanCandidateCache.set(homeKey + "||" + awayKey, candidate);
+    candidates.push({eventId:String(event.id),leagueCode,home:homeName,away:awayName,homeKey,awayKey,kickoffAt,score:ranking.score,payload:candidate});
+  }
+  let persisted = false;
+  if (candidates.length && await ensurePreScanDb()) {
+    for (const item of candidates) await analyticsPool.query(
+      "INSERT INTO pre_scan_candidates (event_id,league_code,home,away,home_key,away_key,kickoff_at,candidate_score,payload,updated_at) VALUES ($1,$2,$3,$4,$5,$6,to_timestamp($7/1000.0),$8,$9::jsonb,NOW()) ON CONFLICT(event_id) DO UPDATE SET league_code=EXCLUDED.league_code,home=EXCLUDED.home,away=EXCLUDED.away,home_key=EXCLUDED.home_key,away_key=EXCLUDED.away_key,kickoff_at=EXCLUDED.kickoff_at,candidate_score=EXCLUDED.candidate_score,payload=EXCLUDED.payload,updated_at=NOW()",
+      [item.eventId,item.leagueCode,item.home,item.away,item.homeKey,item.awayKey,item.kickoffAt,item.score,JSON.stringify(item.payload)]
+    );
+    persisted = true;
+  }
+  console.info("[Pre-Scan] upcoming fixture discovery completed:", JSON.stringify({scanned:Array.isArray(events)?events.length:0,candidates:candidates.length,persisted}));
+  return {scanned:Array.isArray(events)?events.length:0,candidates:candidates.length,persisted};
 }
 async function capturePreScanObservation({ eventId, match, current, now }) {
   const id = String(eventId || "");
@@ -296,6 +356,8 @@ async function capturePreScanObservation({ eventId, match, current, now }) {
     teams: current.sotByTeam.map(side => ({ team: side.team, shotsOnTarget: side.value }))
   });
   if (!context) return null;
+  const candidate = await findPreScanCandidate(match);
+  if (candidate) context.preMatchCandidate = {eventId:candidate.eventId,leagueCode:candidate.leagueCode,kickoffAt:candidate.kickoffAt,season:candidate.season,score:candidate.score,reasons:candidate.reasons,sample:candidate.sample,matchup:candidate.context};
   const state = preScanTracker.getState(id);
   if (await ensurePreScanDb()) {
     try {
@@ -2068,6 +2130,7 @@ async function runScheduledPreMatchCollection() {
       (feed.events || []).map(event => ({ ...event, __goalPulseLeagueCode: feed.code || "" }))
     );
     const result = await schedulePreMatchSeasonCollection(events);
+    const preScanCandidates = await collectPreScanCandidates(events);
     preMatchDailyScanDate = date;
     preMatchDailyRetryAt = 0;
     preMatchScanState.status = "complete";
@@ -2082,6 +2145,7 @@ async function runScheduledPreMatchCollection() {
       supportedLeagues: [...new Set(events.map(event => event.__goalPulseLeagueCode).filter(isPreMatchLeagueCode))].length,
       attempted: result.attempted, skipped: result.skipped,
       successful: result.results.filter(item => item.ok).length,
+      preScanCandidates: preScanCandidates.candidates, preScanCandidatesPersisted: preScanCandidates.persisted,
       failed: result.results.filter(item => !item.ok).length
     }));
     return result;
