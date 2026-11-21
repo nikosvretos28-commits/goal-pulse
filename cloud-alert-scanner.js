@@ -138,7 +138,7 @@ function createCloudAlertScanner({
         const period = matchPeriod(match, minute);
         const sot = getTeamSot(match);
         const source = String(match?.statsSource || "").trim();
-        if (!matchId || !period || !sot || match.statsAvailable !== true || !source) {
+        if (!matchId || !period || !sot || !source || minute == null || minute < 1 || minute >= 70) {
           held++;
           continue;
         }
@@ -154,6 +154,8 @@ function createCloudAlertScanner({
         const cumulativeRegression = r6?.reason === "cumulative_sot_regression";
         if (cumulativeRegression) confirmations.delete(matchId + "|" + period);
         const rollingWindowsValid = !cumulativeRegression && Boolean(r6?.valid || r10 != null);
+        const homeTeam = match.teams.find(team => team?.homeAway === "home") || match.teams[0];
+        const awayTeam = match.teams.find(team => team?.homeAway === "away") || match.teams[1];
         const result = evaluateCloudAlert({
           matchId,
           period,
@@ -162,9 +164,16 @@ function createCloudAlertScanner({
           awaySot: sot.away,
           recentSot6: r6?.valid ? r6.value : null,
           recentSot10: r10,
-          dataQuality: "valid",
-          confirmed: confirmation.confirmed,
-          rollingWindowsValid
+          homeXg: homeTeam?.xG, awayXg: awayTeam?.xG,
+          homePsxg: homeTeam?.psxg, awayPsxg: awayTeam?.psxg,
+          homeBigChances: homeTeam?.bigChances, awayBigChances: awayTeam?.bigChances,
+          homeBoxEntries: homeTeam?.boxEntries, awayBoxEntries: awayTeam?.boxEntries,
+          homeKeyPasses: homeTeam?.keyPasses, awayKeyPasses: awayTeam?.keyPasses,
+          homeProgressivePasses: homeTeam?.progressivePasses, awayProgressivePasses: awayTeam?.progressivePasses,
+          homeDangerousAttacks: homeTeam?.dangerousAttacks, awayDangerousAttacks: awayTeam?.dangerousAttacks,
+          homeCorners: homeTeam?.corners, awayCorners: awayTeam?.corners,
+          homePossession: homeTeam?.possession, awayPossession: awayTeam?.possession,
+          dataQuality: "valid", confirmed: confirmation.confirmed
         });
         if (result.status !== "qualified") {
           if (result.status === "held") held++;
@@ -175,7 +184,8 @@ function createCloudAlertScanner({
           matchId,
           fixtureId: match.fixtureId || matchId,
           league: match.league || match.leagueName || "unknown",
-          ruleVersion: "cloud-alert-v0.2",
+          country: match.country || "Country unavailable",
+          ruleVersion: "matrix-alert-v1",
           period,
           triggers: result.triggers,
           minute,
@@ -188,6 +198,9 @@ function createCloudAlertScanner({
           scoreHome: Number.isInteger(match.homeScore) ? match.homeScore : null,
           scoreAway: Number.isInteger(match.awayScore) ? match.awayScore : null,
           metrics: result.metrics,
+          matrixScore: result.score,
+          availableMetrics: result.availableMetrics,
+          metricBreakdown: result.metricBreakdown,
           confirmation: confirmation.reason,
           statsSource: source
         };
