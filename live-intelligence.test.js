@@ -92,8 +92,8 @@ test("builds overlapping 5-minute and 10-minute shot windows from event timestam
     {type:"shot",team:"away",timestampSeconds:3700,onTarget:true,xg:0.1,psxg:0.2,bigChance:false},
     {type:"shot",team:"away",timestampSeconds:3000,onTarget:true,xg:0.3,psxg:0.2,bigChance:false}
   ];
-  const last5 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:300,coverage:{available:true}});
-  const last10 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:600,coverage:{available:true}});
+  const last5 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:300,coverage:{available:true,eventTime:true}});
+  const last10 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:600,coverage:{available:true,eventTime:true}});
   assert.equal(last5.home.shotsOnTarget,1);
   assert.equal(last10.home.shotsOnTarget,2);
   assert.equal(last10.away.shotsOnTarget,1);
@@ -177,7 +177,7 @@ test("minute-resolution PitchAPI events are never misread as second-precision ro
   const events = normalizePitchApiShotEvents([{ period:"all", shots:[
     {team_id:"h",is_on_target:true,minute:68,expected_goals:0.2,expected_goals_on_target:0.3}
   ]}],{homeTeamId:"h",awayTeamId:"a"});
-  const window = buildShotDerivedWindow(events,{nowSeconds:68*60,durationSeconds:300,coverage:{available:true}});
+  const window = buildShotDerivedWindow(events,{nowSeconds:68*60,durationSeconds:300,coverage:{available:true,eventTime:true}});
   assert.equal(window.home.shotsOnTarget,0);
-  assert.equal(window.home.xg,0);
+  assert.equal(window.home.xg,null);
 });
