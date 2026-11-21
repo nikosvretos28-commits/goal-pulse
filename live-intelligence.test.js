@@ -89,7 +89,7 @@ test("builds overlapping 5-minute and 10-minute shot windows from event timestam
   const events = [
     {type:"shot",team:"home",timestampSeconds:4100,onTarget:true,xg:0.2,psxg:0.3,bigChance:false},
     {type:"shot",team:"home",timestampSeconds:3800,onTarget:true,xg:0.4,psxg:0.5,bigChance:true},
-    {type:"shot",team:"away",timestampSeconds:3700,onTarget:false,xg:0.1,psxg:null,bigChance:false},
+    {type:"shot",team:"away",timestampSeconds:3700,onTarget:true,xg:0.1,psxg:0.2,bigChance:false},
     {type:"shot",team:"away",timestampSeconds:3000,onTarget:true,xg:0.3,psxg:0.2,bigChance:false}
   ];
   const last5 = buildShotDerivedWindow(events,{nowSeconds:4200,durationSeconds:300,coverage:{available:true}});
