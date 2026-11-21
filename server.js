@@ -7266,6 +7266,10 @@ const server = http.createServer(async (req, res) => {
                             }
                           };
                           fill("shotsOnTarget", readExactSotStat(liveRows, sourceSide));
+                          fill("psxg", readPitchLiveStat(sourceSide, ["psxg","post_shot_xg","post_shot_expected_goals","expected_goals_on_target","xgot"]));
+                          fill("boxEntries", readPitchLiveStat(sourceSide, ["box_entries","penalty_area_entries","entries_into_box","touches_in_opposition_box"]));
+                          fill("keyPasses", readPitchLiveStat(sourceSide, ["key_passes","key_pass","keypasses"]));
+                          fill("progressivePasses", readPitchLiveStat(sourceSide, ["progressive_passes","progressive_pass","progressivepasses"]));
                           fill("shotsInBox", readPitchLiveStat(sourceSide, [
                             "shots_inside_box","shots_in_box","shots_in_penalty_area","shots_inside_penalty_area"
                           ]));
