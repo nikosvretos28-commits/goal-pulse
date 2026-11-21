@@ -79,9 +79,9 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
     const eventId = String(match.eventId);
     const score = match.score || {};
     const redCards = match.analysis?.gameState?.redCards || {};
-    const triggerFingerprint = event.type === "goal"
+    const triggerFingerprint = event.fingerprint || (event.type === "goal"
       ? String(validCount(score.home)) + "-" + String(validCount(score.away))
-      : "home:" + String(validCount(redCards.home)) + "|away:" + String(validCount(redCards.away));
+      : "home:" + String(validCount(redCards.home)) + "|away:" + String(validCount(redCards.away)));
     const analysis = {
       ...(match.analysis || {}),
       independent: true,
@@ -177,13 +177,26 @@ function createLiveIntelligenceRuntime({ getPool = () => null, getMatches, sendP
       const homeDelta = current.scoreHome - previous.scoreHome;
       const awayDelta = current.scoreAway - previous.scoreAway;
       if (homeDelta >= 0 && awayDelta >= 0 && (homeDelta > 0 || awayDelta > 0)) {
-        events.push({ type: "goal", team: homeDelta > awayDelta ? "home" : awayDelta > homeDelta ? "away" : null });
+        events.push({
+          type: "goal",
+          team: homeDelta > awayDelta ? "home" : awayDelta > homeDelta ? "away" : null,
+          fingerprint: String(previous.scoreHome) + "-" + String(previous.scoreAway) + ">" +
+            String(current.scoreHome) + "-" + String(current.scoreAway) + "@" + String(current.minute)
+        });
       }
     }
     if (current.redCardsHome !== null && current.redCardsAway !== null &&
         previous.redCardsHome !== null && previous.redCardsAway !== null) {
-      if (current.redCardsHome > previous.redCardsHome) events.push({ type: "red_card", team: "home" });
-      if (current.redCardsAway > previous.redCardsAway) events.push({ type: "red_card", team: "away" });
+      if (current.redCardsHome > previous.redCardsHome) events.push({
+        type: "red_card", team: "home",
+        fingerprint: "home:" + previous.redCardsHome + ">" + current.redCardsHome +
+          "|away:" + previous.redCardsAway + ">" + current.redCardsAway + "@" + String(current.minute)
+      });
+      if (current.redCardsAway > previous.redCardsAway) events.push({
+        type: "red_card", team: "away",
+        fingerprint: "home:" + previous.redCardsHome + ">" + current.redCardsHome +
+          "|away:" + previous.redCardsAway + ">" + current.redCardsAway + "@" + String(current.minute)
+      });
     }
     if (!events.length) return { eventId, observed: true };
     const outcomes = [];
