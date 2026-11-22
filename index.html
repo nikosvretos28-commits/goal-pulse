@@ -16,6 +16,23 @@
 <meta property="og:url" content="https://goalmatrix-production.up.railway.app/">
 <meta name="twitter:card" content="summary">
 <title>GoalMatrix — 24/7 Live Betting Intelligence</title>
+<script>
+/* GoalMatrix GitHub Pages bridge: route API requests to the existing Node backend. */
+(function(){
+ const apiOrigin='https://goalmatrix-live.onrender.com';
+ const nativeFetch=window.fetch.bind(window);
+ window.GOALMATRIX_API_ORIGIN=apiOrigin;
+ window.fetch=function(input,init){
+  if(typeof input==='string' && input.startsWith('/api/')){
+   return nativeFetch(apiOrigin+input,init);
+  }
+  if(input instanceof URL && input.origin===window.location.origin && input.pathname.startsWith('/api/')){
+   return nativeFetch(apiOrigin+input.pathname+input.search+input.hash,init);
+  }
+  return nativeFetch(input,init);
+ };
+})();
+</script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -3177,7 +3194,7 @@ header {
 })();
 </script>
 <script>
-const ANALYTICS_API=window.location.origin;
+const ANALYTICS_API=window.GOALMATRIX_API_ORIGIN;
 function cloudAlertEscape(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 async function loadCloudAlertHistory(){
  const root=document.getElementById('cloudAlertHistory');if(!root)return;
