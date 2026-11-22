@@ -35,7 +35,7 @@ jobs:
           # Project Pages uses /goal-pulse/ as its root. Copy every browser asset the page references.
           sed -i 's|href="/manifest.webmanifest"|href="/goal-pulse/manifest.webmanifest"|g; s|href="/goalmatrix-icon.svg"|href="/goal-pulse/goalmatrix-icon.svg"|g; s|src="/goalmatrix-icon.svg"|src="/goal-pulse/goalmatrix-icon.svg"|g; s|src="/live-state.js"|src="/goal-pulse/live-state.js"|g; s|navigator.serviceWorker.register('\''/sw.js'\'')|navigator.serviceWorker.register('\''/goal-pulse/sw.js'\'')|g; s|navigator.serviceWorker.getRegistration('\''/sw.js'\'')|navigator.serviceWorker.getRegistration('\''/goal-pulse/sw.js'\'')|g; s|https://goal-pulse.onrender.com/|https://nikosvretos28-commits.github.io/goal-pulse/|g' _site/index.html
           sed -i 's|"id": "/"|"id": "/goal-pulse/"|; s|"start_url": "/"|"start_url": "/goal-pulse/"|; s|"scope": "/"|"scope": "/goal-pulse/"|; s|"/goalmatrix-icon.svg"|"/goal-pulse/goalmatrix-icon.svg"|' _site/manifest.webmanifest
-          sed -i 's|/goalmatrix-icon.svg|/goal-pulse/goalmatrix-icon.svg|g; s|data.url||'\''/'\''|data.url||'\''/goal-pulse/'\''|' _site/sw.js
+          sed -i 's|/goalmatrix-icon.svg|/goal-pulse/goalmatrix-icon.svg|g' _site/sw.js
           touch _site/.nojekyll
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
